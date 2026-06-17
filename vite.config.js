@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
+import crypto from 'node:crypto'
 
 // Streams any remote image through the dev server so the browser can blob-download
 // it (cross-origin <a download> is blocked otherwise).
@@ -18,12 +19,123 @@ const imgProxy = {
   },
 }
 
+// ---- BrickLink: OAuth 1.0a request signing ---------------------------------
+// BrickLink authenticates EVERY request with a per-request HMAC-SHA1 signature
+// (consumer key/secret + token/secret). A static header can't express that, so
+// this is a signing middleware rather than a plain proxy entry. The dev server's
+// outbound IP must also be registered in the BrickLink API console.
+function pctEncode(s) {
+  return encodeURIComponent(String(s)).replace(/[!*'()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())
+}
+function bricklinkAuthHeader(method, urlObj, cred) {
+  const oauth = {
+    oauth_consumer_key: cred.consumerKey,
+    oauth_token: cred.token,
+    oauth_signature_method: 'HMAC-SHA1',
+    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+    oauth_nonce: crypto.randomBytes(16).toString('hex'),
+    oauth_version: '1.0',
+  }
+  const params = []
+  for (const [k, v] of urlObj.searchParams) params.push([k, v])
+  for (const k in oauth) params.push([k, oauth[k]])
+  const baseParams = params
+    .map(([k, v]) => [pctEncode(k), pctEncode(v)])
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
+    .map(([k, v]) => k + '=' + v).join('&')
+  const baseUrl = urlObj.origin + urlObj.pathname
+  const base = method.toUpperCase() + '&' + pctEncode(baseUrl) + '&' + pctEncode(baseParams)
+  const signingKey = pctEncode(cred.consumerSecret) + '&' + pctEncode(cred.tokenSecret)
+  oauth.oauth_signature = crypto.createHmac('sha1', signingKey).update(base).digest('base64')
+  return 'OAuth ' + Object.keys(oauth).map(k => pctEncode(k) + '="' + pctEncode(oauth[k]) + '"').join(', ')
+}
+function bricklinkProxy(env) {
+  return {
+    name: 'bricklink-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/lego/bricklink', async (req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('access-control-allow-origin', '*')
+        try {
+          const cred = {
+            consumerKey: env.BRICKLINK_CONSUMER_KEY, consumerSecret: env.BRICKLINK_CONSUMER_SECRET,
+            token: env.BRICKLINK_TOKEN, tokenSecret: env.BRICKLINK_TOKEN_SECRET,
+          }
+          if (!cred.consumerKey || !cred.token) {
+            res.statusCode = 503
+            return res.end(JSON.stringify({ error: 'BrickLink keys not set in .env (BRICKLINK_CONSUMER_KEY/SECRET, BRICKLINK_TOKEN/SECRET)' }))
+          }
+          const target = new URL('https://api.bricklink.com/api/store/v1' + req.url)
+          const auth = bricklinkAuthHeader(req.method || 'GET', target, cred)
+          console.log('[api/lego/bricklink]', req.url)
+          const r = await fetch(target, { method: 'GET', headers: { Authorization: auth } })
+          res.statusCode = r.status
+          res.end(await r.text())
+        } catch (e) {
+          res.statusCode = 502
+          res.end(JSON.stringify({ error: 'bricklink proxy failed: ' + e.message }))
+        }
+      })
+    },
+  }
+}
+
+// ---- eBay: OAuth2 client-credentials app token (cached) --------------------
+// Mints + caches an application token and injects it as a Bearer header, plus the
+// AU marketplace header. Fronts the Browse API (Funko pricing) and Taxonomy API
+// (item specifics). Token TTL ~2h; refreshed ~60s early.
+let ebayTok = { value: '', exp: 0 }
+async function ebayToken(env) {
+  if (ebayTok.value && Date.now() < ebayTok.exp) return ebayTok.value
+  const basic = Buffer.from((env.EBAY_APP_ID || '') + ':' + (env.EBAY_CERT_ID || '')).toString('base64')
+  const r = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + basic, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=client_credentials&scope=' + encodeURIComponent('https://api.ebay.com/oauth/api_scope'),
+  })
+  if (!r.ok) throw new Error('token http ' + r.status)
+  const j = await r.json()
+  ebayTok = { value: j.access_token, exp: Date.now() + Math.max(0, (j.expires_in || 7200) - 60) * 1000 }
+  return ebayTok.value
+}
+function ebayProxy(env) {
+  return {
+    name: 'ebay-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/ebay', async (req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('access-control-allow-origin', '*')
+        try {
+          if (!env.EBAY_APP_ID || !env.EBAY_CERT_ID) {
+            res.statusCode = 503
+            return res.end(JSON.stringify({ error: 'eBay keys not set in .env (EBAY_APP_ID, EBAY_CERT_ID)' }))
+          }
+          const tok = await ebayToken(env)
+          console.log('[api/ebay]', req.url)
+          const r = await fetch('https://api.ebay.com' + req.url, {
+            headers: {
+              Authorization: 'Bearer ' + tok,
+              'X-EBAY-C-MARKETPLACE-ID': env.EBAY_MARKETPLACE || 'EBAY_AU',
+              'Content-Type': 'application/json',
+            },
+          })
+          res.statusCode = r.status
+          res.end(await r.text())
+        } catch (e) {
+          res.statusCode = 502
+          res.end(JSON.stringify({ error: 'ebay proxy failed: ' + e.message }))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // loads .env (and .env.local) from the project root
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5173,
@@ -85,6 +197,33 @@ export default defineConfig(({ mode }) => {
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq, req) =>
               console.log('[api/rb]', req.url, '-> api.scrydex.com' + proxyReq.path))
+          },
+        },
+        // LEGO lookup -> Rebrickable (simple "Authorization: key <KEY>" header)
+        '/api/lego/rebrickable': {
+          target: 'https://rebrickable.com',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/lego\/rebrickable/, '/api/v3/lego'),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) => {
+              if (env.REBRICKABLE_API_KEY) proxyReq.setHeader('Authorization', 'key ' + env.REBRICKABLE_API_KEY)
+              console.log('[api/lego/rebrickable]', req.url)
+            })
+          },
+        },
+        // LEGO enrichment -> Brickset (apiKey is a query PARAM, injected in rewrite,
+        // so it never reaches the browser; the client supplies userHash= itself).
+        '/api/lego/brickset': {
+          target: 'https://brickset.com',
+          changeOrigin: true,
+          rewrite: (p) => {
+            const np = p.replace(/^\/api\/lego\/brickset/, '/api/v3.asmx')
+            const sep = np.includes('?') ? '&' : '?'
+            return np + sep + 'apiKey=' + encodeURIComponent(env.BRICKSET_API_KEY || '')
+          },
+          configure: (proxy) => {
+            // log the client URL (no key) — never proxyReq.path, which carries the apiKey
+            proxy.on('proxyReq', (proxyReq, req) => console.log('[api/lego/brickset]', req.url))
           },
         },
       },

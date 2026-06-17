@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Funko Pop! eBay Listing Builder</title>
+<style>
+  :root{
+    --ink:#0e0f14; --panel:#16181f; --panel2:#1c1f28; --line:#2b2f3a;
+    --muted:#9aa0ad; --text:#f2f4f8; --gold:#27d3c4; --gold-dim:#12706a;
+    --field:#0a0c11; --accent:#7c5cff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  .setrow{margin-bottom:12px;position:relative;}
+  .setrow input{width:100%;padding:11px 13px;background:var(--field);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:16px;outline:none;}
+  .setrow input:focus{border-color:var(--gold);}
+  .status{font-size:12.5px;min-height:18px;margin:4px 0 14px;}
+  .status.ok{color:#36d399;} .status.warn{color:var(--gold);} .status.err{color:#f06262;} .status.load{color:var(--muted);}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+  .f-full{grid-column:1/3;}
+  .fields input,.fields select,.fields textarea{width:100%;padding:8px 10px;background:var(--field);
+    border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  .fields input:focus,.fields select:focus,.fields textarea:focus{border-color:var(--gold);}
+  .fields textarea{resize:vertical;min-height:60px;line-height:1.45;}
+  .flags{display:flex;gap:14px;flex-wrap:wrap;padding:4px 0;}
+  .cb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;}
+  .cb input{width:auto;}
+  .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .btns{display:flex;gap:8px;}
+  .btn{padding:8px 14px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);
+    border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;}
+  .btn:hover{background:var(--gold);color:#062321;}
+  .btn.solid{background:var(--gold);color:#062321;border-color:var(--gold);}
+  iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);
+    color:#062321;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+  code{background:#11141a;padding:2px 6px;border-radius:5px;color:var(--gold);}
+  #popMenu{display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-height:320px;overflow:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);}
+  #popMenu.open{display:block;}
+  .popopt{display:flex;align-items:center;gap:10px;padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--line);}
+  .popopt:last-child{border-bottom:none;}
+  .popopt:hover,.popopt.active{background:var(--field);}
+  .popopt img{width:30px;height:30px;object-fit:contain;flex:none;background:#fff;border-radius:4px;}
+  .popopt .nm{font-size:13px;color:var(--text);font-weight:600;}
+  .popopt .meta{font-size:11px;color:var(--muted);}
+  .popopt .badge{display:inline-block;font-size:9.5px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:5px;padding:0 5px;margin-left:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Funko Pop! Vinyl</div>
+  <h1>eBay Listing Builder</h1>
+  <p class="sub">Search the offline catalog to pre-fill name/series/image, set the number &amp; flags by hand, then get a ready-to-paste eBay description, title &amp; item specifics.</p>
+
+  <div class="grid">
+    <div class="card">
+      <details style="margin-bottom:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);">
+        <summary style="cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none;">About the data</summary>
+        <div style="padding:0 14px 14px;font-size:11.5px;color:var(--muted);line-height:1.6;">
+          The name/series autocomplete uses a bundled offline catalog (<code>data/funko_pop.json</code>) that is
+          <b>frozen at Jan 2021</b> &mdash; anything newer must be typed manually. There is no reliable Funko API, so
+          <b>Pop number, exclusivity and flags are always yours to enter</b>. Live price comps come from eBay
+          (<code>/api/ebay</code>) and are <b>current asking prices, not sold</b>. Set <code>EBAY_APP_ID</code>/<code>EBAY_CERT_ID</code> in <code>.env</code> to enable them.
+        </div>
+      </details>
+
+      <div class="setrow">
+        <label>Find a Pop <span id="catStatus" style="font-size:10.5px;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400;">loading catalog…</span></label>
+        <input id="popq" autocomplete="off" placeholder="search name or character, e.g. Batman, Grogu, Deadpool">
+        <div id="popMenu"></div>
+      </div>
+      <div class="status load" id="status">Search above to pre-fill, or just type the fields. The preview always builds.</div>
+
+      <div class="fields">
+        <div class="f-full"><label>Character / figure name</label><input id="f_character"></div>
+        <div><label>Franchise / fandom</label><input id="f_franchise" placeholder="Marvel, DC, Star Wars…"></div>
+        <div><label>Funko series</label><input id="f_series" value="Pop!"></div>
+        <div><label>Pop! number</label><input id="f_popnum" placeholder="e.g. 01"></div>
+        <div><label>Variant / edition</label><input id="f_variant" placeholder="e.g. Street Art"></div>
+        <div><label>Exclusive</label><input id="f_exclusive" list="exlist" placeholder="None / Hot Topic / SDCC 2019…">
+          <datalist id="exlist">
+            <option>Funko Shop</option><option>SDCC</option><option>NYCC</option><option>ECCC</option>
+            <option>Hot Topic</option><option>BoxLunch</option><option>Target</option><option>Walmart</option>
+            <option>GameStop</option><option>Amazon</option><option>FYE</option><option>Walgreens</option>
+            <option>Barnes &amp; Noble</option><option>Chalice</option><option>Entertainment Earth</option>
+          </datalist></div>
+        <div><label>Year</label><input id="f_year"></div>
+        <div><label>Box condition</label><select id="f_boxcond">
+          <option>Mint</option><option selected>Near-Mint</option><option>Good</option><option>Damaged</option></select></div>
+        <div><label>Pro grade (optional)</label><input id="f_grade" placeholder="e.g. UKG 85 / AFA 90"></div>
+        <div class="f-full"><label>Flags</label>
+          <div class="flags">
+            <label class="cb"><input type="checkbox" id="f_chase"> Chase</label>
+            <label class="cb"><input type="checkbox" id="f_vaulted"> Vaulted</label>
+            <label class="cb"><input type="checkbox" id="f_oob"> Out of box (loose)</label>
+            <label class="cb"><input type="checkbox" id="f_protector" checked> Pop protector included</label>
+          </div></div>
+        <div class="f-full"><label>Features</label>
+          <div class="flags">
+            <label class="cb"><input type="checkbox" class="feat" value="Glow in the Dark"> GITD</label>
+            <label class="cb"><input type="checkbox" class="feat" value="Flocked"> Flocked</label>
+            <label class="cb"><input type="checkbox" class="feat" value="Metallic"> Metallic</label>
+            <label class="cb"><input type="checkbox" class="feat" value="Diamond Collection"> Diamond</label>
+            <label class="cb"><input type="checkbox" class="feat" value="6-Inch"> 6-inch</label>
+          </div></div>
+        <div class="f-full"><label>Postage</label><select id="f_postage">
+          <option selected>Free (within Australia)</option><option>Calculated at checkout</option></select></div>
+        <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
+      </div>
+      <button class="btn" style="margin-top:12px;" onclick="findComps()">Find eBay price comps (AUD)</button>
+      <div class="hint">Box condition defaults to <b>Near-Mint</b> (not Mint) so an un-edited listing under-promises. A pro grade, if entered, becomes the headline condition. Only claim <b>Chase</b>/<b>exclusive</b> if the box truly says so — mis-stating it is the #1 cause of "not as described" disputes.</div>
+    </div>
+
+    <div class="card">
+      <div style="margin-bottom:14px;">
+        <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;"><span>eBay title</span><span id="titlecount" style="font-size:11px;color:var(--muted);font-weight:400;">0/80</span></label>
+        <div style="display:flex;gap:8px;">
+          <input id="f_title" oninput="updateTitleCount()" placeholder="fill fields — title builds here" style="flex:1;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+          <button class="btn" onclick="regenTitle()" title="Rebuild from fields">&#8635;</button>
+          <button class="btn solid" onclick="copyTitle()">Copy</button>
+        </div>
+      </div>
+      <div class="previewhead">
+        <label style="margin:0;">Live preview</label>
+        <div class="btns">
+          <button class="btn" onclick="copyText()">Copy plain text</button>
+          <button class="btn solid" onclick="copyHTML()">Copy HTML</button>
+        </div>
+      </div>
+      <iframe id="preview"></iframe>
+      <div id="specifics" style="margin-top:16px;"></div>
+      <div id="extras"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Copied!</div>
+
+<script src="/extras.js"></script>
+<script>
+var _lastAutoTitle='';
+function updateTitleCount(){var el=document.getElementById('f_title'),c=document.getElementById('titlecount');if(!el||!c)return;var n=el.value.length;c.textContent=n+'/80';c.style.color=n>80?'#f06262':'var(--muted)';}
+function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.getElementById('f_title');if(el){el.value=t;_lastAutoTitle=t;updateTitleCount();}}
+function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_character')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
+function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
+
+function val(id){return document.getElementById(id).value.trim();}
+function set(id,v){document.getElementById(id).value=(v==null?'':v);}
+function chk(id){return document.getElementById(id).checked;}
+function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function readFeatures(){return Array.prototype.slice.call(document.querySelectorAll('.feat:checked')).map(function(c){return c.value;});}
+
+function readFields(){
+  return {character:val('f_character'),franchise:val('f_franchise'),series:val('f_series'),
+    popnum:val('f_popnum'),variant:val('f_variant'),year:val('f_year'),exclusive:val('f_exclusive'),
+    boxcond:val('f_boxcond'),grade:val('f_grade'),chase:chk('f_chase'),vaulted:chk('f_vaulted'),
+    oob:chk('f_oob'),protector:chk('f_protector'),features:readFeatures(),
+    postage:val('f_postage'),pitch:val('f_pitch')};
+}
+
+function exclusiveTitle(ex){ if(!ex)return ''; return /excl|sdcc|nycc|eccc|comic/i.test(ex)?ex:ex+' Exclusive'; }
+
+function genTitle(){
+  var f=readFields(); if(!window.TCG)return f.character;
+  var cond=TCG.funkoCondToken({grade:f.grade,oob:f.oob,boxcond:f.boxcond,protector:f.protector});
+  var parts=[
+    {text:'Funko Pop!',abbr:'Funko Pop',prio:100},
+    {text:f.franchise,prio:70},
+    {text:f.character,prio:92},
+    {text:f.popnum?'#'+f.popnum:'',prio:85},
+    {text:f.variant,prio:48},
+    {text:f.chase?'Chase':'',prio:75},
+    {text:exclusiveTitle(f.exclusive),prio:62},
+    {text:f.vaulted?'Vaulted':'',prio:40},
+    {text:cond?'- '+cond:'',prio:58},
+    {text:'Vinyl Figure',prio:18}
+  ];
+  return TCG.fitTitle(parts,80);
+}
+
+function genPitch(f){
+  var who=f.character+(f.variant?' ('+f.variant+')':'');
+  var tags=[]; if(f.chase)tags.push('rare Chase variant'); if(f.exclusive)tags.push(f.exclusive+' exclusive'); if(f.vaulted)tags.push('vaulted');
+  if(tags.length) return who+(f.franchise?' from '+f.franchise:'')+' — a '+tags.join(', ')+' Funko Pop'+(f.popnum?' (#'+f.popnum+')':'')+', a standout for collectors.';
+  return who+(f.franchise?' from '+f.franchise:'')+' — Funko Pop'+(f.popnum?' #'+f.popnum:'')+(f.series&&f.series!=='Pop!'?' ('+f.series+')':'')+'.';
+}
+
+function condText(f){
+  if(f.grade) return 'Professionally graded '+f.grade+'. Sealed in the grader’s case.';
+  if(f.oob) return 'Out of box (loose) — figure only, no box.'+(f.protector?' Ships protected.':'');
+  var s=(f.boxcond||'Near-Mint')+' box with a clean, scratch-free window.';
+  var ex=[]; if(f.chase)ex.push('this is the rare CHASE variant (chase sticker present)');
+  if(f.exclusive)ex.push(f.exclusive+' exclusive'); if(f.vaulted)ex.push('now vaulted/retired by Funko');
+  if(f.features&&f.features.length)ex.push(f.features.join(', '));
+  if(ex.length)s+=' '+ex.join('; ')+'.';
+  s+=f.protector?' Ships inside a hard Pop protector.':' (No protector included.)';
+  return s;
+}
+function postageText(f){
+  if(/calculated/i.test(f.postage)) return 'Shipped within Australia inside a protective hard case and a padded box. Postage calculated at checkout.';
+  return 'Shipped within Australia inside a protective hard case and a padded box to keep the corners sharp, with FREE postage.';
+}
+
+function buildHTML(f){
+  var feat=[]; if(f.chase)feat.push('Chase'); if(f.vaulted)feat.push('Vaulted'); feat=feat.concat(f.features||[]);
+  var rows=[['Character',f.character],['Franchise',f.franchise],['Series',f.series],['Pop! number',f.popnum?'#'+f.popnum:''],
+    ['Variant',f.variant],['Exclusive',f.exclusive],['Features',feat.join(', ')],['Year',f.year],
+    ['Condition',f.grade?('Graded '+f.grade):(f.oob?'Out of box (loose)':(f.boxcond||'')+' box')]];
+  var tr='';
+  rows.filter(function(r){return r[1]!=null&&(''+r[1]).trim()!=='';}).forEach(function(r,i){
+    var bg=i%2===0?'background:#f6f6fb;':'';
+    tr+='<tr style="'+bg+'"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">'+esc(r[0])+'</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">'+esc(r[1])+'</td></tr>';
+  });
+  var head=f.character+(f.popnum?' <span style="color:#bdb4ff;font-weight:600;">#'+esc(f.popnum)+'</span>':'');
+  return '<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">'+
+  '<div style="background:#1b1430;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:4px solid #27d3c4;">'+
+    '<div style="color:#27d3c4;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:800;margin-bottom:6px;">Funko Pop!'+(f.franchise?' &middot; '+esc(f.franchise):'')+'</div>'+
+    '<div style="color:#ffffff;font-size:22px;font-weight:800;line-height:1.25;">'+head+'</div>'+
+    '<div style="color:#b9b2d6;font-size:14px;margin-top:4px;">'+esc([f.series,f.exclusive].filter(Boolean).join(' · '))+'</div>'+
+  '</div>'+
+  '<div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">'+esc(f.pitch)+'</p></div>'+
+  '<div style="padding:0 24px;">'+
+    '<div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#5a3fb0;font-weight:700;border-bottom:2px solid #ececf6;padding-bottom:6px;margin-bottom:4px;">Figure details</div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>'+tr+'</tbody></table>'+
+  '</div>'+
+  '<div style="padding:18px 24px 4px;">'+
+    '<div style="background:#f6f6fb;border-left:4px solid #7c5cff;border-radius:0 8px 8px 0;padding:14px 16px;">'+
+      '<div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#5a3fb0;font-weight:700;margin-bottom:4px;">Condition</div>'+
+      '<p style="margin:0;">'+esc(condText(f))+'</p>'+
+    '</div>'+
+  '</div>'+
+  '<div style="padding:18px 24px 4px;">'+
+    '<div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#5a3fb0;font-weight:700;border-bottom:2px solid #ececf6;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>'+
+    '<p style="margin:0;">'+esc(postageText(f))+'</p>'+
+  '</div>'+
+  '<div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>'+
+'</div>';
+}
+
+var lastHTML='';
+function render(){var f=readFields();lastHTML=buildHTML(f);
+  document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';
+  renderSpecifics(); if(typeof syncTitle==='function')syncTitle();}
+
+function renderSpecifics(){
+  if(!window.TCG)return; var f=readFields();
+  var feat=[]; if(f.chase)feat.push('Chase'); if(f.vaulted)feat.push('Vaulted'); feat=feat.concat(f.features||[]);
+  // VERIFY LIVE: confirm exact eBay AU aspect names via the Taxonomy API getItemAspectsForCategory.
+  var pairs=[
+    ['Brand','Funko'],['Character',f.character],['Franchise',f.franchise],['Funko Series',f.series],
+    ['Funko Pop! Number',f.popnum],['Exclusive',f.exclusive],['Features',feat.join(', ')],
+    ['Material','Vinyl'],['Type','Pop! Vinyl Figure'],['Year',f.year]
+  ];
+  TCG.renderItemSpecifics(document.getElementById('specifics'),pairs);
+}
+
+// ---- offline catalog combobox ----
+var CATALOG=[]; var _curList=[]; var _active=-1; var _pickImg='';
+function catStatus(m){var e=document.getElementById('catStatus');if(e)e.textContent=m;}
+async function loadCatalog(){
+  try{
+    var r=await fetch('/data/funko_pop.json');
+    if(!r.ok)throw new Error('http '+r.status);
+    CATALOG=await r.json();
+    catStatus(CATALOG.length.toLocaleString()+' Pops (offline, to 2021)');
+  }catch(e){catStatus('catalog unavailable — type manually');}
+}
+function filterCatalog(typed){
+  var t=(typed||'').trim().toLowerCase(); if(!t)return [];
+  var out=[];
+  for(var i=0;i<CATALOG.length&&out.length<40;i++){
+    var r=CATALOG[i];
+    if((r.t||'').toLowerCase().indexOf(t)>=0||(r.fr||'').toLowerCase().indexOf(t)>=0)out.push(r);
+  }
+  return out;
+}
+function markActive(opts){opts.forEach(function(o,i){o.classList.toggle('active',i===_active);});if(_active>=0&&opts[_active])opts[_active].scrollIntoView({block:'nearest'});}
+function renderMenu(typed){
+  var menu=document.getElementById('popMenu');if(!menu)return;_curList=filterCatalog(typed);_active=-1;
+  if(!_curList.length){menu.classList.remove('open');menu.innerHTML='';return;}
+  menu.innerHTML=_curList.map(function(r,i){
+    var img=r.img?'<img src="'+esc(r.img)+'" alt="" loading="lazy">':'<span style="width:30px;flex:none;"></span>';
+    var badges=(r.ex?'<span class="badge">'+esc(r.ex)+'</span>':'')+(r.ch?'<span class="badge">Chase</span>':'');
+    return '<div class="popopt" data-i="'+i+'">'+img+'<span style="min-width:0;"><span class="nm">'+esc(r.t)+'</span>'+badges+'<br><span class="meta">'+esc(r.fr||'')+'</span></span></div>';
+  }).join('');
+  menu.classList.add('open');
+  menu.querySelectorAll('.popopt').forEach(function(el){el.addEventListener('mousedown',function(ev){ev.preventDefault();pick(parseInt(el.getAttribute('data-i'),10));});});
+}
+function closeMenu(){var m=document.getElementById('popMenu');if(m)m.classList.remove('open');}
+function pick(i){
+  var r=_curList[i];if(!r)return;
+  var full=r.t||''; var m=full.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  if(m){set('f_character',m[1].trim());if(!val('f_variant'))set('f_variant',m[2].trim());}
+  else set('f_character',full);
+  if(r.fr&&!val('f_franchise'))set('f_franchise',r.fr);
+  if(r.ex&&!val('f_exclusive'))set('f_exclusive',r.ex);
+  if(r.ch)document.getElementById('f_chase').checked=true;
+  _pickImg=r.img||'';
+  document.getElementById('popq').value=full;
+  closeMenu();
+  set('f_pitch',genPitch(readFields()));
+  render(); regenTitle(); renderExtrasAll([]);
+}
+
+function renderExtrasAll(prices){
+  if(!window.TCG)return;
+  var imgs=_pickImg?[{label:'Catalog',url:_pickImg}]:[];
+  TCG.renderExtras(document.getElementById('extras'),{name:val('f_character')||'funko',images:imgs,prices:prices||[],history:null});
+}
+
+async function findComps(){
+  var st=document.getElementById('status');
+  var f=readFields();
+  if(!f.character){st.className='status warn';st.textContent='Enter a character/name first.';return;}
+  var q=('Funko Pop '+f.character+(f.popnum?' '+f.popnum:'')+(f.franchise?' '+f.franchise:'')).trim();
+  st.className='status load';st.textContent='Searching eBay comps…';
+  try{
+    // VERIFY LIVE: add &category_ids=<AU action-figure id> once confirmed via the Taxonomy API.
+    var url='/api/ebay/buy/browse/v1/item_summary/search?limit=25&q='+encodeURIComponent(q)+'&filter='+encodeURIComponent('conditions:{NEW}');
+    var r=await fetch(url);
+    if(r.status===503){st.className='status warn';st.textContent='eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.';return;}
+    if(!r.ok){st.className='status warn';st.textContent='eBay lookup failed ('+r.status+'). Fields still work.';return;}
+    var j=await r.json();
+    var items=j.itemSummaries||[];
+    if(!items.length){st.className='status warn';st.textContent='No eBay comps found for "'+q+'".';renderExtrasAll([]);return;}
+    var nums=items.map(function(it){return it.price&&parseFloat(it.price.value);}).filter(function(x){return x>0;}).sort(function(a,b){return a-b;});
+    var prices=[];
+    if(nums.length){
+      var med=nums[Math.floor(nums.length/2)];
+      var cur=(items[0].price&&items[0].price.currency)||'AUD';
+      prices.push({label:'eBay asking (median of '+nums.length+', NOT sold)',amount:med,currency:cur});
+      prices.push({label:'eBay asking (low)',amount:nums[0],currency:cur});
+    }
+    var img=items[0].image&&items[0].image.imageUrl;
+    if(img)_pickImg=_pickImg||img;
+    var imgs=[]; if(_pickImg)imgs.push({label:'Catalog',url:_pickImg}); if(img&&img!==_pickImg)imgs.push({label:'eBay comp',url:img});
+    if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:val('f_character')||'funko',images:imgs,prices:prices,history:null});
+    st.className='status ok';st.textContent='✓ '+nums.length+' comps · median '+(prices[0]?prices[0].currency+' '+prices[0].amount.toFixed(2):'n/a')+' (asking)';
+  }catch(e){st.className='status err';st.textContent='eBay lookup blocked (proxy not running?).';}
+}
+
+function copyHTML(){copy(lastHTML,'HTML copied!');}
+function copyText(){var t=document.createElement('div');t.innerHTML=lastHTML;copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}
+function copy(text,msg){var done=function(){showToast(msg);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(function(){fb(text,done);});}else fb(text,done);}
+function fb(text,cb){var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
+var tt;function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('show');},1400);}
+
+(function(){
+  ['f_character','f_franchise','f_series','f_popnum','f_variant','f_year','f_exclusive','f_boxcond','f_grade','f_postage','f_pitch']
+    .forEach(function(id){document.getElementById(id).addEventListener('input',render);});
+  ['f_chase','f_vaulted','f_oob','f_protector'].forEach(function(id){document.getElementById(id).addEventListener('change',render);});
+  document.querySelectorAll('.feat').forEach(function(c){c.addEventListener('change',render);});
+  var q=document.getElementById('popq');
+  q.addEventListener('input',function(){renderMenu(q.value);});
+  q.addEventListener('focus',function(){renderMenu(q.value);});
+  q.addEventListener('keydown',function(e){var menu=document.getElementById('popMenu'),opts=menu.querySelectorAll('.popopt');
+    if(e.key==='ArrowDown'){e.preventDefault();_active=Math.min(_active+1,opts.length-1);markActive(opts);}
+    else if(e.key==='ArrowUp'){e.preventDefault();_active=Math.max(_active-1,0);markActive(opts);}
+    else if(e.key==='Enter'){if(menu.classList.contains('open')&&opts.length){e.preventDefault();pick(_active>=0?_active:0);}}
+    else if(e.key==='Escape'){closeMenu();}});
+  document.addEventListener('click',function(e){var r=document.querySelector('.setrow');if(r&&!r.contains(e.target))closeMenu();});
+  loadCatalog(); render();
+})();
+</script>
+</body>
+</html>

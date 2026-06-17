@@ -163,4 +163,57 @@
     if(out.length>max)out=out.slice(0,max).trim();
     return out;
   };
+
+  // --- collectibles helpers (LEGO / Funko) — condCode() above stays card-only ---
+  function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function copyToClipboard(text,btn){
+    function ok(){ if(btn){var t=btn.textContent;btn.textContent='Copied!';setTimeout(function(){btn.textContent=t;},1200);} }
+    function fb(){var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);ok();}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(ok).catch(fb);}else fb();
+  }
+
+  // LEGO condition enum -> compact title token.
+  TCG.legoCondToken=function(s){
+    var l=(s||'').toLowerCase();
+    if(/seal|misb/.test(l))return 'New Sealed';
+    if(/\bnew\b/.test(l))return 'New';
+    if(/incomplete/.test(l))return 'Used Incomplete';
+    if(/used|complete/.test(l))return 'Used Complete';
+    return (s||'').trim();
+  };
+
+  // Funko condition -> title token. Graded grade wins; else box grade; else Loose.
+  // o = { grade, oob, boxcond, protector }
+  TCG.funkoCondToken=function(o){
+    o=o||{};
+    if(o.grade && (''+o.grade).trim())return (''+o.grade).trim();   // e.g. "UKG 85"
+    var tok;
+    if(o.oob){ tok='Loose'; }
+    else{
+      var b=(o.boxcond||'').toLowerCase();
+      tok=/near|\bnm\b/.test(b)?'NM Box':/mint/.test(b)?'Mint Box':/good/.test(b)?'Good Box':/damag/.test(b)?'Damaged Box':(o.boxcond||'').trim();
+    }
+    if(o.protector)tok=(tok?tok+' ':'')+'w/ Protector';
+    return tok;
+  };
+
+  // Renders an eBay item-specifics name/value list + a Copy button that yields
+  // tab-separated "name<TAB>value" lines (easy to paste into eBay's fields).
+  // pairs = [[name, value], ...]; empty values are dropped.
+  TCG.renderItemSpecifics=function(el,pairs){
+    if(!el)return;
+    var rows=(pairs||[]).filter(function(p){return p&&p[1]!=null&&(''+p[1]).trim()!=='';});
+    if(!rows.length){el.innerHTML='';return;}
+    var box='border:1px solid var(--line,#333);border-radius:12px;padding:14px;background:var(--panel2,#1a1a1a);margin-bottom:14px;';
+    var head='font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
+    var html='<div style="'+box+'"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><div style="'+head+'">eBay item specifics</div>'+
+      '<button id="tcg-is-copy" style="padding:5px 11px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:7px;font-weight:700;font-size:11.5px;cursor:pointer;">Copy</button></div>';
+    rows.forEach(function(p){
+      html+='<div style="display:flex;justify-content:space-between;gap:14px;padding:5px 0;font-size:13px;border-top:1px solid var(--line,#333);"><span style="color:var(--muted,#888);">'+esc(p[0])+'</span><span style="font-weight:600;text-align:right;">'+esc(p[1])+'</span></div>';
+    });
+    html+='</div>';
+    el.innerHTML=html;
+    var btn=el.querySelector('#tcg-is-copy');
+    if(btn)btn.addEventListener('click',function(){copyToClipboard(rows.map(function(p){return p[0]+'\t'+p[1];}).join('\n'),btn);});
+  };
 })();

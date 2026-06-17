@@ -1,8 +1,9 @@
 # TCG eBay Listing Tools
 
-Vite-served listing builders for Riftbound and Star Wars: Unlimited.
-The Vite dev server proxies card-data APIs so the browser never hits CORS,
-and your Scrydex key stays server-side (in the proxy config, never shipped to the client).
+Vite-served eBay listing builders for trading cards (Pokémon, Magic, Star Wars:
+Unlimited, Riftbound) plus **LEGO sets** and **Funko Pop! vinyl**. The Vite dev
+server proxies the data APIs so the browser never hits CORS, and all API keys stay
+server-side (in the proxy config, never shipped to the client).
 
 ## Run
 
@@ -21,6 +22,10 @@ Vite opens the landing page. Pick a builder.
   `X-Api-Key` / `X-Team-ID` injected from `.env`
 - `/api/mtg/*`  is proxied to `https://api.scryfall.com/*`  (no auth)
 - `/api/pkm/*`  is proxied to `https://api.pokemontcg.io/v2/*`  (no auth)
+- `/api/lego/rebrickable/*` → Rebrickable, `/api/lego/brickset/*` → Brickset
+  (key injected), `/api/lego/bricklink/*` → BrickLink (OAuth1-signed middleware)
+- `/api/ebay/*` → eBay (OAuth2 app-token middleware) for Funko price comps &
+  item-specifics
 
 The tools call those relative paths, so everything is same-origin — no CORS,
 no key in the browser. Edit the proxy targets/headers in `vite.config.js`.

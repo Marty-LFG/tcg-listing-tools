@@ -18,13 +18,21 @@ Pieces:
 - **`index.html`** — landing page. Hosts a self-contained **eBay AU pricing
   calculator** (backs out a list price so the buyer's fee-inclusive total hits a
   target) and links to the four builders.
-- **Four listing builders** — `pokemon-`, `mtg-`, `swu-`, `riftbound-listing-builder.html`.
+- **Four card builders** — `pokemon-`, `mtg-`, `swu-`, `riftbound-listing-builder.html`.
   Each: pick a set + card number → fetch live card data through a proxy → fill
   editable fields → generate an eBay HTML description + an 80-char-optimised eBay
   title → copy. Plus a shared "extras" panel: card images (with download),
   prices (with live AUD conversion), and a price-trend graph (Riftbound only).
-- **`extras.js`** — shared `TCG.*` module used by all four builders.
-- **`vite.config.js`** — the dev-server proxies + an image-streaming middleware.
+- **Two collectibles builders** — `lego-listing-builder.html` (set-number lookup
+  via Rebrickable + Brickset + BrickLink new/used pricing) and
+  `funko-listing-builder.html` (offline catalog autocomplete + manual flags +
+  eBay AU price comps). Same shape as the card builders, but with a
+  collectibles condition/postage model and a copy-paste **item-specifics** block.
+- **`extras.js`** — shared `TCG.*` module used by all six builders.
+- **`vite.config.js`** — the dev-server proxies + image-streaming, BrickLink
+  OAuth1-signing, and eBay OAuth2 token-minting middlewares.
+- **`data/funko_pop.json`** — vendored, filtered Funko catalog (built by
+  `scripts/build-funko-data.mjs`; frozen at 2021 — an assist, not truth).
 
 ---
 
@@ -57,13 +65,21 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    (`039a`), Scryfall `frame_effects`/`border_color`, SWU `VariantType`, Scrydex
    variant/rarity. Don't collapse them into one "version".
 
-6. **The condition / postage / footer blocks are identical across all four
-   builders** (owner-verified wording). If you edit one, edit all four. Current
-   text: condition = `"{cond}. Pulled straight to sleeve and stored in a
-   toploader."` (default `Ungraded, Near Mint`); postage = `"Ships in a penny
-   sleeve and toploader inside a rigid mailer, with FREE postage within
-   Australia."`; footer = `"From a smoke-free home. Fast dispatch. Thanks for
-   looking."`
+6. **Condition / postage / footer blocks are per-product-type.** For the **four
+   card builders** they are identical, owner-verified wording — if you edit one
+   card builder, edit all four: condition = `"{cond}. Pulled straight to sleeve
+   and stored in a toploader."` (default `Ungraded, Near Mint`); postage =
+   `"Ships in a penny sleeve and toploader inside a rigid mailer, with FREE
+   postage within Australia."`; footer = `"From a smoke-free home. Fast dispatch.
+   Thanks for looking."`
+   The **LEGO and Funko builders have their own condition/postage wording**
+   (`condText()` / `postageText()` in each file) because the card wording is
+   physically wrong for boxed goods — a LEGO set or Funko box does not ship in a
+   penny sleeve, and bulky LEGO can't honestly offer free postage. **Do not
+   "unify" these back to the card constant.** The footer line stays shared across
+   all product types. Condition wording is driven by explicit seller fields and
+   defaults to the *safest* option (LEGO `Used – Complete`, Funko `Near-Mint`
+   box) so an un-edited listing under-promises — never over-promises (INAD risk).
 
 7. **Every builder must survive its API being down.** Fields are editable; a
    failed lookup shows a warning, never a crash. Keep manual entry working.
@@ -99,8 +115,12 @@ pnpm dev                    # serves http://localhost:5173 (host:true → also o
 | `mtg-listing-builder.html` | Magic builder (Scryfall). |
 | `swu-listing-builder.html` | Star Wars: Unlimited builder (swu-db). |
 | `riftbound-listing-builder.html` | Riftbound builder. Largest file — embeds offline card data for the first 3 sets, plus live Scrydex for all sets. Only builder with a price-trend graph. |
-| `extras.js` | Shared `TCG.*` module: images/prices/graph panel, FX, title-fitting, condition/lang codes. Loaded by each builder via `<script src="/extras.js">`. |
-| `vite.config.js` | Dev-server config: `/api/*` proxies + `/api/img` streaming middleware + LAN host settings. |
+| `lego-listing-builder.html` | LEGO set builder. Set-number lookup → Rebrickable (core) + Brickset (RRP/age) + BrickLink (new/used market price). LEGO condition/postage model + item-specifics block. |
+| `funko-listing-builder.html` | Funko Pop builder. Offline-catalog autocomplete (name/series/image) + manual number/exclusive/flags; eBay Browse price comps. Funko condition/postage model + item-specifics block. |
+| `data/funko_pop.json` | Vendored, filtered Funko catalog (~11k Pop vinyls). Built by `scripts/build-funko-data.mjs` from the MIT `kennymkchan/funko-pop-data` dump. Frozen at 2021. Fetched same-origin (no proxy). |
+| `scripts/build-funko-data.mjs` | Rebuilds `data/funko_pop.json` from upstream (filter to Pop! vinyl, derive franchise/exclusive/chase). |
+| `extras.js` | Shared `TCG.*` module: images/prices/graph panel, FX, title-fitting, card `condCode`/`langCode`, plus `legoCondToken`/`funkoCondToken` and `renderItemSpecifics`. Loaded by each builder via `<script src="/extras.js">`. |
+| `vite.config.js` | Dev-server config: `/api/*` proxies + `/api/img` streaming, BrickLink OAuth1-signing, and eBay OAuth2 token-minting middlewares + LAN host settings. |
 | `.env.example` | Placeholder env vars. Copy to `.env`. |
 | `package.json` | Vite ^6; scripts `dev` / `build` / `preview`. (Use `dev`; see Golden Rule 1.) |
 | `tcg-tools.service` | Sample systemd unit for always-on LAN hosting. |
@@ -121,6 +141,10 @@ pnpm dev                    # serves http://localhost:5173 (host:true → also o
 | `/api/rb`  | `api.scrydex.com/riftbound/v1` | Injects `X-Api-Key` + `X-Team-ID` from `.env`. Required. |
 | `/api/fx`  | `api.frankfurter.app` | FX rates for AUD conversion. No key. |
 | `/api/img` | (middleware) | Streams any remote image same-origin so the browser can blob-download it. |
+| `/api/lego/rebrickable` | `rebrickable.com/api/v3/lego` | Injects `Authorization: key <REBRICKABLE_API_KEY>`. LEGO set/minifig lookup. |
+| `/api/lego/brickset` | `brickset.com/api/v3.asmx` | Appends `apiKey` (a **query param**) in `rewrite()`; client sends `userHash=`. RRP/age/dims. |
+| `/api/lego/bricklink` | (middleware) | **OAuth1 HMAC-SHA1 signing** per request (4 BrickLink creds). New/used price guide. Needs the server IP registered in the BrickLink console. |
+| `/api/ebay` | (middleware) | Mints+caches an **OAuth2 client-credentials** app token; injects `Bearer` + `X-EBAY-C-MARKETPLACE-ID`. Funko Browse pricing + Taxonomy item-specifics. |
 
 **`extras.js` public surface** (`window.TCG`):
 
@@ -128,8 +152,11 @@ pnpm dev                    # serves http://localhost:5173 (host:true → also o
 |---|---|
 | `renderExtras(el, {name, images, prices, history})` | Renders the image/price/graph panel into `el`. |
 | `loadFx()` / `toAUD(amount, cur)` | Fetch (cached) ECB rates via `/api/fx`; convert to AUD. |
-| `condCode(s)` | Condition string → eBay title code (`Ungraded, Near Mint` → `M/NM`, graded → `PSA 10`, etc.). |
+| `condCode(s)` | **Card** condition string → eBay title code (`Ungraded, Near Mint` → `M/NM`, graded → `PSA 10`, etc.). Card-only — do **not** reuse for LEGO/Funko. |
 | `langCode(s)` | Language → 2-letter code (`English` → `EN`). |
+| `legoCondToken(s)` | LEGO condition enum → title token (`New Sealed`/`New`/`Used Complete`/`Used Incomplete`). |
+| `funkoCondToken({grade,oob,boxcond,protector})` | Funko condition → title token (grade if graded, else box grade, else `Loose`; `w/ Protector`). |
+| `renderItemSpecifics(el, pairs)` | Renders an eBay item-specifics name/value list + a Copy button (tab-separated). Used by LEGO/Funko. |
 | `fitTitle(parts, max=80)` | Assemble an eBay title from prioritised parts; full → abbreviated → drop-lowest-priority until ≤ max chars. |
 | `histFromTrends(market, trends)` | Reconstruct a rough price series from Scrydex trend deltas (Riftbound graph). |
 | `clear(el)` | Empty an extras panel. |
@@ -185,6 +212,15 @@ part's text so dropping a part never leaves a dangling dash. Reference format
 - **Add a new game/builder:** clone the closest builder; add a `/api/<x>` proxy
   in `vite.config.js`; add a tile in `index.html`; implement `doLookup` mapping +
   `genTitle` for that game's schema (document it in `docs/DATA_SOURCES.md`).
+- **Add a non-card product type (like LEGO/Funko):** clone the closest builder,
+  but additionally (a) give it its own `condText()`/`postageText()` — do **not**
+  reuse the card penny-sleeve/free-post wording (Golden Rule 6); (b) default the
+  condition field to the *safest* option so un-edited listings under-promise;
+  (c) add a `renderSpecifics()` that feeds `TCG.renderItemSpecifics` the eBay
+  item-specifics pairs (confirm aspect names via the eBay Taxonomy API); (d) if
+  the data source's auth isn't a static header (OAuth1/OAuth2), add a signing or
+  token-minting **middleware** in `vite.config.js`, not a plain `proxy:` entry
+  (see `bricklinkProxy`/`ebayProxy`).
 - **Theme any new shared UI** with the existing CSS vars: `--gold`, `--line`,
   `--muted`, `--text`, `--field`, `--panel2`, `--panel`, `--ink`. All four
   builders define these (SWU aliases `--gold` to its yellow).
@@ -217,7 +253,15 @@ verified.
 SCRYDEX_API_KEY=...      # required for Riftbound
 SCRYDEX_TEAM_ID=...      # required for Riftbound
 POKEMONTCG_API_KEY=...   # optional; raises pokemontcg.io limit to 20k/day
+REBRICKABLE_API_KEY=...  # LEGO lookup (self-service free key)
+BRICKSET_API_KEY=...     # LEGO RRP/age/dims (free key, may need approval)
+BRICKLINK_CONSUMER_KEY=...  BRICKLINK_CONSUMER_SECRET=...   # LEGO new/used pricing
+BRICKLINK_TOKEN=...         BRICKLINK_TOKEN_SECRET=...       # (OAuth1; register server IP)
+EBAY_APP_ID=...  EBAY_CERT_ID=...  EBAY_MARKETPLACE=EBAY_AU  # Funko pricing + item-specifics
 ```
+Each key is independent — a missing one just disables that source; every builder
+still works for manual entry. BrickLink also requires the dev server's outbound
+**IP to be registered** in the BrickLink API console, or calls 4xx.
 
 Injected as headers in `vite.config.js`. Browser never sees them. If a tool
 returns 401/403, the key is missing or wrong in `.env` — not a code bug. Never
@@ -249,7 +293,10 @@ commit `.env`; never echo a real key into `.env.example` or source.
 Market is **AU/NZ**; prices shown/sold in **AUD**; postage model is **free
 postage within Australia**. eBay AU's **buyer protection fee** is what the
 landing-page calculator backs out. Cards are sold as raw (graded handled too).
-The four games supported are Pokémon, Magic: The Gathering, Star Wars: Unlimited,
-and Riftbound. Accuracy of set / number / variant / condition in titles and item
+The four card games supported are Pokémon, Magic: The Gathering, Star Wars:
+Unlimited, and Riftbound. The tool also lists **LEGO sets** and **Funko Pop!
+vinyl** — boxed collectibles whose condition (sealed/used-complete, box grade)
+and postage (bulky/calculated, not free penny-sleeve) differ from cards, which is
+why those builders carry their own condition/postage wording and item specifics. Accuracy of set / number / variant / condition in titles and item
 specifics directly affects whether a sale sticks (eBay "not as described"
 disputes), so correctness there outranks cleverness.

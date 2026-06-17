@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEGO eBay Listing Builder</title>
+<style>
+  :root{
+    --ink:#0d0f13; --panel:#15171c; --panel2:#1b1e25; --line:#2c2f38;
+    --muted:#9aa0ab; --text:#f2f4f8; --gold:#ffcf00; --gold-dim:#8a7400;
+    --field:#0b0d11; --red:#d01012;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  .lookup{display:flex;gap:10px;margin-bottom:6px;}
+  .lookup input{flex:1;font-size:22px;font-weight:700;padding:12px 14px;background:var(--field);
+    border:1px solid var(--line);border-radius:10px;color:var(--text);outline:none;}
+  .lookup input:focus{border-color:var(--gold);}
+  .lookup button{padding:0 18px;border:1px solid var(--gold);background:var(--gold);color:#1a1300;
+    border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;}
+  .status{font-size:12.5px;min-height:18px;margin:4px 0 14px;}
+  .status.ok{color:#36d399;} .status.warn{color:var(--gold);} .status.err{color:#f06262;} .status.load{color:var(--muted);}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+  .f-full{grid-column:1/3;}
+  .fields input,.fields select,.fields textarea{width:100%;padding:8px 10px;background:var(--field);
+    border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  .fields input:focus,.fields select:focus,.fields textarea:focus{border-color:var(--gold);}
+  .fields textarea{resize:vertical;min-height:64px;line-height:1.45;}
+  .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .btns{display:flex;gap:8px;}
+  .btn{padding:8px 14px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);
+    border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;}
+  .btn:hover{background:var(--gold);color:#1a1300;}
+  .btn.solid{background:var(--gold);color:#1a1300;border-color:var(--gold);}
+  iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);
+    color:#1a1300;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+  code{background:#11141a;padding:2px 6px;border-radius:5px;color:var(--gold);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">LEGO</div>
+  <h1>eBay Listing Builder</h1>
+  <p class="sub">Type a set number, get a ready-to-paste eBay description, title &amp; item specifics. Data via Rebrickable + Brickset; new/used pricing via BrickLink.</p>
+
+  <div class="grid">
+    <div class="card">
+      <details style="margin-bottom:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);">
+        <summary style="cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none;">API connection &amp; keys</summary>
+        <div style="padding:0 14px 14px;font-size:11.5px;color:var(--muted);line-height:1.6;">
+          Lookups run through the dev-server proxies <code>/api/lego/rebrickable</code> (set data),
+          <code>/api/lego/brickset</code> (RRP/age) and <code>/api/lego/bricklink</code> (new/used pricing).
+          Add the matching keys to <code>.env</code> and run <code>pnpm dev</code>. Any missing key just disables
+          that source &mdash; every field stays editable and the preview always builds.
+        </div>
+      </details>
+
+      <label>LEGO set number</label>
+      <div class="lookup">
+        <input id="setq" placeholder="e.g. 75192  or  10497-1" autocomplete="off">
+        <button onclick="doLookup()">Look up</button>
+      </div>
+      <div class="status load" id="status">Type a set number and hit Look up &mdash; or fill the fields by hand.</div>
+
+      <div class="fields">
+        <div class="f-full"><label>Set name</label><input id="f_name"></div>
+        <div><label>Set number</label><input id="f_setnum"></div>
+        <div><label>Theme</label><input id="f_theme"></div>
+        <div><label>Subtheme</label><input id="f_subtheme"></div>
+        <div><label>Year</label><input id="f_year"></div>
+        <div><label>Pieces</label><input id="f_pieces"></div>
+        <div><label>Minifigures</label><input id="f_minifigs"></div>
+        <div><label>Age</label><input id="f_age" placeholder="e.g. 18+"></div>
+        <div><label>Condition</label><select id="f_cond">
+          <option>New, Sealed (MISB)</option><option>New, Opened</option>
+          <option selected>Used &ndash; Complete</option><option>Used &ndash; Incomplete</option></select></div>
+        <div><label>Box condition</label><select id="f_box">
+          <option>Excellent</option><option selected>Good</option><option>Fair</option><option>Poor</option><option>No original box</option></select></div>
+        <div><label>Instructions</label><select id="f_instructions">
+          <option selected>Included</option><option>Digital only</option><option>Missing</option><option>N/A (sealed)</option></select></div>
+        <div><label>Stickers</label><select id="f_stickers">
+          <option selected>Unapplied</option><option>Applied</option><option>Sealed / N/A</option></select></div>
+        <div class="f-full"><label>Missing items (only used if Incomplete)</label><input id="f_missing" placeholder="e.g. 1 minifigure, instructions"></div>
+        <div class="f-full"><label>Postage</label><select id="f_postage">
+          <option selected>Calculated at checkout</option><option>Free (within Australia)</option></select></div>
+        <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
+      </div>
+      <div class="hint"><b>Condition defaults to the safest option</b> (Used &ndash; Complete) so an un-edited listing never over-promises. Bare set numbers are auto-normalised to the <code>-1</code> variant for lookup. BrickLink prices are real sold averages (new vs used); RRP comes from Brickset.</div>
+    </div>
+
+    <div class="card">
+      <div style="margin-bottom:14px;">
+        <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;"><span>eBay title</span><span id="titlecount" style="font-size:11px;color:var(--muted);font-weight:400;">0/80</span></label>
+        <div style="display:flex;gap:8px;">
+          <input id="f_title" oninput="updateTitleCount()" placeholder="look up a set — title builds here" style="flex:1;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+          <button class="btn" onclick="regenTitle()" title="Rebuild from fields">&#8635;</button>
+          <button class="btn solid" onclick="copyTitle()">Copy</button>
+        </div>
+      </div>
+      <div class="previewhead">
+        <label style="margin:0;">Live preview</label>
+        <div class="btns">
+          <button class="btn" onclick="copyText()">Copy plain text</button>
+          <button class="btn solid" onclick="copyHTML()">Copy HTML</button>
+        </div>
+      </div>
+      <iframe id="preview"></iframe>
+      <div id="specifics" style="margin-top:16px;"></div>
+      <div id="extras"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Copied!</div>
+
+<script src="/extras.js"></script>
+<script>
+var _lastAutoTitle='';
+function updateTitleCount(){var el=document.getElementById('f_title'),c=document.getElementById('titlecount');if(!el||!c)return;var n=el.value.length;c.textContent=n+'/80';c.style.color=n>80?'#f06262':'var(--muted)';}
+function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.getElementById('f_title');if(el){el.value=t;_lastAutoTitle=t;updateTitleCount();}}
+function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_name')&&!val('f_setnum')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
+function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
+
+function val(id){return document.getElementById(id).value.trim();}
+function set(id,v){document.getElementById(id).value=(v==null?'':v);}
+function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function bareNum(n){return (n||'').replace(/-\d+$/,'');}
+function normalizeSetNum(raw){var s=(raw||'').trim();if(!s)return s;return /-\d+$/.test(s)?s:s+'-1';}
+
+var THEME_ABBR={'Star Wars':'SW','Harry Potter':'HP','The Lord of the Rings':'LOTR','Technic':'Technic','Icons':'Icons','Creator Expert':'Icons'};
+function themeAbbr(t){return THEME_ABBR[(t||'').trim()]||undefined;}
+
+function readFields(){
+  return {name:val('f_name'),setnum:val('f_setnum'),theme:val('f_theme'),subtheme:val('f_subtheme'),
+    year:val('f_year'),pieces:val('f_pieces'),minifigs:val('f_minifigs'),age:val('f_age'),
+    cond:val('f_cond'),box:val('f_box'),instructions:val('f_instructions'),stickers:val('f_stickers'),
+    missing:val('f_missing'),postage:val('f_postage'),pitch:val('f_pitch')};
+}
+
+function genTitle(){
+  var f=readFields(); if(!window.TCG)return f.name;
+  var num=bareNum(f.setnum);
+  var parts=[
+    {text:'LEGO',prio:100},
+    {text:f.theme,abbr:themeAbbr(f.theme),prio:55},
+    {text:f.name,prio:90},
+    {text:num,prio:95},
+    {text:f.pieces?f.pieces+'pc':'',prio:35},
+    {text:'- '+TCG.legoCondToken(f.cond),prio:70}
+  ];
+  return TCG.fitTitle(parts,80);
+}
+
+function genPitch(f){
+  var num=bareNum(f.setnum);
+  if(/seal|misb/i.test(f.cond))
+    return f.name+(num?' (set '+num+')':'')+' — brand new and factory sealed. A '+(f.theme||'LEGO')+' set'+(f.pieces?' with '+f.pieces+' pieces':'')+(f.minifigs?' and '+f.minifigs+' minifigures':'')+', perfect for collectors and builders.';
+  return f.name+' — LEGO '+(f.theme?f.theme+' ':'')+'set'+(num?' '+num:'')+(f.pieces?', '+f.pieces+' pieces':'')+(f.minifigs?', '+f.minifigs+' minifigures':'')+'.';
+}
+
+function condText(f){
+  if(/seal|misb/i.test(f.cond))
+    return 'Brand new and factory sealed (MISB)'+(f.box&&f.box!=='No original box'?'. Box condition: '+f.box.toLowerCase()+'':'')+'. Never opened — seals intact.';
+  if(/incomplete/i.test(f.cond))
+    return 'Used — sold as-is.'+(f.missing?' Please note: '+f.missing+'.':' See the photos and notes for any missing pieces or parts.')+(f.pieces?' Originally a '+f.pieces+'-piece set.':'');
+  if(/used|complete/i.test(f.cond)){
+    var ins=/digital/i.test(f.instructions)?'instructions are digital only':(/missing/i.test(f.instructions)?'instructions are not included':'the original instructions are included');
+    return 'Used — complete. All '+(f.pieces?f.pieces+' ':'')+'pieces'+(f.minifigs?' and '+f.minifigs+' minifigures':'')+' are present and '+ins+'.'+(f.box&&f.box!=='No original box'?' Original box included ('+f.box.toLowerCase()+' condition).':' Sold without the original box.')+(f.stickers&&/applied/i.test(f.stickers)?' Stickers have been applied.':'');
+  }
+  return f.cond||'';
+}
+function postageText(f){
+  if(/free/i.test(f.postage))
+    return 'Carefully packed and posted within Australia with FREE standard postage.';
+  return 'Double-boxed and well padded so the set arrives undamaged. Postage is calculated at checkout by size and location (large/heavy item).';
+}
+
+function buildHTML(f){
+  var num=bareNum(f.setnum);
+  var rows=[['Set number',num],['Theme',f.theme],['Subtheme',f.subtheme],['Pieces',f.pieces],
+    ['Minifigures',f.minifigs],['Year',f.year],['Age',f.age],
+    ['Condition',f.cond],['Box',f.box],['Instructions',f.instructions]];
+  var tr='';
+  rows.filter(function(r){return r[1]!=null&&(''+r[1]).trim()!=='';}).forEach(function(r,i){
+    var bg=i%2===0?'background:#f6f7f9;':'';
+    tr+='<tr style="'+bg+'"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">'+esc(r[0])+'</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">'+esc(r[1])+'</td></tr>';
+  });
+  return '<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">'+
+  '<div style="background:#d01012;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:4px solid #ffcf00;">'+
+    '<div style="color:#ffcf00;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:800;margin-bottom:6px;">LEGO'+(f.theme?' &middot; '+esc(f.theme):'')+'</div>'+
+    '<div style="color:#ffffff;font-size:22px;font-weight:800;line-height:1.25;">'+esc(f.name)+'</div>'+
+    '<div style="color:#ffe7a0;font-size:14px;margin-top:4px;">'+esc(num)+(f.pieces?' &middot; '+esc(f.pieces)+' pieces':'')+(f.minifigs?' &middot; '+esc(f.minifigs)+' minifigs':'')+'</div>'+
+  '</div>'+
+  '<div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">'+esc(f.pitch)+'</p></div>'+
+  '<div style="padding:0 24px;">'+
+    '<div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#b40000;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:4px;">Set details</div>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>'+tr+'</tbody></table>'+
+  '</div>'+
+  '<div style="padding:18px 24px 4px;">'+
+    '<div style="background:#f6f7f9;border-left:4px solid #d01012;border-radius:0 8px 8px 0;padding:14px 16px;">'+
+      '<div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#b40000;font-weight:700;margin-bottom:4px;">Condition</div>'+
+      '<p style="margin:0;">'+esc(condText(f))+'</p>'+
+    '</div>'+
+  '</div>'+
+  '<div style="padding:18px 24px 4px;">'+
+    '<div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#b40000;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:10px;">Postage &amp; packaging</div>'+
+    '<p style="margin:0;">'+esc(postageText(f))+'</p>'+
+  '</div>'+
+  '<div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>'+
+'</div>';
+}
+
+var lastHTML='';
+function render(){var f=readFields();lastHTML=buildHTML(f);
+  document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';
+  renderSpecifics(); if(typeof syncTitle==='function')syncTitle();}
+
+function renderSpecifics(){
+  if(!window.TCG)return; var f=readFields(); var num=bareNum(f.setnum);
+  // VERIFY LIVE: confirm exact eBay AU aspect names via the Taxonomy API getItemAspectsForCategory.
+  var pairs=[
+    ['Brand','LEGO'],['LEGO Set Number',num],['LEGO Theme',f.theme],['LEGO Subtheme',f.subtheme],
+    ['Model Theme',f.name],['Number of Pieces',f.pieces],['Number of Minifigures',f.minifigs],
+    ['Release Year',f.year],['Age Level',f.age],
+    ['Packaging',/no original box/i.test(f.box)?'Without box':'Box'],['MPN',num],['Condition',f.cond]
+  ];
+  TCG.renderItemSpecifics(document.getElementById('specifics'),pairs);
+}
+
+// ---- lookups (each source is best-effort; failures never block manual entry) ----
+function mapBrickset(bs){
+  // VERIFY LIVE: Brickset getSets field names drift between revisions.
+  if(bs.theme&&!val('f_theme'))set('f_theme',bs.theme);
+  if(bs.subtheme)set('f_subtheme',bs.subtheme);
+  if(bs.pieces!=null&&!val('f_pieces'))set('f_pieces',bs.pieces);
+  if(bs.year!=null&&!val('f_year'))set('f_year',bs.year);
+  if(!val('f_name')&&bs.name)set('f_name',bs.name);
+  var age='';
+  if(bs.ageRange&&bs.ageRange.min!=null)age=bs.ageRange.min+(bs.ageRange.max!=null?'-'+bs.ageRange.max:'+');
+  else if(bs.ageMin!=null)age=bs.ageMin+'+';
+  if(age&&!val('f_age'))set('f_age',age);
+  var lc=bs.LEGOCom||{}; var rrp=null,cur='USD';
+  if(lc.US&&lc.US.retailPrice){rrp=lc.US.retailPrice;cur='USD';}
+  else if(lc.UK&&lc.UK.retailPrice){rrp=lc.UK.retailPrice;cur='GBP';}
+  else if(bs.retailPrice){rrp=bs.retailPrice;}
+  return {rrp:rrp,cur:cur,img:(bs.image&&(bs.image.imageURL||bs.image.thumbnailURL))||''};
+}
+async function loadBrickset(num,got){
+  try{
+    var params=encodeURIComponent(JSON.stringify({setNumber:num}));
+    var r=await fetch('/api/lego/brickset/getSets?userHash=&params='+params);
+    if(!r.ok)return;
+    var j=await r.json();
+    var bs=(j.sets&&j.sets[0])||(j.data&&j.data[0]);
+    if(!bs)return;
+    var m=mapBrickset(bs);
+    if(m.rrp)got.prices.push({label:'RRP',amount:parseFloat(m.rrp),currency:m.cur});
+    if(m.img)got.images.push({label:'Box',url:m.img});
+  }catch(e){}
+}
+async function loadBricklink(num,got){
+  for(var i=0;i<2;i++){
+    var nu=i===0?['N','New']:['U','Used'];
+    try{
+      var r=await fetch('/api/lego/bricklink/items/SET/'+encodeURIComponent(num)+'/price?guide_type=sold&new_or_used='+nu[0]+'&currency_code=AUD');
+      if(!r.ok)continue;
+      var j=await r.json(); var d=j.data||j;
+      var avg=d.avg_price||d.qty_avg_price;
+      if(avg&&parseFloat(avg)>0)got.prices.push({label:'BrickLink '+nu[1]+' (avg sold)',amount:parseFloat(avg),currency:d.currency_code||'AUD'});
+    }catch(e){}
+  }
+}
+
+async function doLookup(){
+  var raw=document.getElementById('setq').value.trim();
+  var st=document.getElementById('status');
+  if(!raw){st.className='status warn';st.textContent='Enter a LEGO set number (e.g. 75192).';return;}
+  var num=normalizeSetNum(raw);
+  set('f_setnum',num);
+  st.className='status load';st.textContent='Looking up '+num+' …';
+  var got={images:[],prices:[]};
+  var coreOk=false;
+  try{
+    var r=await fetch('/api/lego/rebrickable/sets/'+encodeURIComponent(num)+'/');
+    if(r.ok){
+      coreOk=true; var s=await r.json();
+      if(s.name)set('f_name',s.name);
+      if(s.year)set('f_year',s.year);
+      if(s.num_parts!=null)set('f_pieces',s.num_parts);
+      if(s.set_img_url)got.images.push({label:'Set',url:s.set_img_url});
+      if(s.theme_id){try{var tr=await fetch('/api/lego/rebrickable/themes/'+s.theme_id+'/');if(tr.ok){var t=await tr.json();if(t.name)set('f_theme',t.name);}}catch(e){}}
+      try{var mr=await fetch('/api/lego/rebrickable/sets/'+encodeURIComponent(num)+'/minifigs/');if(mr.ok){var mj=await mr.json();var cnt=(mj.results||[]).reduce(function(a,x){return a+(x.quantity||0);},0);if(cnt)set('f_minifigs',cnt);}}catch(e){}
+      st.className='status ok';st.textContent='✓ '+(s.name||num);
+    }else if(r.status===404){st.className='status warn';st.textContent='No Rebrickable match for '+num+'. Try a different variant suffix, or fill the fields manually.';}
+    else if(r.status===401||r.status===403){st.className='status warn';st.textContent='Rebrickable key missing/invalid (set REBRICKABLE_API_KEY in .env). Fill fields manually — preview still works.';}
+    else if(r.status===503){st.className='status warn';st.textContent='Rebrickable key not configured. Fill fields manually.';}
+    else{st.className='status warn';st.textContent='Rebrickable error '+r.status+'. Fill fields manually.';}
+  }catch(e){st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev, or type the fields manually.';}
+  await loadBrickset(num,got);
+  await loadBricklink(num,got);
+  set('f_pitch',genPitch(readFields()));
+  render();
+  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:val('f_name')||num,images:got.images,prices:got.prices,history:null});
+  regenTitle();
+}
+
+function copyHTML(){copy(lastHTML,'HTML copied!');}
+function copyText(){var t=document.createElement('div');t.innerHTML=lastHTML;copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}
+function copy(text,msg){var done=function(){showToast(msg);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(function(){fb(text,done);});}else fb(text,done);}
+function fb(text,cb){var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
+var tt;function showToast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('show');},1400);}
+
+(function(){
+  document.getElementById('setq').addEventListener('keydown',function(e){if(e.key==='Enter')doLookup();});
+  ['f_name','f_setnum','f_theme','f_subtheme','f_year','f_pieces','f_minifigs','f_age','f_cond','f_box','f_instructions','f_stickers','f_missing','f_postage','f_pitch']
+    .forEach(function(id){document.getElementById(id).addEventListener('input',render);});
+  render();
+})();
+</script>
+</body>
+</html>

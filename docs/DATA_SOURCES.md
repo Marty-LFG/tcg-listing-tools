@@ -79,6 +79,81 @@ upstream — the builder uses the proxy prefix (e.g. `/api/pkm`).
 
 ---
 
+> ⚠️ The LEGO / Funko / eBay sections below were compiled with web search
+> **offline**, so endpoints, field names, and category IDs are from prior
+> knowledge, **not** freshly verified. Confirm each against the provider's live
+> docs/response before trusting it. The builders are written defensively (every
+> field optional; manual entry always works) precisely because of this.
+
+## LEGO — Rebrickable + Brickset + BrickLink
+
+The LEGO builder looks a set up by **set number** (normalised to the `-1` variant
+form, e.g. `75192-1`, since bare numbers 404 on Rebrickable/BrickLink).
+
+### Rebrickable — core lookup  (proxy `/api/lego/rebrickable`)
+- Upstream: `https://rebrickable.com/api/v3/lego`. Auth: header
+  `Authorization: key <REBRICKABLE_API_KEY>` (self-service free key). Injected by
+  the proxy; never reaches the browser.
+- Set: `GET /sets/{set_num}/` → `name`, `year`, `theme_id`, `num_parts`,
+  `set_img_url`. Theme name: `GET /themes/{theme_id}/`. Minifig **count** is not a
+  field — sum `quantity` over `GET /sets/{set_num}/minifigs/`.
+- No pricing, no age range, no dimensions (those come from Brickset).
+- Rate limit ~1 req/s; a lookup makes ~3 calls (set + theme + minifigs).
+
+### Brickset — enrichment  (proxy `/api/lego/brickset`)
+- Upstream: `https://brickset.com/api/v3.asmx`. **Auth is a query PARAM**
+  (`apiKey`), so the proxy appends it in `rewrite()`; the client sends an empty
+  `userHash=`. Free key (may need manual approval).
+- `GET /getSets?userHash=&params={"setNumber":"75192-1"}` → `{ sets: [...] }`.
+  Used fields (**VERIFY LIVE — names drift**): `theme`, `subtheme`, `pieces`,
+  `year`, `LEGOCom.{US,UK,...}.retailPrice` (RRP), `ageRange`/`ageMin`,
+  `image.imageURL`. RRP is shown as a price line (converted to AUD via `/api/fx`).
+
+### BrickLink — secondary-market pricing  (proxy `/api/lego/bricklink`)
+- Upstream: `https://api.bricklink.com/api/store/v1`. **Auth: OAuth 1.0a HMAC-SHA1
+  per-request signing** (consumer key/secret + token/secret) — implemented as a
+  signing **middleware**, not a header proxy. The server's outbound **IP must be
+  registered** in the BrickLink API console or calls 4xx.
+- Price guide: `GET /items/SET/{no}/price?guide_type=sold&new_or_used=N|U&currency_code=AUD`
+  → `data.{avg_price,qty_avg_price,min_price,max_price,...}`. Called twice (N + U)
+  for sealed-vs-used market value. If AUD isn't honoured, the response
+  `currency_code` drives the `/api/fx` conversion.
+
+## Funko Pop! — offline catalog + eBay comps
+
+There is **no reliable Funko API** (hobbyDB has none and is anti-scrape; the
+community datasets are deprecated/frozen at 2021). The builder is **manual-first**.
+
+### Offline catalog — `data/funko_pop.json` (no proxy; same-origin static)
+- Built by `scripts/build-funko-data.mjs` from MIT `kennymkchan/funko-pop-data`:
+  filtered to **Pop! vinyl** lines (drops apparel/pins/plush/Pez and non-Pop
+  products), ~11k records slimmed to `{ t:title, img, fr:franchise, ex:exclusive, ch:chase }`.
+- Frozen at **Jan 2021** — powers a name/series autocomplete that pre-fills
+  character / franchise / a candidate box image / chase; everything newer, plus
+  Pop number and exact exclusivity, is manual. Images hotlink `images.hobbydb.com`
+  (downloadable via `/api/img`); links can rot over time.
+
+### eBay Browse — live price comps + photo  (proxy `/api/ebay`)
+- Upstream: `https://api.ebay.com`. **Auth: OAuth2 client-credentials** app token
+  (minted+cached by the middleware from `EBAY_APP_ID`/`EBAY_CERT_ID`), plus
+  `X-EBAY-C-MARKETPLACE-ID` (`EBAY_AU`).
+- `GET /buy/browse/v1/item_summary/search?q=<name + #>&filter=conditions:{NEW}`
+  → `itemSummaries[].{price:{value,currency},image:{imageUrl}}`. The builder shows
+  the **median asking price** (NOT sold) in AUD and a comp photo. (Add
+  `&category_ids=<AU action-figure id>` once confirmed — **VERIFY LIVE**.)
+- Stretch: the Marketplace Insights API (`/buy/marketplace_insights/...`) gives
+  true *sold* prices but is limited-release; don't depend on approval.
+
+## eBay item specifics — Taxonomy API  (proxy `/api/ebay`)
+- `GET /commerce/taxonomy/v1/category_tree/{id}/get_item_aspects_for_category?category_id=<id>`
+  (after `getCategorySuggestions`) returns the authoritative `aspectName` +
+  `aspectConstraint.aspectRequired` per marketplace. Use it to confirm the
+  hardcoded item-specifics names in each builder's `renderSpecifics()`.
+- Category IDs (**VERIFY LIVE on EBAY_AU**): LEGO Complete Sets & Packs ≈ `19006`;
+  Funko Pop! Vinyl Figures ≈ `149372` (likely wrong — resolve via the API).
+
+---
+
 ## Pricing notes / gotchas
 
 - **TCGplayer API** is closed to new developers (since late 2024) — not an option
