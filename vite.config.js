@@ -138,7 +138,7 @@ export default defineConfig(({ mode }) => {
     plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
-      port: 5173,
+      port: 5273,
       strictPort: true,
       open: false,
       proxy: {

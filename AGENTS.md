@@ -94,13 +94,13 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
 ```bash
 pnpm install
 cp .env.example .env        # add Scrydex keys for Riftbound; pokemontcg key optional
-pnpm dev                    # serves http://localhost:5173 (host:true → also on the LAN)
+pnpm dev                    # serves http://localhost:5273 (host:true → also on the LAN)
 ```
 
 - There is **no test runner**. Validate JS edits with `node --check` on the
   extracted inline script (see §8).
-- The dev server binds to `0.0.0.0:5173` for LAN access; see `README.md` for the
-  systemd unit (`tcg-tools.service`) and firewall notes.
+- The dev server binds to `0.0.0.0:5273` for LAN access; see `README.md` for the
+  systemd unit (`tcg-tools.service`), `scripts/WINDOWS_SERVICE.md`, and firewall notes.
 - An in-chat / sandboxed preview **cannot reach `localhost`**, so proxied lookups
   only work when the dev server is actually running on a reachable host.
 
@@ -123,7 +123,10 @@ pnpm dev                    # serves http://localhost:5173 (host:true → also o
 | `vite.config.js` | Dev-server config: `/api/*` proxies + `/api/img` streaming, BrickLink OAuth1-signing, and eBay OAuth2 token-minting middlewares + LAN host settings. |
 | `.env.example` | Placeholder env vars. Copy to `.env`. |
 | `package.json` | Vite ^6; scripts `dev` / `build` / `preview`. (Use `dev`; see Golden Rule 1.) |
-| `tcg-tools.service` | Sample systemd unit for always-on LAN hosting. |
+| `tcg-tools.service` | Sample systemd unit for always-on LAN hosting (Linux). |
+| `scripts/run-dev.mjs` | Launcher for Vite dev server (Windows service / manual). |
+| `scripts/start-tcg-tools.cmd` | Double-click / Task Scheduler entry point for Windows. |
+| `scripts/WINDOWS_SERVICE.md` | pnpm setup + NSSM / firewall instructions for Windows LAN hosting. |
 | `README.md` | Human run + hosting instructions. |
 | `docs/DATA_SOURCES.md` | Per-game API endpoints, response schemas, key handling, rate limits. |
 

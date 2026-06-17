@@ -40,7 +40,7 @@ no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
 
 ## Run on your home server (LAN access)
 
-The dev server already binds to all interfaces (`host: true`, port `5173`).
+The dev server already binds to all interfaces (`host: true`, port `5273`).
 
 ```bash
 pnpm install
@@ -48,19 +48,20 @@ cp .env.example .env     # add your Scrydex key (Riftbound only)
 pnpm dev
 ```
 
-Vite prints a **Network:** URL like `http://192.168.1.50:5173/`. Anyone on the
+Vite prints a **Network:** URL like `http://192.168.1.50:5273/`. Anyone on the
 LAN opens that. Because your server has a fixed IP, the URL is stable.
 
 Make it permanent + survive reboots/crashes — either:
 
-- **systemd** (recommended): edit and install `tcg-tools.service` (instructions in the file), or
+- **systemd** (Linux): edit and install `tcg-tools.service` (instructions in the file), or
+- **Windows service** (NSSM): see `scripts/WINDOWS_SERVICE.md`, or
 - **pm2**: `pm2 start "pnpm dev" --name tcg-tools && pm2 save && pm2 startup`
 
-Open the port on the server's firewall, e.g. `sudo ufw allow 5173/tcp`.
+Open the port on the server's firewall, e.g. `sudo ufw allow 5273/tcp`.
 
 Optional nicety: give it a name instead of an IP. Add a line to each client's
 hosts file (`192.168.1.50  cards.lan`) or a record in your router/Pi-hole DNS,
-then browse to `http://cards.lan:5173`. If you use a hostname, also set
+then browse to `http://cards.lan:5273`. If you use a hostname, also set
 `server.allowedHosts: ['cards.lan']` in `vite.config.js`.
 
 ### Heads-up before exposing it
