@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCG eBay Listing Tools</title>
+<style>
+  body{margin:0;min-height:100vh;background:#0a0e17;color:#eaf0fb;display:flex;align-items:center;justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px;}
+  .wrap{max-width:560px;width:100%;}
+  h1{font-size:22px;margin:0 0 4px;}
+  p.sub{color:#7e8db0;font-size:14px;margin:0 0 24px;}
+  .cards{display:grid;gap:14px;}
+  a.tool{display:block;text-decoration:none;border:1px solid #1f3050;border-radius:14px;padding:20px;background:#0e1a30;transition:.15s;}
+  a.tool:hover{border-color:#3a517e;transform:translateY(-2px);}
+  .eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+  .rb .eyebrow{color:#c8aa6e;} .swu .eyebrow{color:#ffe81f;} .pkm .eyebrow{color:#f0c020;} .mtg .eyebrow{color:#c9923f;}
+  .name{font-size:18px;font-weight:700;color:#fff;margin-top:4px;}
+  .desc{font-size:13px;color:#7e8db0;margin-top:6px;}
+  .note{font-size:12px;color:#56627e;margin-top:24px;line-height:1.6;}
+  code{background:#11203a;padding:2px 6px;border-radius:5px;color:#c8aa6e;}
+  .pricecard{border:1px solid #1f3050;border-radius:14px;padding:18px 20px;background:#0e1a30;margin-bottom:22px;}
+  .pc-head{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:#36d399;margin-bottom:14px;}
+  .pc-grid{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;}
+  .pc-field{flex:1;min-width:150px;}
+  .pc-field label{display:block;font-size:11px;color:#7e8db0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+  .pc-inwrap{display:flex;align-items:center;gap:6px;background:#0a1424;border:1px solid #1f3050;border-radius:10px;padding:0 12px;}
+  .pc-inwrap span{color:#7e8db0;font-size:15px;}
+  .pc-inwrap input{flex:1;background:transparent;border:none;outline:none;color:#eaf0fb;font-size:20px;font-weight:700;padding:11px 0;width:100%;}
+  .pc-result{flex:1;min-width:150px;}
+  .pc-result .lbl{font-size:11px;color:#7e8db0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+  .pc-result .val{font-size:26px;font-weight:800;color:#fff;line-height:1;}
+  .pc-status{display:flex;align-items:center;gap:7px;font-size:13px;margin-top:9px;color:#aab5cf;}
+  .pc-status .dot{width:11px;height:11px;border-radius:50%;display:inline-block;}
+  .dot.ok{background:#36d399;} .dot.warn{background:#f0c020;} .dot.err{background:#f06262;}
+  .pc-note{font-size:12px;color:#56627e;margin-top:12px;line-height:1.5;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>TCG eBay Listing Tools</h1>
+    <p class="sub">Pick a builder. Card data is proxied through this dev server, so lookups just work.</p>
+    <div class="pricecard">
+      <div class="pc-head">eBay AU pricing &middot; back out your list price</div>
+      <div class="pc-grid">
+        <div class="pc-field">
+          <label>Buyer pays (target total)</label>
+          <div class="pc-inwrap"><span>A$</span><input id="pc_target" type="number" step="0.01" min="0" value="25.00"></div>
+        </div>
+        <div class="pc-result">
+          <div class="lbl">List item for</div>
+          <div class="val" id="pc_list">A$22.92</div>
+          <div class="pc-status"><span class="dot ok" id="pc_dot"></span><span id="pc_statustext">Exact</span></div>
+        </div>
+      </div>
+      <div class="pc-note" id="pc_note">Buyer’s total includes eBay’s buyer protection fee (A$0.30 + tiered %). Some round totals aren’t reachable — you’ll get the closest.</div>
+    </div>
+    <div class="cards">
+      <a class="tool rb" href="/riftbound-listing-builder.html">
+        <div class="eyebrow">Riftbound &middot; League of Legends</div>
+        <div class="name">Riftbound Listing Builder</div>
+        <div class="desc">Offline data for the first 3 sets + live Scrydex (all sets, incl. Unleashed, with pricing).</div>
+      </a>
+      <a class="tool swu" href="/swu-listing-builder.html">
+        <div class="eyebrow">Star Wars: Unlimited</div>
+        <div class="name">SWU Listing Builder</div>
+        <div class="desc">Live card data via swu-db across all seven released sets.</div>
+      </a>
+      <a class="tool pkm" href="/pokemon-listing-builder.html">
+        <div class="eyebrow">Pok&eacute;mon TCG</div>
+        <div class="name">Pok&eacute;mon Listing Builder</div>
+        <div class="desc">Live card data via pokemontcg.io across every set.</div>
+      </a>
+      <a class="tool mtg" href="/mtg-listing-builder.html">
+        <div class="eyebrow">Magic: The Gathering</div>
+        <div class="name">Magic Listing Builder</div>
+        <div class="desc">Live card data via Scryfall across every set and printing.</div>
+      </a>
+    </div>
+    <div class="note">Riftbound's Scrydex lookups need <code>SCRYDEX_API_KEY</code> and <code>SCRYDEX_TEAM_ID</code> in your <code>.env</code>. SWU needs nothing. Both builders work for manual entry with no setup.</div>
+  </div>
+<script>
+function feeAU(L){if(L<=0)return 0;var f=0.30;f+=0.08*Math.min(L,20);if(L>20)f+=0.06*(Math.min(L,500)-20);if(L>500)f+=0.04*(Math.min(L,5000)-500);return f;}
+function totalFromList(L){return Math.round((L+feeAU(L))*100)/100;}
+function listForTarget(T){if(T<=21.90)return (T-0.30)/1.08;if(T<=530.70)return (T-0.70)/1.06;if(T<=5210.70)return (T-10.70)/1.04;return T-210.70;}
+function pcSolve(T){if(!(T>0))return null;var Lc=Math.round(listForTarget(T)*100)/100;var best=null;for(var d=-4;d<=4;d++){var L=Math.round((Lc+d*0.01)*100)/100;if(L<=0)continue;var tot=totalFromList(L);var diff=Math.round((tot-T)*100);if(best===null||Math.abs(diff)<Math.abs(best.diff)||(Math.abs(diff)===Math.abs(best.diff)&&L<best.L))best={L:L,tot:tot,diff:diff};}return best;}
+function pcFmt(n){return 'A$'+(Math.round(n*100)/100).toFixed(2);}
+function pcRender(){
+  var T=parseFloat(document.getElementById('pc_target').value);
+  var list=document.getElementById('pc_list'),dot=document.getElementById('pc_dot'),stat=document.getElementById('pc_statustext'),note=document.getElementById('pc_note');
+  if(!(T>0)){list.textContent='—';dot.className='dot err';stat.textContent='Enter an amount';note.textContent='';return;}
+  var r=pcSolve(T);
+  list.textContent=pcFmt(r.L);
+  if(r.diff===0){dot.className='dot ok';stat.textContent='Exact';note.textContent='Buyer pays '+pcFmt(r.tot)+' including the fee.';}
+  else{dot.className='dot warn';stat.textContent='Closest';note.textContent='Exact '+pcFmt(T)+' isn’t reachable — buyer pays '+pcFmt(r.tot)+' ('+(r.diff>0?'+':'')+(r.diff/100).toFixed(2)+').';}
+}
+document.getElementById('pc_target').addEventListener('input',pcRender);
+pcRender();
+</script>
+</body>
+</html>

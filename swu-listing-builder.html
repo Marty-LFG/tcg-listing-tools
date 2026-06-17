@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Star Wars: Unlimited eBay Listing Builder</title>
+<style>
+  :root{
+    --ink:#0b0d12; --panel:#12151d; --panel2:#171b25; --line:#262c3b;
+    --muted:#8a8f9c; --text:#eef1f7; --yellow:#ffe81f;--gold:#ffe81f; --yellow-dim:#8a7d12;
+    --field:#0d1017;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--yellow);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .pill{padding:8px 13px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+    border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
+  .pill.on{background:var(--yellow);color:#0b0d12;border-color:var(--yellow);}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  .lookup{display:flex;gap:10px;margin-bottom:6px;}
+  .lookup input{flex:1;font-size:22px;font-weight:700;padding:12px 14px;background:var(--field);
+    border:1px solid var(--line);border-radius:10px;color:var(--text);outline:none;}
+  .lookup input:focus{border-color:var(--yellow);}
+  .lookup button{padding:0 18px;border:1px solid var(--yellow);background:var(--yellow);color:#0b0d12;
+    border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;}
+  .status{font-size:12.5px;min-height:18px;margin:4px 0 14px;}
+  .status.ok{color:#36d399;} .status.warn{color:#ffe81f;} .status.err{color:#f06262;} .status.load{color:var(--muted);}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+  .f-full{grid-column:1/3;}
+  .fields input,.fields select,.fields textarea{width:100%;padding:8px 10px;background:var(--field);
+    border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  .fields input:focus,.fields select:focus,.fields textarea:focus{border-color:var(--yellow);}
+  .fields textarea{resize:vertical;min-height:64px;line-height:1.45;}
+  .stat3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .btns{display:flex;gap:8px;}
+  .btn{padding:8px 14px;border:1px solid var(--yellow-dim);background:transparent;color:var(--yellow);
+    border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;}
+  .btn:hover{background:var(--yellow);color:#0b0d12;}
+  .btn.solid{background:var(--yellow);color:#0b0d12;border-color:var(--yellow);}
+  iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--yellow);
+    color:#0b0d12;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+      <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Star Wars: Unlimited</div>
+  <h1>eBay Listing Builder</h1>
+  <p class="sub">Pick a set, type a card number, get a ready-to-paste eBay description. Live card data via the swu-db API.</p>
+
+  <div class="grid">
+    <div class="card">
+      <details style="margin-bottom:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);">
+        <summary style="cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none;">API connection (proxy)</summary>
+        <div style="padding:0 14px 14px;">
+          <label>Base URL</label>
+          <input id="c_base" style="width:100%;padding:8px 10px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;" oninput="saveBase()">
+          <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">swu-db blocks direct browser calls (no CORS). Run <b>tcg_proxy.py</b> and leave this as <code>/api/swu</code>. The proxy fetches server-side and returns the data.</div>
+        </div>
+      </details>
+      <label>Set</label>
+      <div class="pills" id="pills"></div>
+
+      <label>Card number</label>
+      <div class="lookup">
+        <input id="num" placeholder="e.g. 10  or  104" autocomplete="off">
+        <button onclick="doLookup()">Look up</button>
+      </div>
+      <div class="status load" id="status">Pick a set, enter a number, hit Look up.</div>
+
+      <div class="fields">
+        <div class="f-full"><label>Card name (incl. subtitle)</label><input id="f_name"></div>
+        <div><label>Set (display)</label><input id="f_set"></div>
+        <div><label>Number</label><input id="f_num"></div>
+        <div><label>Rarity</label><input id="f_rarity"></div>
+        <div><label>Variant / finish</label><select id="f_variant">
+          <option>Standard</option><option>Foil</option><option>Hyperspace</option>
+          <option>Hyperspace Foil</option><option>Showcase</option><option>Prestige</option></select></div>
+        <div><label>Card type</label><input id="f_type"></div>
+        <div><label>Aspect(s)</label><input id="f_aspect"></div>
+        <div><label>Arena</label><input id="f_arena" placeholder="Ground / Space / N/A"></div>
+        <div><label>Traits</label><input id="f_traits"></div>
+        <div class="f-full"><label>Cost / Power / HP (units &amp; leaders \u2014 blank to hide)</label>
+          <div class="stat3"><input id="f_cost" placeholder="Cost"><input id="f_power" placeholder="Power"><input id="f_hp" placeholder="HP"></div></div>
+        <div><label>Language</label><input id="f_lang" value="English"></div>
+        <div><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
+        <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
+      </div>
+      <div class="hint"><b>Auto-fill needs the proxy running</b> (swu-db blocks direct browser calls via CORS). Start tcg_proxy.py, keep Base URL at the localhost default, and look-ups will work. No proxy? Type fields manually \u2014 the preview always builds. Hyperspace/Showcase variants share the base number; set the variant dropdown to match.</div>
+    </div>
+
+    <div class="card">
+            <div style="margin-bottom:14px;">
+        <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;"><span>eBay title</span><span id="titlecount" style="font-size:11px;color:var(--muted);font-weight:400;">0/80</span></label>
+        <div style="display:flex;gap:8px;">
+          <input id="f_title" oninput="updateTitleCount()" placeholder="look up a card — title builds here" style="flex:1;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+          <button class="btn" onclick="regenTitle()" title="Rebuild from fields">&#8635;</button>
+          <button class="btn solid" onclick="copyTitle()">Copy</button>
+        </div>
+      </div>
+      <div class="previewhead">
+        <label style="margin:0;">Live preview</label>
+        <div class="btns">
+          <button class="btn" onclick="copyText()">Copy plain text</button>
+          <button class="btn solid" onclick="copyHTML()">Copy HTML</button>
+        </div>
+      </div>
+      <iframe id="preview"></iframe>
+      <div id="extras" style="margin-top:16px;"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Copied!</div>
+
+<script src="/extras.js"></script>
+<script>
+
+var _lastAutoTitle='';
+function updateTitleCount(){var el=document.getElementById('f_title'),c=document.getElementById('titlecount');if(!el||!c)return;var n=el.value.length;c.textContent=n+'/80';c.style.color=n>80?'#f06262':'var(--muted)';}
+function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.getElementById('f_title');if(el){el.value=t;_lastAutoTitle=t;updateTitleCount();}}
+function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_name')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
+function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
+
+function genTitle(){
+  var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),variant=val('f_variant'),lang=val('f_lang'),cond=val('f_cond');
+  if(!window.TCG)return name;
+  var code=((setn||'').match(/\(([^)]+)\)/)||[])[1]||'';
+  var v=(variant||'').trim();if(/normal|standard|base|none/i.test(v))v='';
+  var rl=(rar||'').toLowerCase();var rarTok=(/common|uncommon/.test(rl))?'':rar;
+  var parts=[
+    {text:name,prio:100},
+    {text:num,prio:88},
+    {text:'- Star Wars Unlimited '+(setn||''),abbr:'- SWU'+(code?' ('+code+')':''),prio:72},
+    {text:TCG.langCode(lang),prio:30},
+    {text:v?v.toUpperCase():'',prio:80},
+    {text:rarTok?rarTok.toUpperCase():'',prio:58},
+    {text:TCG.condCode(cond),prio:62}
+  ];
+  return TCG.fitTitle(parts,80);
+}
+
+const SETS = {
+  sor:'Spark of Rebellion', shd:'Shadows of the Galaxy', twi:'Twilight of the Republic',
+  jtl:'Jump to Lightspeed', lof:'Legends of the Force', sec:'Secrets of Power', law:'A Lawless Time'
+};
+let curSet='sor', lastHTML='';
+let swuBase='/api/swu';
+try{const _b=localStorage.getItem('swu_base2'); if(_b) swuBase=_b;}catch(e){}
+function saveBase(){swuBase=document.getElementById('c_base').value.trim();try{localStorage.setItem('swu_base2',swuBase);}catch(e){}}
+
+function val(id){return document.getElementById(id).value.trim();}
+function set(id,v){document.getElementById(id).value=(v==null?'':v);}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function readFields(){
+  return {name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
+    variant:val('f_variant'),type:val('f_type'),aspect:val('f_aspect'),arena:val('f_arena'),
+    traits:val('f_traits'),cost:val('f_cost'),power:val('f_power'),hp:val('f_hp'),
+    lang:val('f_lang'),cond:val('f_cond'),pitch:val('f_pitch')};
+}
+
+function genPitch(f, rawRarity){
+  const setName=SETS[curSet], name=f.name, type=(f.type||'card');
+  const asp=f.aspect, v=f.variant;
+  const chaseVariant=['Hyperspace','Hyperspace Foil','Showcase','Prestige'].includes(v);
+  const chaseRarity=['Legendary','Special'].includes(rawRarity);
+  const vWord = chaseVariant ? v+' ' : '';
+  if(chaseVariant || chaseRarity)
+    return `The ${vWord}${name} ${type} from Star Wars: Unlimited \u2014 ${setName}. A ${asp?asp+'-aspect ':''}standout chase card prized by collectors and players alike.`;
+  return `${name} \u2014 a ${asp?asp+'-aspect ':''}${type.toLowerCase()} from Star Wars: Unlimited's ${setName} set. ${rawRarity||''} rarity${v && v!=='Standard'? ', '+v.toLowerCase()+' variant':''}.`;
+}
+
+function buildHTML(f){
+  const rows=[['Set',f.set],['Card number',f.num],
+    ['Rarity',f.rarity+(f.variant && f.variant!=='Standard'?' \u2014 '+f.variant:'')],
+    ['Card type',f.type],['Aspect(s)',f.aspect]];
+  if(f.arena) rows.push(['Arena',f.arena]);
+  if(f.traits) rows.push(['Traits',f.traits]);
+  if(f.cost||f.power||f.hp) rows.push(['Cost / Power / HP',[f.cost,f.power,f.hp].filter(x=>x!=='').join(' / ')]);
+  rows.push(['Finish',f.variant]); rows.push(['Language',f.lang]);
+  let tr='';
+  rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f7f9;':'';
+    tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
+  const vSpan=(f.variant && f.variant!=='Standard')?` <span style="color:#b6bac4;font-weight:600;">(${esc(f.variant)})</span>`:'';
+  return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
+  <div style="background:#0b0d12;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #ffe81f;">
+    <div style="color:#ffe81f;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Star Wars: Unlimited</div>
+    <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${vSpan}</div>
+    <div style="color:#8a8f9c;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+  </div>
+  <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
+  <div style="padding:0 24px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#0b0d12;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:4px;">Card details</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>${tr}</tbody></table>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="background:#f6f7f9;border-left:4px solid #1c1f26;border-radius:0 8px 8px 0;padding:14px 16px;">
+      <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#0b0d12;font-weight:700;margin-bottom:4px;">Condition</div>
+      <p style="margin:0;">${esc(f.cond)}. Pulled straight to sleeve and stored in a toploader.</p>
+    </div>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#0b0d12;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
+    <p style="margin:0;">Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.</p>
+  </div>
+  <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
+</div>`;
+}
+
+function render(){
+  const f=readFields(); lastHTML=buildHTML(f);
+  document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';if(typeof syncTitle==="function")syncTitle();
+}
+
+async function doLookup(){
+  const raw=document.getElementById('num').value.trim();
+  const st=document.getElementById('status');
+  if(!raw){st.className='status warn';st.textContent='Enter a card number first.';return;}
+  let num=raw.replace(/[^0-9]/g,''); if(num) num=num.padStart(3,'0');
+  st.className='status load'; st.textContent='Looking up '+curSet.toUpperCase()+' '+num+' \u2026';
+  try{
+    const res=await fetch(`${swuBase.replace(/\/$/,'')}/cards/${curSet}/${num}`);
+    if(!res.ok){
+      let msg='No match for '+curSet.toUpperCase()+' '+num+'. Fill fields manually \u2014 preview still works.';
+      try{ const b=await res.clone().json(); if(b&&/authentication token/i.test(b.message||'')) msg='Proxy route error: swu-db didn\'t recognise the path. Is `pnpm dev` running from this project? The /swu prefix must be stripped by vite.config.js \u2014 restart the dev server if you just added it.'; }catch(e){}
+      st.className='status warn'; st.textContent=msg; return; }
+    const c=await res.json();
+    const name=c.Name+(c.Subtitle?', '+c.Subtitle:'');
+    set('f_name',name);
+    set('f_set',SETS[curSet]+' ('+curSet.toUpperCase()+')');
+    set('f_num',(c.Number||num)+'/'+(c.Set||curSet.toUpperCase()));
+    set('f_rarity',c.Rarity||'');
+    set('f_type',c.Type||'');
+    set('f_aspect',(c.Aspects||[]).join(' / '));
+    set('f_arena',(c.Arenas||[]).join(' / '));
+    set('f_traits',(c.Traits||[]).map(t=>t.charAt(0)+t.slice(1).toLowerCase()).join(' \u00b7 '));
+    set('f_cost',c.Cost!=null?c.Cost:'');
+    set('f_power',c.Power!=null?c.Power:'');
+    set('f_hp',c.HP!=null?c.HP:'');
+    const f=readFields();
+    set('f_pitch',genPitch(f,c.Rarity));
+    st.className='status ok'; st.textContent='\u2713 '+name+'  ('+(c.Rarity||'?')+')'+(c.MarketPrice?'  \u00b7  ~US$'+c.MarketPrice+' market':'');
+    render();
+    if(window.TCG){TCG.renderExtras(document.getElementById("extras"),{name:c.Name,images:[{label:"Front",url:c.FrontArt}].concat(c.DoubleSided&&c.BackArt?[{label:"Back",url:c.BackArt}]:[]),prices:[{label:"Market",amount:c.MarketPrice,currency:"USD"},{label:"Low",amount:c.LowPrice,currency:"USD"}],history:null});}regenTitle();
+  }catch(e){
+    st.className='status err';
+    st.textContent='Lookup blocked (no network / sandboxed). Open the file in a browser, or type fields manually.';
+  }
+}
+
+function selectSet(id){curSet=id;
+  document.querySelectorAll('.pill').forEach(p=>p.classList.toggle('on',p.dataset.id===id));
+  if(document.getElementById('num').value.trim()) doLookup();}
+
+function copyHTML(){copy(lastHTML,'HTML copied!');}
+function copyText(){const t=document.createElement('div');t.innerHTML=lastHTML;
+  copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}
+function copy(text,msg){const done=()=>showToast(msg);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fb(text,done));}else fb(text,done);}
+function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
+let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
+
+(function(){
+  const _cb=document.getElementById('c_base'); if(_cb) _cb.value=swuBase;
+  const pills=document.getElementById('pills');
+  for(const sid in SETS){const b=document.createElement('button');
+    b.className='pill'+(sid===curSet?' on':'');b.dataset.id=sid;
+    b.textContent=sid.toUpperCase();b.title=SETS[sid];b.onclick=()=>selectSet(sid);pills.appendChild(b);}
+  document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
+  ['f_name','f_set','f_num','f_rarity','f_variant','f_type','f_aspect','f_arena','f_traits','f_cost','f_power','f_hp','f_lang','f_cond','f_pitch']
+    .forEach(id=>document.getElementById(id).addEventListener('input',render));
+  render();
+})();
+</script>
+</body>
+</html>

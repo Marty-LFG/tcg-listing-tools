@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magic: The Gathering eBay Listing Builder</title>
+<style>
+  :root{--ink:#15110b;--panel:#1d1810;--panel2:#241d12;--line:#3a3020;--muted:#a99878;
+    --text:#f3eee4;--gold:#c9923f;--gold-dim:#7a5a26;--field:#120e08;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  details{margin-bottom:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);}
+  summary{cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none;}
+  .cfg{padding:0 14px 14px;}
+  .cfg label{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 4px;}
+  .cfg input{width:100%;padding:8px 10px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  .setrow{margin-bottom:12px;}
+  .setrow input{width:100%;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:15px;outline:none;}
+  .lookup{display:flex;gap:10px;margin-bottom:6px;}
+  .lookup input{flex:1;font-size:22px;font-weight:700;padding:12px 14px;background:var(--field);border:1px solid var(--line);border-radius:10px;color:var(--text);outline:none;}
+  .lookup input:focus,.setrow input:focus{border-color:var(--gold);}
+  .lookup button{padding:0 18px;border:1px solid var(--gold);background:var(--gold);color:#15110b;border-radius:10px;font-weight:700;cursor:pointer;}
+  .status{font-size:12.5px;min-height:18px;margin:4px 0 14px;}
+  .status.ok{color:#36d399;}.status.warn{color:#e8b84b;}.status.err{color:#f06262;}.status.load{color:var(--muted);}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+  .f-full{grid-column:1/3;}
+  .fields input,.fields select,.fields textarea{width:100%;padding:8px 10px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  .fields input:focus,.fields select:focus,.fields textarea:focus{border-color:var(--gold);}
+  .fields textarea{resize:vertical;min-height:64px;line-height:1.45;}
+  .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .btns{display:flex;gap:8px;}
+  .btn{padding:8px 14px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;}
+  .btn:hover{background:var(--gold);color:#15110b;}
+  .btn.solid{background:var(--gold);color:#15110b;border-color:var(--gold);}
+  iframe{width:100%;height:540px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#15110b;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+      <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Magic: The Gathering</div>
+  <h1>eBay Listing Builder</h1>
+  <p class="sub">Pick a set, type a collector number, get a ready-to-paste eBay description. Live data via Scryfall.</p>
+  <div class="grid">
+    <div class="card">
+      <details>
+        <summary>API connection (proxy)</summary>
+        <div class="cfg"><label>Base URL</label><input id="c_base" oninput="saveBase()">
+          <div class="hint">Runs through the Vite proxy at <code>/api/mtg</code>. Start <code>pnpm dev</code> and leave this default.</div></div>
+      </details>
+
+      <div class="setrow"><label>Set</label>
+        <input id="setCode" list="setList" placeholder="type to search, e.g. Bloomburrow or blb" autocomplete="off">
+        <datalist id="setList"></datalist>
+      </div>
+
+      <label>Collector number</label>
+      <div class="lookup"><input id="num" placeholder="e.g. 1  or  234" autocomplete="off"><button onclick="doLookup()">Look up</button></div>
+      <div class="status load" id="status">Pick a set, type a number, hit Look up.</div>
+
+      <div class="fields">
+        <div class="f-full"><label>Card name</label><input id="f_name"></div>
+        <div><label>Set (display)</label><input id="f_set"></div>
+        <div><label>Collector number</label><input id="f_num"></div>
+        <div><label>Rarity</label><input id="f_rarity"></div>
+        <div><label>Colour</label><input id="f_colour"></div>
+        <div><label>Card type</label><input id="f_type"></div>
+        <div><label>Treatment</label><input id="f_treat"></div>
+        <div><label>Finish</label><select id="f_finish"><option>Nonfoil</option><option>Foil</option><option>Etched Foil</option></select></div>
+        <div><label>Language</label><input id="f_lang" value="English"></div>
+        <div class="f-full"><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
+        <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
+      </div>
+      <div class="hint">Set list loads from Scryfall on start (paper sets, newest first). A printing can exist in multiple finishes — set the Finish to match the card in hand. No proxy? Type fields manually.</div>
+    </div>
+    <div class="card">
+            <div style="margin-bottom:14px;">
+        <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;"><span>eBay title</span><span id="titlecount" style="font-size:11px;color:var(--muted);font-weight:400;">0/80</span></label>
+        <div style="display:flex;gap:8px;">
+          <input id="f_title" oninput="updateTitleCount()" placeholder="look up a card — title builds here" style="flex:1;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+          <button class="btn" onclick="regenTitle()" title="Rebuild from fields">&#8635;</button>
+          <button class="btn solid" onclick="copyTitle()">Copy</button>
+        </div>
+      </div>
+      <div class="previewhead"><label style="margin:0;">Live preview</label>
+        <div class="btns"><button class="btn" onclick="copyText()">Copy plain text</button><button class="btn solid" onclick="copyHTML()">Copy HTML</button></div></div>
+      <iframe id="preview"></iframe>
+      <div id="extras" style="margin-top:16px;"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Copied!</div>
+<script src="/extras.js"></script>
+<script>
+
+var _lastAutoTitle='';
+function updateTitleCount(){var el=document.getElementById('f_title'),c=document.getElementById('titlecount');if(!el||!c)return;var n=el.value.length;c.textContent=n+'/80';c.style.color=n>80?'#f06262':'var(--muted)';}
+function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.getElementById('f_title');if(el){el.value=t;_lastAutoTitle=t;updateTitleCount();}}
+function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_name')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
+function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
+
+function genTitle(){
+  var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),treat=val('f_treat'),fin=val('f_finish'),lang=val('f_lang'),cond=val('f_cond');
+  if(!window.TCG)return name;
+  var code=((setn||'').match(/\(([^)]+)\)/)||[])[1]||'';
+  var tv=(treat||'').trim();if(/normal/i.test(tv))tv='';
+  var foilTok='',foilAbbr='';if(/etched/i.test(fin)){foilTok='Etched Foil';foilAbbr='Etched';}else if(/foil/i.test(fin)){foilTok='Foil';foilAbbr='Foil';}
+  var rl=(rar||'').toLowerCase();var rarTok=(/common|uncommon/.test(rl))?'':rar;
+  var parts=[
+    {text:'MTG',prio:45},
+    {text:name,prio:100},
+    {text:tv,prio:78},
+    {text:setn,abbr:(code||setn),prio:70},
+    {text:num,prio:80},
+    {text:rarTok,prio:60},
+    {text:foilTok,abbr:foilAbbr,prio:60},
+    {text:TCG.langCode(lang),prio:30},
+    {text:TCG.condCode(cond),prio:62}
+  ];
+  return TCG.fitTitle(parts,80);
+}
+
+let base='/api/mtg';
+try{const b=localStorage.getItem('mtg_base'); if(b) base=b;}catch(e){}
+function saveBase(){base=document.getElementById('c_base').value.trim();try{localStorage.setItem('mtg_base',base);}catch(e){}}
+let lastHTML='';
+function val(id){return document.getElementById(id).value.trim();}
+function set(id,v){document.getElementById(id).value=(v==null?'':v);}
+function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
+
+const COLOURS={W:'White',U:'Blue',B:'Black',R:'Red',G:'Green'};
+function colourName(arr){if(!arr||!arr.length)return 'Colourless';if(arr.length>1)return 'Multicolour';return COLOURS[arr[0]]||arr[0];}
+function treatmentOf(c){
+  if(c.border_color==='borderless')return 'Borderless';
+  const fe=c.frame_effects||[];
+  if(fe.includes('showcase'))return 'Showcase';
+  if(fe.includes('extendedart'))return 'Extended Art';
+  if(c.full_art)return 'Full Art';
+  return 'Normal';
+}
+function readFields(){return {name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
+  colour:val('f_colour'),type:val('f_type'),treat:val('f_treat'),finish:val('f_finish'),lang:val('f_lang'),
+  cond:val('f_cond'),pitch:val('f_pitch')};}
+
+function genPitch(f){
+  const chase=/(mythic)/i.test(f.rarity)||(f.treat&&f.treat!=='Normal');
+  if(chase) return `${f.name} — ${f.treat&&f.treat!=='Normal'?f.treat+' ':''}${f.rarity} from ${f.set}. A standout pickup for collectors and players.`;
+  return `${f.name} — a ${f.colour||''} ${f.type||'card'} from ${f.set}. ${f.rarity||''}${f.finish&&f.finish!=='Nonfoil'?', '+f.finish.toLowerCase():''}.`;
+}
+function buildHTML(f){
+  const rows=[['Set',f.set],['Collector number',f.num],['Rarity',f.rarity],['Colour',f.colour],['Card type',f.type],['Treatment',f.treat]];
+  rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
+  let tr=''; rows.forEach((r,i)=>{const bg=i%2===0?'background:#f8f6f2;':'';
+    tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
+  return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
+  <div style="background:#1a1510;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #c9923f;">
+    <div style="color:#c9923f;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Magic: The Gathering</div>
+    <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${f.treat&&f.treat!=='Normal'?' <span style="color:#cbbfa9;font-weight:600;">('+esc(f.treat)+')</span>':''}</div>
+    <div style="color:#a99878;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+  </div>
+  <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
+  <div style="padding:0 24px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1510;font-weight:700;border-bottom:2px solid #ece7df;padding-bottom:6px;margin-bottom:4px;">Card details</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>${tr}</tbody></table>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="background:#f8f6f2;border-left:4px solid #c9923f;border-radius:0 8px 8px 0;padding:14px 16px;">
+      <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1510;font-weight:700;margin-bottom:4px;">Condition</div>
+      <p style="margin:0;">${esc(f.cond)}. Pulled straight to sleeve and stored in a toploader.</p>
+    </div>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1510;font-weight:700;border-bottom:2px solid #ece7df;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
+    <p style="margin:0;">Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.</p>
+  </div>
+  <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
+</div>`;
+}
+function render(){const f=readFields();lastHTML=buildHTML(f);
+  document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';if(typeof syncTitle==="function")syncTitle();}
+
+async function loadSets(){
+  try{
+    const r=await fetch(base.replace(/\/$/,'')+'/sets');
+    if(!r.ok) return;
+    const j=await r.json();
+    const sets=(j.data||[]).filter(s=>!s.digital).sort((a,b)=>(b.released_at||'').localeCompare(a.released_at||''));
+    const dl=document.getElementById('setList'); dl.innerHTML='';
+    sets.forEach(s=>{const o=document.createElement('option'); o.value=s.code; o.label=s.name+' ('+(s.code||'').toUpperCase()+')'; dl.appendChild(o);});
+  }catch(e){}
+}
+async function doLookup(){
+  const code=val('setCode').toLowerCase(), num=val('num').replace(/\s/g,''), st=document.getElementById('status');
+  if(!code){st.className='status warn';st.textContent='Pick a set first.';return;}
+  if(!num){st.className='status warn';st.textContent='Enter a collector number.';return;}
+  st.className='status load';st.textContent='Looking up '+code+' '+num+'\u2026';
+  try{
+    const r=await fetch(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(code)+'/'+encodeURIComponent(num));
+    if(!r.ok){st.className='status warn';st.textContent='No match for '+code+' '+num+'. Check the set code/number or fill manually.';return;}
+    const c=await r.json();
+    if(!c||c.object==='error'||!c.name){st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
+    const treat=treatmentOf(c);
+    set('f_name',c.name);
+    set('f_set',(c.set_name||code)+' ('+(c.set||code).toUpperCase()+')');
+    set('f_num',c.collector_number||num);
+    set('f_rarity',cap(c.rarity||''));
+    set('f_colour',colourName(c.colors||(c.card_faces&&c.card_faces[0]&&c.card_faces[0].colors)||[]));
+    set('f_type',c.type_line||'');
+    set('f_treat',treat);
+    const fin=c.finishes||[];
+    set('f_finish',fin.length&&!fin.includes('nonfoil')?(fin.includes('foil')?'Foil':'Etched Foil'):'Nonfoil');
+    set('f_pitch',genPitch(readFields()));
+    const pr=c.prices||{}; const price=pr.usd||pr.usd_foil||pr.usd_etched||null;
+    st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+cap(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price:'');
+    render();
+    if(window.TCG){var _fi=c.image_uris||(c.card_faces&&c.card_faces[0]&&c.card_faces[0].image_uris);var _bi=c.card_faces&&c.card_faces[1]&&c.card_faces[1].image_uris;var _im=[];if(_fi)_im.push({label:"Front",url:_fi.large||_fi.normal||_fi.png});if(_bi)_im.push({label:"Back",url:_bi.large||_bi.normal||_bi.png});var _p=c.prices||{};var _pr=[];[["USD","usd"],["USD foil","usd_foil"],["USD etched","usd_etched"],["EUR","eur"],["EUR foil","eur_foil"]].forEach(function(a){if(_p[a[1]])_pr.push({label:a[0],amount:_p[a[1]],currency:a[0].indexOf("EUR")===0?"EUR":"USD"});});TCG.renderExtras(document.getElementById("extras"),{name:c.name,images:_im,prices:_pr,history:null});}regenTitle();
+  }catch(e){st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
+}
+function copyHTML(){copy(lastHTML,'HTML copied!');}
+function copyText(){const t=document.createElement('div');t.innerHTML=lastHTML;copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}
+function copy(text,msg){const done=()=>showToast(msg);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fb(text,done));}else fb(text,done);}
+function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
+let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
+(function(){
+  document.getElementById('c_base').value=base;
+  document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
+  ['f_name','f_set','f_num','f_rarity','f_colour','f_type','f_treat','f_finish','f_lang','f_cond','f_pitch']
+    .forEach(id=>document.getElementById(id).addEventListener('input',render));
+  loadSets(); render();
+})();
+</script>
+</body>
+</html>

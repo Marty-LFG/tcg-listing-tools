@@ -1,0 +1,74 @@
+# TCG eBay Listing Tools
+
+Vite-served listing builders for Riftbound and Star Wars: Unlimited.
+The Vite dev server proxies card-data APIs so the browser never hits CORS,
+and your Scrydex key stays server-side (in the proxy config, never shipped to the client).
+
+## Run
+
+```bash
+pnpm install
+cp .env.example .env   # then fill in your Scrydex key (only needed for Riftbound)
+pnpm dev
+```
+
+Vite opens the landing page. Pick a builder.
+
+## How it works
+
+- `/api/swu/*`  is proxied to `https://api.swu-db.com/*`  (no auth)
+- `/api/rb/*`   is proxied to `https://api.scrydex.com/riftbound/v1/*`, with
+  `X-Api-Key` / `X-Team-ID` injected from `.env`
+- `/api/mtg/*`  is proxied to `https://api.scryfall.com/*`  (no auth)
+- `/api/pkm/*`  is proxied to `https://api.pokemontcg.io/v2/*`  (no auth)
+
+The tools call those relative paths, so everything is same-origin — no CORS,
+no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
+
+## Notes
+
+- Riftbound has offline data embedded for Origins / Proving Grounds / Spiritforged
+  (works with no key). Connect Scrydex (Base URL already set to `/api/rb`) for every set
+  incl. Unleashed + live pricing.
+- SWU is entirely live via swu-db; Base URL is preset to `/api/swu`.
+- Both builders always allow manual field entry; the preview builds regardless.
+
+## Run on your home server (LAN access)
+
+The dev server already binds to all interfaces (`host: true`, port `5173`).
+
+```bash
+pnpm install
+cp .env.example .env     # add your Scrydex key (Riftbound only)
+pnpm dev
+```
+
+Vite prints a **Network:** URL like `http://192.168.1.50:5173/`. Anyone on the
+LAN opens that. Because your server has a fixed IP, the URL is stable.
+
+Make it permanent + survive reboots/crashes — either:
+
+- **systemd** (recommended): edit and install `tcg-tools.service` (instructions in the file), or
+- **pm2**: `pm2 start "pnpm dev" --name tcg-tools && pm2 save && pm2 startup`
+
+Open the port on the server's firewall, e.g. `sudo ufw allow 5173/tcp`.
+
+Optional nicety: give it a name instead of an IP. Add a line to each client's
+hosts file (`192.168.1.50  cards.lan`) or a record in your router/Pi-hole DNS,
+then browse to `http://cards.lan:5173`. If you use a hostname, also set
+`server.allowedHosts: ['cards.lan']` in `vite.config.js`.
+
+### Heads-up before exposing it
+- This is Vite's **dev** server. Fine for a trusted home LAN; do **not** expose
+  it to the public internet.
+- Everyone on the LAN shares your **Scrydex** quota (the key stays server-side
+  in `.env`, never sent to browsers — but lookups spend your credits).
+- `/api/img` fetches arbitrary URLs server-side. Harmless on a trusted LAN;
+  don't port-forward it.
+
+## Working on this project (handoff)
+
+If you're an AI coding agent or a new developer picking this up, start with
+**`AGENTS.md`** — it covers the architecture, the invariants you must not break
+(the proxies are dev-server-only!), how each builder is structured, and common
+tasks. API endpoints and response schemas are in **`docs/DATA_SOURCES.md`**.
