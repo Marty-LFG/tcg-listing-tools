@@ -333,7 +333,7 @@ function embedLookup(){
   set('f_pitch',genPitch(readFields(),rawRarity));
   st.className='status ok'; st.textContent='\u2713 '+_nm+'  ('+mapRarity(rawRarity)+')';
   render();
-  if(window.TCG){const _dg=rbDotgg(sd.code,c.num);TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',url:c.img||_dg,fallback:_dg}],prices:[],history:null});}
+  if(window.TCG){const _dg=rbDotgg(sd.code,c.num);TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,c.img].filter(Boolean),download:c.img||_dg,fallback:c.img||_dg}],prices:[],history:null});}
   regenTitle();
 }
 
@@ -369,6 +369,7 @@ async function scrydexLookup(){
   if(!raw){st.className='status warn';st.textContent='Enter a card number.';return;}
   const num=raw.split('/')[0].trim();
   st.className='status load';st.textContent='Looking up '+curSet+'-'+num+'\u2026';
+  const act=window.TCG?TCG.activity('Scrydex '+curSet+'-'+num+'\u2026'):null;
   let card=null;
   try{ card=unwrap(await apiGet('/cards/'+curSet+'-'+encodeURIComponent(num)+'?include=prices')); }
   catch(e){
@@ -376,10 +377,11 @@ async function scrydexLookup(){
       try{ const arr=unwrap(await apiGet('/expansions/'+curSet+'/cards?include=prices&q=number:"'+encodeURIComponent(num)+'"'));
         if(Array.isArray(arr)) card=arr.find(c=>(''+c.number).toLowerCase()===num.toLowerCase())||arr[0]||null; }
       catch(e2){}
-    } else { st.className='status err'; st.textContent='Lookup failed ('+(e.status?'HTTP '+e.status:'network/CORS')+'). Use the proxy or fill fields manually.'; return; }
+    } else { act&&act.fail('HTTP '+(e.status||'?')); st.className='status err'; st.textContent='Lookup failed ('+(e.status?'HTTP '+e.status:'network/CORS')+'). Use the proxy or fill fields manually.'; return; }
   }
-  if(!card){ if(/^r\d/i.test(raw)&&runeFill(raw))return;   // Scrydex lacks the rune reprint -> resolve locally
-    st.className='status warn';st.textContent='No match for '+curSet+'-'+num+'. Fill fields manually.';return;}
+  if(!card){ if(/^r\d/i.test(raw)&&runeFill(raw)){act&&act.done('rune');return;}   // Scrydex lacks the rune reprint -> resolve locally
+    act&&act.fail('no match');st.className='status warn';st.textContent='No match for '+curSet+'-'+num+'. Fill fields manually.';return;}
+  act&&act.done('Scrydex');
   mapScrydexCard(card,num);
 }
 
@@ -408,7 +410,7 @@ function mapScrydexCard(c,num){
   st.className='status ok';
   st.textContent='\u2713 '+name+'  ('+(rawRarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' NM market':'');
   render();
-  if(window.TCG){var _dg=rbDotgg(expCode,c.printed_number||c.number||num);var _im=[];var _i0=(c.images&&c.images[0])||null;_im.push({label:"Front",url:(_i0&&(_i0.large||_i0.medium||_i0.small))||_dg,fallback:_dg});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_v.prices[0];if(_np){_pr.push({label:_vv.name+" NM",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}TCG.renderExtras(document.getElementById("extras"),{name:name,images:_im,prices:_pr,history:_hist});}regenTitle();
+  if(window.TCG){var _dg=rbDotgg(expCode,c.printed_number||c.number||num);var _im=[];var _i0=(c.images&&c.images[0])||null;_im.push({label:"Front",display:[_dg,(_i0&&(_i0.small||_i0.medium))].filter(Boolean),download:(_i0&&(_i0.large||_i0.medium||_i0.small))||_dg,fallback:_dg});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_v.prices[0];if(_np){_pr.push({label:_vv.name+" NM",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}TCG.renderExtras(document.getElementById("extras"),{name:name,images:_im,prices:_pr,history:_hist});}regenTitle();
 }
 function priceFrom(c, finish){
   if(!c.variants) return null;
@@ -457,6 +459,7 @@ async function loadRiftscribeSets(){
   if(RBS_BY_SET){ if(!RBS_SETS.find(x=>x[0]===curSet)&&RBS_SETS[0]) curSet=RBS_SETS[0][0]; buildPills(); return true; }
   try{
     if(st){st.className='status load';st.textContent='Loading Riftscribe card list…';}
+    var act=window.TCG?TCG.activity('Loading Riftscribe card list…'):null;
     RBS_BY_SET={}; let off=0, total=Infinity;
     while(off<total){
       const r=await fetch('/api/rbs/cards?limit=200&offset='+off);
@@ -464,16 +467,18 @@ async function loadRiftscribeSets(){
       const tc=parseInt(r.headers.get('x-total-count')||'0',10); if(tc) total=tc;
       const arr=await r.json(); if(!Array.isArray(arr)||!arr.length) break;
       arr.forEach(c=>{ const s=(c.set_id||'').toUpperCase(); if(s)(RBS_BY_SET[s]||(RBS_BY_SET[s]=[])).push(c); });
-      off+=arr.length; if(arr.length<200) break;
+      off+=arr.length; act&&act.update('Riftscribe '+off+(total!==Infinity?'/'+total:'')+' cards…'); if(arr.length<200) break;
     }
     RBS_SETS=Object.keys(RBS_BY_SET).sort((a,b)=>{const o=['OGN','OGS','SFD','UNL'];return (o.indexOf(a)<0?99:o.indexOf(a))-(o.indexOf(b)<0?99:o.indexOf(b));}).map(code=>[code,RBS_NAMES[code]||code]);
     if(RBS_SETS.length&&!RBS_SETS.find(x=>x[0]===curSet)) curSet=RBS_SETS[0][0];
     buildPills();
     const n=Object.values(RBS_BY_SET).reduce((a,x)=>a+x.length,0);
     if(st){st.className='status ok';st.textContent='✓ Riftscribe ready — '+RBS_SETS.length+' sets, '+n+' cards. Type a number.';}
+    act&&act.done('Riftscribe · '+n+' cards');
     return true;
   }catch(e){
     RBS_BY_SET=null; RBS_SETS=[];
+    act&&act.fail('Riftscribe unavailable');
     if(st){st.className='status err';st.textContent='Riftscribe unavailable ('+(e.message||'network')+'). Switch to Offline or fill fields manually.';}
     return false;
   }
@@ -512,9 +517,10 @@ function mapRiftscribeCard(c){
   set('f_pitch',genPitch(readFields(),rawRarity));
   const st=document.getElementById('status'); st.className='status ok'; st.textContent='✓ '+_nm+'  ('+mapRarity(rawRarity)+')';
   render();
-  const img=c.image||(c.image_thumb&&(c.image_thumb.large||c.image_thumb.medium||c.image_thumb.small));
+  const _th=c.image_thumb||{};                                    // riftscribe webp thumbnails (small/medium/large) = fast display
+  const _full=c.image||_th.large||_th.medium||_th.small;          // full image = best download
   const _dg=rbDotgg(setCode,c.collector_number+suf);
-  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',url:img||_dg,fallback:_dg}],prices:[],history:null});
+  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,_th.medium||_th.small].filter(Boolean),download:_full||_dg,fallback:_full||_dg}],prices:[],history:null});
   regenTitle();
 }
 

@@ -240,12 +240,13 @@ async function doLookup(){
   if(!raw){st.className='status warn';st.textContent='Enter a card number first.';return;}
   let num=raw.replace(/[^0-9]/g,''); if(num) num=num.padStart(3,'0');
   st.className='status load'; st.textContent='Looking up '+curSet.toUpperCase()+' '+num+' \u2026';
+  const act=window.TCG?TCG.activity('Looking up '+curSet.toUpperCase()+' '+num+'\u2026'):null;
   try{
     const res=await fetch(`${swuBase.replace(/\/$/,'')}/cards/${curSet}/${num}`);
     if(!res.ok){
       let msg='No match for '+curSet.toUpperCase()+' '+num+'. Fill fields manually \u2014 preview still works.';
       try{ const b=await res.clone().json(); if(b&&/authentication token/i.test(b.message||'')) msg='Proxy route error: swu-db didn\'t recognise the path. Is `pnpm dev` running from this project? The /swu prefix must be stripped by vite.config.js \u2014 restart the dev server if you just added it.'; }catch(e){}
-      st.className='status warn'; st.textContent=msg; return; }
+      act&&act.fail('no match'); st.className='status warn'; st.textContent=msg; return; }
     const c=await res.json();
     const name=c.Name+(c.Subtitle?', '+c.Subtitle:'');
     set('f_name',name);
@@ -261,10 +262,12 @@ async function doLookup(){
     set('f_hp',c.HP!=null?c.HP:'');
     const f=readFields();
     set('f_pitch',genPitch(f,c.Rarity));
+    act&&act.done('swu-db');
     st.className='status ok'; st.textContent='\u2713 '+name+'  ('+(c.Rarity||'?')+')'+(c.MarketPrice?'  \u00b7  ~US$'+c.MarketPrice+' market':'');
     render();
     if(window.TCG){TCG.renderExtras(document.getElementById("extras"),{name:c.Name,images:[{label:"Front",url:c.FrontArt}].concat(c.DoubleSided&&c.BackArt?[{label:"Back",url:c.BackArt}]:[]),prices:[{label:"Market",amount:c.MarketPrice,currency:"USD"},{label:"Low",amount:c.LowPrice,currency:"USD"}],history:null});}regenTitle();
   }catch(e){
+    act&&act.fail('lookup blocked');
     st.className='status err';
     st.textContent='Lookup blocked (no network / sandboxed). Open the file in a browser, or type fields manually.';
   }

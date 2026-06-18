@@ -222,14 +222,15 @@ function loadCachedSets(){try{var raw=localStorage.getItem(SETS_CACHE_KEY);if(ra
 async function loadSets(){
   var hadCache=loadCachedSets();
   setStatus(hadCache?PKM_SETS.length+' sets · refreshing…':'loading sets…');
+  var act=window.TCG?TCG.activity(hadCache?'Refreshing Pokémon sets…':'Loading Pokémon sets…'):null;
   try{
     var r=await fetch(base.replace(/\/$/,'')+'/sets?pageSize=500');
     if(!r.ok)throw new Error('http '+r.status);
     var j=await r.json();
     var sets=(j.data||[]).map(slimSet).sort(function(a,b){return (b.releaseDate||'').localeCompare(a.releaseDate||'');});
-    if(sets.length){PKM_SETS=sets;try{localStorage.setItem(SETS_CACHE_KEY,JSON.stringify(sets));}catch(e){}setStatus(sets.length+' sets');}
-    else setStatus(hadCache?PKM_SETS.length+' sets (cached)':'no sets returned');
-  }catch(e){setStatus(hadCache?PKM_SETS.length+' sets (offline — cached)':'couldn’t load sets — type a set id');}
+    if(sets.length){PKM_SETS=sets;try{localStorage.setItem(SETS_CACHE_KEY,JSON.stringify(sets));}catch(e){}setStatus(sets.length+' sets');act&&act.done(sets.length+' sets');}
+    else {setStatus(hadCache?PKM_SETS.length+' sets (cached)':'no sets returned');act&&act.done('cached');}
+  }catch(e){act&&act.fail('sets offline (cached)');setStatus(hadCache?PKM_SETS.length+' sets (offline — cached)':'couldn’t load sets — type a set id');}
 }
 function resolveSet(typed){
   var t=(typed||'').trim().toLowerCase();if(!t)return null;
@@ -268,11 +269,12 @@ async function doLookup(){
   if(!setId){st.className='status warn';st.textContent='Pick a set — try a name or the printed code (e.g. PAR).';return;}
   if(!num){st.className='status warn';st.textContent='Enter a card number.';return;}
   st.className='status load';st.textContent='Looking up '+setId+'-'+num+'\u2026';
+  const act=window.TCG?TCG.activity('Looking up '+setId+'-'+num+'\u2026'):null;
   try{
     const r=await fetch(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(setId+'-'+num));
-    if(!r.ok){st.className='status warn';st.textContent='No match for '+setId+'-'+num+'. Check the set/number or fill manually.';return;}
+    if(!r.ok){act&&act.fail('no match');st.className='status warn';st.textContent='No match for '+setId+'-'+num+'. Check the set/number or fill manually.';return;}
     const j=await r.json(); const c=j.data||j;
-    if(!c||!c.name){st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
+    if(!c||!c.name){act&&act.fail('no card');st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
     set('f_name',c.name);
     set('f_set',(c.set&&c.set.name)||setId);
     set('f_num',(c.number||num)+'/'+((c.set&&(c.set.printedTotal||c.set.total))||''));
@@ -284,10 +286,13 @@ async function doLookup(){
     set('f_pitch',genPitch(readFields()));
     let price=null; const tp=c.tcgplayer&&c.tcgplayer.prices;
     if(tp){const k=Object.keys(tp)[0]; if(k&&tp[k]) price=tp[k].market||tp[k].mid;}
+    act&&act.done('pokemontcg.io');
     st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
     render();
-    if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];Object.keys(_tp).forEach(function(k){if(_tp[k]&&_tp[k].market)_pr.push({label:"TCGplayer "+k,amount:_tp[k].market,currency:"USD"});});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({label:"Cardmarket avg",amount:_cm.averageSellPrice,currency:"EUR"});var _dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':'';TCG.renderExtras(document.getElementById("extras"),{name:c.name,images:[{label:"Front",url:(c.images&&(c.images.large||c.images.small))||_dg,fallback:_dg}],prices:_pr,history:null});}regenTitle();
-  }catch(e){st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
+    if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];Object.keys(_tp).forEach(function(k){if(_tp[k]&&_tp[k].market)_pr.push({label:"TCGplayer "+k,amount:_tp[k].market,currency:"USD"});});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({label:"Cardmarket avg",amount:_cm.averageSellPrice,currency:"EUR"});
+      var _dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':'';var _sm=c.images&&c.images.small;var _lg=c.images&&(c.images.large||c.images.small);   // display: dotgg webp 82KB / small (raced); download: large hi-res
+      TCG.renderExtras(document.getElementById("extras"),{name:c.name,images:[{label:"Front",display:[_dg,_sm].filter(Boolean),download:_lg||_dg,fallback:_lg}],prices:_pr,history:null});}regenTitle();
+  }catch(e){act&&act.fail('lookup blocked');st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
 }
 function copyHTML(){copy(lastHTML,'HTML copied!');}
 function copyText(){const t=document.createElement('div');t.innerHTML=lastHTML;copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}

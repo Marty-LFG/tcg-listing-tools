@@ -38,6 +38,45 @@
 
   TCG.clear = function (el) { if (el) el.innerHTML = ''; };
 
+  // ---------- activity indicator (bottom-left toast stack) ----------
+  // TCG.activity('label') -> handle with .update(l) / .done(msg) / .fail(msg).
+  // Shows a live elapsed timer so the app always feels like it's doing something.
+  var _actWrap = null;
+  function actWrap() {
+    if (!_actWrap) {
+      var st = document.createElement('style');
+      st.textContent = '@keyframes tcgspin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(st);
+      _actWrap = document.createElement('div');
+      _actWrap.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:99999;display:flex;flex-direction:column;gap:6px;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;';
+      document.body.appendChild(_actWrap);
+    }
+    return _actWrap;
+  }
+  TCG.activity = function (label) {
+    var t0 = Date.now();
+    var el = document.createElement('div');
+    el.style.cssText = 'background:var(--panel2,#1a1a1a);border:1px solid var(--line,#333);color:var(--text,#eee);border-radius:999px;padding:7px 13px;font-size:12px;font-weight:600;box-shadow:0 4px 18px rgba(0,0,0,.35);display:flex;align-items:center;gap:8px;max-width:360px;opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s;';
+    var spin = '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;border:2px solid var(--gold,#c8aa6e);border-top-color:transparent;animation:tcgspin .7s linear infinite;flex:none;"></span>';
+    el.innerHTML = '<span class="ic">' + spin + '</span><span class="tx" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</span><span class="el" style="color:var(--muted,#888);font-weight:400;flex:none;"></span>';
+    actWrap().appendChild(el);
+    requestAnimationFrame(function () { el.style.opacity = '1'; el.style.transform = 'none'; });
+    var tick = setInterval(function () { el.querySelector('.el').textContent = ((Date.now() - t0) / 1000).toFixed(1) + 's'; }, 100);
+    function fin(icon, color, msg, hold) {
+      clearInterval(tick);
+      var s = ((Date.now() - t0) / 1000).toFixed(1);
+      el.querySelector('.ic').innerHTML = '<span style="color:' + color + ';font-weight:800;flex:none;">' + icon + '</span>';
+      el.querySelector('.tx').textContent = msg || label;
+      el.querySelector('.el').textContent = ' · ' + s + 's';
+      setTimeout(function () { el.style.opacity = '0'; el.style.transform = 'translateY(6px)'; setTimeout(function () { if (el.parentNode) el.remove(); }, 230); }, hold);
+    }
+    return {
+      update: function (l) { var tx = el.querySelector('.tx'); if (tx) tx.textContent = l; return this; },
+      done: function (msg) { fin('✓', '#36d399', msg, 1300); },
+      fail: function (msg) { fin('✕', '#f06262', msg, 3200); },
+    };
+  };
+
   // reconstruct a rough price series from Scrydex trend deltas
   TCG.histFromTrends = function (market, trends) {
     if (market == null || !trends) return null;
@@ -66,7 +105,15 @@
     if (!container) return;
     data = data || {};
     const name = ((data.name || 'card') + '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'card';
-    const hasImg = data.images && data.images.filter(i => i && i.url).length;
+    // Each image: disp = candidate DISPLAY urls (small/fast, raced for the quickest);
+    // dl = the DOWNLOAD url (always best quality). Back-compat: {url, fallback} still works.
+    const imgs = (data.images || []).map(function (im) {
+      var disp = im.display ? im.display.slice() : (im.url ? [im.url] : []);
+      if (im.fallback) disp.push(im.fallback);
+      disp = disp.filter(Boolean);
+      return { label: im.label, disp: disp, dl: im.download || im.url || disp[0] || '' };
+    }).filter(function (p) { return p.disp.length || p.dl; });
+    const hasImg = imgs.length;
     const prices = (data.prices || []).filter(p => p && p.amount != null && p.amount !== '');
     if (!hasImg && !prices.length) { container.innerHTML = ''; return; }
 
@@ -76,10 +123,11 @@
 
     if (hasImg) {
       html += `<div style="${box}margin-bottom:14px;"><div style="${head}">Card image</div><div style="display:flex;gap:14px;flex-wrap:wrap;">`;
-      data.images.filter(i => i && i.url).forEach(im => {
+      imgs.forEach(function (p, idx) {
+        var ext = (p.dl.match(/\.(png|jpe?g|webp)(?:\?|$)/i) || [])[1] || 'png';
         html += `<div style="text-align:center;">
-          <img src="${im.url}" alt="${im.label}" loading="lazy"${im.fallback ? ` onerror="this.onerror=null;this.src='${im.fallback}'"` : ''} style="width:150px;max-width:42vw;border-radius:8px;display:block;border:1px solid var(--line,#333);">
-          <button class="tcg-dl" data-url="${encodeURIComponent(im.url)}" data-fn="${name}-${(im.label||'art').toLowerCase()}.png" style="margin-top:8px;width:100%;padding:6px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;">&#8595; ${im.label}</button>
+          <img id="tcg-img-${idx}" src="${p.disp[0] || p.dl}" alt="${esc(p.label)}" loading="lazy" data-disp="${encodeURIComponent(JSON.stringify(p.disp))}" style="width:150px;max-width:42vw;border-radius:8px;display:block;border:1px solid var(--line,#333);background:var(--field,#111);min-height:60px;">
+          <button class="tcg-dl" data-url="${encodeURIComponent(p.dl)}" data-fn="${name}-${(p.label||'art').toLowerCase()}.${ext}" style="margin-top:8px;width:100%;padding:6px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;" title="Downloads best available quality">&#8595; ${esc(p.label)} <span style="opacity:.55;font-weight:400;">HQ</span></button>
         </div>`;
       });
       html += '</div></div>';
@@ -107,6 +155,14 @@
 
     container.querySelectorAll('.tcg-dl').forEach(b =>
       b.addEventListener('click', () => downloadImg(decodeURIComponent(b.getAttribute('data-url')), b.getAttribute('data-fn'))));
+
+    // Race the DISPLAY candidates — show whichever CDN paints first (best download stays separate).
+    container.querySelectorAll('img[data-disp]').forEach(function (imgEl) {
+      var disp; try { disp = JSON.parse(decodeURIComponent(imgEl.getAttribute('data-disp') || '[]')); } catch (e) { disp = []; }
+      if (!disp || disp.length < 2) return;
+      var settled = false;
+      disp.forEach(function (u) { var pre = new Image(); pre.onload = function () { if (settled) return; settled = true; imgEl.src = u; }; pre.src = u; });
+    });
 
     if (prices.length) {
       TCG.loadFx().then(() => {
@@ -180,10 +236,12 @@
   // TCG.ebayComps({ query, container, status }) -> renders delivered comps; returns {count,mode,cheapestDelivered}.
   TCG.ebayComps = async function (opts) {
     opts = opts || {};
-    var q = (opts.query || '').trim(), el = opts.container, st = opts.status;
-    function S(cls, msg){ if (st) { st.className = 'status ' + cls; st.textContent = msg; } }
+    var q = (opts.query || '').trim(), el = opts.container, st = opts.status, act = null;
+    function S(cls, msg){ if (st) { st.className = 'status ' + cls; st.textContent = msg; }
+      if (act) { var m = msg.replace(/^[✓✕]\s*/, ''); cls === 'ok' ? act.done(m) : (cls === 'warn' || cls === 'err') ? act.fail(m) : act.update(m); } }
     if (!q) { S('warn', 'Look up or enter a card first.'); return; }
     var filt = opts.filter ? '&filter=' + encodeURIComponent(opts.filter) : '';   // e.g. "conditions:{NEW}" for Funko
+    act = TCG.activity('Searching eBay…');
     S('load', 'Searching eBay comps…');
     try {
       var rows = null, mode = 'asking';
