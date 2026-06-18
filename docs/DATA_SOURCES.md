@@ -242,6 +242,15 @@ community datasets are deprecated/frozen at 2021 — verified Jun 2026: the
 
 ## Pricing notes / gotchas
 
+- **eBay AU delivered-comps are shared** via `TCG.ebayComps()` in `extras.js` (see the
+  Riftbound §). Every card builder (Pokémon / MTG / SWU / Riftbound) and Funko render the
+  same delivered-total + undercut block into a `#ebayextras` container, differing only by
+  the **search query** they pass (tuned per game against the live API):
+  - Pokémon: `Pokemon {name} {number} {setName}` (the number helps here)
+  - MTG: `{name} {setName}` (chase cards are specific enough; no forced "MTG")
+  - SWU: `Star Wars Unlimited {name} {setName}` (the prefix filters generic SW merch; `SWU` was too narrow)
+  - Funko: `Funko Pop {character} {pop#} {franchise}` + `filter=conditions:{NEW}` (boxed market)
+  This shows *local* eBay AU prices alongside each API's reference prices (which are US/EU).
 - **TCGplayer API** is closed to new developers (since late 2024) — not an option
   for new price sources.
 - The Pokémon `tcgplayer.prices` object has multiple buckets

@@ -122,6 +122,8 @@
         <div class="btns"><button class="btn" onclick="copyText()">Copy plain text</button><button class="btn solid" onclick="copyHTML()">Copy HTML</button></div></div>
       <iframe id="preview"></iframe>
       <div id="extras" style="margin-top:16px;"></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide. Sold where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button></div>
+      <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
 </div>
@@ -166,6 +168,13 @@ function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
 function readFields(){return {name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
   poke:val('f_poke'),stage:val('f_stage'),type:val('f_type'),finish:val('f_finish'),lang:val('f_lang'),
   cond:val('f_cond'),pitch:val('f_pitch')};}
+function findEbay(){
+  const f=readFields(), st=document.getElementById('status');
+  if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
+  const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();   // "Base Set (BS)" -> "Base Set"
+  const q=('Pokemon '+f.name+(f.num?' '+f.num:'')+(setName?' '+setName:'')).trim();
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st});
+}
 
 function genPitch(f){
   const chase=/(illustration|special|hyper|secret|ultra|rainbow|gold|alt)/i.test(f.rarity);

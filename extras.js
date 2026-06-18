@@ -125,6 +125,89 @@
       });
     }
   };
+
+  // ---------- eBay AU comps (delivered totals incl. shipping; SOLD where available, else ASKING) ----------
+  // Shared across builders. Caller passes a game-specific search query; we hit eBay (via /api/ebay),
+  // prefer true sold prices (Marketplace Insights) and fall back to current asking (Browse), then render
+  // delivered totals (item + shipping), AU vs Worldwide, and the cheapest-delivered "undercut" target.
+  var ebaySoldOff = false;   // set once we learn Marketplace Insights isn't granted (no retry this session)
+  function ebMoney(n){ return 'A$' + (Math.round(n * 100) / 100).toFixed(2); }
+  function ebShip(opt){ var so = (opt || [])[0]; return (so && so.shippingCost && so.shippingCost.value != null) ? parseFloat(so.shippingCost.value) : null; } // null = calculated/unknown
+  function ebNormAsk(it){ var price = it.price && parseFloat(it.price.value); if (!(price > 0)) return null;
+    return { price: price, ship: ebShip(it.shippingOptions), loc: (it.itemLocation && it.itemLocation.country) || '?', title: it.title || '', url: it.itemWebUrl || '' }; }
+  function ebNormSold(s){ var lp = s.lastSoldPrice, price = lp && parseFloat(lp.value); if (!(price > 0)) return null;
+    return { price: price, ship: ebShip(s.shippingOptions), loc: (s.itemLocation && s.itemLocation.country) || '?', title: s.title || '', url: s.itemWebUrl || '' }; }
+
+  function renderEbayComps(el, rows, mode){
+    if (!el) return;
+    var all = rows.map(function (r) { return Object.assign({}, r, { delivered: r.price + (r.ship || 0), known: r.ship != null }); });
+    function seg(list){ var k = list.filter(function (r) { return r.known; }).map(function (r) { return r.delivered; }).sort(function (a, b) { return a - b; });
+      return { n: list.length, cheap: k[0], med: k.length ? k[Math.floor(k.length / 2)] : null, unknown: list.length - k.length }; }
+    var au = seg(all.filter(function (r) { return r.loc === 'AU'; })), ww = seg(all);
+    var overall = all.filter(function (r) { return r.known; }).sort(function (a, b) { return a.delivered - b.delivered; })[0];
+    var box = 'border:1px solid var(--line,#333);border-radius:12px;padding:14px;background:var(--panel2,#1a1a1a);';
+    var head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
+    var note = mode === 'sold' ? 'SOLD — actual recent sales' : 'ASKING — current listings (not sold)' + (ebaySoldOff ? ' · sold prices need eBay Marketplace Insights access' : '');
+    var html = '<div style="' + box + '">';
+    html += '<div style="' + head + '">eBay comps · delivered incl. shipping · AUD</div>';
+    html += '<div style="font-size:11px;color:var(--muted,#888);margin:3px 0 10px;">' + note + '</div>';
+    if (overall) {
+      html += '<div style="border:1px solid var(--gold,#c8aa6e);border-radius:9px;padding:10px 12px;margin-bottom:12px;background:rgba(200,170,110,.08);">'
+        + '<div style="color:var(--gold,#c8aa6e);font-weight:700;font-size:14px;">Cheapest delivered: ' + ebMoney(overall.delivered) + '</div>'
+        + '<div style="font-size:12px;color:var(--text,#eee);margin-top:3px;">item ' + ebMoney(overall.price) + ' + ship ' + ebMoney(overall.ship) + (overall.loc && overall.loc !== '?' ? ' · ' + overall.loc : '') + '</div>'
+        + '<div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">List with <b style="color:var(--gold,#c8aa6e);">FREE shipping under ' + ebMoney(overall.delivered) + '</b> to be the cheapest total a buyer pays.</div>'
+        + '</div>';
+    }
+    function segRow(label, s){ if (!s.n) return '';
+      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-top:1px solid var(--line,#333);">'
+        + '<span style="color:var(--muted,#888);">' + label + ' <span style="opacity:.65;">(' + s.n + ')</span></span>'
+        + '<span style="font-weight:600;text-align:right;">' + (s.cheap != null ? 'cheapest ' + ebMoney(s.cheap) : '—') + (s.med != null ? ' · median ' + ebMoney(s.med) : '') + '</span></div>'; }
+    html += segRow('🇦🇺 Australia', au) + segRow('🌏 Worldwide', ww);
+    if (ww.unknown) html += '<div style="font-size:11px;color:var(--muted,#888);margin-top:6px;">' + ww.unknown + ' listing(s) with calculated/unknown shipping — excluded from delivered totals.</div>';
+    var top = all.filter(function (r) { return r.known; }).sort(function (a, b) { return a.delivered - b.delivered; }).slice(0, 3);
+    if (top.length) {
+      html += '<div style="' + head + 'margin:12px 0 6px;border-top:1px solid var(--line,#333);padding-top:10px;">Cheapest delivered</div>';
+      top.forEach(function (r) { var t = esc((r.title || '').slice(0, 54));
+        html += '<div style="font-size:12px;padding:3px 0;line-height:1.4;">' + ebMoney(r.delivered)
+          + ' <span style="color:var(--muted,#888);">= ' + ebMoney(r.price) + ' + ' + ebMoney(r.ship) + ' ship · ' + esc(r.loc || '?') + '</span>'
+          + (r.url ? ' <a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">↗</a>' : '')
+          + '<div style="color:var(--muted,#888);font-size:11px;">' + t + '</div></div>'; });
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  // TCG.ebayComps({ query, container, status }) -> renders delivered comps; returns {count,mode,cheapestDelivered}.
+  TCG.ebayComps = async function (opts) {
+    opts = opts || {};
+    var q = (opts.query || '').trim(), el = opts.container, st = opts.status;
+    function S(cls, msg){ if (st) { st.className = 'status ' + cls; st.textContent = msg; } }
+    if (!q) { S('warn', 'Look up or enter a card first.'); return; }
+    var filt = opts.filter ? '&filter=' + encodeURIComponent(opts.filter) : '';   // e.g. "conditions:{NEW}" for Funko
+    S('load', 'Searching eBay comps…');
+    try {
+      var rows = null, mode = 'asking';
+      if (!ebaySoldOff) {
+        try {
+          var rs = await fetch('/api/ebay/buy/marketplace_insights/v1_beta/item_sales/search?limit=50&q=' + encodeURIComponent(q) + filt);
+          if (rs.ok) { var js = await rs.json(); rows = (js.itemSales || []).map(ebNormSold).filter(Boolean); mode = 'sold'; }
+          else { ebaySoldOff = true; try { await rs.text(); } catch (_) {} }   // drain body; 403 invalid_scope -> no Insights access
+        } catch (e) { ebaySoldOff = true; }
+      }
+      if (!rows) {
+        var rb = await fetch('/api/ebay/buy/browse/v1/item_summary/search?limit=50&q=' + encodeURIComponent(q) + filt);
+        if (rb.status === 503) { S('warn', 'eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.'); return; }
+        if (!rb.ok) { var d = ''; try { var ej = await rb.json(); d = ej.detail || ej.error || ''; } catch (e) {} S('warn', 'eBay lookup failed (' + rb.status + ')' + (d ? ': ' + d : '') + '. Fields still work.'); return; }
+        var jb = await rb.json(); rows = (jb.itemSummaries || []).map(ebNormAsk).filter(Boolean); mode = 'asking';
+      }
+      if (!rows.length) { S('warn', 'No eBay comps for "' + q + '".'); if (el) el.innerHTML = ''; return; }
+      renderEbayComps(el, rows, mode);
+      var cheap = rows.filter(function (r) { return r.ship != null; }).map(function (r) { return r.price + r.ship; }).sort(function (a, b) { return a - b; })[0];
+      S('ok', '✓ ' + rows.length + ' eBay ' + (mode === 'sold' ? 'sold' : 'asking') + ' comps' + (cheap != null ? ' · cheapest delivered ' + ebMoney(cheap) : ''));
+      return { count: rows.length, mode: mode, cheapestDelivered: cheap };
+    } catch (e) { S('err', 'eBay lookup blocked (proxy not running?).'); }
+  };
+
   TCG.condCode=function(s){
     s=(s||'').trim();var l=s.toLowerCase();
     var g=l.match(/(psa|cgc|bgs|sgc)\s*([0-9]+(?:\.5)?)/);

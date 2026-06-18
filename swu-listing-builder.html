@@ -119,6 +119,8 @@
       </div>
       <iframe id="preview"></iframe>
       <div id="extras" style="margin-top:16px;"></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide. Sold where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button></div>
+      <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
 </div>
@@ -169,6 +171,14 @@ function readFields(){
     variant:val('f_variant'),type:val('f_type'),aspect:val('f_aspect'),arena:val('f_arena'),
     traits:val('f_traits'),cost:val('f_cost'),power:val('f_power'),hp:val('f_hp'),
     lang:val('f_lang'),cond:val('f_cond'),pitch:val('f_pitch')};
+}
+function findEbay(){
+  const f=readFields(), st=document.getElementById('status');
+  if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
+  const nm=(f.name||'').replace(/\s*-\s*/g,' ').trim();             // "Luke Skywalker - Faithful Friend" -> "...Friend"
+  const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  const q=('Star Wars Unlimited '+nm+(setName?' '+setName:'')).trim();
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st});
 }
 
 function genPitch(f, rawRarity){

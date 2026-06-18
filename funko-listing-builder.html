@@ -146,6 +146,7 @@
       <iframe id="preview"></iframe>
       <div id="specifics" style="margin-top:16px;"></div>
       <div id="extras"></div>
+      <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
 </div>
@@ -419,38 +420,12 @@ function renderExtrasAll(prices){
 }
 
 async function findComps(){
-  var st=document.getElementById('status');
-  var f=readFields();
+  var st=document.getElementById('status'), f=readFields();
   if(!f.character){st.className='status warn';st.textContent='Enter a character/name first.';return;}
   var q=('Funko Pop '+f.character+(f.popnum?' '+f.popnum:'')+(f.franchise?' '+f.franchise:'')).trim();
-  st.className='status load';st.textContent='Searching eBay comps…';
-  try{
-    // VERIFY LIVE: add &category_ids=<AU action-figure id> once confirmed via the Taxonomy API.
-    var url='/api/ebay/buy/browse/v1/item_summary/search?limit=25&q='+encodeURIComponent(q)+'&filter='+encodeURIComponent('conditions:{NEW}');
-    var r=await fetch(url);
-    if(r.status===503){st.className='status warn';st.textContent='eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.';return;}
-    if(!r.ok){
-      var detail='';try{var ej=await r.json();detail=ej.detail||ej.error||'';}catch(e){}
-      st.className='status warn';st.textContent='eBay lookup failed ('+r.status+')'+(detail?': '+detail:'')+'. Fields still work.';
-      console.warn('eBay comps error',r.status,detail);return;
-    }
-    var j=await r.json();
-    var items=j.itemSummaries||[];
-    if(!items.length){st.className='status warn';st.textContent='No eBay comps found for "'+q+'".';renderExtrasAll([]);return;}
-    var nums=items.map(function(it){return it.price&&parseFloat(it.price.value);}).filter(function(x){return x>0;}).sort(function(a,b){return a-b;});
-    var prices=[];
-    if(nums.length){
-      var med=nums[Math.floor(nums.length/2)];
-      var cur=(items[0].price&&items[0].price.currency)||'AUD';
-      prices.push({label:'eBay asking (median of '+nums.length+', NOT sold)',amount:med,currency:cur});
-      prices.push({label:'eBay asking (low)',amount:nums[0],currency:cur});
-    }
-    var img=items[0].image&&items[0].image.imageUrl;
-    if(img)_pickImg=_pickImg||img;
-    var imgs=[]; if(_pickImg)imgs.push({label:'Catalog',url:_pickImg}); if(img&&img!==_pickImg)imgs.push({label:'eBay comp',url:img});
-    if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:val('f_character')||'funko',images:imgs,prices:prices,history:null});
-    st.className='status ok';st.textContent='✓ '+nums.length+' comps · median '+(prices[0]?prices[0].currency+' '+prices[0].amount.toFixed(2):'n/a')+' (asking)';
-  }catch(e){st.className='status err';st.textContent='eBay lookup blocked (proxy not running?).';}
+  renderExtrasAll([]);   // keep the catalog image in #extras; comps render into #ebayextras
+  // NEW-condition filter: boxed Funko Pops are the comparable market (singles aren't graded like cards).
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st, filter:'conditions:{NEW}'});
 }
 
 function copyHTML(){copy(lastHTML,'HTML copied!');}

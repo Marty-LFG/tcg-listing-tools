@@ -518,85 +518,15 @@ function mapRiftscribeCard(c){
   regenTitle();
 }
 
-// ---------- eBay comps (delivered totals incl. shipping; SOLD where available, else ASKING) ----------
-let _ebaySoldOff=false;   // set true once we learn Marketplace Insights isn't granted (no retry this session)
-function ebMoney(n){ return 'A$'+(Math.round(n*100)/100).toFixed(2); }
-function ebShip(opt){ const so=(opt||[])[0]; return (so&&so.shippingCost&&so.shippingCost.value!=null)?parseFloat(so.shippingCost.value):null; } // null = calculated/unknown
-function ebNormAsk(it){ const price=it.price&&parseFloat(it.price.value); if(!(price>0))return null;
-  return {price, ship:ebShip(it.shippingOptions), loc:(it.itemLocation&&it.itemLocation.country)||'?', title:it.title||'', url:it.itemWebUrl||''}; }
-function ebNormSold(s){ const lp=s.lastSoldPrice, price=lp&&parseFloat(lp.value); if(!(price>0))return null;
-  return {price, ship:ebShip(s.shippingOptions), loc:(s.itemLocation&&s.itemLocation.country)||'?', title:s.title||'', url:s.itemWebUrl||'', date:s.lastSoldDate||''}; }
-
-async function findRBComps(){
-  const st=document.getElementById('status'), f=readFields();
+// ---------- eBay comps (shared TCG.ebayComps; delivered totals incl. shipping + undercut) ----------
+function findRBComps(){
+  const f=readFields(), st=document.getElementById('status');
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
-  // eBay titles rarely include the collector number or set CODE (e.g. "001 OGN" -> 0 hits),
-  // so search by the base/champion name (subtitle stripped) + set NAME.
-  const nm=(f.name||'').split(' - ')[0].split(',')[0].replace(/[^\w '’-]/g,' ').replace(/\s+/g,' ').trim();
-  const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  // eBay titles rarely include the collector number or set CODE, so search name + set NAME.
+  const nm=(f.name||'').split(' - ')[0].split(',')[0].replace(/[^w '’-]/g,' ').replace(/s+/g,' ').trim();
+  const setName=(f.set||'').replace(/s*([^)]*)s*$/,'').trim();
   const q=('Riftbound '+nm+(setName?' '+setName:'')).trim();
-  st.className='status load';st.textContent='Searching eBay comps…';
-  try{
-    let rows=null, mode='asking';
-    // 1) Prefer true SOLD comps (Marketplace Insights) — only if our app is granted access.
-    if(!_ebaySoldOff){
-      try{
-        const r=await fetch('/api/ebay/buy/marketplace_insights/v1_beta/item_sales/search?limit=50&q='+encodeURIComponent(q));
-        if(r.ok){ const j=await r.json(); rows=(j.itemSales||[]).map(ebNormSold).filter(Boolean); mode='sold'; }
-        else { _ebaySoldOff=true; try{ await r.text(); }catch(_){} }   // drain unused body; 403 invalid_scope -> no Insights access, don't retry
-      }catch(e){ _ebaySoldOff=true; }
-    }
-    // 2) Fall back to current ASKING listings (Browse).
-    if(!rows){
-      const r=await fetch('/api/ebay/buy/browse/v1/item_summary/search?limit=50&q='+encodeURIComponent(q));
-      if(r.status===503){st.className='status warn';st.textContent='eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.';return;}
-      if(!r.ok){let d='';try{const ej=await r.json();d=ej.detail||ej.error||'';}catch(e){} st.className='status warn';st.textContent='eBay lookup failed ('+r.status+')'+(d?': '+d:'')+'. Fields still work.';return;}
-      const j=await r.json(); rows=(j.itemSummaries||[]).map(ebNormAsk).filter(Boolean); mode='asking';
-    }
-    if(!rows.length){st.className='status warn';st.textContent='No eBay comps for "'+q+'".';document.getElementById('ebayextras').innerHTML='';return;}
-    renderEbayComps(rows, mode);
-    const cheap=rows.filter(r=>r.ship!=null).map(r=>r.price+r.ship).sort((a,b)=>a-b)[0];
-    st.className='status ok';st.textContent='✓ '+rows.length+' eBay '+(mode==='sold'?'sold':'asking')+' comps'+(cheap!=null?' · cheapest delivered '+ebMoney(cheap):'');
-  }catch(e){st.className='status err';st.textContent='eBay lookup blocked (proxy not running?).';}
-}
-
-function renderEbayComps(rows, mode){
-  const el=document.getElementById('ebayextras'); if(!el)return;
-  const all=rows.map(r=>({...r, delivered:r.price+(r.ship||0), known:r.ship!=null}));
-  function seg(list){ const k=list.filter(r=>r.known).map(r=>r.delivered).sort((a,b)=>a-b);
-    return {n:list.length, cheap:k[0], med:k.length?k[Math.floor(k.length/2)]:null, unknown:list.length-k.length}; }
-  const au=seg(all.filter(r=>r.loc==='AU')), ww=seg(all);
-  const overall=all.filter(r=>r.known).sort((a,b)=>a.delivered-b.delivered)[0];   // cheapest delivered overall
-  const box='border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--panel2);';
-  const head='font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;';
-  const note = mode==='sold' ? 'SOLD — actual recent sales' : 'ASKING — current listings (not sold)'+(_ebaySoldOff?' · sold prices need eBay Marketplace Insights access':'');
-  let html='<div style="'+box+'">';
-  html+='<div style="'+head+'">eBay comps · delivered incl. shipping · AUD</div>';
-  html+='<div style="font-size:11px;color:var(--muted);margin:3px 0 10px;">'+note+'</div>';
-  if(overall){
-    html+='<div style="border:1px solid var(--gold);border-radius:9px;padding:10px 12px;margin-bottom:12px;background:rgba(200,170,110,.08);">'
-      +'<div style="color:var(--gold);font-weight:700;font-size:14px;">Cheapest delivered: '+ebMoney(overall.delivered)+'</div>'
-      +'<div style="font-size:12px;color:var(--text);margin-top:3px;">item '+ebMoney(overall.price)+' + ship '+ebMoney(overall.ship)+(overall.loc&&overall.loc!=='?'?' · '+overall.loc:'')+'</div>'
-      +'<div style="font-size:12px;color:var(--muted);margin-top:6px;">List with <b style="color:var(--gold);">FREE shipping under '+ebMoney(overall.delivered)+'</b> to be the cheapest total a buyer pays.</div>'
-      +'</div>';
-  }
-  function segRow(label,s){ if(!s.n)return '';
-    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-top:1px solid var(--line);">'
-      +'<span style="color:var(--muted);">'+label+' <span style="opacity:.65;">('+s.n+')</span></span>'
-      +'<span style="font-weight:600;text-align:right;">'+(s.cheap!=null?'cheapest '+ebMoney(s.cheap):'—')+(s.med!=null?' · median '+ebMoney(s.med):'')+'</span></div>'; }
-  html+=segRow('🇦🇺 Australia',au)+segRow('🌏 Worldwide',ww);
-  if(ww.unknown)html+='<div style="font-size:11px;color:var(--muted);margin-top:6px;">'+ww.unknown+' listing(s) with calculated/unknown shipping — excluded from delivered totals.</div>';
-  const top=all.filter(r=>r.known).sort((a,b)=>a.delivered-b.delivered).slice(0,3);
-  if(top.length){
-    html+='<div style="'+head+'margin:12px 0 6px;border-top:1px solid var(--line);padding-top:10px;">Cheapest delivered</div>';
-    top.forEach(r=>{ const t=esc((r.title||'').slice(0,54));
-      html+='<div style="font-size:12px;padding:3px 0;line-height:1.4;">'+ebMoney(r.delivered)
-        +' <span style="color:var(--muted);">= '+ebMoney(r.price)+' + '+ebMoney(r.ship)+' ship · '+esc(r.loc||'?')+'</span>'
-        +(r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener" style="color:var(--gold);text-decoration:none;">↗</a>':'')
-        +'<div style="color:var(--muted);font-size:11px;">'+t+'</div></div>'; });
-  }
-  html+='</div>';
-  el.innerHTML=html;
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st});
 }
 
 function modeChanged(){const d=val('c_mode')==='direct';
