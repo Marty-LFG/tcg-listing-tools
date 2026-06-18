@@ -25,8 +25,8 @@ Pieces:
   prices (with live AUD conversion), and a price-trend graph (Riftbound only).
 - **Two collectibles builders** — `lego-listing-builder.html` (set-number lookup
   via Rebrickable + Brickset + BrickLink new/used pricing) and
-  `funko-listing-builder.html` (offline catalog autocomplete + manual flags +
-  eBay AU price comps). Same shape as the card builders, but with a
+  `funko-listing-builder.html` (hybrid offline-catalog + live-eBay autocomplete +
+  manual flags + eBay AU price comps). Same shape as the card builders, but with a
   collectibles condition/postage model and a copy-paste **item-specifics** block.
 - **`extras.js`** — shared `TCG.*` module used by all six builders.
 - **`vite.config.js`** — the dev-server proxies + image-streaming, BrickLink
@@ -116,7 +116,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `swu-listing-builder.html` | Star Wars: Unlimited builder (swu-db). |
 | `riftbound-listing-builder.html` | Riftbound builder. Largest file — embeds offline card data for the first 3 sets, plus live Scrydex for all sets. Only builder with a price-trend graph. |
 | `lego-listing-builder.html` | LEGO set builder. Set-number lookup → Rebrickable (core) + Brickset (RRP/age) + BrickLink (new/used market price). LEGO condition/postage model + item-specifics block. |
-| `funko-listing-builder.html` | Funko Pop builder. Offline-catalog autocomplete (name/series/image) + manual number/exclusive/flags; eBay Browse price comps. Funko condition/postage model + item-specifics block. |
+| `funko-listing-builder.html` | Funko Pop builder. **Hybrid** autocomplete — instant offline catalog + live eBay Browse search (post-2021 coverage; parses name/franchise/Pop#/image from listing titles) — + manual number/exclusive/flags; eBay Browse price comps. Funko condition/postage model + item-specifics block. |
 | `data/funko_pop.json` | Vendored, filtered Funko catalog (~11k Pop vinyls). Built by `scripts/build-funko-data.mjs` from the MIT `kennymkchan/funko-pop-data` dump. Frozen at 2021. Fetched same-origin (no proxy). |
 | `scripts/build-funko-data.mjs` | Rebuilds `data/funko_pop.json` from upstream (filter to Pop! vinyl, derive franchise/exclusive/chase). |
 | `extras.js` | Shared `TCG.*` module: images/prices/graph panel, FX, title-fitting, card `condCode`/`langCode`, plus `legoCondToken`/`funkoCondToken` and `renderItemSpecifics`. Loaded by each builder via `<script src="/extras.js">`. |
@@ -147,7 +147,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/lego/rebrickable` | `rebrickable.com/api/v3/lego` | Injects `Authorization: key <REBRICKABLE_API_KEY>`. LEGO set/minifig lookup. |
 | `/api/lego/brickset` | `brickset.com/api/v3.asmx` | Appends `apiKey` (a **query param**) in `rewrite()`; client sends `userHash=`. RRP/age/dims. |
 | `/api/lego/bricklink` | (middleware) | **OAuth1 HMAC-SHA1 signing** per request (4 BrickLink creds). New/used price guide. Needs the server IP registered in the BrickLink console. |
-| `/api/ebay` | (middleware) | Mints+caches an **OAuth2 client-credentials** app token; injects `Bearer` + `X-EBAY-C-MARKETPLACE-ID`. Funko Browse pricing + Taxonomy item-specifics. |
+| `/api/ebay` | (middleware) | Mints+caches an **OAuth2 client-credentials** app token; injects `Bearer` + `X-EBAY-C-MARKETPLACE-ID`. Funko Browse pricing + live name search + Taxonomy item-specifics. **Production keys only** (`SBX-` sandbox keys fail the token mint with `invalid_client`; the middleware surfaces the real error instead of a blind 502). |
 
 **`extras.js` public surface** (`window.TCG`):
 
@@ -267,8 +267,11 @@ still works for manual entry. BrickLink also requires the dev server's outbound
 **IP to be registered** in the BrickLink API console, or calls 4xx.
 
 Injected as headers in `vite.config.js`. Browser never sees them. If a tool
-returns 401/403, the key is missing or wrong in `.env` — not a code bug. Never
-commit `.env`; never echo a real key into `.env.example` or source.
+returns 401/403, the key is missing or wrong in `.env` — not a code bug. For
+**eBay** specifically, the keys must be from a **Production** keyset (App ID =
+Client ID, Cert ID = Client Secret); sandbox keys (`SBX-`) fail the OAuth token
+mint with `invalid_client` and surface as a 502 with that detail. Never commit
+`.env`; never echo a real key into `.env.example` or source.
 
 ---
 

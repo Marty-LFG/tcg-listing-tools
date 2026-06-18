@@ -119,24 +119,44 @@ form, e.g. `75192-1`, since bare numbers 404 on Rebrickable/BrickLink).
   for sealed-vs-used market value. If AUD isn't honoured, the response
   `currency_code` drives the `/api/fx` conversion.
 
-## Funko Pop! — offline catalog + eBay comps
+## Funko Pop! — hybrid catalog (offline + live eBay) + eBay comps
 
 There is **no reliable Funko API** (hobbyDB has none and is anti-scrape; the
-community datasets are deprecated/frozen at 2021). The builder is **manual-first**.
+community datasets are deprecated/frozen at 2021 — verified Jun 2026: the
+`kennymkchan` data file's last *data* scrape was Jan 2021). The builder is
+**manual-first**, and the name search is now **hybrid**: instant offline catalog
++ live eBay results for anything newer.
 
 ### Offline catalog — `data/funko_pop.json` (no proxy; same-origin static)
 - Built by `scripts/build-funko-data.mjs` from MIT `kennymkchan/funko-pop-data`:
   filtered to **Pop! vinyl** lines (drops apparel/pins/plush/Pez and non-Pop
   products), ~11k records slimmed to `{ t:title, img, fr:franchise, ex:exclusive, ch:chase }`.
-- Frozen at **Jan 2021** — powers a name/series autocomplete that pre-fills
-  character / franchise / a candidate box image / chase; everything newer, plus
-  Pop number and exact exclusivity, is manual. Images hotlink `images.hobbydb.com`
-  (downloadable via `/api/img`); links can rot over time.
+- Frozen at **Jan 2021** — the *instant, no-key* layer of the autocomplete.
+  Re-running the build script does **not** add newer Pops (upstream is frozen);
+  post-2021 coverage comes from the live eBay layer below. Images hotlink
+  `images.hobbydb.com` (downloadable via `/api/img`); links can rot over time.
+
+### Live name search — eBay Browse  (proxy `/api/ebay`)
+- Same Browse endpoint as the comps below. As the user types (≥3 chars, debounced
+  350 ms, results cached per query), the builder queries
+  `item_summary/search?q=Funko Pop <typed>` and parses each `itemSummaries[]`
+  title into a catalog-like record: a cleaned candidate **name**, the **Pop #**
+  (`#NNN` regex), a known **franchise** (matched against a small allow-list), an
+  optional `(parenthetical)` **variant**, and the listing **image**. See
+  `parseLiveItem()` / `FUNKO_NOISE` / `FUNKO_FRANCHISES` in the builder.
+- Live rows show an `eBay #NNN` badge; picking one pre-fills name/franchise/Pop
+  number/image. It deliberately does **NOT** auto-set chase/exclusive (titles lie;
+  Golden Rule + INAD risk). Degrades to **offline-only** if keys are missing (503)
+  or the call fails — offline search always works.
 
 ### eBay Browse — live price comps + photo  (proxy `/api/ebay`)
 - Upstream: `https://api.ebay.com`. **Auth: OAuth2 client-credentials** app token
   (minted+cached by the middleware from `EBAY_APP_ID`/`EBAY_CERT_ID`), plus
-  `X-EBAY-C-MARKETPLACE-ID` (`EBAY_AU`).
+  `X-EBAY-C-MARKETPLACE-ID` (`EBAY_AU`). **Use PRODUCTION keys** — sandbox keys
+  (`SBX-`) against this production endpoint fail the token mint with
+  `invalid_client`; the middleware now surfaces that error verbatim (and to the
+  browser) instead of a blind 502, and short-circuits with a clear message if it
+  spots `SBX-` keys.
 - `GET /buy/browse/v1/item_summary/search?q=<name + #>&filter=conditions:{NEW}`
   → `itemSummaries[].{price:{value,currency},image:{imageUrl}}`. The builder shows
   the **median asking price** (NOT sold) in AUD and a comp photo. (Add

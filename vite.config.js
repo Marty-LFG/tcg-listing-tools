@@ -87,14 +87,35 @@ function bricklinkProxy(env) {
 let ebayTok = { value: '', exp: 0 }
 async function ebayToken(env) {
   if (ebayTok.value && Date.now() < ebayTok.exp) return ebayTok.value
-  const basic = Buffer.from((env.EBAY_APP_ID || '') + ':' + (env.EBAY_CERT_ID || '')).toString('base64')
+  // .trim() defends against a trailing space/newline pasted into .env — a stray
+  // char in the Basic header is silently rejected by eBay as invalid_client.
+  const appId = (env.EBAY_APP_ID || '').trim()
+  const certId = (env.EBAY_CERT_ID || '').trim()
+  // #1 cause of a token-mint failure: SANDBOX keys used against the PRODUCTION
+  // endpoint (or vice-versa). eBay encodes the environment in the key strings
+  // (PRD- = production, SBX- = sandbox); this proxy only ever calls production.
+  if (/SBX-/.test(appId) || /SBX-/.test(certId)) {
+    throw new Error('these look like SANDBOX keys (contain "SBX-") but the proxy calls the PRODUCTION eBay API. ' +
+      'Create a *Production* keyset at developer.ebay.com → Application Keys and use the PRD- App ID + Cert ID.')
+  }
+  const basic = Buffer.from(appId + ':' + certId).toString('base64')
   const r = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
     method: 'POST',
     headers: { Authorization: 'Basic ' + basic, 'Content-Type': 'application/x-www-form-urlencoded' },
     body: 'grant_type=client_credentials&scope=' + encodeURIComponent('https://api.ebay.com/oauth/api_scope'),
   })
-  if (!r.ok) throw new Error('token http ' + r.status)
-  const j = await r.json()
+  const text = await r.text()
+  if (!r.ok) {
+    // eBay returns JSON like {"error":"invalid_client","error_description":"client authentication failed"}.
+    let detail = text.slice(0, 300)
+    try { const e = JSON.parse(text); detail = [e.error, e.error_description].filter(Boolean).join(': ') || detail } catch {}
+    const hint = (r.status === 400 || r.status === 401)
+      ? ' — verify EBAY_APP_ID is the App ID (Client ID) and EBAY_CERT_ID the Cert ID (Client Secret) from your *Production* keyset, with no extra spaces.'
+      : ''
+    throw new Error('eBay OAuth token mint failed (HTTP ' + r.status + '): ' + detail + hint)
+  }
+  let j
+  try { j = JSON.parse(text) } catch { throw new Error('eBay OAuth token response was not JSON: ' + text.slice(0, 200)) }
   ebayTok = { value: j.access_token, exp: Date.now() + Math.max(0, (j.expires_in || 7200) - 60) * 1000 }
   return ebayTok.value
 }
@@ -106,7 +127,7 @@ function ebayProxy(env) {
         res.setHeader('content-type', 'application/json')
         res.setHeader('access-control-allow-origin', '*')
         try {
-          if (!env.EBAY_APP_ID || !env.EBAY_CERT_ID) {
+          if (!(env.EBAY_APP_ID || '').trim() || !(env.EBAY_CERT_ID || '').trim()) {
             res.statusCode = 503
             return res.end(JSON.stringify({ error: 'eBay keys not set in .env (EBAY_APP_ID, EBAY_CERT_ID)' }))
           }
@@ -115,15 +136,23 @@ function ebayProxy(env) {
           const r = await fetch('https://api.ebay.com' + req.url, {
             headers: {
               Authorization: 'Bearer ' + tok,
-              'X-EBAY-C-MARKETPLACE-ID': env.EBAY_MARKETPLACE || 'EBAY_AU',
+              'X-EBAY-C-MARKETPLACE-ID': (env.EBAY_MARKETPLACE || 'EBAY_AU').trim(),
               'Content-Type': 'application/json',
             },
           })
+          const body = await r.text()
+          // A non-2xx from the search itself (e.g. 400 bad filter, 401 scope) is
+          // passed through verbatim — log it so it's visible in journalctl.
+          if (!r.ok) console.error('[api/ebay] upstream HTTP ' + r.status + ' for ' + req.url + ' — ' + body.slice(0, 300))
           res.statusCode = r.status
-          res.end(await r.text())
+          res.end(body)
         } catch (e) {
+          // Token-mint / network failures land here. Log the real reason (so it
+          // shows in `journalctl -u tcg-tools`) and return it to the browser
+          // instead of an opaque 502 the client can't explain.
+          console.error('[api/ebay] proxy error:', e.message)
           res.statusCode = 502
-          res.end(JSON.stringify({ error: 'ebay proxy failed: ' + e.message }))
+          res.end(JSON.stringify({ error: 'eBay proxy failed', detail: e.message }))
         }
       })
     },

@@ -70,10 +70,13 @@
       <details style="margin-bottom:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);">
         <summary style="cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none;">About the data</summary>
         <div style="padding:0 14px 14px;font-size:11.5px;color:var(--muted);line-height:1.6;">
-          The name/series autocomplete uses a bundled offline catalog (<code>data/funko_pop.json</code>) that is
-          <b>frozen at Jan 2021</b> &mdash; anything newer must be typed manually. There is no reliable Funko API, so
-          <b>Pop number, exclusivity and flags are always yours to enter</b>. Live price comps come from eBay
-          (<code>/api/ebay</code>) and are <b>current asking prices, not sold</b>. Set <code>EBAY_APP_ID</code>/<code>EBAY_CERT_ID</code> in <code>.env</code> to enable them.
+          The name search blends a bundled <b>offline catalog</b> (<code>data/funko_pop.json</code>, ~11k Pops
+          frozen at Jan 2021) with <b>live eBay results</b> for anything newer — newer Pops carry an
+          <span class="badge" style="color:#27d3c4;border-color:#27d3c4;">eBay</span> tag and pre-fill a current
+          photo + the Pop number parsed from the listing. There is no reliable Funko API, so
+          <b>exclusivity and flags are always yours to confirm</b>. The live search and price comps both come from
+          eBay (<code>/api/ebay</code>); prices are <b>current asking, not sold</b>. Set <code>EBAY_APP_ID</code>/<code>EBAY_CERT_ID</code>
+          in <code>.env</code> to enable live results (offline search still works without them).
         </div>
       </details>
 
@@ -266,37 +269,130 @@ function renderSpecifics(){
   TCG.renderItemSpecifics(document.getElementById('specifics'),pairs);
 }
 
-// ---- offline catalog combobox ----
+// ---- hybrid combobox: instant offline catalog + live eBay (covers post-2021) ----
 var CATALOG=[]; var _curList=[]; var _active=-1; var _pickImg='';
+var _ebayOff=false, _liveFor={q:'',items:[]}, _liveCache={}, _liveTimer=null, _liveSeen=false, _catBase='';
 function catStatus(m){var e=document.getElementById('catStatus');if(e)e.textContent=m;}
 async function loadCatalog(){
   try{
     var r=await fetch('/data/funko_pop.json');
     if(!r.ok)throw new Error('http '+r.status);
     CATALOG=await r.json();
-    catStatus(CATALOG.length.toLocaleString()+' Pops (offline, to 2021)');
-  }catch(e){catStatus('catalog unavailable — type manually');}
+    _catBase=CATALOG.length.toLocaleString()+' Pops offline';
+    catStatus(_catBase+' · live eBay for newer');
+  }catch(e){_catBase='';catStatus('offline catalog unavailable — live eBay + manual entry only');}
 }
+function normName(s){return (''+(s||'')).toLowerCase().replace(/[^a-z0-9]+/g,'');}
 function filterCatalog(typed){
   var t=(typed||'').trim().toLowerCase(); if(!t)return [];
   var out=[];
-  for(var i=0;i<CATALOG.length&&out.length<40;i++){
+  for(var i=0;i<CATALOG.length&&out.length<30;i++){
     var r=CATALOG[i];
     if((r.t||'').toLowerCase().indexOf(t)>=0||(r.fr||'').toLowerCase().indexOf(t)>=0)out.push(r);
   }
   return out;
 }
+
+// --- live eBay result parsing: listing titles are messy, so extract only what's
+// reliable (Pop #NNN, a candidate name, a known franchise) and leave the rest to
+// the seller. We deliberately do NOT auto-set chase/exclusive from a title. ---
+var FUNKO_FRANCHISES=['Star Wars','Harry Potter','Game of Thrones','Stranger Things','My Hero Academia',
+  'Dragon Ball Super','Dragon Ball Z','Dragon Ball','Demon Slayer','One Piece','The Mandalorian','Lord of the Rings',
+  'Marvel','DC Comics','DC','Disney','Pixar','Pokemon','Naruto','Sailor Moon','Sonic','Star Trek','Avengers',
+  'Spider-Man','Batman','WWE','NBA','NFL','The Office','Friends'];
+// "Animation/Movies/Television/Heroes/Ad Icons/Rocks" are Funko *categories*, not
+// franchises — strip them as noise rather than treat them as a name.
+var FUNKO_NOISE=/\b(vinyl figure|vinyl|figure|bobble[\s-]?head|brand new|new in box|in box|boxed|sealed|mint condition|mint|nib|mib|misb|niob|vaulted|rare|htf|exclusive|in hand|in stock|fast (?:ship|post)\w*|free (?:ship\w*|post\w*)|with protector|w\/ ?protector|protector|common|chase|glow in the dark|gitd|flocked|metallic|diamond collection|diamond|6[\s-]?inch|authentic|genuine|collectib\w+|collectab\w+|hot topic|boxlunch|gamestop|walmart|funko shop|special edition|specialty series|amazon|fye|walgreens|chalice|entertainment earth|au stock|aus stock|animation|television|movies|ad icons|funko rocks|heroes|new|limited edition|first edition|anniversary|\d{1,2}(?:st|nd|rd|th)|\d{1,5} ?(?:pcs|pieces|piece)|\ble\b|\bfe\b|\btv\b|retired|damaged|not mint|loose|glitter|nycc|sdcc|eccc|c2e2|wondercon|(?:19|20)\d{2})\b/gi;
+// Tokens that disqualify a (parenthetical) from being treated as the variant.
+var FUNKO_VAR_REJECT=/^(tv|movie|movies|show|series|figure|vinyl|new|mint|sealed|loose|boxed|not mint|damaged|pcs|pieces|le|limited|edition|exclusive|protector|chase|common|us|uk|au)$/i;
+function reEsc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+function parseLiveItem(it){
+  if(!it||!it.title)return null;
+  var raw=it.title;
+  // Pop number: prefer "#NNN"; else the first bare 1-4 digit token that is not a
+  // year, not an "Nth", and not an edition count ("9500 PCS"). Bare numbers are
+  // common on post-2021 listings, so without this most newer Pops lose their #.
+  var popnum='';
+  var pm=raw.match(/#\s*(\d{1,5})\b/);
+  if(pm){popnum=pm[1];}
+  else{
+    var nre=/\b(\d{1,4})\b/g, mm;
+    while((mm=nre.exec(raw))){
+      var n=mm[1], after=raw.slice(nre.lastIndex, nre.lastIndex+10).toLowerCase();
+      if(/^(?:19|20)\d{2}$/.test(n))continue;                 // year
+      if(/^\s*(?:pcs|pieces|piece|pc)\b/.test(after))continue; // edition count
+      if(/^(?:st|nd|rd|th)\b/.test(after.replace(/^\s+/,'')))continue; // "30th"
+      popnum=n;break;
+    }
+  }
+  // Variant: first parenthetical that isn't a category/condition token.
+  var variant='', pars=raw.match(/\(([^)]{2,40})\)/g)||[];
+  for(var pi=0;pi<pars.length;pi++){
+    var inner=pars[pi].slice(1,-1).trim();
+    if(!FUNKO_VAR_REJECT.test(inner)){variant=inner;break;}
+  }
+  var s=raw.replace(/\([^)]*\)/g,' ').replace(/#\s*\d{1,5}\b/g,' ');
+  if(popnum)s=s.replace(new RegExp('\\b'+popnum+'\\b'),' ');  // drop the bare number we used
+  s=s.replace(/^\s*funko\s*pop!?\s*(?:vinyl)?\s*/i,' ').replace(/\bfunko\b/gi,' ').replace(/\bpop!?\b/gi,' ');
+  s=s.replace(FUNKO_NOISE,' ');
+  var fr='';
+  for(var i=0;i<FUNKO_FRANCHISES.length;i++){
+    var re=new RegExp('\\b'+reEsc(FUNKO_FRANCHISES[i])+'\\b','i');
+    if(re.test(s)){fr=FUNKO_FRANCHISES[i];s=s.replace(re,' ');break;}
+  }
+  s=s.replace(/[!+&*]/g,' ').replace(/[\-–—|,:_/]+/g,' ').replace(/\s{2,}/g,' '); // stray symbols from "Pop!" etc.
+  s=s.replace(/\b(\w+)\s+\1\b/gi,'$1');                       // "Wednesday - Wednesday" -> "Wednesday"
+  s=s.replace(/\s{2,}/g,' ').replace(/^[\s\-–—|,:_/!+&]+|[\s\-–—|,:_/!+&]+$/g,'').trim();
+  if(s.length>60)s=s.slice(0,60).trim();
+  if(!s)return null;
+  return {t:s,img:(it.image&&it.image.imageUrl)||'',fr:fr,popnum:popnum,variant:variant,ex:'',src:'live'};
+}
+// Offline matches first (instant); de-duped live matches appended below.
+function buildList(typed){
+  var off=filterCatalog(typed);
+  var live=(_liveFor.q===(typed||'').trim().toLowerCase())?_liveFor.items:[];
+  var seen={}; off.forEach(function(r){seen[normName(r.t)]=1;});
+  var liveF=[]; live.forEach(function(r){var k=normName(r.t);if(k&&!seen[k]){seen[k]=1;liveF.push(r);}});
+  return off.concat(liveF);
+}
 function markActive(opts){opts.forEach(function(o,i){o.classList.toggle('active',i===_active);});if(_active>=0&&opts[_active])opts[_active].scrollIntoView({block:'nearest'});}
-function renderMenu(typed){
-  var menu=document.getElementById('popMenu');if(!menu)return;_curList=filterCatalog(typed);_active=-1;
+function paintMenu(typed){
+  var menu=document.getElementById('popMenu');if(!menu)return;
+  _curList=buildList(typed);_active=-1;
   if(!_curList.length){menu.classList.remove('open');menu.innerHTML='';return;}
   menu.innerHTML=_curList.map(function(r,i){
     var img=r.img?'<img src="'+esc(r.img)+'" alt="" loading="lazy">':'<span style="width:30px;flex:none;"></span>';
-    var badges=(r.ex?'<span class="badge">'+esc(r.ex)+'</span>':'')+(r.ch?'<span class="badge">Chase</span>':'');
-    return '<div class="popopt" data-i="'+i+'">'+img+'<span style="min-width:0;"><span class="nm">'+esc(r.t)+'</span>'+badges+'<br><span class="meta">'+esc(r.fr||'')+'</span></span></div>';
+    var badges=(r.src==='live'?'<span class="badge" style="color:#27d3c4;border-color:#27d3c4;">eBay'+(r.popnum?' #'+esc(r.popnum):'')+'</span>':'')+
+      (r.ex?'<span class="badge">'+esc(r.ex)+'</span>':'')+(r.ch?'<span class="badge">Chase</span>':'');
+    var meta=r.src==='live'?(r.fr?esc(r.fr)+' · live listing':'live eBay listing'):esc(r.fr||'');
+    return '<div class="popopt" data-i="'+i+'">'+img+'<span style="min-width:0;"><span class="nm">'+esc(r.t)+'</span>'+badges+'<br><span class="meta">'+meta+'</span></span></div>';
   }).join('');
   menu.classList.add('open');
   menu.querySelectorAll('.popopt').forEach(function(el){el.addEventListener('mousedown',function(ev){ev.preventDefault();pick(parseInt(el.getAttribute('data-i'),10));});});
+}
+function renderMenu(typed){ paintMenu(typed); scheduleLive(typed); }
+function scheduleLive(typed){
+  var q=(typed||'').trim(); clearTimeout(_liveTimer);
+  if(_ebayOff||q.length<3)return;
+  var key=q.toLowerCase();
+  if(_liveCache[key]){_liveFor={q:key,items:_liveCache[key]};paintMenu(typed);return;}
+  _liveTimer=setTimeout(function(){liveSearch(q);},350);
+}
+async function liveSearch(q){
+  var key=q.toLowerCase();
+  try{
+    var url='/api/ebay/buy/browse/v1/item_summary/search?limit=15&q='+encodeURIComponent('Funko Pop '+q);
+    var r=await fetch(url);
+    if(r.status===503){_ebayOff=true;return;}       // no keys → silently offline-only
+    if(!r.ok)return;                                 // 502/4xx → keep offline results
+    var j=await r.json();
+    var items=(j.itemSummaries||[]).map(parseLiveItem).filter(Boolean);
+    var seen={},dd=[]; items.forEach(function(it){var k=normName(it.t);if(k&&!seen[k]){seen[k]=1;dd.push(it);}});
+    _liveCache[key]=dd; _liveFor={q:key,items:dd};
+    if(!_liveSeen&&dd.length&&_catBase){_liveSeen=true;catStatus(_catBase+' + live eBay');}
+    // only repaint if the box still shows this query (avoid clobbering a newer one)
+    if((document.getElementById('popq').value||'').trim().toLowerCase()===key)paintMenu(q);
+  }catch(e){/* live is best-effort; offline results already shown */}
 }
 function closeMenu(){var m=document.getElementById('popMenu');if(m)m.classList.remove('open');}
 function pick(i){
@@ -304,7 +400,9 @@ function pick(i){
   var full=r.t||''; var m=full.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
   if(m){set('f_character',m[1].trim());if(!val('f_variant'))set('f_variant',m[2].trim());}
   else set('f_character',full);
+  if(r.variant&&!val('f_variant'))set('f_variant',r.variant);
   if(r.fr&&!val('f_franchise'))set('f_franchise',r.fr);
+  if(r.popnum&&!val('f_popnum'))set('f_popnum',r.popnum);
   if(r.ex&&!val('f_exclusive'))set('f_exclusive',r.ex);
   if(r.ch)document.getElementById('f_chase').checked=true;
   _pickImg=r.img||'';
@@ -331,7 +429,11 @@ async function findComps(){
     var url='/api/ebay/buy/browse/v1/item_summary/search?limit=25&q='+encodeURIComponent(q)+'&filter='+encodeURIComponent('conditions:{NEW}');
     var r=await fetch(url);
     if(r.status===503){st.className='status warn';st.textContent='eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.';return;}
-    if(!r.ok){st.className='status warn';st.textContent='eBay lookup failed ('+r.status+'). Fields still work.';return;}
+    if(!r.ok){
+      var detail='';try{var ej=await r.json();detail=ej.detail||ej.error||'';}catch(e){}
+      st.className='status warn';st.textContent='eBay lookup failed ('+r.status+')'+(detail?': '+detail:'')+'. Fields still work.';
+      console.warn('eBay comps error',r.status,detail);return;
+    }
     var j=await r.json();
     var items=j.itemSummaries||[];
     if(!items.length){st.className='status warn';st.textContent='No eBay comps found for "'+q+'".';renderExtrasAll([]);return;}
