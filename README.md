@@ -9,7 +9,7 @@ server-side (in the proxy config, never shipped to the client).
 
 ```bash
 pnpm install
-cp .env.example .env   # then fill in your Scrydex key (only needed for Riftbound)
+cp .env.example .env   # all keys optional — Riftbound works keyless; Scrydex adds pricing
 pnpm dev
 ```
 
@@ -19,7 +19,8 @@ Vite opens the landing page. Pick a builder.
 
 - `/api/swu/*`  is proxied to `https://api.swu-db.com/*`  (no auth)
 - `/api/rb/*`   is proxied to `https://api.scrydex.com/riftbound/v1/*`, with
-  `X-Api-Key` / `X-Team-ID` injected from `.env`
+  `X-Api-Key` / `X-Team-ID` injected from `.env` (optional — Riftbound pricing only)
+- `/api/rbs/*`  is proxied to `https://riftscribe.gg/api/*`  (no auth — keyless Riftbound data)
 - `/api/mtg/*`  is proxied to `https://api.scryfall.com/*`  (no auth)
 - `/api/pkm/*`  is proxied to `https://api.pokemontcg.io/v2/*`  (no auth)
 - `/api/lego/rebrickable/*` → Rebrickable, `/api/lego/brickset/*` → Brickset
@@ -32,9 +33,11 @@ no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
 
 ## Notes
 
-- Riftbound has offline data embedded for Origins / Proving Grounds / Spiritforged
-  (works with no key). Connect Scrydex (Base URL already set to `/api/rb`) for every set
-  incl. Unleashed + live pricing.
+- Riftbound covers all four sets (Origins, Proving Grounds, Spiritforged, Unleashed)
+  with no key — via baked offline data (`data/riftbound.json`, rebuilt with
+  `node scripts/build-riftbound-data.mjs`) or the live keyless Riftscribe source. eBay
+  supplies AUD price comps. Scrydex is optional and only adds live market price + a trend
+  graph. Pick the source in the builder's "Data source" dropdown.
 - SWU is entirely live via swu-db; Base URL is preset to `/api/swu`.
 - Both builders always allow manual field entry; the preview builds regardless.
 
@@ -44,7 +47,7 @@ The dev server already binds to all interfaces (`host: true`, port `5273`).
 
 ```bash
 pnpm install
-cp .env.example .env     # add your Scrydex key (Riftbound only)
+cp .env.example .env     # optional keys — Riftbound works with no key
 pnpm dev
 ```
 

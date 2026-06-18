@@ -52,24 +52,51 @@ upstream — the builder uses the proxy prefix (e.g. `/api/pkm`).
   `Cost`, `Power`, `HP`, `Rarity`, `VariantType`, `MarketPrice`/`LowPrice` (USD),
   `FrontArt`, `BackArt` + `DoubleSided` (leaders/back art).
 
-## Riftbound — Scrydex  (proxy `/api/rb`)
+## Riftbound — three sources (default keyless)
 
-- Upstream: `https://api.scrydex.com/riftbound/v1`
-- Card: `GET /cards/{EXP-NUM}` (e.g. `OGN-296`).
-- Expansions: `GET /expansions`.
-- **Auth required:** `X-Api-Key` + `X-Team-ID` (injected from `.env`). No key →
-  no data.
-- Card fields used: `id`, `name`, `number`, `printed_number`, `domain`, `type`,
-  `rarity`, `rules`, `images[]{ small, medium, large }`, `expansion{ name, code }`,
-  `variants[]{ name (normal|foil), prices[]{ condition (NM…), market, currency,
-  trends{ days_1, days_7, days_30, days_90 { price_change, percent_change } } } }`.
-- **Offline fallback:** the builder embeds card data for the first 3 sets
-  (Origins/OGN, Proving Grounds, Spiritforged/SPF), so those work with no key.
-  Live Scrydex covers all sets (incl. later ones) and supplies pricing + the
-  trend graph.
-- Name handling: a card's `name` may include the subtitle (`"Kai'Sa - Survivor"`);
-  the alt-art print appends `"(Alternate Art)"`, which the builder strips for the
-  clean field and re-derives as the `(Alt Art)` title tag.
+The builder picks a `source` at runtime: **offline** (default) → **riftscribe** → **scrydex**.
+Coverage of all four sets (OGN Origins, OGS Proving Grounds, SFD Spiritforged, UNL Unleashed)
+is keyless; Scrydex is an optional pricing upgrade. An eBay AUD comps overlay works under any source.
+
+### 1. Offline baked — `data/riftbound.json` (default; no proxy, same-origin static)
+- Built by `scripts/build-riftbound-data.mjs` from the **official LoL card gallery** (keyless):
+  scrape `"buildId"` from `https://riftbound.leagueoflegends.com/en-us/card-gallery/`, then
+  `GET /_next/data/{buildId}/en-us/card-gallery.json`. The buildId rotates per Riot deploy, so the
+  script re-scrapes it each run. **Build-time only** — no runtime proxy.
+- ~943 cards across all 4 sets, with images (Riot CDN `cmsassets.rgpub.io`) and energy/might/power
+  stats (which Scrydex does NOT carry). No prices.
+- Shape: `{ [setCodeLower]: { name, code, cards:[{ k, num, name, rarity, type, domain, e, p, m, img }] } }`.
+  `k` mirrors the builder's `normNum` (leading zeros stripped, trailing letter/`*` kept). Alt-art
+  cards carry a `(Alternate Art)` name suffix, Overnumbered a `(Overnumbered)` one — the builder
+  strips these to derive the variant + a Foil finish (same path as Scrydex names).
+- Re-run `node scripts/build-riftbound-data.mjs` when a new set releases.
+
+### 2. Riftscribe — `/api/rbs` → `riftscribe.gg/api` (keyless live)
+- `GET /api/rbs/cards?limit=200&offset=N` (limit caps at 200; `X-Total-Count` header gives the total —
+  the builder pages through and buckets by `set_id`; there is no `/sets` endpoint).
+- Card: `{ id, name, set_id, collector_number, variant ('' | 'a' | 'star' | 't0n'), rarity, faction,
+  type, stats{energy,might,power}, image, image_thumb{small,medium,large} }`. No prices. Single
+  `faction` only — multi-domain cards may show one domain (the offline bake preserves both).
+- Community-hosted, no SLA — offline is the default, so riftscribe being down never blocks the tool.
+
+### 3. Scrydex — `/api/rb` → `api.scrydex.com/riftbound/v1` (OPTIONAL, key)
+- Card: `GET /cards/{EXP-NUM}` (e.g. `OGN-296`); expansions: `GET /expansions`. **Auth:**
+  `X-Api-Key` + `X-Team-ID` injected from `.env`.
+- Card fields used: `id`, `name`, `number`, `printed_number`, `domain`, `type`, `rarity`,
+  `images[]{small,medium,large}`, `expansion{name,code}`, `variants[]{ name (normal|foil),
+  prices[]{ condition (NM…), market, currency, trends{ days_1,7,30,90 { price_change, percent_change } } } }`.
+- The ONLY source with prices + the reconstructed price-trend graph. Now opt-in (connect in the UI).
+
+### Pricing — eBay AUD comps (`findRBComps`, via `/api/ebay`)
+- Source-agnostic overlay: `GET /api/ebay/buy/browse/v1/item_summary/search?q=<Riftbound name num CODE>`
+  → median + low **asking** price (NOT sold), AUD, rendered into `#ebayextras` so it never clobbers a
+  Scrydex trend graph. Button-triggered to protect the eBay quota.
+
+### Name handling (all sources)
+- A card's `name` may include the subtitle (`"Kai'Sa - Survivor"`). Alt-art appends `"(Alternate Art)"`,
+  Overnumbered `"(Overnumbered)"`; the builder strips these for the clean name field and re-derives the
+  variant + the `(Alt Art)`/`(Overnumbered)` title tag.
+
 
 ## FX rates — Frankfurter  (proxy `/api/fx`)
 

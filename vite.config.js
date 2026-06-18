@@ -214,6 +214,19 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
+        // Riftbound -> riftscribe.gg (community REST API, KEYLESS) — the no-key live
+        // alternative to Scrydex. /api/rbs/cards?... -> https://riftscribe.gg/api/cards?...
+        // MUST stay ABOVE '/api/rb': Vite matches proxy contexts by startsWith in order,
+        // and '/api/rb' is a prefix of '/api/rbs' — if rb were first it would swallow rbs.
+        '/api/rbs': {
+          target: 'https://riftscribe.gg',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/rbs/, '/api'),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) =>
+              console.log('[api/rbs]', req.url, '-> riftscribe.gg' + proxyReq.path))
+          },
+        },
         // Riftbound -> Scrydex (inject key + team headers server-side)
         '/api/rb': {
           target: 'https://api.scrydex.com',

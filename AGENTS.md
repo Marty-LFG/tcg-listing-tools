@@ -93,7 +93,7 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
 
 ```bash
 pnpm install
-cp .env.example .env        # add Scrydex keys for Riftbound; pokemontcg key optional
+cp .env.example .env        # all keys optional — Riftbound works keyless; Scrydex adds pricing
 pnpm dev                    # serves http://localhost:5273 (host:true → also on the LAN)
 ```
 
@@ -114,11 +114,13 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `pokemon-listing-builder.html` | Pokémon builder. Has the most-developed set picker (cached custom combobox with set symbols + printed-code search) and the large EN/JP language tile. |
 | `mtg-listing-builder.html` | Magic builder (Scryfall). |
 | `swu-listing-builder.html` | Star Wars: Unlimited builder (swu-db). |
-| `riftbound-listing-builder.html` | Riftbound builder. Largest file — embeds offline card data for the first 3 sets, plus live Scrydex for all sets. Only builder with a price-trend graph. |
+| `riftbound-listing-builder.html` | Riftbound builder. Three interchangeable sources (`source` ∈ `offline`/`riftscribe`/`scrydex`): **offline** = baked `data/riftbound.json` (default, all 4 sets, keyless, images + stats); **riftscribe** = `/api/rbs` live keyless; **scrydex** = `/api/rb` (optional key) for market price + the price-trend graph. eBay AUD comps overlay (`findRBComps`, renders into `#ebayextras`) works under any source. |
 | `lego-listing-builder.html` | LEGO set builder. Set-number lookup → Rebrickable (core) + Brickset (RRP/age) + BrickLink (new/used market price). LEGO condition/postage model + item-specifics block. |
 | `funko-listing-builder.html` | Funko Pop builder. **Hybrid** autocomplete — instant offline catalog + live eBay Browse search (post-2021 coverage; parses name/franchise/Pop#/image from listing titles) — + manual number/exclusive/flags; eBay Browse price comps. Funko condition/postage model + item-specifics block. |
 | `data/funko_pop.json` | Vendored, filtered Funko catalog (~11k Pop vinyls). Built by `scripts/build-funko-data.mjs` from the MIT `kennymkchan/funko-pop-data` dump. Frozen at 2021. Fetched same-origin (no proxy). |
 | `scripts/build-funko-data.mjs` | Rebuilds `data/funko_pop.json` from upstream (filter to Pop! vinyl, derive franchise/exclusive/chase). |
+| `data/riftbound.json` | Baked Riftbound catalog (~943 cards, all 4 sets), built by `scripts/build-riftbound-data.mjs` from the **official LoL card gallery** (keyless). Keyed by lowercase set code; per-card `{k,num,name,rarity,type,domain,e,p,m,img}`. Fetched same-origin. Default Riftbound source. |
+| `scripts/build-riftbound-data.mjs` | Rebuilds `data/riftbound.json`: scrapes the gallery Next.js `buildId`, fetches `card-gallery.json`, slims + groups by set. Re-run when a new set drops. |
 | `extras.js` | Shared `TCG.*` module: images/prices/graph panel, FX, title-fitting, card `condCode`/`langCode`, plus `legoCondToken`/`funkoCondToken` and `renderItemSpecifics`. Loaded by each builder via `<script src="/extras.js">`. |
 | `vite.config.js` | Dev-server config: `/api/*` proxies + `/api/img` streaming, BrickLink OAuth1-signing, and eBay OAuth2 token-minting middlewares + LAN host settings. |
 | `.env.example` | Placeholder env vars. Copy to `.env`. |
@@ -141,7 +143,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/pkm` | `api.pokemontcg.io/v2` | Optional `X-Api-Key` from `POKEMONTCG_API_KEY` (keyless works, lower limit). |
 | `/api/mtg` | `api.scryfall.com` | Adds `User-Agent` + `Accept`. No key. |
 | `/api/swu` | swu-db API | No key. |
-| `/api/rb`  | `api.scrydex.com/riftbound/v1` | Injects `X-Api-Key` + `X-Team-ID` from `.env`. Required. |
+| `/api/rb`  | `api.scrydex.com/riftbound/v1` | Injects `X-Api-Key` + `X-Team-ID` from `.env`. **Optional** — only for live Riftbound pricing + trend; coverage comes from baked data / riftscribe. |
+| `/api/rbs` | `riftscribe.gg/api` | Keyless community Riftbound card API (live alternative to Scrydex). No key. |
 | `/api/fx`  | `api.frankfurter.app` | FX rates for AUD conversion. No key. |
 | `/api/img` | (middleware) | Streams any remote image same-origin so the browser can blob-download it. |
 | `/api/lego/rebrickable` | `rebrickable.com/api/v3/lego` | Injects `Authorization: key <REBRICKABLE_API_KEY>`. LEGO set/minifig lookup. |
@@ -253,8 +256,8 @@ verified.
 `.env` (gitignored) holds:
 
 ```
-SCRYDEX_API_KEY=...      # required for Riftbound
-SCRYDEX_TEAM_ID=...      # required for Riftbound
+SCRYDEX_API_KEY=...      # optional — Riftbound live pricing + trend (coverage is keyless)
+SCRYDEX_TEAM_ID=...      # optional — pairs with SCRYDEX_API_KEY
 POKEMONTCG_API_KEY=...   # optional; raises pokemontcg.io limit to 20k/day
 REBRICKABLE_API_KEY=...  # LEGO lookup (self-service free key)
 BRICKSET_API_KEY=...     # LEGO RRP/age/dims (free key, may need approval)
