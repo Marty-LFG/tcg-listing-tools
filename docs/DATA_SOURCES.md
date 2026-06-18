@@ -240,6 +240,51 @@ community datasets are deprecated/frozen at 2021 — verified Jun 2026: the
 
 ---
 
+## Price tracker — local cache (`/api/tracker`, `data/tracker.db`)
+
+A local SQLite layer (`node:sqlite`) that snapshots card prices over time. Served by
+`trackerPlugin` (`lib/tracker.mjs`); the collector (`lib/collector.mjs`) **self-fetches the
+proxies above** on a schedule and persists results. Card-games only (Riftbound/MTG/Pokémon/SWU).
+
+### Endpoints
+- `GET /api/tracker/watchlist?game=&review=` — tracked cards + latest snapshot + sparkline.
+- `POST /api/tracker/watchlist` — `{game, identity_key, name, variant?, note?, source?, price?:{market,low,currency}}`. UNIQUE on `(game, identity_key, variant)`; returns `{id, created}`.
+- `PATCH /api/tracker/watchlist/:id` — `{active?, note?, review_status?}` (approve review-queue items).
+- `DELETE /api/tracker/watchlist/:id?hard=1` — soft-deactivate (default) or hard-delete.
+- `GET /api/tracker/history/:id?days=90` — `{series:[{daysAgo,price}], points:[...]}`.
+- `GET /api/tracker/cache/:id` — the latest full raw upstream payload cached for the card (`card_cache`).
+- `GET /api/tracker/signals?kind=&unacked=1&unnotified=1` — open signals joined to card.
+- `POST /api/tracker/refresh {id?}` — run a collection pass now.
+- `POST /api/tracker/signals/:id/ack` · `POST /api/tracker/notified {ids:[]}`.
+- `GET /api/tracker/export?days=90` — the bundle the Claude analyst reads.
+- `GET /api/tracker/config` — thresholds, cadence, `scrydex_enabled`.
+
+### Identity keys (what the collector re-fetches by)
+Riftbound `OGN-296` → `/api/rb/cards/OGN-296?include=prices`; MTG `neo-1` → `/api/mtg/cards/neo/1`;
+Pokémon `sv4-25` → `/api/pkm/cards/sv4-25`; SWU `sor/010` → `/api/swu/cards/sor/010`.
+
+### Per-game price mapping (mirrors `lib/normalize.mjs` — keep in sync, Golden Rule 9)
+- **Riftbound** (`scrydex`): variant `foil`/`normal` → `prices` where `condition==='NM'` → `market`,
+  `currency`, plus `trends.days_{1,7,30,90}.percent_change` stored as `pct_*`. 401/403 ⇒ `scrydex_unauthorized`.
+- **MTG** (`scryfall`): `usd` / `usd_foil` / `usd_etched` by finish (else `eur`).
+- **Pokémon** (`pokemontcg`): `tcgplayer.prices[bucket].market` (USD) → else `cardmarket.averageSellPrice` (EUR).
+- **SWU** (`swudb`): `MarketPrice` + `LowPrice` (USD).
+
+### `price_snapshots` row
+`{ ts, market, low, currency, market_aud, fx_usd_aud, source, pct_1d, pct_7d, pct_30d, pct_90d, raw }`.
+Native price + an AUD conversion (FX from `/api/fx`, the rate stored for audit). Signals
+(`opportunity`/`downtrend`/`momentum`) use Scrydex trend deltas when the Riftbound response
+carries them (Growth+ tier), else snapshot history — the same path the other games use
+(tier-agnostic) — against thresholds in `data/tracker.config.json`.
+
+### `card_cache` row
+`{ game, identity_key, fetched_at, http_status, source, payload }` — PK `(game, identity_key)`,
+upserted on **every successful fetch** (any source). `payload` is the full raw upstream JSON.
+A durable local copy of whatever the API returned; also conserves credits (Scrydex bills per
+request). The mapped price subset is still stored per-snapshot in `price_snapshots.raw`.
+
+---
+
 ## Pricing notes / gotchas
 
 - **eBay AU delivered-comps are shared** via `TCG.ebayComps()` in `extras.js` (see the

@@ -122,7 +122,7 @@
         <div class="btns"><button class="btn" onclick="copyText()">Copy plain text</button><button class="btn solid" onclick="copyHTML()">Copy HTML</button></div></div>
       <iframe id="preview"></iframe>
       <div id="extras" style="margin-top:16px;"></div>
-      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide. Sold where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide. Sold where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button> <button class="btn" onclick="addTrack()" title="Cache this card's price and track its trend over time">&#128202; Track price</button></div>
       <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
@@ -173,7 +173,18 @@ function findEbay(){
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
   const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();   // "Base Set (BS)" -> "Base Set"
   const q=('Pokemon '+f.name+(f.num?' '+f.num:'')+(setName?' '+setName:'')).trim();
-  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st});
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
+    analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'TCGplayer',
+    card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
+    // eBay conditionId 4000 = Ungraded (raw), 2750 = Graded. Default to raw Buy-It-Now so graded
+    // slabs and auctions don't skew the cluster; toggle to compare graded / all.
+    filterKey:'raw',
+    filterOptions:[
+      {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
+      {key:'rawAll', label:'Raw · incl. auctions', filter:'conditionIds:{4000}'},
+      {key:'graded', label:'Graded', filter:'conditionIds:{2750}'},
+      {key:'all',    label:'All listings', filter:''}
+    ]});
 }
 
 function genPitch(f){
@@ -286,6 +297,7 @@ async function doLookup(){
     set('f_pitch',genPitch(readFields()));
     let price=null; const tp=c.tcgplayer&&c.tcgplayer.prices;
     if(tp){const k=Object.keys(tp)[0]; if(k&&tp[k]) price=tp[k].market||tp[k].mid;}
+    _trk={game:'pokemon',identity_key:c.id,name:c.name,variant:val('f_finish'),price:price!=null?{market:+price,currency:'USD'}:null};
     act&&act.done('pokemontcg.io');
     st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
     render();
@@ -300,6 +312,12 @@ function copy(text,msg){const done=()=>showToast(msg);
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fb(text,done));}else fb(text,done);}
 function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
 let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
+let _trk=null;
+async function addTrack(){
+  if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
+  const r=await TCG.addToTracker(_trk);
+  showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
+}
 (function(){
   document.getElementById('c_base').value=base;
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});

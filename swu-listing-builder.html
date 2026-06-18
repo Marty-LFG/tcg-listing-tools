@@ -119,7 +119,7 @@
       </div>
       <iframe id="preview"></iframe>
       <div id="extras" style="margin-top:16px;"></div>
-      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide. Sold where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide. Sold where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button> <button class="btn" onclick="addTrack()" title="Cache this card's price and track its trend over time">&#128202; Track price</button></div>
       <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
@@ -264,6 +264,7 @@ async function doLookup(){
     set('f_pitch',genPitch(f,c.Rarity));
     act&&act.done('swu-db');
     st.className='status ok'; st.textContent='\u2713 '+name+'  ('+(c.Rarity||'?')+')'+(c.MarketPrice?'  \u00b7  ~US$'+c.MarketPrice+' market':'');
+    _trk={game:'swu',identity_key:curSet+'/'+num,name:name,variant:'',price:c.MarketPrice!=null?{market:+c.MarketPrice,low:c.LowPrice!=null?+c.LowPrice:null,currency:'USD'}:null};
     render();
     if(window.TCG){TCG.renderExtras(document.getElementById("extras"),{name:c.Name,images:[{label:"Front",url:c.FrontArt}].concat(c.DoubleSided&&c.BackArt?[{label:"Back",url:c.BackArt}]:[]),prices:[{label:"Market",amount:c.MarketPrice,currency:"USD"},{label:"Low",amount:c.LowPrice,currency:"USD"}],history:null});}regenTitle();
   }catch(e){
@@ -285,6 +286,12 @@ function copy(text,msg){const done=()=>showToast(msg);
 function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
   document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
 let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
+let _trk=null;
+async function addTrack(){
+  if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
+  const r=await TCG.addToTracker(_trk);
+  showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
+}
 
 (function(){
   const _cb=document.getElementById('c_base'); if(_cb) _cb.value=swuBase;

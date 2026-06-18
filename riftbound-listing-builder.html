@@ -141,7 +141,7 @@
       </div>
       <iframe id="preview"></iframe>
       <div id="extras" style="margin-top:16px;"></div>
-      <div style="margin-top:14px;"><button class="btn" onclick="findRBComps()" title="Delivered prices (item + shipping), AU &amp; worldwide. Sold comps where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findRBComps()" title="Delivered prices (item + shipping), AU &amp; worldwide. Sold comps where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button> <button class="btn" onclick="addTrack()" title="Cache this card's price and track its trend over time">&#128202; Track price</button></div>
       <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
@@ -254,6 +254,7 @@ function runeFill(raw){
     const dg='https://static.dotgg.gg/riftbound/cards/'+curSetCode().toUpperCase()+'-'+pr.num+'.webp';
     TCG.renderExtras(document.getElementById('extras'),{name,images:[{label:'Front',url:dg,fallback:r.img||''}],prices:[],history:null});
   }
+  _trk={game:'riftbound',identity_key:curSetCode().toUpperCase()+'-'+pr.num,name:name,variant:val('f_finish'),price:null};
   regenTitle(); return true; }
 
 function readFields(){return {name:val('f_name'),set:val('f_set'),setName:curSetName(),
@@ -334,6 +335,7 @@ function embedLookup(){
   st.className='status ok'; st.textContent='\u2713 '+_nm+'  ('+mapRarity(rawRarity)+')';
   render();
   if(window.TCG){const _dg=rbDotgg(sd.code,c.num);TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,c.img].filter(Boolean),download:c.img||_dg,fallback:c.img||_dg}],prices:[],history:null});}
+  _trk={game:'riftbound',identity_key:(sd.code||curSet).toUpperCase()+'-'+normNum(raw),name:_nm,variant:val('f_finish'),price:null};
   regenTitle();
 }
 
@@ -406,6 +408,7 @@ function mapScrydexCard(c,num){
   set('f_e','');set('f_p','');set('f_m','');   // Scrydex carries no stats
   set('f_pitch',genPitch(readFields(),rawRarity));
   const price=priceFrom(c, val('f_finish'));
+  _trk={game:'riftbound',identity_key:curSet+'-'+num,name:_nm,variant:val('f_finish'),price:price!=null?{market:+price,currency:'USD'}:null};
   const st=document.getElementById('status');
   st.className='status ok';
   st.textContent='\u2713 '+name+'  ('+(rawRarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' NM market':'');
@@ -521,6 +524,7 @@ function mapRiftscribeCard(c){
   const _full=c.image||_th.large||_th.medium||_th.small;          // full image = best download
   const _dg=rbDotgg(setCode,c.collector_number+suf);
   if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,_th.medium||_th.small].filter(Boolean),download:_full||_dg,fallback:_full||_dg}],prices:[],history:null});
+  _trk={game:'riftbound',identity_key:setCode+'-'+String(c.collector_number)+suf,name:_nm,variant:val('f_finish'),price:null};
   regenTitle();
 }
 
@@ -547,6 +551,12 @@ function copy(text,msg){const done=()=>showToast(msg);
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fb(text,done));}else fb(text,done);}
 function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
 let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
+let _trk=null;
+async function addTrack(){
+  if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
+  const r=await TCG.addToTracker(_trk);
+  showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
+}
 
 (function(){
   set('c_mode',cfg.mode); set('c_base',cfg.base); set('c_key',cfg.key); set('c_team',cfg.team); modeChanged();

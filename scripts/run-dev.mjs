@@ -33,7 +33,8 @@ process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
 try {
-  child = spawn(node, [viteCli], {
+  // --disable-warning keeps the node:sqlite ExperimentalWarning out of service logs.
+  child = spawn(node, ['--disable-warning=ExperimentalWarning', viteCli], {
     cwd: root,
     env: { ...process.env, FORCE_COLOR: process.env.FORCE_COLOR || '0' },
     stdio: ['ignore', 'pipe', 'pipe'],

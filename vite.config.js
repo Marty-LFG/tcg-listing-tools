@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import crypto from 'node:crypto'
+import { trackerPlugin } from './lib/tracker.mjs'
 
 // Streams any remote image through the dev server so the browser can blob-download
 // it (cross-origin <a download> is blocked otherwise).
@@ -198,7 +199,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), trackerPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

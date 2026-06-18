@@ -161,6 +161,35 @@ If you prefer not to use NSSM:
 
 Note: the task runs in Session 0 when “whether user is logged on or not”; behavior differs slightly from an interactive login. NSSM is usually simpler for a long-running dev server.
 
+## Daily price analysis (Claude)
+
+The price tracker collects prices automatically inside the running service (an in-process
+timer — **no separate task needed**). What *is* scheduled separately is the daily **Claude
+analysis** that reads the cached data, researches market trends, flags opportunities/
+downtrends, auto-adds promising cards for review, writes a digest to `reports\`, and fires
+desktop toasts.
+
+**Prerequisites**
+
+- The TCG Listing Tools service (above) is running — the analysis reads `http://127.0.0.1:5273/api/tracker/...`.
+- The **Claude CLI** is installed and **pre-authenticated for the logged-on user** (run `claude` once interactively, or set an API key in that user profile). Headless runs can't complete a login prompt.
+
+**Schedule it**
+
+1. Open **Task Scheduler** → **Create Task**.
+2. **General**: name `TCG Price Analysis`; select **Run only when user is logged on** — this is required so the desktop **toast notifications render** (WinRT toasts need an interactive session; the service itself can run headless under NSSM, but this task can't).
+3. **Triggers**: **Daily**, e.g. **07:30** (after the overnight collector pass).
+4. **Actions**: **Start a program**
+   - **Program/script**: `C:\_dev\tcg-listing-tools\scripts\run-claude-analysis.cmd`
+   - **Start in**: `C:\_dev\tcg-listing-tools`
+5. **Conditions**: uncheck "Start only on AC power" if on a laptop.
+6. **Settings**: optionally "Stop the task if it runs longer than 1 hour".
+
+Output is logged to `logs\claude-analysis-YYYYMMDD.log`. To test now, just run
+`scripts\run-claude-analysis.cmd` from Command Prompt while logged in. Tune the cadence and
+signal thresholds in `data\tracker.config.json`; tune what Claude does in
+`.claude\skills\price-analyst\SKILL.md`.
+
 ## Production note
 
 This setup runs the **Vite dev server** (`pnpm dev` equivalent). Fine for a trusted home LAN; do **not** expose it to the public internet. A production static build would need a backend that re-implements the API proxies (see `AGENTS.md` Golden Rule 1).

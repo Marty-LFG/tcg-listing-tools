@@ -100,6 +100,19 @@
     const dots = pts.map(p => `<circle cx="${X(p.daysAgo).toFixed(1)}" cy="${Y(p.price).toFixed(1)}" r="2.5" fill="var(--gold,#c8aa6e)"/>`).join('');
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;"><polyline points="${poly}" fill="none" stroke="var(--gold,#c8aa6e)" stroke-width="2"/>${dots}</svg>`;
   }
+  // exposed so the price-tracker dashboard can draw bare sparklines from /api/tracker history
+  TCG.lineGraph = lineGraph;
+
+  // POST a card to the price-tracker watchlist.
+  // p = {game, identity_key, name, variant?, note?, source?, price?:{market,low,currency}}
+  TCG.addToTracker = async function (p) {
+    try {
+      const r = await fetch('/api/tracker/watchlist', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p),
+      });
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  };
 
   TCG.renderExtras = function (container, data) {
     if (!container) return;
@@ -189,10 +202,13 @@
   var ebaySoldOff = false;   // set once we learn Marketplace Insights isn't granted (no retry this session)
   function ebMoney(n){ return 'A$' + (Math.round(n * 100) / 100).toFixed(2); }
   function ebShip(opt){ var so = (opt || [])[0]; return (so && so.shippingCost && so.shippingCost.value != null) ? parseFloat(so.shippingCost.value) : null; } // null = calculated/unknown
+  function ebAuction(it){ return Array.isArray(it.buyingOptions) && it.buyingOptions.indexOf('AUCTION') >= 0; }
   function ebNormAsk(it){ var price = it.price && parseFloat(it.price.value); if (!(price > 0)) return null;
-    return { price: price, ship: ebShip(it.shippingOptions), loc: (it.itemLocation && it.itemLocation.country) || '?', title: it.title || '', url: it.itemWebUrl || '' }; }
+    return { price: price, ship: ebShip(it.shippingOptions), loc: (it.itemLocation && it.itemLocation.country) || '?', title: it.title || '', url: it.itemWebUrl || '',
+      created: it.itemCreationDate || it.itemOriginDate || null, cond: it.condition || '', condId: it.conditionId || '', auction: ebAuction(it), sold: false }; }
   function ebNormSold(s){ var lp = s.lastSoldPrice, price = lp && parseFloat(lp.value); if (!(price > 0)) return null;
-    return { price: price, ship: ebShip(s.shippingOptions), loc: (s.itemLocation && s.itemLocation.country) || '?', title: s.title || '', url: s.itemWebUrl || '' }; }
+    return { price: price, ship: ebShip(s.shippingOptions), loc: (s.itemLocation && s.itemLocation.country) || '?', title: s.title || '', url: s.itemWebUrl || '',
+      created: s.lastSoldDate || s.itemEndDate || null, cond: s.condition || '', condId: s.conditionId || '', auction: false, sold: true }; }
 
   function renderEbayComps(el, rows, mode){
     if (!el) return;
@@ -233,6 +249,224 @@
     el.innerHTML = html;
   }
 
+  // ---------- comps analysis (distribution / clustering / confidence) ----------
+  // The cheapest listing is a poor value signal — one $10 outlier among twenty $30s means
+  // it's a $30 card. We bin delivered prices, find the densest CLUSTER (the real market),
+  // and recommend undercutting the cheapest WITHIN that cluster. Raw vs graded are different
+  // markets (kept separate); auctions are volatile (excluded from the cluster, still shown).
+  function quantile(sortedAsc, q){ if(!sortedAsc.length) return null; var pos=(sortedAsc.length-1)*q, base=Math.floor(pos), rest=pos-base;
+    return sortedAsc[base+1]!==undefined ? sortedAsc[base]+rest*(sortedAsc[base+1]-sortedAsc[base]) : sortedAsc[base]; }
+  function median(arr){ return quantile(arr.slice().sort(function(a,b){return a-b;}), 0.5); }
+  // Trust eBay's authoritative conditionId (2750=Graded; 4000=Ungraded/3000=Used/1000=New are raw).
+  // Only fall back to title/condition keywords when no conditionId is present — raw card titles
+  // routinely mention "PSA"/"graded" ("not PSA graded", "PSA-ready"), which falsely flags them.
+  function isGraded(r){
+    var id = String(r.condId || '');
+    if (id === '2750') return true;
+    if (id === '4000' || id === '3000' || id === '1000') return false;
+    return /\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d|graded|gem\s*mint/i.test((r.cond||'') + ' ' + (r.title||''));
+  }
+
+  // TCG.analyzeComps(rows, {mode, ref:{market,currency}, refLabel}) -> rich analysis object.
+  TCG.analyzeComps = function (rows, opts) {
+    opts = opts || {};
+    var mode = opts.mode || 'asking';
+    var all = (rows||[]).map(function (r) { return Object.assign({}, r, { delivered: r.price + (r.ship||0), known: r.ship != null, graded: isGraded(r) }); });
+    var result = { mode: mode, nTotal: all.length, nComparable: 0, rows: all, histogram: [], segments: {}, confidence: { level: 'low', score: 0, reasons: [] } };
+
+    // comparable = raw, fixed-price, known delivered (what a buyer actually pays for the card).
+    // Relax progressively if that's too thin, so a graded-only filter analyses the graded cluster
+    // rather than coming up empty.
+    var comparable = all.filter(function (r) { return r.known && !r.graded && !r.auction; });
+    var basis = comparable;
+    if (basis.length < 5) basis = all.filter(function (r) { return r.known && !r.graded; });   // + auctions
+    if (basis.length < 5) basis = all.filter(function (r) { return r.known; });                 // + graded
+    var prices = basis.map(function (r) { return r.delivered; }).sort(function (a,b){ return a-b; });
+    var n = prices.length; result.nComparable = n;
+
+    function seg(list){ var d = list.filter(function(r){return r.known;}).map(function(r){return r.delivered;}); return { n: list.length, median: d.length ? median(d) : null }; }
+    result.segments = {
+      raw: seg(all.filter(function(r){return !r.graded;})),
+      graded: seg(all.filter(function(r){return r.graded;})),
+      au: seg(all.filter(function(r){return r.loc === 'AU';})),
+      ww: seg(all),
+      auction: { n: all.filter(function(r){return r.auction;}).length },
+      fixed: { n: all.filter(function(r){return !r.auction;}).length },
+    };
+    if (!n) return result;
+
+    // histogram over [min, p95] (clip the long tail so a few high outliers don't swamp the bins)
+    var lo = prices[0], hiClip = quantile(prices, 0.95) || prices[n-1], hi = Math.max(hiClip, lo + 0.01);
+    var bins = Math.max(5, Math.min(14, Math.round(Math.sqrt(n)) * 2));
+    var w = (hi - lo) / bins || 1;
+    var hist = []; for (var i=0;i<bins;i++) hist.push({ lo: lo+i*w, hi: lo+(i+1)*w, count: 0, items: [] });
+    prices.forEach(function (p) { var idx = Math.min(bins-1, Math.max(0, Math.floor((p-lo)/w))); hist[idx].count++; hist[idx].items.push(p); });
+
+    var modeBin = hist.reduce(function(m,b){ return b.count > m.count ? b : m; }, hist[0]);
+    var mi = hist.indexOf(modeBin);
+    var clusterItems = modeBin.items.slice();
+    [mi-1, mi+1].forEach(function (j) { if (hist[j] && hist[j].count >= modeBin.count * 0.5) clusterItems = clusterItems.concat(hist[j].items); });
+    clusterItems.sort(function(a,b){return a-b;});
+    var fair = median(clusterItems), clusterLo = clusterItems[0], clusterHi = clusterItems[clusterItems.length-1];
+    var recommended = Math.max(0.5, Math.round((clusterLo - 0.01) * 100) / 100); // undercut cheapest IN-cluster
+
+    result.histogram = hist.map(function (b) { return { lo: b.lo, hi: b.hi, count: b.count, inCluster: b.lo >= clusterLo - 1e-9 && b.hi <= clusterHi + w }; });
+    result.fair = fair; result.fairRange = [clusterLo, clusterHi];
+    result.recommended = recommended; result.cheapestInCluster = clusterLo;
+    result.globalCheapest = prices[0]; result.globalMedian = median(prices);
+
+    if (opts.ref && opts.ref.market != null) {
+      var refAud = TCG.toAUD(+opts.ref.market, opts.ref.currency || 'USD');
+      result.ref = { market: +opts.ref.market, currency: opts.ref.currency || 'USD', aud: refAud };
+      if (refAud) result.refDelta = (fair - refAud) / refAud * 100;
+    }
+
+    // confidence: sample size + cluster tightness + sold-vs-asking + reference agreement
+    var reasons = [], score = 0, clusterFrac = clusterItems.length / n;
+    if (n >= 15) { score += 2; reasons.push(n + ' comparable listings'); }
+    else if (n >= 6) { score += 1; reasons.push('only ' + n + ' comparable listings'); }
+    else reasons.push('few comparable listings (' + n + ')');
+    if (clusterFrac >= 0.5) { score += 2; reasons.push(Math.round(clusterFrac*100) + '% cluster tightly around the price'); }
+    else if (clusterFrac >= 0.33) { score += 1; reasons.push('moderate clustering'); }
+    else reasons.push('prices are spread out');
+    if (mode === 'sold') { score += 2; reasons.push('based on SOLD prices'); } else reasons.push('asking prices, not sold');
+    if (result.refDelta != null) {
+      if (Math.abs(result.refDelta) <= 15) { score += 1; reasons.push('agrees with ' + (opts.refLabel||'reference') + ' price'); }
+      else reasons.push('differs from ' + (opts.refLabel||'reference') + ' by ' + Math.round(result.refDelta) + '%');
+    }
+    if (result.segments.auction.n > result.segments.fixed.n) reasons.push('many auctions (volatile)');
+    result.confidence = { level: score >= 5 ? 'high' : score >= 3 ? 'medium' : 'low', score: score, reasons: reasons };
+    return result;
+  };
+
+  // ---------- comps "pro" view: inline summary + expandable detail modal ----------
+  var _lastComps = null;
+  var MONO = 'font-family:ui-monospace,Menlo,Consolas,monospace;';
+  function fmtDate(s){ try { return new Date(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
+  function confBadge(c){ var col = c.level === 'high' ? '#36d399' : c.level === 'medium' ? '#f0c020' : '#f06262';
+    return '<span style="display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:' + col + ';border:1px solid ' + col + ';border-radius:999px;padding:2px 9px;">' + c.level + ' confidence</span>'; }
+
+  function compHistogramSVG(a){
+    var bins = a.histogram || []; if (!bins.length) return '';
+    var W = 520, H = 168, padL = 8, padR = 8, padT = 14, padB = 26;
+    var maxC = Math.max.apply(null, bins.map(function (b) { return b.count; })) || 1;
+    var lo = bins[0].lo, hi = bins[bins.length-1].hi, span = (hi - lo) || 1;
+    var plotW = W - padL - padR, plotH = H - padT - padB, bw = plotW / bins.length;
+    var bars = bins.map(function (b, i) {
+      var h = b.count ? Math.max(2, (b.count / maxC) * plotH) : 0, x = padL + i * bw, y = padT + plotH - h;
+      var fill = b.inCluster ? 'var(--gold,#c8aa6e)' : 'rgba(255,255,255,.13)';
+      return '<rect x="' + (x+1).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (bw-2).toFixed(1) + '" height="' + h.toFixed(1) + '" rx="2" fill="' + fill + '"><title>' + ebMoney(b.lo) + '–' + ebMoney(b.hi) + ': ' + b.count + '</title></rect>'
+        + (b.count ? '<text x="' + (x+bw/2).toFixed(1) + '" y="' + (y-3).toFixed(1) + '" text-anchor="middle" font-size="9" fill="var(--muted,#888)">' + b.count + '</text>' : '');
+    }).join('');
+    function mark(v, color, label){ if (v == null || v < lo || v > hi) return ''; var x = padL + ((v-lo)/span) * plotW;
+      return '<line x1="' + x.toFixed(1) + '" y1="' + padT + '" x2="' + x.toFixed(1) + '" y2="' + (padT+plotH) + '" stroke="' + color + '" stroke-width="1.5" stroke-dasharray="3,3"/>'
+        + '<text x="' + x.toFixed(1) + '" y="' + (padT+plotH+11) + '" text-anchor="middle" font-size="9" fill="' + color + '">' + label + '</text>'; }
+    var markers = mark(a.fair, 'var(--gold,#c8aa6e)', 'fair') + (a.ref && a.ref.aud ? mark(a.ref.aud, '#5aa9ff', 'ref') : '');
+    var axis = '<text x="' + padL + '" y="' + (H-4) + '" font-size="9" fill="var(--muted,#888)">' + ebMoney(lo) + '</text><text x="' + (W-padR) + '" y="' + (H-4) + '" text-anchor="end" font-size="9" fill="var(--muted,#888)">' + ebMoney(hi) + '</text>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;">' + bars + markers + axis + '</svg>';
+  }
+
+  function compScatterSVG(a){
+    var pts = (a.rows || []).filter(function (r) { return r.known && r.created; });
+    if (pts.length < 2) return '<div style="font-size:11px;color:var(--muted,#888);">Not enough dated listings to plot over time.</div>';
+    var W = 520, H = 180, padL = 8, padR = 8, padT = 10, padB = 22;
+    var ts = pts.map(function (r) { return +new Date(r.created); });
+    var tMin = Math.min.apply(null, ts), tMax = Math.max.apply(null, ts), tSpan = (tMax - tMin) || 1;
+    var ys = pts.map(function (r) { return r.delivered; });
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys), ySpan = (yMax - yMin) || 1;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    function X(t){ return padL + ((t - tMin) / tSpan) * plotW; } function Y(v){ return padT + plotH - ((v - yMin) / ySpan) * plotH; }
+    var dots = pts.map(function (r) {
+      var x = X(+new Date(r.created)), y = Y(r.delivered), color = r.graded ? '#5aa9ff' : 'var(--gold,#c8aa6e)';
+      var ring = r.loc === 'AU' ? '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="5.5" fill="none" stroke="' + color + '" stroke-opacity=".35"/>' : '';
+      return ring + '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="3" fill="' + (r.auction ? 'none' : color) + '" stroke="' + color + '" stroke-width="1.2"><title>' + ebMoney(r.delivered) + ' · ' + esc(r.cond||'') + ' · ' + fmtDate(r.created) + '</title></circle>';
+    }).join('');
+    var fairLine = (a.fair != null && a.fair >= yMin && a.fair <= yMax) ? '<line x1="' + padL + '" y1="' + Y(a.fair).toFixed(1) + '" x2="' + (W-padR) + '" y2="' + Y(a.fair).toFixed(1) + '" stroke="var(--gold,#c8aa6e)" stroke-width="1" stroke-dasharray="2,3" opacity=".6"/>' : '';
+    var axis = '<text x="' + padL + '" y="' + (H-4) + '" font-size="9" fill="var(--muted,#888)">' + fmtDate(tMin) + '</text><text x="' + (W-padR) + '" y="' + (H-4) + '" text-anchor="end" font-size="9" fill="var(--muted,#888)">' + fmtDate(tMax) + '</text>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;">' + fairLine + dots + axis + '</svg>';
+  }
+
+  function renderCompsPro(el, a, ctx){
+    if (!el) return; ctx = ctx || {}; _lastComps = { analysis: a, ctx: ctx };
+    var box = 'border:1px solid var(--line,#333);border-radius:12px;padding:14px;background:var(--panel2,#1a1a1a);';
+    var head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
+    if (a.fair == null) { el.innerHTML = '<div style="' + box + '"><div style="' + head + '">eBay comps</div><div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">' + a.nTotal + ' listings, but none comparable (raw · fixed-price · known postage) to price from.</div></div>'; return; }
+    var html = '<div style="' + box + '"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
+      + '<div><div style="' + head + '">eBay market analysis · AUD</div><div style="font-size:11px;color:var(--muted,#888);margin-top:2px;">' + a.nComparable + ' comparable of ' + a.nTotal + ' · ' + (a.mode === 'sold' ? 'sold' : 'asking') + '</div></div>' + confBadge(a.confidence) + '</div>';
+    if (ctx.filterOptions && ctx.filterOptions.length) {
+      html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">' + ctx.filterOptions.map(function (o) {
+        var on = o.key === ctx.filterKey;
+        return '<button class="comps-filter" data-key="' + o.key + '" style="font-size:11px;padding:3px 10px;border-radius:999px;cursor:pointer;font-weight:700;border:1px solid ' + (on ? 'var(--gold,#c8aa6e)' : 'var(--line,#333)') + ';background:' + (on ? 'rgba(200,170,110,.12)' : 'transparent') + ';color:' + (on ? 'var(--gold,#c8aa6e)' : 'var(--muted,#888)') + ';">' + esc(o.label) + '</button>';
+      }).join('') + '</div>';
+    }
+    html += '<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;">'
+      + '<div><div style="' + head + 'margin-bottom:2px;">List at</div><div style="' + MONO + 'font-size:30px;font-weight:800;color:var(--gold,#c8aa6e);line-height:1;">' + ebMoney(a.recommended) + '</div></div>'
+      + '<div style="font-size:12px;color:var(--text,#eee);line-height:1.55;"><div>fair value <b style="' + MONO + '">' + ebMoney(a.fair) + '</b> <span style="color:var(--muted,#888);">(cluster ' + ebMoney(a.fairRange[0]) + '–' + ebMoney(a.fairRange[1]) + ')</span></div>'
+      + '<div style="color:var(--muted,#888);">cheapest ' + ebMoney(a.globalCheapest) + ' · median ' + ebMoney(a.globalMedian) + '</div>'
+      + (a.ref && a.ref.aud ? '<div style="color:var(--muted,#888);">ref ' + esc(ctx.refLabel||'') + ' ' + ebMoney(a.ref.aud) + (a.refDelta != null ? ' · fair ' + (a.refDelta > 0 ? '+' : '') + Math.round(a.refDelta) + '%' : '') + '</div>' : '')
+      + '</div></div>';
+    html += '<div style="margin-top:12px;">' + compHistogramSVG(a) + '</div>';
+    if (a.globalCheapest != null && a.globalCheapest < a.fairRange[0] * 0.8)
+      html += '<div style="font-size:11.5px;color:var(--amber,#f0c020);margin-top:8px;">⚠ cheapest (' + ebMoney(a.globalCheapest) + ') sits below the main cluster — likely an outlier or condition difference, not the market. Price to the cluster, not the floor.</div>';
+    html += '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"><button id="comps-detail" style="padding:8px 13px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">📊 Distribution &amp; detail</button>';
+    if (ctx.card && ctx.card.identity_key) html += '<button id="comps-save" style="padding:8px 13px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">＋ Save fair value to tracker</button>';
+    html += '</div></div>';
+    el.innerHTML = html;
+    var d = el.querySelector('#comps-detail'); if (d) d.addEventListener('click', TCG.openCompsModal);
+    var s = el.querySelector('#comps-save'); if (s) s.addEventListener('click', function () { saveCompToTracker(s); });
+    if (ctx._opts) el.querySelectorAll('.comps-filter').forEach(function (b) {
+      b.addEventListener('click', function () { TCG.ebayComps(Object.assign({}, ctx._opts, { filterKey: b.getAttribute('data-key') })); });
+    });
+  }
+
+  TCG.openCompsModal = function(){
+    if (!_lastComps) return; var a = _lastComps.analysis, ctx = _lastComps.ctx || {}, card = ctx.card || {};
+    if (a.fair == null) return; // no priceable cluster — renderCompsPro shows the inline note instead
+    var ex = document.getElementById('comps-modal'); if (ex) ex.remove();
+    var head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
+    var seg = a.segments;
+    function chip(label, s){ if (!s || !s.n) return ''; return '<span style="font-size:11px;border:1px solid var(--line,#333);border-radius:999px;padding:3px 9px;color:var(--text,#eee);">' + label + ' <b>' + s.n + '</b>' + (s.median != null ? ' · ' + ebMoney(s.median) : '') + '</span>'; }
+    var rowsTop = (a.rows || []).filter(function (r) { return r.known; }).sort(function (x,y){ return x.delivered - y.delivered; }).slice(0, 14);
+    var table = rowsTop.map(function (r) {
+      var badges = (r.graded ? '<span style="color:#5aa9ff;">graded</span> ' : '') + (r.auction ? '<span style="color:var(--muted,#888);">auction</span>' : '');
+      return '<tr style="border-top:1px solid var(--line,#333);"><td style="padding:4px 6px;' + MONO + 'font-weight:700;color:var(--gold,#c8aa6e);">' + ebMoney(r.delivered) + '</td><td style="padding:4px 6px;color:var(--muted,#888);font-size:11px;">' + ebMoney(r.price) + '+' + ebMoney(r.ship||0) + '</td><td style="padding:4px 6px;font-size:11px;">' + esc((r.cond||'').slice(0,14)) + ' ' + badges + '</td><td style="padding:4px 6px;font-size:11px;color:var(--muted,#888);">' + esc(r.loc||'?') + '</td><td style="padding:4px 6px;font-size:11px;color:var(--muted,#888);">' + (r.created ? fmtDate(r.created) : '') + '</td><td style="padding:4px 6px;">' + (r.url ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);">↗</a>' : '') + '</td></tr>';
+    }).join('');
+    var ov = document.createElement('div'); ov.id = 'comps-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.62);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto;';
+    var d = '<div style="max-width:720px;width:100%;background:var(--panel,#141414);border:1px solid var(--gold,#c8aa6e);border-radius:16px;padding:20px 22px;box-shadow:0 24px 70px rgba(0,0,0,.55);">';
+    d += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;"><div><div style="font-size:18px;font-weight:800;color:var(--text,#eee);">Market analysis</div><div style="font-size:12px;color:var(--muted,#888);">' + esc(card.name || ctx.query || 'card') + '</div></div><button id="comps-x" style="background:none;border:1px solid var(--line,#333);color:var(--muted,#888);border-radius:8px;width:32px;height:32px;font-size:16px;cursor:pointer;">✕</button></div>';
+    d += '<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;margin:16px 0;padding-bottom:14px;border-bottom:1px solid var(--line,#333);"><div><div style="' + head + '">Recommended list price</div><div style="' + MONO + 'font-size:34px;font-weight:800;color:var(--gold,#c8aa6e);line-height:1.05;">' + ebMoney(a.recommended) + '</div><div style="font-size:11px;color:var(--muted,#888);">undercuts cheapest in-cluster (' + ebMoney(a.cheapestInCluster) + ')</div></div><div style="font-size:12.5px;color:var(--text,#eee);line-height:1.6;"><div>fair value <b style="' + MONO + '">' + ebMoney(a.fair) + '</b> · cluster ' + ebMoney(a.fairRange[0]) + '–' + ebMoney(a.fairRange[1]) + '</div><div style="color:var(--muted,#888);">cheapest ' + ebMoney(a.globalCheapest) + ' · median ' + ebMoney(a.globalMedian) + '</div><div style="margin-top:4px;">' + confBadge(a.confidence) + '</div></div></div>';
+    d += '<div style="' + head + 'margin-bottom:6px;">Price distribution <span style="text-transform:none;font-weight:400;color:var(--muted,#888);">— ' + a.nComparable + ' comparable (raw · fixed-price); gold = main cluster</span></div>' + compHistogramSVG(a);
+    d += '<div style="' + head + 'margin:16px 0 6px;">Listings over time <span style="text-transform:none;font-weight:400;color:var(--muted,#888);">— delivered price by date listed</span></div>' + compScatterSVG(a);
+    d += '<div style="font-size:10.5px;color:var(--muted,#888);margin-top:4px;"><span style="color:var(--gold,#c8aa6e);">●</span> raw &nbsp; <span style="color:#5aa9ff;">●</span> graded &nbsp; ○ auction &nbsp; ◌ ring = AU seller</div>';
+    d += '<div style="' + head + 'margin:16px 0 8px;">Breakdown</div><div style="display:flex;gap:8px;flex-wrap:wrap;">' + chip('Raw', seg.raw) + chip('Graded', seg.graded) + chip('🇦🇺 AU', seg.au) + chip('🌏 All', seg.ww) + (seg.auction.n ? '<span style="font-size:11px;border:1px solid var(--line,#333);border-radius:999px;padding:3px 9px;color:var(--muted,#888);">auctions <b>' + seg.auction.n + '</b></span>' : '') + '</div>';
+    d += '<div style="' + head + 'margin:16px 0 6px;">Why this confidence</div><ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text,#eee);line-height:1.6;">' + a.confidence.reasons.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+    d += '<div style="font-size:11px;color:var(--muted,#888);margin-top:12px;line-height:1.5;">Source: eBay ' + (a.mode === 'sold' ? 'Marketplace Insights (sold)' : 'Browse (current asking)') + ', AU marketplace · delivered = item + postage.' + (a.mode !== 'sold' ? ' Sold history needs eBay Marketplace Insights access.' : '') + (a.ref && a.ref.aud ? ' Reference ' + esc(ctx.refLabel||'API') + ' ' + ebMoney(a.ref.aud) + '.' : '') + '</div>';
+    d += '<div style="' + head + 'margin:16px 0 6px;">Cheapest listings</div><div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="text-align:left;color:var(--muted,#888);font-size:10px;text-transform:uppercase;"><th style="padding:0 6px;">Delivered</th><th style="padding:0 6px;">Item+ship</th><th style="padding:0 6px;">Condition</th><th style="padding:0 6px;">Loc</th><th style="padding:0 6px;">Listed</th><th></th></tr></thead><tbody>' + table + '</tbody></table></div>';
+    d += '<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">' + (card.identity_key ? '<button id="comps-save2" style="padding:9px 14px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">＋ Save fair value to tracker</button>' : '') + '<button id="comps-close" style="padding:9px 14px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">Close</button></div>';
+    d += '</div>';
+    ov.innerHTML = d; document.body.appendChild(ov);
+    function close(){ ov.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e){ if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    ov.querySelector('#comps-x').addEventListener('click', close);
+    ov.querySelector('#comps-close').addEventListener('click', close);
+    var s2 = ov.querySelector('#comps-save2'); if (s2) s2.addEventListener('click', function () { saveCompToTracker(s2); });
+  };
+
+  async function saveCompToTracker(btn){
+    if (!_lastComps || !_lastComps.ctx || !_lastComps.ctx.card) return;
+    var a = _lastComps.analysis, card = _lastComps.ctx.card; if (a.fair == null) return;
+    btn.textContent = 'Saving…'; btn.disabled = true;
+    try {
+      var r = await fetch('/api/tracker/snapshot', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ game: card.game, identity_key: card.identity_key, name: card.name, variant: card.variant || '', market: Math.round(a.fair*100)/100, currency: 'AUD', source: 'ebay', sample_size: a.nComparable }) });
+      btn.textContent = r.ok ? 'Saved to tracker ✓' : 'Save failed';
+    } catch (e) { btn.textContent = 'Save failed'; }
+    setTimeout(function () { btn.disabled = false; }, 500);
+  }
+
   // TCG.ebayComps({ query, container, status }) -> renders delivered comps; returns {count,mode,cheapestDelivered}.
   TCG.ebayComps = async function (opts) {
     opts = opts || {};
@@ -240,7 +474,16 @@
     function S(cls, msg){ if (st) { st.className = 'status ' + cls; st.textContent = msg; }
       if (act) { var m = msg.replace(/^[✓✕]\s*/, ''); cls === 'ok' ? act.done(m) : (cls === 'warn' || cls === 'err') ? act.fail(m) : act.update(m); } }
     if (!q) { S('warn', 'Look up or enter a card first.'); return; }
-    var filt = opts.filter ? '&filter=' + encodeURIComponent(opts.filter) : '';   // e.g. "conditions:{NEW}" for Funko
+    // filter: either a fixed opts.filter (e.g. Funko "conditions:{NEW}"), or a toggleable
+    // set of opts.filterOptions [{key,label,filter}] with opts.filterKey selecting the active one.
+    var activeFilterKey = null, filt = '';
+    if (opts.filterOptions && opts.filterOptions.length) {
+      activeFilterKey = opts.filterKey || opts.filterOptions[0].key;
+      var fo = opts.filterOptions.filter(function (o) { return o.key === activeFilterKey; })[0] || opts.filterOptions[0];
+      filt = fo.filter ? '&filter=' + encodeURIComponent(fo.filter) : '';
+    } else {
+      filt = opts.filter ? '&filter=' + encodeURIComponent(opts.filter) : '';
+    }
     act = TCG.activity('Searching eBay…');
     S('load', 'Searching eBay comps…');
     try {
@@ -253,12 +496,20 @@
         } catch (e) { ebaySoldOff = true; }
       }
       if (!rows) {
-        var rb = await fetch('/api/ebay/buy/browse/v1/item_summary/search?limit=50&q=' + encodeURIComponent(q) + filt);
+        // analyze mode pulls more results (eBay Browse is free) for a real distribution
+        var lim = opts.analyze ? 200 : 50;
+        var rb = await fetch('/api/ebay/buy/browse/v1/item_summary/search?limit=' + lim + '&q=' + encodeURIComponent(q) + filt);
         if (rb.status === 503) { S('warn', 'eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.'); return; }
         if (!rb.ok) { var d = ''; try { var ej = await rb.json(); d = ej.detail || ej.error || ''; } catch (e) {} S('warn', 'eBay lookup failed (' + rb.status + ')' + (d ? ': ' + d : '') + '. Fields still work.'); return; }
         var jb = await rb.json(); rows = (jb.itemSummaries || []).map(ebNormAsk).filter(Boolean); mode = 'asking';
       }
       if (!rows.length) { S('warn', 'No eBay comps for "' + q + '".'); if (el) el.innerHTML = ''; return; }
+      if (opts.analyze) {
+        var analysis = TCG.analyzeComps(rows, { mode: mode, ref: opts.ref, refLabel: opts.refLabel });
+        renderCompsPro(el, analysis, { card: opts.card, refLabel: opts.refLabel, query: q, filterOptions: opts.filterOptions, filterKey: activeFilterKey, _opts: opts });
+        S('ok', '✓ ' + rows.length + ' comps · fair value ' + (analysis.fair != null ? ebMoney(analysis.fair) : 'n/a') + (analysis.confidence ? ' (' + analysis.confidence.level + ' confidence)' : ''));
+        return { count: rows.length, mode: mode, analysis: analysis };
+      }
       renderEbayComps(el, rows, mode);
       var cheap = rows.filter(function (r) { return r.ship != null; }).map(function (r) { return r.price + r.ship; }).sort(function (a, b) { return a - b; })[0];
       S('ok', '✓ ' + rows.length + ' eBay ' + (mode === 'sold' ? 'sold' : 'asking') + ' comps' + (cheap != null ? ' · cheapest delivered ' + ebMoney(cheap) : ''));

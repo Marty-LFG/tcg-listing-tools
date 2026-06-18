@@ -1,0 +1,9 @@
+{
+  "cadence_hours": 24,
+  "thresholds": {
+    "opportunity_drop_pct": -10,
+    "momentum_rise_pct": 15,
+    "downtrend_drop_pct": -8,
+    "min_price_aud": 2
+  }
+}

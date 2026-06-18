@@ -2,3 +2,7 @@ node_modules
 .env
 .env.local
 dist
+data/tracker.db
+data/tracker.db-wal
+data/tracker.db-shm
+reports/

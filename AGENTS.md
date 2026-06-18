@@ -33,6 +33,11 @@ Pieces:
   OAuth1-signing, and eBay OAuth2 token-minting middlewares.
 - **`data/funko_pop.json`** — vendored, filtered Funko catalog (built by
   `scripts/build-funko-data.mjs`; frozen at 2021 — an assist, not truth).
+- **Price tracker** — `tracker.html` (dashboard) + `lib/` (SQLite store, collector,
+  signal engine, Vite plugin) + `/api/tracker/*`. Caches per-card prices to
+  `data/tracker.db`, builds historical trends, and flags buy/downtrend/momentum
+  signals. A daily headless Claude run (`.claude/skills/price-analyst`) researches
+  the market, curates the watchlist, and fires desktop alerts. See §12.
 
 ---
 
@@ -87,6 +92,13 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
 8. **eBay descriptions use inline styles only** — no `<style>`, `<script>`, or
    active content (eBay strips them). `buildHTML()` already follows this.
 
+9. **`lib/normalize.mjs` mirrors each builder's price extraction.** The price
+   collector can't import the builders' DOM-coupled inline mappers, so it keeps a
+   server-side copy. If you change how a builder reads a price (Scrydex variant
+   pick, Scryfall `usd*`, pokemontcg bucket, SWU `MarketPrice`/`LowPrice`), update
+   `lib/normalize.mjs` to match — they must stay in sync (like Golden Rule 6's
+   "edit all four card builders together").
+
 ---
 
 ## 3. Run / dev loop
@@ -128,7 +140,17 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `tcg-tools.service` | Sample systemd unit for always-on LAN hosting (Linux). |
 | `scripts/run-dev.mjs` | Launcher for Vite dev server (Windows service / manual). |
 | `scripts/start-tcg-tools.cmd` | Double-click / Task Scheduler entry point for Windows. |
-| `scripts/WINDOWS_SERVICE.md` | pnpm setup + NSSM / firewall instructions for Windows LAN hosting. |
+| `scripts/WINDOWS_SERVICE.md` | pnpm setup + NSSM / firewall instructions for Windows LAN hosting + the daily Claude analysis task. |
+| `tracker.html` | Price-tracker dashboard: opportunities / downtrends / momentum / review-queue / all-tracked, with sparklines (reuses `TCG.lineGraph`). Linked from `index.html`. |
+| `lib/db.mjs` | `node:sqlite` store — opens `data/tracker.db`, PRAGMAs + idempotent DDL (`watchlist` / `price_snapshots` / `signals`). All DB access funnels here. |
+| `lib/normalize.mjs` | Server-side mirror of each builder's price extraction + FX math + per-game lookup paths (see Golden Rule 9). |
+| `lib/collector.mjs` | In-process scheduler + `runPass` (self-fetches the proxies) + `computeSignals` (thresholds). |
+| `lib/tracker.mjs` | Vite plugin: owns the DB, exposes `/api/tracker/*`, starts the collector. Registered in `vite.config.js` `plugins`. |
+| `data/tracker.db` | SQLite price history (gitignored, WAL). Created on first server boot. |
+| `data/tracker.config.json` | Tracker cadence + signal thresholds (editable). |
+| `.claude/skills/price-analyst/SKILL.md` | Skill for the daily headless analysis (read export → research → flag → auto-add → digest → notify). |
+| `scripts/notify.ps1` | Windows desktop toast (WinRT, `msg.exe` fallback) for signal alerts. |
+| `scripts/run-claude-analysis.cmd` | Task Scheduler entry point for the daily `claude --print` analysis. |
 | `README.md` | Human run + hosting instructions. |
 | `docs/DATA_SOURCES.md` | Per-game API endpoints, response schemas, key handling, rate limits. |
 
@@ -309,3 +331,51 @@ and postage (bulky/calculated, not free penny-sleeve) differ from cards, which i
 why those builders carry their own condition/postage wording and item specifics. Accuracy of set / number / variant / condition in titles and item
 specifics directly affects whether a sale sticks (eBay "not as described"
 disputes), so correctness there outranks cleverness.
+
+---
+
+## 12. Price tracker (caching + trends + Claude analysis)
+
+A prototype layer that persists prices so the owner can spot opportunities. Scope:
+the four **card games** only (LEGO/Funko deferred — fuzzier identity, no clean
+price API).
+
+**One process owns it: the Vite service.** `trackerPlugin(env)` (in `lib/tracker.mjs`,
+registered in `vite.config.js` `plugins`) opens `data/tracker.db`, serves
+`/api/tracker/*`, and starts an in-process collector (`setInterval`, default 24h,
+singleton/HMR-guarded). To honour Golden Rule 1, the collector **self-fetches its own
+proxy** (`http://127.0.0.1:5273/api/rb|mtg|pkm|swu|fx`) — reusing all existing auth
+with zero proxy duplication. It maps responses via `lib/normalize.mjs` (Golden Rule 9),
+stores native + AUD prices, and computes signals. Every successful fetch also upserts the
+**full raw upstream payload** into `card_cache` (one row per card, latest wins) — a durable
+local copy of whatever a source returned, which also conserves credits (Scrydex bills per
+request). Read it via `GET /api/tracker/cache/:id`.
+
+**Single writer.** Only the Vite process writes the DB (collector + API). The daily
+Claude run is a **separate process that touches data only over HTTP** — never the
+`.db` file — which keeps the single-writer model and avoids lock contention. WAL +
+`busy_timeout` cover UI-read / collector-write overlap.
+
+**Signals** (`computeSignals`, thresholds in `data/tracker.config.json`): Riftbound uses
+Scrydex `percent_change` deltas when the response carries them (Growth+ tier); otherwise —
+and for every other game — it computes % vs the snapshot nearest 7d/30d ago (tier-agnostic,
+so it works on Scrydex Starter / keyless sources, just needs a few days of history first).
+Watched-card drops →
+`opportunity`; held-card (`source:'user'`) drops → `downtrend`; rises → `momentum`.
+
+**Adding cards:** each builder's "Track price" button (after a successful lookup) posts
+the resolved identity + current price via `TCG.addToTracker`. Claude auto-adds
+discovered cards as `source:'claude', review_status:'pending'` for the dashboard's
+review queue.
+
+**`/api/tracker/*`:** `GET/POST/PATCH/DELETE /watchlist`, `GET /history/:id`,
+`GET /signals`, `POST /refresh`, `POST /signals/:id/ack`, `POST /notified`,
+`GET /cache/:id` (raw payload), `GET /export` (the Claude bundle), `GET /config`.
+
+**Key formats** (what the collector re-fetches by): Riftbound `OGN-296`, MTG `neo-1`,
+Pokémon `sv4-25`, SWU `sor/010`. Riftbound prices need valid Scrydex creds — a 401/403
+sets `last_error='scrydex_unauthorized'` and the card tracks without a price.
+
+**`node:sqlite`** (built-in, Node 24) keeps deps vite-only; the launcher passes
+`--disable-warning=ExperimentalWarning`. Fallback is `better-sqlite3` — change only the
+import in `lib/db.mjs`.
