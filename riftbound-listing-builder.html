@@ -120,7 +120,7 @@
         <div class="f-full"><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
-      <div class="hint">Covers all four sets (Origins / Proving Grounds / Spiritforged / Unleashed) with images and no key &mdash; via baked offline data or live Riftscribe. Scrydex (optional) adds live market price + trend. Alt-art / Showcase: type the number with its letter (e.g. <b>162a</b>); Overnumbered uses <b>*</b> (e.g. <b>299*</b>).</div>
+      <div class="hint">Covers all four sets (Origins / Proving Grounds / Spiritforged / Unleashed) with images and no key &mdash; via baked offline data or live Riftscribe. Scrydex (optional) adds live market price + trend. Alt-art / Showcase: type the number with its letter (e.g. <b>162a</b>); Overnumbered uses <b>*</b> (e.g. <b>299*</b>). Runes (Spiritforged onward) use <b>R##</b> &mdash; type e.g. <b>R01a</b> (Fury Rune, alt-art).</div>
     </div>
 
     <div class="card">
@@ -141,7 +141,7 @@
       </div>
       <iframe id="preview"></iframe>
       <div id="extras" style="margin-top:16px;"></div>
-      <div style="margin-top:14px;"><button class="btn" onclick="findRBComps()" title="Current asking prices on eBay AU — not sold">&#128178; eBay comps (AUD)</button></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findRBComps()" title="Delivered prices (item + shipping), AU &amp; worldwide. Sold comps where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button></div>
       <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
@@ -183,7 +183,7 @@ function genTitle(){
 }
 
 let RB_DATA={}, MAPS={}, EMBED_ORDER=[];
-function rebuildMaps(){ MAPS={}; for(const sid in RB_DATA){MAPS[sid]={}; for(const c of RB_DATA[sid].cards) MAPS[sid][c.k]=c;} EMBED_ORDER=Object.keys(RB_DATA); }
+function rebuildMaps(){ MAPS={}; for(const sid in RB_DATA){MAPS[sid]={}; for(const c of RB_DATA[sid].cards) MAPS[sid][c.k]=c;} EMBED_ORDER=Object.keys(RB_DATA); RUNE_BY_DOMAIN=null; }
 async function loadRB(){ try{ const r=await fetch('/data/riftbound.json'); if(!r.ok)throw new Error('http '+r.status); RB_DATA=await r.json(); rebuildMaps(); if(source==='offline'){ if(!RB_DATA[curSet]) curSet=EMBED_ORDER[0]||'ogn'; buildPills(); } }catch(e){ RB_DATA={}; const st=document.getElementById('status'); if(st){st.className='status warn'; st.textContent='Offline catalog unavailable — pick Riftscribe (live) or fill fields manually.';} } }
 
 // source ∈ 'offline' (baked data/riftbound.json) | 'riftscribe' (live keyless) | 'scrydex' (key, live pricing)
@@ -208,6 +208,53 @@ function finishOf(r){return ['Epic','Alternate Art','Overnumbered'].includes(r)?
 function domainDisp(d){return (d||'').split(';').join(' / ');}
 function championTag(name){const p=(name||'').split(' - ');return p.length>1?p[0]:'';}
 function normNum(s){s=(s||'').split('/')[0].trim().toLowerCase();const m=s.match(/^0*(\d+)([a-z*]*)$/);return m?m[1]+m[2]:s;}
+
+// ---- runes: the 12 runes are reprinted in every set with an "R##" number (Spiritforged
+// onward) but no database carries the per-set reprints — they're catalogued once under OGN.
+// So resolve R01..R06 -> domain (confirmed order) and reuse the canonical OGN rune data,
+// displaying the CURRENT set. R01 Fury · R02 Calm · R03 Mind · R04 Body · R05 Chaos · R06 Order.
+const RUNE_ORDER=['Fury','Calm','Mind','Body','Chaos','Order'];
+let RUNE_BY_DOMAIN=null;
+function buildRuneIndex(){ RUNE_BY_DOMAIN={};
+  for(const sid in RB_DATA){ const s=RB_DATA[sid]; if(!s||!s.cards)continue;
+    for(const c of s.cards){ if(!/rune/i.test(c.type||''))continue;
+      const dom=(c.domain||'').split(';')[0].trim(); if(!dom)continue;
+      const slot=RUNE_BY_DOMAIN[dom]||(RUNE_BY_DOMAIN[dom]={});
+      slot[/\(alternate art\)/i.test(c.name||'')?'alt':'base']=c; } } }
+function parseRune(raw){ const m=String(raw||'').trim().match(/^[rR]0*(\d+)([a-z*]?)/);
+  if(!m)return null; const idx=parseInt(m[1],10), dom=RUNE_ORDER[idx-1]; if(!dom)return null;
+  return {idx,dom,variant:(m[2]||'').toLowerCase(),num:'R'+String(idx).padStart(2,'0')+(m[2]||'').toLowerCase()}; }
+function curSetCode(){
+  if(source==='scrydex'){const e=SCRY_EXP.find(x=>x.id===curSet);return (e&&(e.code||e.id))||curSet;}
+  if(source==='riftscribe')return curSet;
+  return (RB_DATA[curSet]&&RB_DATA[curSet].code)||curSet; }
+// dotgg image URL for any Riftbound card: {SET}-{NNN}{suffix}.webp (3-digit padded, like the publicCode).
+function rbDotgg(setCode,numStr){
+  const head=String(numStr||'').split('/')[0].trim();
+  const m=head.match(/^0*(\d+)([a-z*]?)$/i);
+  const code=(setCode||'').toUpperCase()+'-'+(m?String(m[1]).padStart(3,'0')+(m[2]||'').toLowerCase():head);
+  return head?'https://static.dotgg.gg/riftbound/cards/'+code+'.webp':''; }
+function runeFill(raw){
+  const pr=parseRune(raw); if(!pr)return false;
+  if(!RUNE_BY_DOMAIN)buildRuneIndex();
+  const slot=RUNE_BY_DOMAIN[pr.dom]||{}; const r=(pr.variant==='a'?slot.alt:slot.base)||slot.base||slot.alt;
+  if(!r)return false;
+  const rawRarity=pr.variant==='a'?'Alternate Art':(r.rarity||'Common');
+  const name=(r.name||(pr.dom+' Rune')).replace(/\s*\((Alternate Art|Overnumbered)\)\s*$/i,'');
+  set('f_name',name); set('f_set',curSetName()+' ('+curSetCode()+')'); set('f_num',pr.num);
+  set('f_rarity',mapRarity(rawRarity)); set('f_variant',variantOf(rawRarity)); set('f_type',r.type||'Rune');
+  set('f_domain',domainDisp(r.domain||pr.dom)); set('f_tags',''); set('f_finish',finishOf(rawRarity));
+  set('f_e','');set('f_p','');set('f_m','');
+  set('f_pitch',genPitch(readFields(),rawRarity));
+  const st=document.getElementById('status'); st.className='status ok'; st.textContent='✓ '+name+'  ('+mapRarity(rawRarity)+')  · rune';
+  render();
+  if(window.TCG){
+    // Per-set showcase rune art (correct printing) from dotgg's CDN, keyed by {SET}-R##(a);
+    // Riot's gallery only has the Origins rune (r.img) — use it as the fallback if a set has no R-rune.
+    const dg='https://static.dotgg.gg/riftbound/cards/'+curSetCode().toUpperCase()+'-'+pr.num+'.webp';
+    TCG.renderExtras(document.getElementById('extras'),{name,images:[{label:'Front',url:dg,fallback:r.img||''}],prices:[],history:null});
+  }
+  regenTitle(); return true; }
 
 function readFields(){return {name:val('f_name'),set:val('f_set'),setName:curSetName(),
   num:val('f_num'),rarity:val('f_rarity'),variant:val('f_variant'),type:val('f_type'),domain:val('f_domain'),
@@ -269,6 +316,7 @@ function render(){const f=readFields();lastHTML=buildHTML(f);
 function embedLookup(){
   const raw=document.getElementById('num').value, st=document.getElementById('status');
   if(!raw.trim()){st.className='status';st.textContent='Type a card number above.';return;}
+  if(/^r\d/i.test(raw.trim())&&runeFill(raw))return;     // R##(a) rune reprint
   const sd=RB_DATA[curSet];
   const c=(sd&&MAPS[curSet])?MAPS[curSet][normNum(raw)]:null;
   if(!c){st.className='status warn';st.textContent='No match in '+((sd&&sd.name)||curSet)+'. Fill fields manually \u2014 preview still works.';return;}
@@ -285,7 +333,7 @@ function embedLookup(){
   set('f_pitch',genPitch(readFields(),rawRarity));
   st.className='status ok'; st.textContent='\u2713 '+_nm+'  ('+mapRarity(rawRarity)+')';
   render();
-  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:c.img?[{label:'Front',url:c.img}]:[],prices:[],history:null});
+  if(window.TCG){const _dg=rbDotgg(sd.code,c.num);TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',url:c.img||_dg,fallback:_dg}],prices:[],history:null});}
   regenTitle();
 }
 
@@ -330,7 +378,8 @@ async function scrydexLookup(){
       catch(e2){}
     } else { st.className='status err'; st.textContent='Lookup failed ('+(e.status?'HTTP '+e.status:'network/CORS')+'). Use the proxy or fill fields manually.'; return; }
   }
-  if(!card){st.className='status warn';st.textContent='No match for '+curSet+'-'+num+'. Fill fields manually.';return;}
+  if(!card){ if(/^r\d/i.test(raw)&&runeFill(raw))return;   // Scrydex lacks the rune reprint -> resolve locally
+    st.className='status warn';st.textContent='No match for '+curSet+'-'+num+'. Fill fields manually.';return;}
   mapScrydexCard(card,num);
 }
 
@@ -359,7 +408,7 @@ function mapScrydexCard(c,num){
   st.className='status ok';
   st.textContent='\u2713 '+name+'  ('+(rawRarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' NM market':'');
   render();
-  if(window.TCG){var _im=[];var _i0=(c.images&&c.images[0])||null;if(_i0)_im.push({label:"Front",url:_i0.large||_i0.medium||_i0.small});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_v.prices[0];if(_np){_pr.push({label:_vv.name+" NM",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}TCG.renderExtras(document.getElementById("extras"),{name:name,images:_im,prices:_pr,history:_hist});}regenTitle();
+  if(window.TCG){var _dg=rbDotgg(expCode,c.printed_number||c.number||num);var _im=[];var _i0=(c.images&&c.images[0])||null;_im.push({label:"Front",url:(_i0&&(_i0.large||_i0.medium||_i0.small))||_dg,fallback:_dg});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_v.prices[0];if(_np){_pr.push({label:_vv.name+" NM",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}TCG.renderExtras(document.getElementById("extras"),{name:name,images:_im,prices:_pr,history:_hist});}regenTitle();
 }
 function priceFrom(c, finish){
   if(!c.variants) return null;
@@ -432,6 +481,7 @@ async function loadRiftscribeSets(){
 function riftscribeLookup(){
   const raw=document.getElementById('num').value.trim(), st=document.getElementById('status');
   if(!raw){st.className='status warn';st.textContent='Enter a card number.';return;}
+  if(/^r\d/i.test(raw)&&runeFill(raw))return;             // R##(a) rune reprint (resolved from baked rune data)
   if(!RBS_BY_SET||!RBS_BY_SET[curSet]){st.className='status warn';st.textContent='Riftscribe set not loaded — re-pick the source.';return;}
   const mm=raw.split('/')[0].trim().toLowerCase().match(/^0*(\d+)([a-z*]?)$/);
   if(!mm){st.className='status warn';st.textContent='Could not parse "'+raw+'".';return;}
@@ -463,36 +513,90 @@ function mapRiftscribeCard(c){
   const st=document.getElementById('status'); st.className='status ok'; st.textContent='✓ '+_nm+'  ('+mapRarity(rawRarity)+')';
   render();
   const img=c.image||(c.image_thumb&&(c.image_thumb.large||c.image_thumb.medium||c.image_thumb.small));
-  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:img?[{label:'Front',url:img}]:[],prices:[],history:null});
+  const _dg=rbDotgg(setCode,c.collector_number+suf);
+  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',url:img||_dg,fallback:_dg}],prices:[],history:null});
   regenTitle();
 }
 
-// ---------- eBay AUD comps (source-agnostic pricing overlay) ----------
+// ---------- eBay comps (delivered totals incl. shipping; SOLD where available, else ASKING) ----------
+let _ebaySoldOff=false;   // set true once we learn Marketplace Insights isn't granted (no retry this session)
+function ebMoney(n){ return 'A$'+(Math.round(n*100)/100).toFixed(2); }
+function ebShip(opt){ const so=(opt||[])[0]; return (so&&so.shippingCost&&so.shippingCost.value!=null)?parseFloat(so.shippingCost.value):null; } // null = calculated/unknown
+function ebNormAsk(it){ const price=it.price&&parseFloat(it.price.value); if(!(price>0))return null;
+  return {price, ship:ebShip(it.shippingOptions), loc:(it.itemLocation&&it.itemLocation.country)||'?', title:it.title||'', url:it.itemWebUrl||''}; }
+function ebNormSold(s){ const lp=s.lastSoldPrice, price=lp&&parseFloat(lp.value); if(!(price>0))return null;
+  return {price, ship:ebShip(s.shippingOptions), loc:(s.itemLocation&&s.itemLocation.country)||'?', title:s.title||'', url:s.itemWebUrl||'', date:s.lastSoldDate||''}; }
+
 async function findRBComps(){
   const st=document.getElementById('status'), f=readFields();
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
   // eBay titles rarely include the collector number or set CODE (e.g. "001 OGN" -> 0 hits),
-  // so search by the base/champion name (subtitle stripped) + set NAME. Asking, not sold.
+  // so search by the base/champion name (subtitle stripped) + set NAME.
   const nm=(f.name||'').split(' - ')[0].split(',')[0].replace(/[^\w '’-]/g,' ').replace(/\s+/g,' ').trim();
   const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
   const q=('Riftbound '+nm+(setName?' '+setName:'')).trim();
   st.className='status load';st.textContent='Searching eBay comps…';
   try{
-    const url='/api/ebay/buy/browse/v1/item_summary/search?limit=25&q='+encodeURIComponent(q);
-    const r=await fetch(url);
-    if(r.status===503){st.className='status warn';st.textContent='eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.';return;}
-    if(!r.ok){let d='';try{const ej=await r.json();d=ej.detail||ej.error||'';}catch(e){} st.className='status warn';st.textContent='eBay lookup failed ('+r.status+')'+(d?': '+d:'')+'. Fields still work.';return;}
-    const j=await r.json(), items=j.itemSummaries||[];
-    if(!items.length){st.className='status warn';st.textContent='No eBay comps for "'+q+'".';return;}
-    const nums=items.map(it=>it.price&&parseFloat(it.price.value)).filter(x=>x>0).sort((a,b)=>a-b);
-    if(!nums.length){st.className='status warn';st.textContent='eBay comps had no parseable prices.';return;}
-    const med=nums[Math.floor(nums.length/2)], cur=(items[0].price&&items[0].price.currency)||'AUD';
-    const prices=[{label:'eBay asking (median of '+nums.length+', NOT sold)',amount:med,currency:cur},
-                  {label:'eBay asking (low)',amount:nums[0],currency:cur}];
-    const ebEl=document.getElementById('ebayextras');
-    if(window.TCG&&ebEl)TCG.renderExtras(ebEl,{name:f.name+'-ebay',images:[],prices:prices,history:null});
-    st.className='status ok';st.textContent='✓ '+nums.length+' eBay comps · median '+cur+' '+med.toFixed(2)+' (asking, not sold)';
+    let rows=null, mode='asking';
+    // 1) Prefer true SOLD comps (Marketplace Insights) — only if our app is granted access.
+    if(!_ebaySoldOff){
+      try{
+        const r=await fetch('/api/ebay/buy/marketplace_insights/v1_beta/item_sales/search?limit=50&q='+encodeURIComponent(q));
+        if(r.ok){ const j=await r.json(); rows=(j.itemSales||[]).map(ebNormSold).filter(Boolean); mode='sold'; }
+        else { _ebaySoldOff=true; try{ await r.text(); }catch(_){} }   // drain unused body; 403 invalid_scope -> no Insights access, don't retry
+      }catch(e){ _ebaySoldOff=true; }
+    }
+    // 2) Fall back to current ASKING listings (Browse).
+    if(!rows){
+      const r=await fetch('/api/ebay/buy/browse/v1/item_summary/search?limit=50&q='+encodeURIComponent(q));
+      if(r.status===503){st.className='status warn';st.textContent='eBay keys not set in .env (EBAY_APP_ID/EBAY_CERT_ID). Pricing skipped.';return;}
+      if(!r.ok){let d='';try{const ej=await r.json();d=ej.detail||ej.error||'';}catch(e){} st.className='status warn';st.textContent='eBay lookup failed ('+r.status+')'+(d?': '+d:'')+'. Fields still work.';return;}
+      const j=await r.json(); rows=(j.itemSummaries||[]).map(ebNormAsk).filter(Boolean); mode='asking';
+    }
+    if(!rows.length){st.className='status warn';st.textContent='No eBay comps for "'+q+'".';document.getElementById('ebayextras').innerHTML='';return;}
+    renderEbayComps(rows, mode);
+    const cheap=rows.filter(r=>r.ship!=null).map(r=>r.price+r.ship).sort((a,b)=>a-b)[0];
+    st.className='status ok';st.textContent='✓ '+rows.length+' eBay '+(mode==='sold'?'sold':'asking')+' comps'+(cheap!=null?' · cheapest delivered '+ebMoney(cheap):'');
   }catch(e){st.className='status err';st.textContent='eBay lookup blocked (proxy not running?).';}
+}
+
+function renderEbayComps(rows, mode){
+  const el=document.getElementById('ebayextras'); if(!el)return;
+  const all=rows.map(r=>({...r, delivered:r.price+(r.ship||0), known:r.ship!=null}));
+  function seg(list){ const k=list.filter(r=>r.known).map(r=>r.delivered).sort((a,b)=>a-b);
+    return {n:list.length, cheap:k[0], med:k.length?k[Math.floor(k.length/2)]:null, unknown:list.length-k.length}; }
+  const au=seg(all.filter(r=>r.loc==='AU')), ww=seg(all);
+  const overall=all.filter(r=>r.known).sort((a,b)=>a.delivered-b.delivered)[0];   // cheapest delivered overall
+  const box='border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--panel2);';
+  const head='font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;';
+  const note = mode==='sold' ? 'SOLD — actual recent sales' : 'ASKING — current listings (not sold)'+(_ebaySoldOff?' · sold prices need eBay Marketplace Insights access':'');
+  let html='<div style="'+box+'">';
+  html+='<div style="'+head+'">eBay comps · delivered incl. shipping · AUD</div>';
+  html+='<div style="font-size:11px;color:var(--muted);margin:3px 0 10px;">'+note+'</div>';
+  if(overall){
+    html+='<div style="border:1px solid var(--gold);border-radius:9px;padding:10px 12px;margin-bottom:12px;background:rgba(200,170,110,.08);">'
+      +'<div style="color:var(--gold);font-weight:700;font-size:14px;">Cheapest delivered: '+ebMoney(overall.delivered)+'</div>'
+      +'<div style="font-size:12px;color:var(--text);margin-top:3px;">item '+ebMoney(overall.price)+' + ship '+ebMoney(overall.ship)+(overall.loc&&overall.loc!=='?'?' · '+overall.loc:'')+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-top:6px;">List with <b style="color:var(--gold);">FREE shipping under '+ebMoney(overall.delivered)+'</b> to be the cheapest total a buyer pays.</div>'
+      +'</div>';
+  }
+  function segRow(label,s){ if(!s.n)return '';
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-top:1px solid var(--line);">'
+      +'<span style="color:var(--muted);">'+label+' <span style="opacity:.65;">('+s.n+')</span></span>'
+      +'<span style="font-weight:600;text-align:right;">'+(s.cheap!=null?'cheapest '+ebMoney(s.cheap):'—')+(s.med!=null?' · median '+ebMoney(s.med):'')+'</span></div>'; }
+  html+=segRow('🇦🇺 Australia',au)+segRow('🌏 Worldwide',ww);
+  if(ww.unknown)html+='<div style="font-size:11px;color:var(--muted);margin-top:6px;">'+ww.unknown+' listing(s) with calculated/unknown shipping — excluded from delivered totals.</div>';
+  const top=all.filter(r=>r.known).sort((a,b)=>a.delivered-b.delivered).slice(0,3);
+  if(top.length){
+    html+='<div style="'+head+'margin:12px 0 6px;border-top:1px solid var(--line);padding-top:10px;">Cheapest delivered</div>';
+    top.forEach(r=>{ const t=esc((r.title||'').slice(0,54));
+      html+='<div style="font-size:12px;padding:3px 0;line-height:1.4;">'+ebMoney(r.delivered)
+        +' <span style="color:var(--muted);">= '+ebMoney(r.price)+' + '+ebMoney(r.ship)+' ship · '+esc(r.loc||'?')+'</span>'
+        +(r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener" style="color:var(--gold);text-decoration:none;">↗</a>':'')
+        +'<div style="color:var(--muted);font-size:11px;">'+t+'</div></div>'; });
+  }
+  html+='</div>';
+  el.innerHTML=html;
 }
 
 function modeChanged(){const d=val('c_mode')==='direct';

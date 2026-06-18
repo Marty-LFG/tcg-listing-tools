@@ -119,6 +119,32 @@ async function ebayToken(env) {
   ebayTok = { value: j.access_token, exp: Date.now() + Math.max(0, (j.expires_in || 7200) - 60) * 1000 }
   return ebayTok.value
 }
+// Separate, isolated token for the Marketplace Insights API (true SOLD prices). It needs
+// the `buy.marketplace.insights` scope, which eBay grants only to apps approved for that
+// limited-release API. We mint it on its own so a denial (invalid_scope) can NEVER break the
+// basic Browse/Taxonomy token above. If the app isn't approved, this throws and the proxy
+// returns a soft 403 the client treats as "sold unavailable -> fall back to asking".
+let ebayInsTok = { value: '', exp: 0 }
+async function ebayInsightsToken(env) {
+  if (ebayInsTok.value && Date.now() < ebayInsTok.exp) return ebayInsTok.value
+  const appId = (env.EBAY_APP_ID || '').trim(), certId = (env.EBAY_CERT_ID || '').trim()
+  const basic = Buffer.from(appId + ':' + certId).toString('base64')
+  const r = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + basic, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=client_credentials&scope=' + encodeURIComponent('https://api.ebay.com/oauth/api_scope/buy.marketplace.insights'),
+  })
+  const text = await r.text()
+  if (!r.ok) {
+    let detail = text.slice(0, 200)
+    try { const e = JSON.parse(text); detail = [e.error, e.error_description].filter(Boolean).join(': ') || detail } catch {}
+    throw new Error('Marketplace Insights scope not granted (' + r.status + '): ' + detail +
+      ' — apply for the eBay Buy Marketplace Insights API to enable true sold prices.')
+  }
+  const j = JSON.parse(text)
+  ebayInsTok = { value: j.access_token, exp: Date.now() + Math.max(0, (j.expires_in || 7200) - 60) * 1000 }
+  return ebayInsTok.value
+}
 function ebayProxy(env) {
   return {
     name: 'ebay-proxy',
@@ -131,7 +157,15 @@ function ebayProxy(env) {
             res.statusCode = 503
             return res.end(JSON.stringify({ error: 'eBay keys not set in .env (EBAY_APP_ID, EBAY_CERT_ID)' }))
           }
-          const tok = await ebayToken(env)
+          // Sold-price (Marketplace Insights) calls use their own scoped token; if that
+          // scope isn't granted, return a soft 403 so the client falls back to asking.
+          const isInsights = req.url.indexOf('/buy/marketplace_insights/') >= 0
+          let tok
+          try { tok = isInsights ? await ebayInsightsToken(env) : await ebayToken(env) }
+          catch (e) {
+            if (isInsights) { res.statusCode = 403; return res.end(JSON.stringify({ error: 'insights_unavailable', detail: e.message })) }
+            throw e
+          }
           console.log('[api/ebay]', req.url)
           const r = await fetch('https://api.ebay.com' + req.url, {
             headers: {

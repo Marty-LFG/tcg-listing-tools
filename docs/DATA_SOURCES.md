@@ -27,6 +27,10 @@ upstream — the builder uses the proxy prefix (e.g. `/api/pkm`).
 - Set picker resolves a typed token against `id`, `ptcgoCode`, **or** `name`
   (so `PAR`, `sv4`, and `Paradox Rift` all find Paradox Rift). Sets are cached in
   `localStorage` (`pkm_sets_v1`) and refreshed in the background.
+- **Image fallback (dotgg):** the card image falls back to
+  `https://static.dotgg.gg/pokemon/card/{c.id}.webp` (the dotgg code IS the
+  pokemontcg.io id, e.g. `swsh10tg-TG01`, case-sensitive) — used as primary when
+  pokemontcg.io returns no image, and as an `onerror` swap when its image breaks.
 
 ## Magic: The Gathering — Scryfall  (proxy `/api/mtg`)
 
@@ -41,6 +45,10 @@ upstream — the builder uses the proxy prefix (e.g. `/api/pkm`).
   + `border_color` + `full_art` (→ treatment: Showcase / Extended Art /
   Borderless / Full Art), `prices{ usd, usd_foil, usd_etched, eur }`,
   `image_uris{ large, normal, png }`, `card_faces[]` (double-faced → back image).
+- **Image fallback (dotgg):** front image falls back to
+  `https://static.dotgg.gg/magic/card/{c.set}-{c.collector_number}.webp` (e.g.
+  `magic/card/neo-1`). Scryfall rarely misses, so this is cheap insurance. (SWU is
+  NOT on dotgg, so the SWU builder has no such fallback.)
 
 ## Star Wars: Unlimited — swu-db  (proxy `/api/swu`)
 
@@ -65,6 +73,10 @@ is keyless; Scrydex is an optional pricing upgrade. An eBay AUD comps overlay wo
   script re-scrapes it each run. **Build-time only** — no runtime proxy.
 - ~943 cards across all 4 sets, with images (Riot CDN `cmsassets.rgpub.io`) and energy/might/power
   stats (which Scrydex does NOT carry). No prices.
+- **Image fallback (dotgg):** every Riftbound lookup (offline / riftscribe / Scrydex) falls back to
+  `https://static.dotgg.gg/riftbound/cards/{SET}-{NNN}{suffix}.webp` via `rbDotgg()` — primary when the
+  source has no image, `onerror` swap when its image breaks. (Runes go further — dotgg is the *primary*,
+  since cmsassets only has the Origins printing; see Runes below.)
 - Shape: `{ [setCodeLower]: { name, code, cards:[{ k, num, name, rarity, type, domain, e, p, m, img }] } }`.
   `k` mirrors the builder's `normNum` (leading zeros stripped, trailing letter/`*` kept). Alt-art
   cards carry a `(Alternate Art)` name suffix, Overnumbered a `(Overnumbered)` one — the builder
@@ -87,15 +99,40 @@ is keyless; Scrydex is an optional pricing upgrade. An eBay AUD comps overlay wo
   prices[]{ condition (NM…), market, currency, trends{ days_1,7,30,90 { price_change, percent_change } } } }`.
 - The ONLY source with prices + the reconstructed price-trend graph. Now opt-in (connect in the UI).
 
-### Pricing — eBay AUD comps (`findRBComps`, via `/api/ebay`)
-- Source-agnostic overlay: `GET /api/ebay/buy/browse/v1/item_summary/search?q=<Riftbound name num CODE>`
-  → median + low **asking** price (NOT sold), AUD, rendered into `#ebayextras` so it never clobbers a
-  Scrydex trend graph. Button-triggered to protect the eBay quota.
+### Pricing — eBay comps, delivered totals (`findRBComps`, via `/api/ebay`)
+- Source-agnostic overlay, button-triggered (quota), rendered into `#ebayextras` (never touches the
+  Scrydex trend graph in `#extras`).
+- **Sold where possible:** tries `GET /buy/marketplace_insights/v1_beta/item_sales/search` first (true
+  SOLD prices). That API needs the `buy.marketplace.insights` scope, which eBay grants only to approved
+  apps — `vite.config.js` mints it on a **separate, isolated token** (`ebayInsightsToken`) so a denial
+  can't break the basic Browse token. If denied (our keys return `invalid_scope`), the proxy returns a
+  soft 403 and the client falls back to **ASKING** via `GET /buy/browse/v1/item_summary/search`, clearly
+  labelled. If the app is later approved for Insights, sold lights up with no code change.
+- **Query:** `Riftbound <base/champion name, subtitle stripped> <set NAME>` — NOT the collector number
+  or set CODE (eBay titles rarely include `001`/`OGN`, which returned 0 hits).
+- **Delivered totals:** each comp = item price + `shippingOptions[0].shippingCost.value`. Listings with
+  calculated/unknown shipping are excluded from totals (and counted). Results split into 🇦🇺 Australia
+  (`itemLocation.country === 'AU'`) vs 🌏 Worldwide, each showing cheapest + median delivered, plus the
+  cheapest-delivered listing and an "undercut" target (list free-shipping under it to be cheapest). All
+  AUD (EBAY_AU marketplace).
 
 ### Name handling (all sources)
 - A card's `name` may include the subtitle (`"Kai'Sa - Survivor"`). Alt-art appends `"(Alternate Art)"`,
   Overnumbered `"(Overnumbered)"`; the builder strips these for the clean name field and re-derives the
   variant + the `(Alt Art)`/`(Overnumbered)` title tag.
+
+### Runes (`R##` reprints)
+- The 12 runes are reprinted in every set with an `R##` collector number (from Spiritforged onward;
+  Origins used regular numbers). The **card-data** sources (gallery + riftscribe) catalogue runes only
+  once, under OGN (`OGN-007/298` … `OGN-214/298`), so typing e.g. `R01a` matches nothing in the per-set
+  data — but the per-set **art** does exist on dotgg's CDN.
+- `runeFill()` (builder) resolves it: `R01..R06` → domain (R01 Fury, R02 Calm, R03 Mind, R04 Body,
+  R05 Chaos, R06 Order — confirmed vs the OGN domain order). It pulls **card data** (name/domain/type)
+  from the canonical OGN rune, but the **image** from the correct per-set printing at
+  `https://static.dotgg.gg/riftbound/cards/{SET}-R##[a].webp` (e.g. `UNL-R01a.webp`) — the same
+  predictable `{SET}-{number}.webp` CDN that powers riftbound.gg. Falls back to the OGN rune image
+  (`onerror`) for sets with no R-rune (OGN/OGS). Displays the current set + the typed `R##`. Works in
+  all three source modes (Scrydex tries its own lookup first, then falls back to this).
 
 
 ## FX rates — Frankfurter  (proxy `/api/fx`)
@@ -188,8 +225,10 @@ community datasets are deprecated/frozen at 2021 — verified Jun 2026: the
   → `itemSummaries[].{price:{value,currency},image:{imageUrl}}`. The builder shows
   the **median asking price** (NOT sold) in AUD and a comp photo. (Add
   `&category_ids=<AU action-figure id>` once confirmed — **VERIFY LIVE**.)
-- Stretch: the Marketplace Insights API (`/buy/marketplace_insights/...`) gives
-  true *sold* prices but is limited-release; don't depend on approval.
+- The Marketplace Insights API (`/buy/marketplace_insights/...`) gives true *sold*
+  prices but is limited-release. It's now wired (the Riftbound builder tries it first
+  via an isolated `buy.marketplace.insights`-scoped token, falling back to asking) — but
+  our keys return `invalid_scope`, so sold stays unavailable until eBay approves the app.
 
 ## eBay item specifics — Taxonomy API  (proxy `/api/ebay`)
 - `GET /commerce/taxonomy/v1/category_tree/{id}/get_item_aspects_for_category?category_id=<id>`

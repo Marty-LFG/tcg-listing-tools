@@ -277,7 +277,7 @@ async function doLookup(){
     if(tp){const k=Object.keys(tp)[0]; if(k&&tp[k]) price=tp[k].market||tp[k].mid;}
     st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
     render();
-    if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];Object.keys(_tp).forEach(function(k){if(_tp[k]&&_tp[k].market)_pr.push({label:"TCGplayer "+k,amount:_tp[k].market,currency:"USD"});});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({label:"Cardmarket avg",amount:_cm.averageSellPrice,currency:"EUR"});TCG.renderExtras(document.getElementById("extras"),{name:c.name,images:[{label:"Front",url:(c.images&&(c.images.large||c.images.small))}],prices:_pr,history:null});}regenTitle();
+    if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];Object.keys(_tp).forEach(function(k){if(_tp[k]&&_tp[k].market)_pr.push({label:"TCGplayer "+k,amount:_tp[k].market,currency:"USD"});});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({label:"Cardmarket avg",amount:_cm.averageSellPrice,currency:"EUR"});var _dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':'';TCG.renderExtras(document.getElementById("extras"),{name:c.name,images:[{label:"Front",url:(c.images&&(c.images.large||c.images.small))||_dg,fallback:_dg}],prices:_pr,history:null});}regenTitle();
   }catch(e){st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
 }
 function copyHTML(){copy(lastHTML,'HTML copied!');}

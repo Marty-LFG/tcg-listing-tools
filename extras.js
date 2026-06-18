@@ -78,7 +78,7 @@
       html += `<div style="${box}margin-bottom:14px;"><div style="${head}">Card image</div><div style="display:flex;gap:14px;flex-wrap:wrap;">`;
       data.images.filter(i => i && i.url).forEach(im => {
         html += `<div style="text-align:center;">
-          <img src="${im.url}" alt="${im.label}" loading="lazy" style="width:150px;max-width:42vw;border-radius:8px;display:block;border:1px solid var(--line,#333);">
+          <img src="${im.url}" alt="${im.label}" loading="lazy"${im.fallback ? ` onerror="this.onerror=null;this.src='${im.fallback}'"` : ''} style="width:150px;max-width:42vw;border-radius:8px;display:block;border:1px solid var(--line,#333);">
           <button class="tcg-dl" data-url="${encodeURIComponent(im.url)}" data-fn="${name}-${(im.label||'art').toLowerCase()}.png" style="margin-top:8px;width:100%;padding:6px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;">&#8595; ${im.label}</button>
         </div>`;
       });
