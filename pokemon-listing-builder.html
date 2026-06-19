@@ -176,6 +176,8 @@ function findEbay(){
   return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
     analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'TCGplayer',
     card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
+    precision:true, numberMatch:f.num,   // f.num = "232/91" — require the exact card number in titles
+
     // eBay conditionId 4000 = Ungraded (raw), 2750 = Graded. Default to raw Buy-It-Now so graded
     // slabs and auctions don't skew the cluster; toggle to compare graded / all.
     filterKey:'raw',

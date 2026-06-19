@@ -533,10 +533,22 @@ function findRBComps(){
   const f=readFields(), st=document.getElementById('status');
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
   // eBay titles rarely include the collector number or set CODE, so search name + set NAME.
-  const nm=(f.name||'').split(' - ')[0].split(',')[0].replace(/[^w '’-]/g,' ').replace(/s+/g,' ').trim();
-  const setName=(f.set||'').replace(/s*([^)]*)s*$/,'').trim();
+  const nm=(f.name||'').split(' - ')[0].split(',')[0].replace(/[^\w '’-]/g,' ').replace(/\s+/g,' ').trim();
+  const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
   const q=('Riftbound '+nm+(setName?' '+setName:'')).trim();
-  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st});
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
+    analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'Scrydex',
+    card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
+    // Riftbound titles reliably carry the printed number (e.g. "030/298"), so number-matching
+    // works well and even separates base from "030a" alt-art. f_num holds the printed form.
+    precision:true, numberMatch:f.num,
+    filterKey:'raw',
+    filterOptions:[
+      {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
+      {key:'rawAll', label:'Raw · incl. auctions', filter:'conditionIds:{4000}'},
+      {key:'graded', label:'Graded', filter:'conditionIds:{2750}'},
+      {key:'all',    label:'All listings', filter:''}
+    ]});
 }
 
 function modeChanged(){const d=val('c_mode')==='direct';

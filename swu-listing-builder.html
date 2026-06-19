@@ -178,7 +178,19 @@ function findEbay(){
   const nm=(f.name||'').replace(/\s*-\s*/g,' ').trim();             // "Luke Skywalker - Faithful Friend" -> "...Friend"
   const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
   const q=('Star Wars Unlimited '+nm+(setName?' '+setName:'')).trim();
-  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st});
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
+    analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'swu-db',
+    card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
+    // SWU titles identify cards by Name + Subtitle, rarely the collector number (and f_num isn't
+    // the form eBay uses), so number-matching would zero out comps; rely on name + junk/lang drops.
+    precision:true, numberMatch:null,
+    filterKey:'raw',
+    filterOptions:[
+      {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
+      {key:'rawAll', label:'Raw · incl. auctions', filter:'conditionIds:{4000}'},
+      {key:'graded', label:'Graded', filter:'conditionIds:{2750}'},
+      {key:'all',    label:'All listings', filter:''}
+    ]});
 }
 
 function genPitch(f, rawRarity){

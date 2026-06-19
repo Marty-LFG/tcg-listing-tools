@@ -267,12 +267,40 @@
     return /\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d|graded|gem\s*mint/i.test((r.cond||'') + ' ' + (r.title||''));
   }
 
-  // TCG.analyzeComps(rows, {mode, ref:{market,currency}, refLabel}) -> rich analysis object.
+  // Accessories / sealed / lots that pollute a singles search (the keyring, display case,
+  // proxy/custom, multi-card lot, booster pack, etc.). Word-boundaried to avoid false hits
+  // ("showcase" won't match \bcase\b, "metallic" won't match \bmetal\b).
+  var JUNK_RE = /keyring|key\s*ring|\bcase\b|display|\bsleeve\b|toploader|top\s*loader|protector|\bproxy\b|custom|orica|\bmetal\b|jumbo|oversized|playmat|\bdecal\b|\bsticker\b|\bbundle\b|\blot\b|\bbooster\b|\bpack\b|\bbox\b|\bcoin\b|\bpin\b|\bsigned\b|\baltered\b|art\s*card|art\s*series|\bsealed\b|starter\s*deck|\bplayset\b|pick\s*your|choose\s*your|complete\s*your|set\s*of\b|\bsingles\b|\bbulk\b/i;
+  // Build a flexible title matcher for a collector number. "232/91" matches 232/91 AND 232/091
+  // (eBay titles zero-pad inconsistently); a bare "296" matches the number on a word boundary.
+  function buildNumberRe(num){
+    var s = String(num || '').trim(); if (!s) return null;
+    var m = s.match(/(\d{1,4})\s*\/\s*(\d{1,4})/);
+    if (m) return new RegExp('\\b' + m[1] + '\\s*\\/\\s*0*' + String(+m[2]) + '\\b');
+    var n = s.match(/\d{1,4}/); return n ? new RegExp('\\b0*' + String(+n[0]) + '\\b') : null;
+  }
+
+  // TCG.analyzeComps(rows, {mode, ref, refLabel, precision, numberMatch, lang}) -> rich analysis.
+  // With precision:true, rows are first narrowed to listings that are plausibly THIS exact card
+  // (title carries the collector number, not an accessory/lot, right language) before any stats.
   TCG.analyzeComps = function (rows, opts) {
     opts = opts || {};
     var mode = opts.mode || 'asking';
-    var all = (rows||[]).map(function (r) { return Object.assign({}, r, { delivered: r.price + (r.ship||0), known: r.ship != null, graded: isGraded(r) }); });
-    var result = { mode: mode, nTotal: all.length, nComparable: 0, rows: all, histogram: [], segments: {}, confidence: { level: 'low', score: 0, reasons: [] } };
+    var src = rows || [], nRaw = src.length, filtered = false;
+    if (opts.precision) {
+      filtered = true;
+      var numRe = buildNumberRe(opts.numberMatch);
+      var wantLang = opts.lang || 'en';
+      src = src.filter(function (r) {
+        var t = r.title || '';
+        if (numRe && !numRe.test(t)) return false;                 // must carry THIS card's number
+        if (JUNK_RE.test(t)) return false;                          // not an accessory / lot
+        if (wantLang === 'en' && (/[぀-ヿ一-鿿]/.test(t) || /\b(japanese|japonais|korean|chinese|español|deutsch|italiano|português)\b/i.test(t))) return false;
+        return true;
+      });
+    }
+    var all = src.map(function (r) { return Object.assign({}, r, { delivered: r.price + (r.ship||0), known: r.ship != null, graded: isGraded(r) }); });
+    var result = { mode: mode, nRaw: nRaw, nMatched: all.length, filtered: filtered, nTotal: all.length, nComparable: 0, rows: all, histogram: [], segments: {}, confidence: { level: 'low', score: 0, reasons: [] } };
 
     // comparable = raw, fixed-price, known delivered (what a buyer actually pays for the card).
     // Relax progressively if that's too thin, so a graded-only filter analyses the graded cluster
@@ -392,7 +420,7 @@
     var head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
     if (a.fair == null) { el.innerHTML = '<div style="' + box + '"><div style="' + head + '">eBay comps</div><div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">' + a.nTotal + ' listings, but none comparable (raw · fixed-price · known postage) to price from.</div></div>'; return; }
     var html = '<div style="' + box + '"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
-      + '<div><div style="' + head + '">eBay market analysis · AUD</div><div style="font-size:11px;color:var(--muted,#888);margin-top:2px;">' + a.nComparable + ' comparable of ' + a.nTotal + ' · ' + (a.mode === 'sold' ? 'sold' : 'asking') + '</div></div>' + confBadge(a.confidence) + '</div>';
+      + '<div><div style="' + head + '">eBay market analysis · AUD</div><div style="font-size:11px;color:var(--muted,#888);margin-top:2px;">' + a.nComparable + ' comparable' + (a.filtered ? ' · matched ' + a.nMatched + ' of ' + a.nRaw + ' for this exact card' : ' of ' + a.nTotal) + ' · ' + (a.mode === 'sold' ? 'sold' : 'asking') + '</div></div>' + confBadge(a.confidence) + '</div>';
     if (ctx.filterOptions && ctx.filterOptions.length) {
       html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">' + ctx.filterOptions.map(function (o) {
         var on = o.key === ctx.filterKey;
@@ -441,7 +469,7 @@
     d += '<div style="font-size:10.5px;color:var(--muted,#888);margin-top:4px;"><span style="color:var(--gold,#c8aa6e);">●</span> raw &nbsp; <span style="color:#5aa9ff;">●</span> graded &nbsp; ○ auction &nbsp; ◌ ring = AU seller</div>';
     d += '<div style="' + head + 'margin:16px 0 8px;">Breakdown</div><div style="display:flex;gap:8px;flex-wrap:wrap;">' + chip('Raw', seg.raw) + chip('Graded', seg.graded) + chip('🇦🇺 AU', seg.au) + chip('🌏 All', seg.ww) + (seg.auction.n ? '<span style="font-size:11px;border:1px solid var(--line,#333);border-radius:999px;padding:3px 9px;color:var(--muted,#888);">auctions <b>' + seg.auction.n + '</b></span>' : '') + '</div>';
     d += '<div style="' + head + 'margin:16px 0 6px;">Why this confidence</div><ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text,#eee);line-height:1.6;">' + a.confidence.reasons.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
-    d += '<div style="font-size:11px;color:var(--muted,#888);margin-top:12px;line-height:1.5;">Source: eBay ' + (a.mode === 'sold' ? 'Marketplace Insights (sold)' : 'Browse (current asking)') + ', AU marketplace · delivered = item + postage.' + (a.mode !== 'sold' ? ' Sold history needs eBay Marketplace Insights access.' : '') + (a.ref && a.ref.aud ? ' Reference ' + esc(ctx.refLabel||'API') + ' ' + ebMoney(a.ref.aud) + '.' : '') + '</div>';
+    d += '<div style="font-size:11px;color:var(--muted,#888);margin-top:12px;line-height:1.5;">Source: eBay ' + (a.mode === 'sold' ? 'Marketplace Insights (sold)' : 'Browse (current asking)') + ', AU marketplace · delivered = item + postage.' + (a.mode !== 'sold' ? ' Sold history needs eBay Marketplace Insights access.' : '') + (a.ref && a.ref.aud ? ' Reference ' + esc(ctx.refLabel||'API') + ' ' + ebMoney(a.ref.aud) + '.' : '') + (a.filtered ? ' Narrowed to this exact card (number-matched; accessories, lots & other languages removed): ' + a.nMatched + ' of ' + a.nRaw + ' listings.' : '') + '</div>';
     d += '<div style="' + head + 'margin:16px 0 6px;">Cheapest listings</div><div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="text-align:left;color:var(--muted,#888);font-size:10px;text-transform:uppercase;"><th style="padding:0 6px;">Delivered</th><th style="padding:0 6px;">Item+ship</th><th style="padding:0 6px;">Condition</th><th style="padding:0 6px;">Loc</th><th style="padding:0 6px;">Listed</th><th></th></tr></thead><tbody>' + table + '</tbody></table></div>';
     d += '<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">' + (card.identity_key ? '<button id="comps-save2" style="padding:9px 14px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">＋ Save fair value to tracker</button>' : '') + '<button id="comps-close" style="padding:9px 14px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">Close</button></div>';
     d += '</div>';
@@ -505,7 +533,7 @@
       }
       if (!rows.length) { S('warn', 'No eBay comps for "' + q + '".'); if (el) el.innerHTML = ''; return; }
       if (opts.analyze) {
-        var analysis = TCG.analyzeComps(rows, { mode: mode, ref: opts.ref, refLabel: opts.refLabel });
+        var analysis = TCG.analyzeComps(rows, { mode: mode, ref: opts.ref, refLabel: opts.refLabel, precision: opts.precision, numberMatch: opts.numberMatch, lang: opts.lang });
         renderCompsPro(el, analysis, { card: opts.card, refLabel: opts.refLabel, query: q, filterOptions: opts.filterOptions, filterKey: activeFilterKey, _opts: opts });
         S('ok', '✓ ' + rows.length + ' comps · fair value ' + (analysis.fair != null ? ebMoney(analysis.fair) : 'n/a') + (analysis.confidence ? ' (' + analysis.confidence.level + ' confidence)' : ''));
         return { count: rows.length, mode: mode, analysis: analysis };

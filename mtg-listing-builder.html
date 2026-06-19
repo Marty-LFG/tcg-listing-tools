@@ -161,7 +161,19 @@ function findEbay(){
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
   const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();   // name + set name (chase cards are specific enough)
   const q=(f.name+(setName?' '+setName:'')).trim();
-  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st});
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
+    analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'Scryfall',
+    card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
+    // MTG titles rarely carry the collector number (and different printings reuse the name),
+    // so number-matching would over-filter; rely on name+set query + accessory/lot/lang drops.
+    precision:true, numberMatch:null,
+    filterKey:'raw',
+    filterOptions:[
+      {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
+      {key:'rawAll', label:'Raw · incl. auctions', filter:'conditionIds:{4000}'},
+      {key:'graded', label:'Graded', filter:'conditionIds:{2750}'},
+      {key:'all',    label:'All listings', filter:''}
+    ]});
 }
 
 function genPitch(f){
