@@ -161,6 +161,9 @@
         const ys = data.history.map(p => p.price), maxD = Math.max.apply(null, data.history.map(p => p.daysAgo));
         html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#333);"><div style="${head}margin-bottom:6px;">Price trend</div>${lineGraph(data.history)}<div style="font-size:11px;color:var(--muted,#888);margin-top:4px;">${money(Math.min.apply(null, ys), 'USD')} &ndash; ${money(Math.max.apply(null, ys), 'USD')} over ~${maxD} days (reconstructed from trend deltas)</div></div>`;
       }
+      if (data.pcLink) {
+        html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line,#333);font-size:11px;"><a href="${esc(data.pcLink)}" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">Verify match on PriceCharting &#8599;</a></div>`;
+      }
       html += '</div>';
     }
 

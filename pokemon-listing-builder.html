@@ -277,6 +277,34 @@ function renderLangBtn(){var b=document.getElementById('langBtn');if(b)b.textCon
 function buildLangMenu(){var m=document.getElementById('langMenu');if(!m)return;m.innerHTML=LANGS.map(function(l){return '<div class="langopt" data-name="'+l[1]+'"><span>'+l[1]+'</span><b>'+l[0]+'</b></div>';}).join('');m.querySelectorAll('.langopt').forEach(function(el){el.addEventListener('mousedown',function(ev){ev.preventDefault();setLang(el.getAttribute('data-name'));toggleLangMenu(false);});});}
 function setLang(name){var fl=document.getElementById('f_lang');if(fl)fl.value=name;renderLangBtn();render();if(typeof syncTitle==='function')syncTitle();}
 function toggleLangMenu(force){var m=document.getElementById('langMenu');if(!m)return;var open=(force===undefined)?!m.classList.contains('open'):!!force;m.classList.toggle('open',open);}
+// PriceCharting enrichment (graded/raw/pop). Non-blocking: the base extras panel is already
+// rendered; this appends PriceCharting rows when they arrive. A failure/no-match is silent so a
+// card lookup never depends on PriceCharting (Golden Rule 7). Prices come back as integer cents.
+function pcRows(pc){
+  var out=[],P=pc.prices||{},pop=pc.pop||{};
+  function tag(g){var x=pop[g];return (x&&x.psa!=null)?(' (PSA pop '+x.psa.toLocaleString()+')'):'';}
+  if(P.ungraded!=null)out.push({label:'PriceCharting raw',amount:P.ungraded/100,currency:'USD'});
+  if(P.grade9!=null)out.push({label:'PC Grade 9'+tag('9'),amount:P.grade9/100,currency:'USD'});
+  if(P.psa10!=null)out.push({label:'PC PSA 10'+tag('10'),amount:P.psa10/100,currency:'USD'});
+  if(P.bgs10!=null)out.push({label:'PC BGS 10',amount:P.bgs10/100,currency:'USD'});
+  return out;
+}
+function pcEnrich(el,ex,baseRows,c,typedNum){
+  try{
+    var nm=c.name,numv=((c.number||typedNum||'')+'').replace(/\s/g,''),setNm=(c.set&&c.set.name)||'';
+    if(!nm||!numv)return;
+    var q='/api/pc/lookup?name='+encodeURIComponent(nm)+'&number='+encodeURIComponent(numv)+'&set='+encodeURIComponent(setNm)+'&id='+encodeURIComponent(c.id||'');
+    var act=window.TCG?TCG.activity('PriceCharting…'):null;
+    fetch(q).then(function(r){return r.json();}).then(function(pc){
+      if(!pc||!pc.matched){act&&act.fail('no PriceCharting match');return;}
+      var rows=pcRows(pc);
+      if(!rows.length){act&&act.fail('no PriceCharting prices');return;}
+      ex.prices=baseRows.concat(rows);ex.pcLink=pc.url;
+      TCG.renderExtras(el,ex);
+      act&&act.done('PriceCharting'+(pc.confidence==='medium'?' (check match)':''));
+    }).catch(function(){act&&act.fail('PriceCharting blocked');});
+  }catch(e){}
+}
 async function doLookup(){
   const _setObj=selectedSet||resolveSet(val('setCode')); const setId=_setObj?_setObj.id:'', num=val('num').replace(/\s/g,''), st=document.getElementById('status');
   if(!setId){st.className='status warn';st.textContent='Pick a set — try a name or the printed code (e.g. PAR).';return;}
@@ -305,7 +333,8 @@ async function doLookup(){
     render();
     if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];Object.keys(_tp).forEach(function(k){if(_tp[k]&&_tp[k].market)_pr.push({label:"TCGplayer "+k,amount:_tp[k].market,currency:"USD"});});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({label:"Cardmarket avg",amount:_cm.averageSellPrice,currency:"EUR"});
       var _dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':'';var _sm=c.images&&c.images.small;var _lg=c.images&&(c.images.large||c.images.small);   // display: dotgg webp 82KB / small (raced); download: large hi-res
-      TCG.renderExtras(document.getElementById("extras"),{name:c.name,images:[{label:"Front",display:[_dg,_sm].filter(Boolean),download:_lg||_dg,fallback:_lg}],prices:_pr,history:null});}regenTitle();
+      var _exEl=document.getElementById("extras");var _ex={name:c.name,images:[{label:"Front",display:[_dg,_sm].filter(Boolean),download:_lg||_dg,fallback:_lg}],prices:_pr.slice(),history:null};
+      TCG.renderExtras(_exEl,_ex);pcEnrich(_exEl,_ex,_pr,c,num);}regenTitle();
   }catch(e){act&&act.fail('lookup blocked');st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
 }
 function copyHTML(){copy(lastHTML,'HTML copied!');}

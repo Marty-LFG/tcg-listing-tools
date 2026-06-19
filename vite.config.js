@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import crypto from 'node:crypto'
 import { trackerPlugin } from './lib/tracker.mjs'
+import { lookup as pcLookup } from './lib/pricecharting.mjs'
 
 // Streams any remote image through the dev server so the browser can blob-download
 // it (cross-origin <a download> is blocked otherwise).
@@ -194,12 +195,52 @@ function ebayProxy(env) {
   }
 }
 
+// ---- PriceCharting: keyless public-page scrape (Pokémon graded/raw/pop) ----
+// No free API exists, so lib/pricecharting.mjs parses the public card + pop pages server-side
+// (browser can't — CORS + Cloudflare). Returns graded (Grade 9 / PSA 10 / BGS 10) + a raw anchor
+// + PSA/CGC population. A failure ALWAYS returns {matched:false} so a card lookup never breaks
+// (Golden Rule 7). If PRICECHARTING_TOKEN is set, the module uses the official API instead.
+function pcProxy(env) {
+  return {
+    name: 'pricecharting-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/pc', async (req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('access-control-allow-origin', '*')
+        try {
+          if (String(env.PRICECHARTING_ENABLED || 'true').toLowerCase() === 'false') {
+            return res.end(JSON.stringify({ matched: false, disabled: true }))
+          }
+          const u = new URL(req.url, 'http://localhost')
+          const name = (u.searchParams.get('name') || '').trim()
+          const number = (u.searchParams.get('number') || '').trim()
+          const set = (u.searchParams.get('set') || '').trim()
+          const cardId = (u.searchParams.get('id') || '').trim()
+          if (!name || !number) {
+            res.statusCode = 400
+            return res.end(JSON.stringify({ matched: false, error: 'name and number required' }))
+          }
+          console.log('[api/pc]', name, '#' + number, set ? '(' + set + ')' : '')
+          const result = await pcLookup({
+            name, number, setName: set, cardId,
+            token: (env.PRICECHARTING_TOKEN || '').trim(),
+          })
+          res.end(JSON.stringify(result))
+        } catch (e) {
+          // Belt-and-suspenders: lib already swallows errors, but never 500 the lookup.
+          res.end(JSON.stringify({ matched: false, error: String((e && e.message) || e) }))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // loads .env (and .env.local) from the project root
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), trackerPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), trackerPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

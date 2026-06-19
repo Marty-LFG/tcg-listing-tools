@@ -32,6 +32,51 @@ upstream — the builder uses the proxy prefix (e.g. `/api/pkm`).
   pokemontcg.io id, e.g. `swsh10tg-TG01`, case-sensitive) — used as primary when
   pokemontcg.io returns no image, and as an `onerror` swap when its image breaks.
 
+## PriceCharting — graded/raw/pop (Pokémon)  (proxy `/api/pc`, keyless scrape)
+
+Fills the one gap no other source covers: **graded** prices (Grade 9 / PSA 10 / BGS 10), an
+eBay-sold-based **raw anchor**, and **PSA/CGC population** counts. There is **no free API**, so
+`lib/pricecharting.mjs` parses the **public** pages server-side (the browser can't — CORS +
+Cloudflare bot-block; a Node fetch with browser headers passes where the browser/WebFetch get 403).
+Display-only — it does **not** change the tracked price, so `lib/normalize.mjs` is untouched.
+
+- Endpoint (this tool): `GET /api/pc/lookup?name=&number=&set=&id=` → `{ matched, url, confidence,
+  productName, consoleName, prices:{ungraded, grade9, psa10, bgs10}, pop:{ "<grade>":{psa,cgc,total} } }`.
+  **Prices are integer cents** (Golden Rule 3); the Pokémon builder divides by 100 for its USD rows.
+  Any failure / no-match / block returns `{matched:false}` and never throws (Golden Rule 7).
+- **Matching** (`pickBestMatch`, load-bearing): a PriceCharting product is accepted only when the
+  product-name carries the **exact collector number** (`#<n>`) **and** the card name matches; the
+  console-name is then resolved to the pokemontcg.io set name (fuzzy, `&`→`and`, strips
+  `pokemon`/`set`). `high` confidence = set also resolved; `medium` = unique name+number match
+  without a textual set match. The builder shows a **"Verify match on PriceCharting"** link because
+  matching across the two taxonomies is fuzzy (correctness > cleverness).
+- **Search quirk:** `/search-products?q=<name> <number>&type=prices` **302-redirects straight to the
+  card page** on a strong single match (e.g. `charizard ex 199`), and only serves a `#games_table`
+  results page when ambiguous (e.g. `pikachu 58`). The module handles both (and reuses the
+  redirect-fetched HTML — no second request).
+- **DOM contract** (verified 2026-06; re-confirm if parsing returns `matched:false` everywhere):
+  - Card page `/game/<console>/<product>` — prices from `<div id="full-prices">`: rows
+    `<tr><td>LABEL</td><td class="price js-price">$X</td></tr>` (labels `Ungraded`, `Grade 9`,
+    `PSA 10`, `BGS 10`, …). Heading `Full Price Guide: <name> (<console>)` gives product/console name.
+  - Pop page `/pop/item/<same-slug>` (derived from the card URL `/game/`→`/pop/item/`) —
+    `<table id="population-table">` rows `grade-col / psa-col / cgc-col / total-col` (`-` = none).
+  - Search `<table id="games_table">` rows `<tr id="product-<id>" data-product>` → title `<a>` href
+    `/game/<console>/<product>`, product name, and `<td class="console">` set name.
+- **Caching / politeness / throttle:** full result cached ~12h + the resolved slug per pokemontcg.io
+  id (≤~2 fetches/card/day). A single **serialized gate** spaces *every* outbound request (≥1s +
+  jitter) both within a lookup (search→card→pop) and across rapid/concurrent lookups; a **403/429
+  trips a 5-min circuit breaker** so we never hammer a Cloudflare block. Being **interactive-only**
+  (not in the collector) keeps volume human-paced — see the warning below before collector-izing it.
+- **Do NOT add to the price collector without keeping the throttle.** Wired into the 24h collector
+  (`lib/collector.mjs`), this would batch-scrape Cloudflare for every watched card — exactly the
+  pattern bot-protection flags. The gate/breaker above make it *possible* later, but only at a low
+  cadence; today it is display-only and deliberately not in `normalize.mjs`/the collector.
+- **Auth:** none (keyless). `PRICECHARTING_ENABLED=false` disables it. If `PRICECHARTING_TOKEN` is
+  set (paid Retailer tier), the module uses the official API (`/api/products`, `/api/product`)
+  instead of scraping — same output shape (that branch is **unverified** until a token exists).
+- **ToS:** `robots.txt` allows `/game` and `/search-products`. Fine for this **private, single-user**
+  tool; redistribution / public hosting would need PriceCharting's written permission (→ buy the API).
+
 ## Magic: The Gathering — Scryfall  (proxy `/api/mtg`)
 
 - Upstream: `https://api.scryfall.com`
