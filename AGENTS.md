@@ -180,7 +180,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 
 | Function | Does |
 |---|---|
-| `renderExtras(el, {name, images, prices, history})` | Renders the image/price/graph panel into `el`. |
+| `renderExtras(el, {name, images, prices, history, priceNote, pcLink})` | Image + price panel. `prices[]` rows carry optional `source`/`measure`/`group`(market/graded/asking)/`note`/`conf`/`spread` — renders a **Market consensus** + **cross-source divergence** flag, grouped sections, **AUD-first** (A$ primary, native secondary). Bare `{label,amount,currency}` still works. See `docs/DATA_SOURCES.md` → "Price-row model". |
 | `loadFx()` / `toAUD(amount, cur)` | Fetch (cached) ECB rates via `/api/fx`; convert to AUD. |
 | `condCode(s)` | **Card** condition string → eBay title code (`Ungraded, Near Mint` → `M/NM`, graded → `PSA 10`, etc.). Card-only — do **not** reuse for LEGO/Funko. |
 | `langCode(s)` | Language → 2-letter code (`English` → `EN`). |

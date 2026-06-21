@@ -10,6 +10,31 @@ upstream — the builder uses the proxy prefix (e.g. `/api/pkm`).
 
 ---
 
+## Price-row model (the shared `renderExtras` contract)
+
+Every builder feeds `TCG.renderExtras(el, {..., prices:[…]})` rows in **one shape** so provenance,
+confidence and AUD-first display are consistent. All fields beyond `amount`/`currency` are optional
+(a bare `{label, amount, currency}` still renders — backward-compatible):
+
+```
+{ amount, currency,                               // required
+  source?:  'TCGplayer'|'Cardmarket'|'PriceCharting'|'Scryfall'|'swu-db'|'Scrydex',
+  measure?: 'market'|'30d avg sold'|'from (low)'|'eBay-sold raw'|'PSA 10'|'Grade 9'|…,  // what it is
+  group?:   'market'|'graded'|'asking',           // section; default 'market'
+  note?:    'population 27,631' | '23 listings',
+  conf?:    {level:'high'|'medium'|'low', text?}, // ONLY where a real signal exists (PriceCharting match)
+  spread?:  {low?, high?},                         // same-currency dispersion (e.g. TCGplayer low–high)
+  href? }                                          // (data.pcLink carries the PriceCharting verify URL)
+```
+
+`renderExtras` then renders, in order: a **Market consensus** (median of the AUD-converted
+`group:'market'` rows) + a **cross-source divergence** flag (agree within X% / differ by X%), then
+the **Market / Graded / Asking** sections. **AUD-first**: each row shows `A$` as the primary value
+with the native currency as a muted secondary (provenance); FX-down falls back to native-primary.
+Pass `data.priceNote` (string) for the no-price empty-state (e.g. Riftbound offline/riftscribe).
+**Confidence is shown only where it is real** — PriceCharting match (`conf`), the eBay comps cluster
+score, and the divergence flag; API market prices carry no fabricated volatility badge.
+
 ## Pokémon — pokemontcg.io v2  (proxy `/api/pkm`)
 
 - Upstream: `https://api.pokemontcg.io/v2`

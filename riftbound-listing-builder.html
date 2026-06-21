@@ -252,7 +252,7 @@ function runeFill(raw){
     // Per-set showcase rune art (correct printing) from dotgg's CDN, keyed by {SET}-R##(a);
     // Riot's gallery only has the Origins rune (r.img) — use it as the fallback if a set has no R-rune.
     const dg='https://static.dotgg.gg/riftbound/cards/'+curSetCode().toUpperCase()+'-'+pr.num+'.webp';
-    TCG.renderExtras(document.getElementById('extras'),{name,images:[{label:'Front',url:dg,fallback:r.img||''}],prices:[],history:null});
+    TCG.renderExtras(document.getElementById('extras'),{name,images:[{label:'Front',url:dg,fallback:r.img||''}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});
   }
   _trk={game:'riftbound',identity_key:curSetCode().toUpperCase()+'-'+pr.num,name:name,variant:val('f_finish'),price:null};
   regenTitle(); return true; }
@@ -334,7 +334,7 @@ function embedLookup(){
   set('f_pitch',genPitch(readFields(),rawRarity));
   st.className='status ok'; st.textContent='\u2713 '+_nm+'  ('+mapRarity(rawRarity)+')';
   render();
-  if(window.TCG){const _dg=rbDotgg(sd.code,c.num);TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,c.img].filter(Boolean),download:c.img||_dg,fallback:c.img||_dg}],prices:[],history:null});}
+  if(window.TCG){const _dg=rbDotgg(sd.code,c.num);TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,c.img].filter(Boolean),download:c.img||_dg,fallback:c.img||_dg}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});}
   _trk={game:'riftbound',identity_key:(sd.code||curSet).toUpperCase()+'-'+normNum(raw),name:_nm,variant:val('f_finish'),price:null};
   regenTitle();
 }
@@ -413,7 +413,7 @@ function mapScrydexCard(c,num){
   st.className='status ok';
   st.textContent='\u2713 '+name+'  ('+(rawRarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' NM market':'');
   render();
-  if(window.TCG){var _dg=rbDotgg(expCode,c.printed_number||c.number||num);var _im=[];var _i0=(c.images&&c.images[0])||null;_im.push({label:"Front",display:[_dg,(_i0&&(_i0.small||_i0.medium))].filter(Boolean),download:(_i0&&(_i0.large||_i0.medium||_i0.small))||_dg,fallback:_dg});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_v.prices[0];if(_np){_pr.push({label:_vv.name+" NM",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}TCG.renderExtras(document.getElementById("extras"),{name:name,images:_im,prices:_pr,history:_hist});}regenTitle();
+  if(window.TCG){var _dg=rbDotgg(expCode,c.printed_number||c.number||num);var _im=[];var _i0=(c.images&&c.images[0])||null;_im.push({label:"Front",display:[_dg,(_i0&&(_i0.small||_i0.medium))].filter(Boolean),download:(_i0&&(_i0.large||_i0.medium||_i0.small))||_dg,fallback:_dg});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_vv.prices[0];if(_np&&_np.market!=null){_pr.push({source:"Scrydex",measure:(_vv.name||"NM")+" NM market",group:"market",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}TCG.renderExtras(document.getElementById("extras"),{name:name,images:_im,prices:_pr,priceNote:_pr.length?'':'No NM price from Scrydex for this variant.',history:_hist});}regenTitle();
 }
 function priceFrom(c, finish){
   if(!c.variants) return null;
@@ -523,7 +523,7 @@ function mapRiftscribeCard(c){
   const _th=c.image_thumb||{};                                    // riftscribe webp thumbnails (small/medium/large) = fast display
   const _full=c.image||_th.large||_th.medium||_th.small;          // full image = best download
   const _dg=rbDotgg(setCode,c.collector_number+suf);
-  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,_th.medium||_th.small].filter(Boolean),download:_full||_dg,fallback:_full||_dg}],prices:[],history:null});
+  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,_th.medium||_th.small].filter(Boolean),download:_full||_dg,fallback:_full||_dg}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});
   _trk={game:'riftbound',identity_key:setCode+'-'+String(c.collector_number)+suf,name:_nm,variant:val('f_finish'),price:null};
   regenTitle();
 }

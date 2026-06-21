@@ -114,6 +114,78 @@
     } catch (e) { return null; }
   };
 
+  // ---- pricing-panel helpers (shared) ----
+  // Confidence pill — only used where we have a REAL signal (PriceCharting match today).
+  var CONF_COL = { high: '#36d399', medium: '#f0c020', low: '#f06262' };
+  function confPill(c) {
+    if (!c || !c.level) return '';
+    var col = CONF_COL[c.level] || 'var(--muted,#888)';
+    return '<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border:1px solid ' + col + ';color:' + col + ';border-radius:999px;padding:1px 7px;margin-left:6px;white-space:nowrap;">' + esc(c.text || c.level) + '</span>';
+  }
+  // Source + measure chip — the provenance atom (e.g. "TCGplayer · holofoil market").
+  function srcChip(p) {
+    var t = p.source ? (p.source + (p.measure ? ' · ' + p.measure : '')) : (p.label || '');
+    if (!t) return '';
+    return '<span style="font-size:11px;color:var(--muted,#888);background:var(--field,#111);border:1px solid var(--line,#333);border-radius:5px;padding:1px 6px;">' + esc(t) + '</span>';
+  }
+  // Right-hand value — AUD-FIRST: bold A$ primary, native currency a muted secondary (provenance).
+  function priceVal(p) {
+    var aud = TCG.toAUD(+p.amount, p.currency);
+    var spread = '';
+    if (p.spread && (p.spread.low != null || p.spread.high != null)) {
+      var lo = p.spread.low != null ? money(+p.spread.low, p.currency) : '', hi = p.spread.high != null ? money(+p.spread.high, p.currency) : '';
+      spread = '<div style="font-size:10.5px;color:var(--muted,#888);">' + (lo && hi ? lo + '–' + hi : (lo || hi)) + '</div>';
+    }
+    if (aud != null) {
+      var nat = (p.currency && p.currency !== 'AUD') ? '<span style="color:var(--muted,#888);font-weight:400;font-size:11px;"> · ' + money(+p.amount, p.currency) + '</span>' : '';
+      return '<div style="font-weight:700;">' + money(aud, 'AUD') + nat + '</div>' + spread;
+    }
+    return '<div style="font-weight:700;">' + money(+p.amount, p.currency) + '</div>' + spread; // FX down → native-primary fallback
+  }
+  function priceRow(p) {
+    var left = (p.group === 'graded')
+      ? '<span style="color:var(--gold,#c8aa6e);font-weight:600;">' + esc(p.measure || p.label || '') + '</span>'
+      : srcChip(p);
+    left += confPill(p.conf);
+    if (p.note) left += '<div style="font-size:10.5px;color:var(--muted,#888);margin-top:2px;">' + esc(p.note) + '</div>';
+    return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line,#333);font-size:13px;"><div style="min-width:0;">' + left + '</div><div style="text-align:right;white-space:nowrap;">' + priceVal(p) + '</div></div>';
+  }
+  // Median of the AUD-converted MARKET-group prices, + min/max for the divergence flag.
+  function marketConsensus(prices) {
+    var auds = (prices || []).filter(function (p) { return (p.group || 'market') === 'market'; })
+      .map(function (p) { return TCG.toAUD(+p.amount, p.currency); })
+      .filter(function (x) { return x != null && x > 0; }).sort(function (a, b) { return a - b; });
+    if (!auds.length) return null;
+    var n = auds.length, med = n % 2 ? auds[(n - 1) / 2] : (auds[n / 2 - 1] + auds[n / 2]) / 2;
+    return { med: med, lo: auds[0], hi: auds[n - 1], n: n, ratio: auds[0] > 0 ? auds[n - 1] / auds[0] : 1 };
+  }
+  // Builds the inner pricing body: consensus hero + divergence flag + grouped (Market/Graded/Asking) rows.
+  function buildPriceBody(prices) {
+    var h2 = 'font-size:10.5px;letter-spacing:.3px;color:var(--muted,#888);';
+    var html = '', c = marketConsensus(prices);
+    if (c) {
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--line,#333);">'
+        + '<div><div style="' + h2 + '">Market consensus</div><div style="font-weight:800;font-size:20px;color:var(--gold,#c8aa6e);line-height:1.1;">' + money(c.med, 'AUD') + '</div></div>'
+        + '<div style="' + h2 + 'text-align:right;">median of ' + c.n + ' source' + (c.n > 1 ? 's' : '') + '<br>USD/EUR&rarr;AUD</div></div>';
+      if (c.n >= 2) {
+        var pct = Math.round((c.ratio - 1) * 100);
+        html += c.ratio > 1.25
+          ? '<div style="margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(240,192,32,.10);border:1px solid rgba(240,192,32,.35);font-size:11.5px;color:var(--amber,#f0c020);">&#9888; Sources differ ' + money(c.lo, 'AUD') + '–' + money(c.hi, 'AUD') + ' (+' + pct + '%) — check recent sales</div>'
+          : '<div style="margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(54,211,153,.10);border:1px solid rgba(54,211,153,.35);font-size:11.5px;color:#36d399;">&#10003; Sources agree within ' + pct + '%</div>';
+      }
+    }
+    var groups = [['market', 'Market', 'what the market sits at'], ['graded', 'Graded', 'PriceCharting · eBay-sold'], ['asking', 'Asking', 'cheapest live listings']];
+    var first = true;
+    groups.forEach(function (g) {
+      var rows = prices.filter(function (p) { return (p.group || 'market') === g[0]; });
+      if (!rows.length) return;
+      html += '<div style="' + h2 + 'margin:' + (first ? '10px' : '14px') + ' 0 4px;">' + g[1] + ' <span style="opacity:.6;">· ' + g[2] + '</span></div>';
+      first = false;
+      rows.forEach(function (p) { html += priceRow(p); });
+    });
+    return html;
+  }
+
   TCG.renderExtras = function (container, data) {
     if (!container) return;
     data = data || {};
@@ -146,23 +218,28 @@
       html += '</div></div>';
     }
 
-    if (prices.length) {
-      html += `<div style="${box}"><div style="${head}">Pricing</div><div id="tcg-prices"></div>`;
-      html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#333);">
-        <div style="${head}margin-bottom:8px;">Convert</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <input id="tcg-amt" type="number" step="0.01" style="width:92px;padding:7px 9px;background:var(--field,#111);border:1px solid var(--line,#333);border-radius:7px;color:var(--text,#eee);font-size:14px;">
-          <select id="tcg-from" style="padding:7px 9px;background:var(--field,#111);border:1px solid var(--line,#333);border-radius:7px;color:var(--text,#eee);font-size:13px;"><option>USD</option><option>EUR</option><option>GBP</option><option>AUD</option></select>
-          <span style="color:var(--muted,#888);">&rarr;</span>
-          <span id="tcg-out" style="font-weight:700;font-size:16px;color:var(--gold,#c8aa6e);">&mdash;</span>
-        </div>
-        <div id="tcg-rate" style="font-size:11px;color:var(--muted,#888);margin-top:6px;"></div></div>`;
-      if (data.history && data.history.length > 1) {
-        const ys = data.history.map(p => p.price), maxD = Math.max.apply(null, data.history.map(p => p.daysAgo));
-        html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#333);"><div style="${head}margin-bottom:6px;">Price trend</div>${lineGraph(data.history)}<div style="font-size:11px;color:var(--muted,#888);margin-top:4px;">${money(Math.min.apply(null, ys), 'USD')} &ndash; ${money(Math.max.apply(null, ys), 'USD')} over ~${maxD} days (reconstructed from trend deltas)</div></div>`;
-      }
-      if (data.pcLink) {
-        html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line,#333);font-size:11px;"><a href="${esc(data.pcLink)}" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">Verify match on PriceCharting &#8599;</a></div>`;
+    if (prices.length || data.priceNote) {
+      html += `<div style="${box}"><div style="${head}">Pricing</div>`;
+      if (prices.length) {
+        html += `<div id="tcg-prices"></div>`;
+        html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#333);">
+          <div style="${head}margin-bottom:8px;">Convert</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input id="tcg-amt" type="number" step="0.01" style="width:92px;padding:7px 9px;background:var(--field,#111);border:1px solid var(--line,#333);border-radius:7px;color:var(--text,#eee);font-size:14px;">
+            <select id="tcg-from" style="padding:7px 9px;background:var(--field,#111);border:1px solid var(--line,#333);border-radius:7px;color:var(--text,#eee);font-size:13px;"><option>USD</option><option>EUR</option><option>GBP</option><option>AUD</option></select>
+            <span style="color:var(--muted,#888);">&rarr;</span>
+            <span id="tcg-out" style="font-weight:700;font-size:16px;color:var(--gold,#c8aa6e);">&mdash;</span>
+          </div>
+          <div id="tcg-rate" style="font-size:11px;color:var(--muted,#888);margin-top:6px;"></div></div>`;
+        if (data.history && data.history.length > 1) {
+          const ys = data.history.map(p => p.price), maxD = Math.max.apply(null, data.history.map(p => p.daysAgo));
+          html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line,#333);"><div style="${head}margin-bottom:6px;">Price trend</div>${lineGraph(data.history)}<div style="font-size:11px;color:var(--muted,#888);margin-top:4px;">${money(Math.min.apply(null, ys), 'USD')} &ndash; ${money(Math.max.apply(null, ys), 'USD')} over ~${maxD} days (reconstructed from trend deltas)</div></div>`;
+        }
+        if (data.pcLink) {
+          html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line,#333);font-size:11px;"><a href="${esc(data.pcLink)}" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">Verify match on PriceCharting &#8599;</a></div>`;
+        }
+      } else {
+        html += `<div style="font-size:12px;color:var(--muted,#888);">${esc(data.priceNote)}</div>`;
       }
       html += '</div>';
     }
@@ -183,14 +260,14 @@
     if (prices.length) {
       TCG.loadFx().then(() => {
         const pr = container.querySelector('#tcg-prices');
-        if (pr) pr.innerHTML = prices.map(p => {
-          const aud = TCG.toAUD(+p.amount, p.currency);
-          return `<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;"><span style="color:var(--muted,#888);">${p.label}</span><span style="font-weight:600;">${money(+p.amount, p.currency)}${aud != null ? ' <span style="color:var(--muted,#888);font-weight:400;">&asymp; ' + money(aud, 'AUD') + '</span>' : ''}</span></div>`;
-        }).join('');
+        if (pr) pr.innerHTML = buildPriceBody(prices);
         const amt = container.querySelector('#tcg-amt'), from = container.querySelector('#tcg-from'),
               out = container.querySelector('#tcg-out'), rate = container.querySelector('#tcg-rate');
-        const seed = prices[0];
-        if (amt && seed) { amt.value = (+seed.amount).toFixed(2); from.value = seed.currency; }
+        const cons = marketConsensus(prices), seed = prices[0];
+        if (amt) {
+          if (cons) { amt.value = cons.med.toFixed(2); from.value = 'AUD'; }      // seed from the AUD consensus
+          else if (seed) { amt.value = (+seed.amount).toFixed(2); from.value = seed.currency; }
+        }
         function upd() { const v = parseFloat(amt.value) || 0; const a = TCG.toAUD(v, from.value); out.textContent = a != null ? money(a, 'AUD') : 'rate n/a'; }
         if (amt) { amt.addEventListener('input', upd); from.addEventListener('change', upd); upd(); }
         if (rate) { const r = TCG.toAUD(1, 'USD'); rate.textContent = r != null ? ('1 USD = ' + money(r, 'AUD') + (RATE_DATE ? '  (' + RATE_DATE + ')' : '')) : 'FX rate unavailable (proxy offline?)'; }
@@ -422,8 +499,12 @@
     var box = 'border:1px solid var(--line,#333);border-radius:12px;padding:14px;background:var(--panel2,#1a1a1a);';
     var head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
     if (a.fair == null) { el.innerHTML = '<div style="' + box + '"><div style="' + head + '">eBay comps</div><div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">' + a.nTotal + ' listings, but none comparable (raw · fixed-price · known postage) to price from.</div></div>'; return; }
+    var modePill = '<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:999px;padding:2px 8px;white-space:nowrap;border:1px solid ' + (a.mode === 'sold' ? '#36d399' : '#f0c020') + ';color:' + (a.mode === 'sold' ? '#36d399' : '#f0c020') + ';">' + (a.mode === 'sold' ? 'sold' : 'asking · not sold') + '</span>';
     var html = '<div style="' + box + '"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
-      + '<div><div style="' + head + '">eBay market analysis · AUD</div><div style="font-size:11px;color:var(--muted,#888);margin-top:2px;">' + a.nComparable + ' comparable' + (a.filtered ? ' · matched ' + a.nMatched + ' of ' + a.nRaw + ' for this exact card' : ' of ' + a.nTotal) + ' · ' + (a.mode === 'sold' ? 'sold' : 'asking') + '</div></div>' + confBadge(a.confidence) + '</div>';
+      + '<div><div style="' + head + '">eBay market analysis · AUD</div><div style="font-size:11px;color:var(--muted,#888);margin-top:2px;">' + a.nComparable + ' comparable' + (a.filtered ? ' · matched ' + a.nMatched + ' of ' + a.nRaw + ' for this exact card' : ' of ' + a.nTotal) + '</div></div>'
+      + '<div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">' + confBadge(a.confidence) + modePill + '</div></div>';
+    if (a.confidence && a.confidence.reasons && a.confidence.reasons.length)
+      html += '<div style="font-size:11px;color:var(--muted,#888);margin-top:8px;line-height:1.5;">' + a.confidence.reasons.map(function (x) { return esc(x); }).join(' · ') + '</div>';
     if (ctx.filterOptions && ctx.filterOptions.length) {
       html += '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">' + ctx.filterOptions.map(function (o) {
         var on = o.key === ctx.filterKey;

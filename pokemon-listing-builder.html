@@ -281,12 +281,26 @@ function toggleLangMenu(force){var m=document.getElementById('langMenu');if(!m)r
 // rendered; this appends PriceCharting rows when they arrive. A failure/no-match is silent so a
 // card lookup never depends on PriceCharting (Golden Rule 7). Prices come back as integer cents.
 function pcRows(pc){
-  var out=[],P=pc.prices||{},pop=pc.pop||{};
-  function tag(g){var x=pop[g];return (x&&x.psa!=null)?(' (PSA pop '+x.psa.toLocaleString()+')'):'';}
-  if(P.ungraded!=null)out.push({label:'PriceCharting raw',amount:P.ungraded/100,currency:'USD'});
-  if(P.grade9!=null)out.push({label:'PC Grade 9'+tag('9'),amount:P.grade9/100,currency:'USD'});
-  if(P.psa10!=null)out.push({label:'PC PSA 10'+tag('10'),amount:P.psa10/100,currency:'USD'});
-  if(P.bgs10!=null)out.push({label:'PC BGS 10',amount:P.bgs10/100,currency:'USD'});
+  var out=[],P=pc.prices||{},ladder=pc.ladder||{},pop=pc.pop||{};
+  var conf=pc.confidence?{level:pc.confidence==='high'?'high':'medium',text:'match '+pc.confidence}:null;
+  function popNote(g){var m=g.match(/(\d+)/);if(!m)return '';var r=pop[m[1]];if(!r)return '';
+    if(/PSA/.test(g))return r.psa!=null?'PSA pop '+r.psa.toLocaleString():'';
+    if(/CGC/.test(g))return r.cgc!=null?'CGC pop '+r.cgc.toLocaleString():'';
+    return r.total!=null?'pop '+r.total.toLocaleString():'';}
+  // Raw anchor — joins the market consensus.
+  var rawc=(P.ungraded!=null)?P.ungraded:(ladder['Ungraded']!=null?ladder['Ungraded']:null);
+  if(rawc!=null)out.push({source:'PriceCharting',measure:'eBay-sold raw',group:'market',amount:rawc/100,currency:'USD',conf:conf});
+  // Full graded ladder (from the page); fall back to the 4-point subset for older cache entries.
+  var added=0;
+  ['Grade 7','Grade 8','Grade 9','Grade 9.5','PSA 10','BGS 10','CGC 10','SGC 10','BGS 10 Black','CGC 10 Pristine'].forEach(function(g){
+    if(ladder[g]==null)return;added++;
+    out.push({source:'PriceCharting',measure:g,group:'graded',amount:ladder[g]/100,currency:'USD',note:popNote(g)});
+  });
+  if(!added){
+    if(P.grade9!=null)out.push({source:'PriceCharting',measure:'Grade 9',group:'graded',amount:P.grade9/100,currency:'USD',note:popNote('Grade 9')});
+    if(P.psa10!=null)out.push({source:'PriceCharting',measure:'PSA 10',group:'graded',amount:P.psa10/100,currency:'USD',note:popNote('PSA 10')});
+    if(P.bgs10!=null)out.push({source:'PriceCharting',measure:'BGS 10',group:'graded',amount:P.bgs10/100,currency:'USD',note:popNote('BGS 10')});
+  }
   return out;
 }
 function pcEnrich(el,ex,baseRows,c,typedNum){
@@ -331,7 +345,7 @@ async function doLookup(){
     act&&act.done('pokemontcg.io');
     st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
     render();
-    if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];Object.keys(_tp).forEach(function(k){if(_tp[k]&&_tp[k].market)_pr.push({label:"TCGplayer "+k,amount:_tp[k].market,currency:"USD"});});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({label:"Cardmarket avg",amount:_cm.averageSellPrice,currency:"EUR"});
+    if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];var _finMap={normal:'',holofoil:'holofoil ',reverseHolofoil:'reverse holo ','1stEditionHolofoil':'1st ed holo ','1stEditionNormal':'1st ed '};Object.keys(_tp).forEach(function(k){var b=_tp[k];if(b&&(b.market!=null||b.mid!=null)){var sp=(b.low!=null||b.high!=null)?{low:b.low,high:b.high}:null;_pr.push({source:"TCGplayer",measure:(_finMap[k]!=null?_finMap[k]:k+' ')+"market",group:"market",amount:(b.market!=null?b.market:b.mid),currency:"USD",spread:sp});}});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({source:"Cardmarket",measure:"30d avg sold",group:"market",amount:_cm.averageSellPrice,currency:"EUR"});if(_cm&&_cm.lowPrice)_pr.push({source:"Cardmarket",measure:"from (low)",group:"asking",amount:_cm.lowPrice,currency:"EUR"});
       var _dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':'';var _sm=c.images&&c.images.small;var _lg=c.images&&(c.images.large||c.images.small);   // display: dotgg webp 82KB / small (raced); download: large hi-res
       var _exEl=document.getElementById("extras");var _ex={name:c.name,images:[{label:"Front",display:[_dg,_sm].filter(Boolean),download:_lg||_dg,fallback:_lg}],prices:_pr.slice(),history:null};
       TCG.renderExtras(_exEl,_ex);pcEnrich(_exEl,_ex,_pr,c,num);}regenTitle();

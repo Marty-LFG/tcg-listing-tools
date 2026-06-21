@@ -278,7 +278,7 @@ async function doLookup(){
     st.className='status ok'; st.textContent='\u2713 '+name+'  ('+(c.Rarity||'?')+')'+(c.MarketPrice?'  \u00b7  ~US$'+c.MarketPrice+' market':'');
     _trk={game:'swu',identity_key:curSet+'/'+num,name:name,variant:'',price:c.MarketPrice!=null?{market:+c.MarketPrice,low:c.LowPrice!=null?+c.LowPrice:null,currency:'USD'}:null};
     render();
-    if(window.TCG){TCG.renderExtras(document.getElementById("extras"),{name:c.Name,images:[{label:"Front",url:c.FrontArt}].concat(c.DoubleSided&&c.BackArt?[{label:"Back",url:c.BackArt}]:[]),prices:[{label:"Market",amount:c.MarketPrice,currency:"USD"},{label:"Low",amount:c.LowPrice,currency:"USD"}],history:null});}regenTitle();
+    if(window.TCG){TCG.renderExtras(document.getElementById("extras"),{name:c.Name,images:[{label:"Front",url:c.FrontArt}].concat(c.DoubleSided&&c.BackArt?[{label:"Back",url:c.BackArt}]:[]),prices:[{source:"swu-db",measure:"market",group:"market",amount:c.MarketPrice,currency:"USD"},{source:"swu-db",measure:"low (asking)",group:"asking",amount:c.LowPrice,currency:"USD"}],history:null});}regenTitle();
   }catch(e){
     act&&act.fail('lookup blocked');
     st.className='status err';

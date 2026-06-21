@@ -128,6 +128,8 @@ function cardRow(card){
   const L=card.latest;
   const native=L?usd(L.market,L.currency):'—';
   const a=L?aud(L.market_aud):'—';
+  const SRC={pokemontcg:'TCGplayer',scryfall:'Scryfall',swudb:'swu-db',scrydex:'Scrydex',ebay:'eBay fair value',user:'manual',claude:'claude'};
+  const srcMeta=L?('<div style="font-size:10.5px;color:var(--muted);margin-top:3px;"><span style="border:1px solid var(--line);border-radius:5px;padding:0 5px;">'+esc(SRC[L.source]||L.source||'source ?')+'</span>'+(card.count?' · '+card.count+' snapshot'+(card.count>1?'s':''):'')+(L.ts?' · as of '+esc((''+L.ts).slice(0,10)):'')+'</div>'):'';
   const tags=[];
   if(card.source==='claude')tags.push('<span class="tag claude">claude</span>');
   if(card.review_status==='pending')tags.push('<span class="tag pending">pending review</span>');
@@ -137,6 +139,7 @@ function cardRow(card){
     +'<div style="min-width:200px;flex:1;">'
       +'<div class="nm">'+esc(card.name)+' '+tags.join(' ')+'</div>'
       +'<div class="key">'+esc(card.game)+' · '+esc(card.identity_key)+(card.variant?' · '+esc(card.variant):'')+'</div>'
+      +srcMeta
       +(card.note?'<div class="note">'+esc(card.note)+'</div>':'')+err
     +'</div>'
     +sparkHtml(card)
