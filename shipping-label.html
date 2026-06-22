@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipping Label Maker &mdash; 50&times;30 mm</title>
+<style>
+  :root{
+    --ink:#0c1118; --panel:#141b25; --panel2:#1b2433; --line:#293445;
+    --muted:#8b94a6; --text:#eef2f8; --gold:#5ab0ff; --gold-dim:#2f5f86;
+    --field:#0d141e;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  code{background:#11203a;padding:1px 5px;border-radius:5px;color:var(--gold);font-size:12px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  textarea,input,select{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line);
+    border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  textarea:focus,input:focus,select:focus{border-color:var(--gold);}
+  textarea{resize:vertical;line-height:1.5;}
+  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .pill{padding:7px 12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+    border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;user-select:none;}
+  .pill.on{background:var(--gold);color:#06101c;border-color:var(--gold);}
+  .stepper{display:flex;align-items:center;gap:6px;}
+  .stepper button{width:30px;height:34px;border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    border-radius:8px;font-size:17px;font-weight:700;cursor:pointer;line-height:1;}
+  .stepper button:hover{border-color:var(--gold);color:var(--gold);}
+  .stepval{min-width:96px;text-align:center;font-size:12.5px;color:var(--text);font-weight:600;}
+  .stepval small{display:block;color:var(--muted);font-weight:400;font-size:10.5px;letter-spacing:.3px;}
+  .linkbtn{background:none;border:none;color:var(--gold);font-size:11px;cursor:pointer;padding:2px 4px;width:auto;}
+  .btn{padding:9px 15px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);
+    border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;width:auto;}
+  .btn:hover{background:var(--gold);color:#06101c;}
+  .btn.solid{background:var(--gold);color:#06101c;border-color:var(--gold);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn:disabled:hover{background:transparent;color:var(--gold);}
+  .minibtn{padding:5px 10px;font-size:11.5px;border-radius:7px;}
+  .status{font-size:12.5px;min-height:18px;margin:0;line-height:1.4;}
+  .status.ok{color:#36d399;} .status.warn{color:#f0b429;} .status.err{color:#f06262;} .status.load{color:var(--muted);}
+  .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;}
+  iframe{width:100%;height:300px;border:1px solid var(--line);border-radius:10px;background:#525659;}
+  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+  details{margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);}
+  summary{cursor:pointer;padding:10px 13px;font-weight:600;font-size:12.5px;list-style:none;color:var(--muted);}
+  summary::-webkit-details-marker{display:none;}
+  .adv{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:0 13px 14px;}
+  .adv .full{grid-column:1/3;display:flex;align-items:center;gap:8px;}
+  .adv .full input[type=checkbox]{width:auto;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);
+    color:#06101c;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .blist{margin-top:14px;display:flex;flex-direction:column;gap:6px;}
+  .bitem{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:12.5px;}
+  .bitem .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .bitem .n b{color:var(--text);} .bitem .n span{color:var(--muted);}
+  .bitem .x{cursor:pointer;color:var(--muted);font-weight:700;padding:0 4px;}
+  .bitem .x:hover{color:#f06262;}
+  .bfont{display:flex;align-items:center;gap:4px;flex:0 0 auto;}
+  .bfont button{width:22px;height:24px;border:1px solid var(--line);background:var(--panel);color:var(--text);
+    border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;line-height:1;padding:0;}
+  .bfont button:hover{border-color:var(--gold);color:var(--gold);}
+  .bpt{min-width:64px;text-align:center;font-size:11px;color:var(--muted);cursor:pointer;user-select:none;}
+  .bpt.ov{color:var(--gold);font-weight:700;}
+  .bpt.of{color:#f06262;font-weight:700;}
+  .bempty{font-size:12px;color:var(--muted);margin-top:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Shipping &middot; Thermal labels</div>
+  <h1>Shipping Label Maker</h1>
+  <p class="sub">Paste the address you copied from eBay &rarr; get a print-ready <b>50 &times; 30 mm</b> PDF for AUSPRINT. The <code>ebay:</code> username and phone line are stripped automatically; the font auto-fits with a 5 mm safe margin.</p>
+
+  <div class="grid">
+    <!-- LEFT: input + controls -->
+    <div class="card">
+      <div class="previewhead" style="margin-bottom:6px;">
+        <label style="margin:0;">Paste from eBay</label>
+        <button class="btn minibtn" id="clipBtn" onclick="pasteClip()" title="Read your clipboard">&#128203; Paste clipboard</button>
+      </div>
+      <textarea id="raw" rows="6" placeholder="Liam Barrett&#10;ebay:vs9xgp2&#10;Unit 1 19 Halliday Street&#10;Mount Waverley, VIC 3149&#10;Australia&#10;+61 468 471 558"></textarea>
+      <div id="multi" style="display:none;margin-top:8px;"></div>
+
+      <div style="margin-top:14px;">
+        <label>Label text &mdash; edit freely</label>
+        <textarea id="clean" rows="5" placeholder="The cleaned address appears here. Tweak any line, split a suburb, fix a typo, etc."></textarea>
+      </div>
+
+      <div class="row">
+        <div style="flex:0 0 auto;">
+          <label>Font size</label>
+          <div class="stepper">
+            <button onclick="bumpSize(-0.5)" title="Smaller">&minus;</button>
+            <div class="stepval" id="sizeval">&mdash;</div>
+            <button onclick="bumpSize(0.5)" title="Larger">+</button>
+            <button class="linkbtn" onclick="resetSize()" title="Back to auto-fit">auto</button>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;">
+          <label>Align</label>
+          <div class="pills" id="alignPills">
+            <span class="pill on" data-v="left" onclick="setAlign('left')">Left</span>
+            <span class="pill" data-v="center" onclick="setAlign('center')">Center</span>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;">
+          <label>Country line</label>
+          <div class="pills" id="countryPills">
+            <span class="pill on" data-v="auto" onclick="setCountry('auto')" title="Keep it only if it fits without shrinking the font">Auto</span>
+            <span class="pill" data-v="keep" onclick="setCountry('keep')">Keep</span>
+            <span class="pill" data-v="drop" onclick="setCountry('drop')">Drop</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <label>Download filename</label>
+        <input id="fname" placeholder="auto from name + suburb">
+      </div>
+
+      <details>
+        <summary>Advanced</summary>
+        <div class="adv">
+          <div><label>Safe margin (mm)</label><input id="a_margin" type="number" step="0.5" min="0" max="12" value="5"></div>
+          <div><label>Line spacing</label><input id="a_spacing" type="number" step="0.05" min="1" max="2" value="1.2"></div>
+          <div><label>Font</label><select id="a_font">
+            <option value="helvetica">Helvetica (sans)</option>
+            <option value="times">Times (serif)</option>
+            <option value="courier">Courier (mono)</option>
+          </select></div>
+          <div><label>Min / Max pt</label><input id="a_minmax" value="5 to 14" disabled></div>
+          <div class="full"><input type="checkbox" id="a_wrap"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Wrap long lines (off = shrink font to keep each line whole)</label></div>
+        </div>
+      </details>
+
+      <div class="hint">Tip: the <b>Label text</b> box is the source of truth &mdash; anything you type there is exactly what prints. Only re-pasting into the top box rebuilds it.</div>
+    </div>
+
+    <!-- RIGHT: preview + output -->
+    <div class="card">
+      <div class="previewhead">
+        <label style="margin:0;">Preview &middot; 50 &times; 30 mm</label>
+      </div>
+      <iframe id="preview" title="Label preview"></iframe>
+      <div class="status load" id="status" style="margin-top:10px;">Paste an eBay address to begin.</div>
+
+      <div class="btns">
+        <button class="btn" id="addBtn" onclick="addToBatch()">+ Add to batch</button>
+        <button class="btn solid" id="dlBtn" onclick="downloadAll()">&#11015; Download (1)</button>
+      </div>
+
+      <div id="batchlist"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Done</div>
+
+<script src="/vendor/jspdf.umd.min.js"></script>
+<script src="/extras.js"></script>
+<script>
+/* ---------- constants ---------- */
+var PAGE_W = 50, PAGE_H = 30;            // mm
+var MM_PER_PT = 25.4 / 72;
+var MIN_PT = 5, MAX_PT = 14;
+var AU_STATES = 'NSW|VIC|QLD|SA|WA|TAS|ACT|NT';
+var COUNTRY_RE = /^(australia|new zealand|aotearoa|united states( of america)?|usa|u\.s\.a\.|united kingdom|u\.k\.|uk|england|scotland|wales|canada|ireland|singapore|germany|france|japan|china|hong kong|new caledonia|fiji|papua new guinea)$/i;
+var SYM_OK = '\u2713', SYM_WARN = '\u26a0', SYM_DOT = '\u00b7', SYM_DL = '\u2b07';
+
+/* ---------- state ---------- */
+var jsPDFok = !!(window.jspdf && window.jspdf.jsPDF);
+var curAlign = 'left', curCountry = 'auto', sizeOverride = null;
+var batch = [];                          // [{lines, opts, name, sub}]
+var _lastBlob = null, _lastUrl = null, _renderTimer = null;
+
+/* ---------- tiny helpers ---------- */
+function $(id){ return document.getElementById(id); }
+var tt; function showToast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('show');},1500); }
+function cleanLines(){ return $('clean').value.replace(/\r\n?/g,'\n').split('\n').map(function(s){return s.trim();}).filter(Boolean); }
+function isPhoneLine(l){ var d=(l.match(/\d/g)||[]).length; return d>=6 && !/[a-zA-Z]/.test(l); }
+function isCountryLine(l){ return COUNTRY_RE.test(l.trim()); }
+
+/* ---------- parsing (pure, array-shaped, batch-ready) ---------- */
+function splitBlocks(raw){
+  return raw.replace(/\r\n?/g,'\n').split(/\n[ \t]*\n+/).map(function(b){return b.trim();}).filter(Boolean);
+}
+function parseOne(block){
+  return block.split('\n').map(function(s){return s.trim();}).filter(Boolean)
+    .filter(function(l){ return !/^ebay:/i.test(l); })
+    .filter(function(l){ return !isPhoneLine(l); });    // country stays as a normal trailing line
+}
+function parseAddresses(raw){ return splitBlocks(raw).map(parseOne).filter(function(a){return a.length;}); }
+
+/* ---------- options snapshot ---------- */
+function currentOpts(){
+  var margin = parseFloat($('a_margin').value); if(!(margin>=0)) margin=5; margin=Math.min(margin,12);
+  var spacing = parseFloat($('a_spacing').value); if(!(spacing>=1)) spacing=1.2;
+  return {
+    align: curAlign, countryMode: curCountry, margin: margin, lineSpacing: spacing,
+    wrap: $('a_wrap').checked, font: $('a_font').value, sizeOverride: sizeOverride
+  };
+}
+
+/* ---------- fit math ---------- */
+function wrapLines(doc, lines, pt, opts){
+  doc.setFont(opts.font,'normal'); doc.setFontSize(pt);
+  var usableW = PAGE_W - 2*opts.margin, out = [];
+  for(var i=0;i<lines.length;i++){
+    if(opts.wrap){ out = out.concat(doc.splitTextToSize(lines[i], usableW)); }
+    else out.push(lines[i]);
+  }
+  return out;
+}
+function fitsAt(doc, lines, pt, opts){
+  var usableW = PAGE_W - 2*opts.margin, usableH = PAGE_H - 2*opts.margin;
+  var wrapped = wrapLines(doc, lines, pt, opts);
+  var lineH = pt*opts.lineSpacing*MM_PER_PT;
+  if(wrapped.length*lineH > usableH + 1e-6) return false;
+  for(var i=0;i<wrapped.length;i++){ if(doc.getTextWidth(wrapped[i]) > usableW + 1e-6) return false; }
+  return true;
+}
+function autoFitPt(doc, lines, opts){
+  if(!lines.length) return MAX_PT;
+  for(var pt=MAX_PT; pt>=MIN_PT; pt-=0.5){ if(fitsAt(doc, lines, pt, opts)) return pt; }
+  return MIN_PT;                          // nothing fits, smallest (overflow flagged elsewhere)
+}
+
+/* ---------- country resolution (smart-auto) ---------- */
+function resolveCountry(doc, lines, opts){
+  if(!lines.length || !isCountryLine(lines[lines.length-1])) return { lines: lines, dropped:false };
+  var withC = lines.slice(), without = lines.slice(0,-1);
+  if(opts.countryMode==='keep') return { lines: withC, dropped:false };
+  if(opts.countryMode==='drop') return { lines: without, dropped:true };
+  // auto: keep only if the country line does not force a smaller font
+  var sWith = autoFitPt(doc, withC, opts), sWithout = autoFitPt(doc, without, opts);
+  return (sWith >= sWithout) ? { lines: withC, dropped:false } : { lines: without, dropped:true };
+}
+
+/* ---------- draw one page; returns info for status ---------- */
+function layoutOnePage(doc, rawLines, opts){
+  var res = resolveCountry(doc, rawLines, opts);
+  var lines = res.lines;
+  var autoPt = autoFitPt(doc, lines, opts);
+  var pt = opts.sizeOverride!=null ? opts.sizeOverride : autoPt;
+  pt = Math.max(MIN_PT, Math.min(pt, 40));
+  var wrapped = wrapLines(doc, lines, pt, opts);
+  var overflow = !fitsAt(doc, lines, pt, opts);
+
+  var usableH = PAGE_H - 2*opts.margin;
+  var lineH = pt*opts.lineSpacing*MM_PER_PT;
+  var glyphH = pt*MM_PER_PT;                                  // approx ink height of one line
+  var blockH = (wrapped.length-1)*lineH + glyphH;
+  var top = opts.margin + Math.max(0, (usableH - blockH)/2);
+  var x = opts.align==='center' ? PAGE_W/2 : opts.margin;
+  var align = opts.align==='center' ? 'center' : 'left';
+
+  doc.setFont(opts.font,'normal'); doc.setFontSize(pt);
+  for(var i=0;i<wrapped.length;i++){
+    doc.text(wrapped[i], x, top + i*lineH, { baseline:'top', align: align });
+  }
+  return { pt: pt, autoPt: autoPt, overflow: overflow, dropped: res.dropped,
+           lineCount: wrapped.length, lines: lines };
+}
+
+/* ---------- build a (multi-page) document ---------- */
+function buildDoc(items){
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF({ unit:'mm', format:[PAGE_W, PAGE_H], orientation:'landscape' });
+  if(Math.round(doc.internal.pageSize.getWidth()) !== PAGE_W){    // axis guard
+    doc = new jsPDF({ unit:'mm', format:[PAGE_H, PAGE_W], orientation:'landscape' });
+  }
+  var infos = [];
+  for(var i=0;i<items.length;i++){
+    if(i>0) doc.addPage([PAGE_W, PAGE_H], 'landscape');
+    infos.push(layoutOnePage(doc, items[i].lines, items[i].opts));
+  }
+  return { doc: doc, infos: infos };
+}
+
+/* ---------- filename ---------- */
+function suburbOf(lines){
+  var re = new RegExp(',?\\s*(' + AU_STATES + ')\\s+\\d{4}', 'i');
+  for(var i=0;i<lines.length;i++){ if(re.test(lines[i])) return lines[i].replace(new RegExp(',?\\s*(' + AU_STATES + ')\\s+\\d{4}.*$','i'),'').trim(); }
+  return '';
+}
+function sanitizeName(s){
+  return (s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^\w\-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,80);
+}
+function deriveName(lines){
+  var base = [lines[0]||'', suburbOf(lines)].filter(Boolean).join('-');
+  return sanitizeName(base) || 'address-label';
+}
+function ensurePdf(n){ return /\.pdf$/i.test(n) ? n : n + '.pdf'; }
+
+/* ---------- live preview ---------- */
+function batchCount(){ return batch.length + (cleanLines().length ? 1 : 0); }
+function refreshDownloadLabel(){ $('dlBtn').innerHTML = SYM_DL + ' Download (' + batchCount() + ')'; }
+
+function regenerate(){
+  var lines = cleanLines();
+  refreshDownloadLabel();
+  if(!jsPDFok){ $('status').className='status err'; $('status').textContent='PDF engine failed to load (vendor/jspdf.umd.min.js). Reload the page.'; $('dlBtn').disabled=true; $('addBtn').disabled=true; return; }
+  if(!lines.length){
+    if(_lastUrl){ URL.revokeObjectURL(_lastUrl); _lastUrl=null; } _lastBlob=null;
+    $('preview').removeAttribute('src');
+    $('status').className='status load'; $('status').textContent = batch.length ? ('Batch has '+batch.length+' label'+(batch.length>1?'s':'')+'. Paste another, or download.') : 'Paste an eBay address to begin.';
+    $('addBtn').disabled=true; $('dlBtn').disabled = batch.length===0;
+    $('sizeval').innerHTML='&mdash;';
+    return;
+  }
+  var opts = currentOpts();
+  var built = buildDoc([{ lines: lines, opts: opts }]);
+  var info = built.infos[0];
+  var blob = built.doc.output('blob');
+  if(_lastUrl) URL.revokeObjectURL(_lastUrl);
+  _lastBlob = blob; _lastUrl = URL.createObjectURL(blob);
+  $('preview').src = _lastUrl + '#zoom=page-fit&toolbar=0&navpanes=0&scrollbar=0&view=Fit';
+
+  // size readout
+  if(opts.sizeOverride!=null) $('sizeval').innerHTML = info.pt.toFixed(1)+' pt<small>auto '+info.autoPt.toFixed(1)+'</small>';
+  else $('sizeval').innerHTML = info.pt.toFixed(1)+' pt<small>auto-fit</small>';
+
+  // status
+  var msg = SYM_OK + ' ' + info.lineCount + ' line' + (info.lineCount>1?'s':'') + ' ' + SYM_DOT + ' ' + info.pt.toFixed(1) + ' pt';
+  var cls = 'status ok';
+  if(info.dropped) msg += ' ' + SYM_DOT + ' country line dropped to fit';
+  if((function(j){for(var k=0;k<j.length;k++){if(j.charCodeAt(k)>255)return true;}return false;})(lines.join(''))){ cls='status warn'; msg += ' ' + SYM_DOT + ' ' + SYM_WARN + ' some characters may not render in this font'; }
+  if(info.overflow){ cls='status err'; msg = SYM_WARN + ' Too long to fit at ' + info.pt.toFixed(1) + ' pt. Shorten a line, reduce the margin, or turn on wrapping (Advanced).'; }
+  $('status').className = cls; $('status').textContent = msg;
+
+  $('addBtn').disabled=false; $('dlBtn').disabled=false;
+  if(!$('fname').value.trim()) $('fname').placeholder = deriveName(lines);
+}
+function scheduleRender(){ clearTimeout(_renderTimer); _renderTimer=setTimeout(regenerate, 180); }
+
+/* ---------- controls ---------- */
+function setAlign(v){ curAlign=v; pillsOn('alignPills',v); regenerate(); }
+function setCountry(v){ curCountry=v; pillsOn('countryPills',v); regenerate(); }
+function pillsOn(id,v){ var ps=$(id).querySelectorAll('.pill'); for(var i=0;i<ps.length;i++) ps[i].classList.toggle('on', ps[i].dataset.v===v); }
+function bumpSize(d){
+  var base;
+  if(sizeOverride!=null) base = sizeOverride;
+  else { var lines=cleanLines(); if(!lines.length){ return; } var b=buildDoc([{lines:lines,opts:currentOpts()}]); base=b.infos[0].pt; }
+  sizeOverride = Math.max(MIN_PT, Math.min(base + d, 40));
+  regenerate();
+}
+function resetSize(){ sizeOverride=null; regenerate(); }
+
+/* ---------- raw -> clean parsing ---------- */
+function onRawInput(){
+  var blocks = parseAddresses($('raw').value);
+  var multi = $('multi');
+  if(blocks.length===0){ $('clean').value=''; multi.style.display='none'; sizeOverride=null; regenerate(); return; }
+  $('clean').value = blocks[0].join('\n');
+  sizeOverride = null;                                  // fresh address, fresh auto-fit
+  if(blocks.length>1){
+    multi.style.display='';
+    multi.innerHTML = '<button class="btn minibtn" onclick="addAllParsed()">+ Add all '+blocks.length+' addresses to batch</button>';
+    multi._blocks = blocks;
+  } else { multi.style.display='none'; }
+  regenerate();
+}
+function addAllParsed(){
+  var blocks = $('multi')._blocks || [];
+  for(var i=0;i<blocks.length;i++) pushBatch(blocks[i], currentOpts());
+  $('raw').value=''; $('clean').value=''; $('multi').style.display='none'; sizeOverride=null;
+  renderBatch(); regenerate(); showToast('Added '+blocks.length+' to batch');
+}
+
+/* ---------- batch ---------- */
+function pushBatch(lines, opts){ batch.push({ lines: lines.slice(), opts: opts, name: lines[0]||'(no name)', sub: suburbOf(lines) }); }
+function addToBatch(){
+  var lines = cleanLines();
+  if(!lines.length){ showToast('Nothing to add'); return; }
+  pushBatch(lines, currentOpts());
+  $('raw').value=''; $('clean').value=''; $('multi').style.display='none'; $('fname').value=''; sizeOverride=null;
+  renderBatch(); regenerate(); showToast('Added to batch ('+batch.length+')');
+}
+function removeBatch(i){ batch.splice(i,1); renderBatch(); regenerate(); }
+function renderBatch(){
+  var el = $('batchlist');
+  if(!batch.length){ el.innerHTML='<div class="bempty">No staged labels. Use <b>+ Add to batch</b> to queue several orders into one multi-page PDF (one label per page). Each staged label keeps its own font size, which you can nudge with the &minus;/+ beside it.</div>'; refreshDownloadLabel(); return; }
+  var h = '<div class="blist">';
+  for(var i=0;i<batch.length;i++){
+    var it = batch[i];
+    var info = buildDoc([{ lines: it.lines, opts: it.opts }]).infos[0];
+    var ov = it.opts.sizeOverride!=null;
+    var cls = 'bpt' + (info.overflow ? ' of' : (ov ? ' ov' : ''));
+    var title = info.overflow ? ('Overflows at ' + info.pt.toFixed(1) + ' pt')
+              : ov ? ('Custom ' + info.pt.toFixed(1) + ' pt (auto ' + info.autoPt.toFixed(1) + '), click to reset to auto')
+              : ('Auto-fit ' + info.pt.toFixed(1) + ' pt');
+    h += '<div class="bitem">'
+      +    '<div class="n"><b>'+esc(it.name)+'</b>'+(it.sub?' <span>'+esc(it.sub)+'</span>':'')+'</div>'
+      +    '<div class="bfont">'
+      +      '<button title="Smaller" onclick="batchBump('+i+',-0.5)">&minus;</button>'
+      +      '<span class="'+cls+'" title="'+title+'" onclick="batchReset('+i+')">'+(info.overflow?SYM_WARN+' ':'')+info.pt.toFixed(1)+' pt'+(ov?' *':'')+'</span>'
+      +      '<button title="Larger" onclick="batchBump('+i+',0.5)">+</button>'
+      +    '</div>'
+      +    '<div class="x" title="Remove" onclick="removeBatch('+i+')">&times;</div>'
+      +  '</div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+  refreshDownloadLabel();
+}
+function batchBump(i, d){
+  var it = batch[i]; if(!it) return;
+  var base = it.opts.sizeOverride!=null ? it.opts.sizeOverride
+           : buildDoc([{ lines: it.lines, opts: it.opts }]).infos[0].autoPt;
+  it.opts.sizeOverride = Math.max(MIN_PT, Math.min(base + d, 40));
+  renderBatch();
+}
+function batchReset(i){
+  var it = batch[i]; if(!it || it.opts.sizeOverride==null) return;
+  it.opts.sizeOverride = null; renderBatch(); showToast('Reset to auto-fit');
+}
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ---------- download ---------- */
+function saveBlob(blob, name){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
+}
+function downloadAll(){
+  if(!jsPDFok){ showToast('PDF engine not loaded'); return; }
+  var items = batch.slice();
+  var cur = cleanLines();
+  if(cur.length) items.push({ lines: cur, opts: currentOpts() });
+  if(!items.length){ showToast('Nothing to download'); return; }
+  if(items.length===1 && cur.length && _lastBlob){
+    // single working label, reuse the exact previewed bytes
+    var nm = $('fname').value.trim() || deriveName(cur);
+    saveBlob(_lastBlob, ensurePdf(nm)); showToast('Label saved'); return;
+  }
+  var built = buildDoc(items);
+  var blob = built.doc.output('blob');
+  var fname = (items.length===1) ? ($('fname').value.trim() || deriveName(items[0].lines))
+                                 : ('shipping-labels-' + items.length);
+  saveBlob(blob, ensurePdf(fname));
+  showToast(items.length + ' label' + (items.length>1?'s':'') + ' saved');
+}
+
+/* ---------- clipboard ---------- */
+function pasteClip(){
+  if(!(navigator.clipboard && navigator.clipboard.readText)){ showToast('Clipboard not available, paste manually'); $('raw').focus(); return; }
+  navigator.clipboard.readText().then(function(t){
+    if(!t){ showToast('Clipboard is empty'); return; }
+    $('raw').value = t; onRawInput(); showToast('Pasted');
+  }).catch(function(){ showToast('Clipboard blocked, paste manually (Ctrl+V)'); $('raw').focus(); });
+}
+
+/* ---------- init ---------- */
+(function(){
+  if(!jsPDFok){ $('status').className='status err'; $('status').textContent='PDF engine failed to load (vendor/jspdf.umd.min.js missing). Restart the dev server.'; }
+  $('raw').addEventListener('input', onRawInput);
+  $('clean').addEventListener('input', scheduleRender);
+  ['a_margin','a_spacing','a_wrap','a_font'].forEach(function(id){ $(id).addEventListener('input', regenerate); $(id).addEventListener('change', regenerate); });
+  renderBatch();
+  regenerate();
+})();
+</script>
+</body>
+</html>
