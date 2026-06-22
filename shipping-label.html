@@ -26,18 +26,22 @@
     border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
   textarea:focus,input:focus,select:focus{border-color:var(--gold);}
   textarea{resize:vertical;line-height:1.5;}
-  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:14px;}
+  .controls{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;}
+  .grp{display:flex;flex-direction:column;gap:7px;}
   .pills{display:flex;gap:6px;flex-wrap:wrap;}
-  .pill{padding:7px 12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
-    border-radius:999px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;user-select:none;}
+  .pill{height:34px;display:inline-flex;align-items:center;padding:0 14px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+    border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;user-select:none;}
+  .pill:hover{border-color:var(--gold-dim);color:var(--text);}
   .pill.on{background:var(--gold);color:#06101c;border-color:var(--gold);}
   .stepper{display:flex;align-items:center;gap:6px;}
-  .stepper button{width:30px;height:34px;border:1px solid var(--line);background:var(--panel2);color:var(--text);
-    border-radius:8px;font-size:17px;font-weight:700;cursor:pointer;line-height:1;}
-  .stepper button:hover{border-color:var(--gold);color:var(--gold);}
-  .stepval{min-width:96px;text-align:center;font-size:12.5px;color:var(--text);font-weight:600;}
-  .stepval small{display:block;color:var(--muted);font-weight:400;font-size:10.5px;letter-spacing:.3px;}
-  .linkbtn{background:none;border:none;color:var(--gold);font-size:11px;cursor:pointer;padding:2px 4px;width:auto;}
+  .stepper .step{width:34px;height:34px;border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;line-height:1;padding:0;}
+  .stepper .step:hover{border-color:var(--gold);color:var(--gold);}
+  .stepval{min-width:82px;height:34px;display:flex;flex-direction:column;justify-content:center;text-align:center;font-size:13px;color:var(--text);font-weight:700;}
+  .stepval small{display:block;color:var(--muted);font-weight:400;font-size:10px;letter-spacing:.3px;margin-top:1px;}
+  .reset{height:34px;padding:0 12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+    border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;}
+  .reset:hover{border-color:var(--gold);color:var(--gold);}
   .btn{padding:9px 15px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);
     border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;width:auto;}
   .btn:hover{background:var(--gold);color:#06101c;}
@@ -99,24 +103,24 @@
         <textarea id="clean" rows="5" placeholder="The cleaned address appears here. Tweak any line, split a suburb, fix a typo, etc."></textarea>
       </div>
 
-      <div class="row">
-        <div style="flex:0 0 auto;">
+      <div class="controls">
+        <div class="grp">
           <label>Font size</label>
           <div class="stepper">
-            <button onclick="bumpSize(-0.5)" title="Smaller">&minus;</button>
+            <button class="step" onclick="bumpSize(-0.5)" title="Smaller">&minus;</button>
             <div class="stepval" id="sizeval">&mdash;</div>
-            <button onclick="bumpSize(0.5)" title="Larger">+</button>
-            <button class="linkbtn" onclick="resetSize()" title="Back to auto-fit">auto</button>
+            <button class="step" onclick="bumpSize(0.5)" title="Larger">+</button>
+            <button class="reset" onclick="resetSize()" title="Back to auto-fit">auto</button>
           </div>
         </div>
-        <div style="flex:0 0 auto;">
+        <div class="grp">
           <label>Align</label>
           <div class="pills" id="alignPills">
             <span class="pill on" data-v="left" onclick="setAlign('left')">Left</span>
             <span class="pill" data-v="center" onclick="setAlign('center')">Center</span>
           </div>
         </div>
-        <div style="flex:0 0 auto;">
+        <div class="grp">
           <label>Country line</label>
           <div class="pills" id="countryPills">
             <span class="pill on" data-v="auto" onclick="setCountry('auto')" title="Keep it only if it fits without shrinking the font">Auto</span>
@@ -142,6 +146,7 @@
             <option value="courier">Courier (mono)</option>
           </select></div>
           <div><label>Min / Max pt</label><input id="a_minmax" value="5 to 14" disabled></div>
+          <div class="full"><input type="checkbox" id="a_splitunit" checked><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Put unit / flat / level on its own line (e.g. "Unit 8" above "62 Allowah St")</label></div>
           <div class="full"><input type="checkbox" id="a_wrap"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Wrap long lines (off = shrink font to keep each line whole)</label></div>
         </div>
       </details>
@@ -193,15 +198,33 @@ function isPhoneLine(l){ var d=(l.match(/\d/g)||[]).length; return d>=6 && !/[a-
 function isCountryLine(l){ return COUNTRY_RE.test(l.trim()); }
 
 /* ---------- parsing (pure, array-shaped, batch-ready) ---------- */
+// Australian sub-dwelling (flat/unit) type words, per AS4590 / Australia Post AMAS.
+var UNIT_TYPES = 'Unit|Apartment|Apt|Flat|Suite|Ste|Shop|Studio|Penthouse|Villa|Townhouse|Room|Rm|Office|Factory|Warehouse|Level|Lvl|Floor|Site|Building|Duplex|Kiosk|Stall|Store|Tower';
+// Matches "Unit 8 62 Allowah St" (type + unit-id + a STREET NUMBER + rest). Requires the
+// digit street number after the unit id, so "Lot 3 Smith Rd" (rural) and "8/62 St" stay whole.
+var UNIT_RE = new RegExp('^(' + UNIT_TYPES + ')\\.?[ ,]+([0-9]+[A-Za-z]?|[A-Za-z]?[0-9]+)[ ,]+([0-9].*)$', 'i');
+function splitUnit(line){
+  var m = UNIT_RE.exec(line);
+  return m ? [ m[1] + ' ' + m[2], m[3].trim() ] : null;   // ["Unit 8","62 Allowah St"] or null
+}
 function splitBlocks(raw){
   return raw.replace(/\r\n?/g,'\n').split(/\n[ \t]*\n+/).map(function(b){return b.trim();}).filter(Boolean);
 }
-function parseOne(block){
-  return block.split('\n').map(function(s){return s.trim();}).filter(Boolean)
+function parseOne(block, splitUnits){
+  var lines = block.split('\n').map(function(s){return s.trim();}).filter(Boolean)
     .filter(function(l){ return !/^ebay:/i.test(l); })
     .filter(function(l){ return !isPhoneLine(l); });    // country stays as a normal trailing line
+  if(splitUnits){
+    var out = [];
+    for(var i=0;i<lines.length;i++){
+      var parts = (i>0) ? splitUnit(lines[i]) : null;   // never split the name (line 0)
+      if(parts){ out.push(parts[0]); out.push(parts[1]); } else out.push(lines[i]);
+    }
+    lines = out;
+  }
+  return lines;
 }
-function parseAddresses(raw){ return splitBlocks(raw).map(parseOne).filter(function(a){return a.length;}); }
+function parseAddresses(raw, splitUnits){ return splitBlocks(raw).map(function(b){return parseOne(b, splitUnits);}).filter(function(a){return a.length;}); }
 
 /* ---------- options snapshot ---------- */
 function currentOpts(){
@@ -213,22 +236,27 @@ function currentOpts(){
   };
 }
 
-/* ---------- fit math ---------- */
-function wrapLines(doc, lines, pt, opts){
-  doc.setFont(opts.font,'normal'); doc.setFontSize(pt);
+/* ---------- fit math (line 0 = recipient name, rendered bold) ---------- */
+function physLines(doc, lines, pt, opts){
+  // returns [{t,b}] physical lines, honoring wrap + bold-name. Bold is wider, so each
+  // line is measured/drawn at its own weight.
   var usableW = PAGE_W - 2*opts.margin, out = [];
+  doc.setFontSize(pt);
   for(var i=0;i<lines.length;i++){
-    if(opts.wrap){ out = out.concat(doc.splitTextToSize(lines[i], usableW)); }
-    else out.push(lines[i]);
+    var bold = (i===0);
+    doc.setFont(opts.font, bold?'bold':'normal');
+    if(opts.wrap){ var parts = doc.splitTextToSize(lines[i], usableW); for(var j=0;j<parts.length;j++) out.push({t:parts[j], b:bold}); }
+    else out.push({t:lines[i], b:bold});
   }
   return out;
 }
 function fitsAt(doc, lines, pt, opts){
   var usableW = PAGE_W - 2*opts.margin, usableH = PAGE_H - 2*opts.margin;
-  var wrapped = wrapLines(doc, lines, pt, opts);
+  var phys = physLines(doc, lines, pt, opts);
   var lineH = pt*opts.lineSpacing*MM_PER_PT;
-  if(wrapped.length*lineH > usableH + 1e-6) return false;
-  for(var i=0;i<wrapped.length;i++){ if(doc.getTextWidth(wrapped[i]) > usableW + 1e-6) return false; }
+  if(phys.length*lineH > usableH + 1e-6) return false;
+  doc.setFontSize(pt);
+  for(var i=0;i<phys.length;i++){ doc.setFont(opts.font, phys[i].b?'bold':'normal'); if(doc.getTextWidth(phys[i].t) > usableW + 1e-6) return false; }
   return true;
 }
 function autoFitPt(doc, lines, opts){
@@ -255,23 +283,36 @@ function layoutOnePage(doc, rawLines, opts){
   var autoPt = autoFitPt(doc, lines, opts);
   var pt = opts.sizeOverride!=null ? opts.sizeOverride : autoPt;
   pt = Math.max(MIN_PT, Math.min(pt, 40));
-  var wrapped = wrapLines(doc, lines, pt, opts);
+  var phys = physLines(doc, lines, pt, opts);
   var overflow = !fitsAt(doc, lines, pt, opts);
+
+  if(opts.guides) drawGuides(doc, opts);                     // preview only; never in the saved PDF
 
   var usableH = PAGE_H - 2*opts.margin;
   var lineH = pt*opts.lineSpacing*MM_PER_PT;
   var glyphH = pt*MM_PER_PT;                                  // approx ink height of one line
-  var blockH = (wrapped.length-1)*lineH + glyphH;
+  var blockH = (phys.length-1)*lineH + glyphH;
   var top = opts.margin + Math.max(0, (usableH - blockH)/2);
   var x = opts.align==='center' ? PAGE_W/2 : opts.margin;
   var align = opts.align==='center' ? 'center' : 'left';
 
-  doc.setFont(opts.font,'normal'); doc.setFontSize(pt);
-  for(var i=0;i<wrapped.length;i++){
-    doc.text(wrapped[i], x, top + i*lineH, { baseline:'top', align: align });
+  doc.setTextColor(0,0,0); doc.setFontSize(pt);
+  for(var i=0;i<phys.length;i++){
+    doc.setFont(opts.font, phys[i].b?'bold':'normal');
+    doc.text(phys[i].t, x, top + i*lineH, { baseline:'top', align: align });
   }
   return { pt: pt, autoPt: autoPt, overflow: overflow, dropped: res.dropped,
-           lineCount: wrapped.length, lines: lines };
+           lineCount: phys.length, lines: lines };
+}
+// Preview-only guides: the sticker edge + the dashed safe-margin box. Drawn before the text.
+function drawGuides(doc, opts){
+  doc.setLineWidth(0.15); doc.setDrawColor(170,180,195);     // sticker edge (light gray)
+  doc.rect(0.25, 0.25, PAGE_W-0.5, PAGE_H-0.5, 'S');
+  doc.setDrawColor(90,176,255); doc.setLineWidth(0.12);      // safe-margin box (dashed accent)
+  if(doc.setLineDashPattern) doc.setLineDashPattern([0.8,0.6], 0);
+  doc.rect(opts.margin, opts.margin, PAGE_W-2*opts.margin, PAGE_H-2*opts.margin, 'S');
+  if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
+  doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
 }
 
 /* ---------- build a (multi-page) document ---------- */
@@ -322,11 +363,12 @@ function regenerate(){
     return;
   }
   var opts = currentOpts();
-  var built = buildDoc([{ lines: lines, opts: opts }]);
+  var built = buildDoc([{ lines: lines, opts: opts }]);                 // clean PDF -> download
   var info = built.infos[0];
-  var blob = built.doc.output('blob');
+  _lastBlob = built.doc.output('blob');
+  var prev = buildDoc([{ lines: lines, opts: Object.assign({}, opts, { guides:true }) }]);  // preview w/ margin guides
   if(_lastUrl) URL.revokeObjectURL(_lastUrl);
-  _lastBlob = blob; _lastUrl = URL.createObjectURL(blob);
+  _lastUrl = URL.createObjectURL(prev.doc.output('blob'));
   $('preview').src = _lastUrl + '#zoom=page-fit&toolbar=0&navpanes=0&scrollbar=0&view=Fit';
 
   // size readout
@@ -361,7 +403,7 @@ function resetSize(){ sizeOverride=null; regenerate(); }
 
 /* ---------- raw -> clean parsing ---------- */
 function onRawInput(){
-  var blocks = parseAddresses($('raw').value);
+  var blocks = parseAddresses($('raw').value, $('a_splitunit').checked);
   var multi = $('multi');
   if(blocks.length===0){ $('clean').value=''; multi.style.display='none'; sizeOverride=null; regenerate(); return; }
   $('clean').value = blocks[0].join('\n');
@@ -470,6 +512,7 @@ function pasteClip(){
   $('raw').addEventListener('input', onRawInput);
   $('clean').addEventListener('input', scheduleRender);
   ['a_margin','a_spacing','a_wrap','a_font'].forEach(function(id){ $(id).addEventListener('input', regenerate); $(id).addEventListener('change', regenerate); });
+  $('a_splitunit').addEventListener('change', onRawInput);   // re-parse: splitting happens at parse time
   renderBatch();
   regenerate();
 })();
