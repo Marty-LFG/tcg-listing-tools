@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import crypto from 'node:crypto'
 import { trackerPlugin } from './lib/tracker.mjs'
 import { lookup as pcLookup } from './lib/pricecharting.mjs'
+import { analyzeCard } from './lib/grader.mjs'
 
 // Streams any remote image through the dev server so the browser can blob-download
 // it (cross-origin <a download> is blocked otherwise).
@@ -235,12 +236,58 @@ function pcProxy(env) {
   }
 }
 
+// ---- Pre-grading: AI vision condition pass (Anthropic OR OpenAI) ----------
+// POST /api/grade { images:[{mediaType,dataB64}], context } -> per-pillar condition scores +
+// defects from lib/grader.mjs. The browser measures centering itself; this only scores the
+// pillars a camera can't measure geometrically. Provider chosen by GRADER_PROVIDER/keys. A missing
+// key or provider error returns ok:false (never 500) so the tool degrades to centering-only.
+function readJsonBody(req, limitBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let size = 0
+    req.on('data', (c) => {
+      size += c.length
+      if (size > limitBytes) { reject(new Error('payload too large (> ' + Math.round(limitBytes / 1e6) + 'MB)')); req.destroy() }
+      else chunks.push(c)
+    })
+    req.on('end', () => {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')) }
+      catch (e) { reject(new Error('invalid JSON body')) }
+    })
+    req.on('error', reject)
+  })
+}
+function graderProxy(env) {
+  return {
+    name: 'grader-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/grade', async (req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('access-control-allow-origin', '*')
+        if ((req.method || 'GET').toUpperCase() !== 'POST') {
+          res.statusCode = 405
+          return res.end(JSON.stringify({ ok: false, error: 'method', message: 'POST only' }))
+        }
+        try {
+          const body = await readJsonBody(req, 28 * 1024 * 1024) // ~28MB of base64 images
+          console.log('[api/grade]', (body.images || []).length, 'image(s)', body.context ? '· ' + (body.context.name || '') : '')
+          const result = await analyzeCard({ images: body.images, context: body.context, env })
+          res.end(JSON.stringify(result))
+        } catch (e) {
+          // Never 500 the grader — degrade to centering-only on the client.
+          res.end(JSON.stringify({ ok: false, error: 'request', message: String((e && e.message) || e) }))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // loads .env (and .env.local) from the project root
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), trackerPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), graderProxy(env), trackerPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

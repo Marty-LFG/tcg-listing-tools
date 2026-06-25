@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Card Pre-Grader — PSA / BGS / CGC / SGC / TAG</title>
+<style>
+  :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
+    --text:#eef1fb;--gold:#d9a4ff;--gold-dim:#5a3a86;--field:#0a1230;
+    --good:#36d399;--warn:#f0c020;--bad:#f06262;--info:#5aa9ff;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1180px;margin:0 auto;}
+  a.back{display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px;}
+  .banner{background:rgba(240,192,32,.08);border:1px solid rgba(240,192,32,.35);border-radius:10px;padding:10px 13px;font-size:12px;color:#f0d98a;margin-bottom:16px;line-height:1.5;}
+  .grid{display:grid;grid-template-columns:1fr 1.1fr;gap:18px;align-items:start;}
+  @media(max-width:980px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;}
+  .card h2{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 12px;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  input,select,button,textarea{font-family:inherit;}
+  .fld input,.fld select{width:100%;padding:8px 10px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;}
+  .fld input:focus,.fld select:focus{border-color:var(--gold);}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .setrow{position:relative;margin-bottom:10px;}
+  .lookup{display:flex;gap:8px;}
+  .lookup input{flex:1;}
+  .btn{padding:8px 14px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;}
+  .btn:hover{background:var(--gold);color:#160c24;}
+  .btn.solid{background:var(--gold);color:#160c24;border-color:var(--gold);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .btn:disabled:hover{background:transparent;color:var(--gold);}
+  .status{font-size:12.5px;min-height:18px;margin:8px 0 0;}
+  .status.ok{color:var(--good);}.status.warn{color:var(--warn);}.status.err{color:var(--bad);}.status.load{color:var(--muted);}
+  #setMenu{display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-height:280px;overflow:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);}
+  #setMenu.open{display:block;}
+  .setopt{display:flex;align-items:center;gap:10px;padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--line);}
+  .setopt:last-child{border-bottom:none;} .setopt:hover,.setopt.active{background:var(--field);}
+  .setopt img{width:22px;height:22px;object-fit:contain;flex:none;}
+  .setopt .nm{font-size:13px;color:var(--text);font-weight:600;} .setopt .meta{font-size:11px;color:var(--muted);}
+  /* capture slots */
+  .slots{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .slot{border:1.5px dashed var(--line);border-radius:10px;padding:8px;text-align:center;background:var(--field);position:relative;min-height:108px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:.15s;}
+  .slot.req{border-color:var(--gold-dim);}
+  .slot.drag{border-color:var(--gold);background:rgba(217,164,255,.08);}
+  .slot.has{border-style:solid;cursor:default;}
+  .slot .ttl{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+  .slot .hint{font-size:10.5px;color:var(--muted);opacity:.7;}
+  .slot img{max-width:100%;max-height:120px;border-radius:6px;display:block;}
+  .slot .rm{position:absolute;top:5px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:1;}
+  .slot .cap{position:absolute;bottom:5px;right:6px;font-size:10px;padding:2px 7px;}
+  /* camera */
+  .cam{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+  .cam video{width:100%;max-height:240px;border-radius:8px;background:#000;border:1px solid var(--line);display:none;}
+  .cam.live video{display:block;}
+  .camrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .camrow select{flex:1;min-width:120px;padding:7px 9px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:12.5px;}
+  /* centering pads */
+  .pads{display:flex;gap:14px;flex-wrap:wrap;}
+  .pad{flex:1;min-width:150px;}
+  .pad canvas{border:1px solid var(--line);border-radius:8px;background:#0a0e1c;touch-action:none;max-width:100%;cursor:crosshair;}
+  .pad .ro{font-size:12px;margin-top:6px;line-height:1.5;}
+  .pad .ro b{color:var(--gold);} .mono{font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .legend{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:3px;}
+  /* sliders */
+  .pillrow{display:grid;grid-template-columns:74px 1fr 38px;gap:8px;align-items:center;margin-bottom:7px;}
+  .pillrow label{margin:0;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text);}
+  .pillrow input[type=range]{width:100%;accent-color:var(--gold);}
+  .pillrow .v{font-weight:700;color:var(--gold);text-align:right;font-size:13px;}
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;}
+  .colhead{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin:2px 0 4px;}
+  /* report */
+  #report .rcard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;}
+  #report h3{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 10px;}
+  .predtable{width:100%;border-collapse:collapse;font-size:13px;}
+  .predtable th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);text-align:left;padding:4px 6px;font-weight:700;}
+  .predtable td{padding:7px 6px;border-top:1px solid var(--line);vertical-align:middle;}
+  .gradebig{font-size:18px;font-weight:800;color:var(--gold);line-height:1;white-space:nowrap;}
+  .fit{outline:2px solid var(--gold);outline-offset:-2px;border-radius:8px;}
+  .pbar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:3px;}
+  .pbar > i{display:block;height:100%;background:var(--gold);}
+  .pill{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:999px;padding:1px 7px;border:1px solid currentColor;}
+  .pill.high{color:var(--good);} .pill.medium{color:var(--warn);} .pill.low{color:var(--bad);}
+  .disc{font-size:11.5px;color:var(--muted);line-height:1.55;}
+  .disc li{margin-bottom:5px;}
+  .muted{color:var(--muted);} .small{font-size:11.5px;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#160c24;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99999;}
+  .toast.show{opacity:1;}
+  .empty{font-size:13px;color:var(--muted);line-height:1.6;padding:8px 2px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">&larr; All tools</a>
+  <div class="tag">Pre-grading &middot; PSA / BGS / CGC / SGC / TAG</div>
+  <h1>Card Pre-Grader</h1>
+  <p class="sub">Photograph or scan a card → measured centering + an AI condition pass → a predicted grade per company, value-at-grade, and a "worth grading?" verdict.</p>
+  <div class="banner">⚠ <b>Estimate, not a grade.</b> This screens cards — it's far better at confirming a card is <i>not</i> a 10 than proving it is one. Surface flaws &amp; the back are under-seen from photos; it does <b>not</b> authenticate. Treat every number as a guide, especially at the 9-vs-10 line.</div>
+
+  <div class="grid">
+    <!-- LEFT: inputs -->
+    <div>
+      <div class="card">
+        <h2>1 · Card identity</h2>
+        <div class="setrow fld"><label>Set <span id="setStatus" class="muted small" style="text-transform:none;letter-spacing:0;">loading…</span></label>
+          <input id="setCode" autocomplete="off" placeholder="set name or code, e.g. ASC or Ascended Heroes">
+          <div id="setMenu"></div>
+        </div>
+        <label>Card number</label>
+        <div class="lookup fld"><input id="num" placeholder="e.g. 294  or  294/217" autocomplete="off"><button class="btn solid" onclick="doLookup()">Look up</button></div>
+        <div class="status load" id="idStatus">Pick a set + number and look up, or fill the fields manually.</div>
+        <div class="row2 fld" style="margin-top:12px;">
+          <div style="grid-column:1/3;"><label>Card name</label><input id="f_name"></div>
+          <div><label>Set</label><input id="f_set"></div>
+          <div><label>Number</label><input id="f_num"></div>
+          <div><label>Rarity</label><input id="f_rarity"></div>
+          <div><label>Finish</label><select id="f_finish"><option>Holo</option><option>Reverse Holo</option><option>Non-holo</option><option>Gold / Metal</option></select></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2 · Capture photos</h2>
+        <div class="cam" id="camWrap">
+          <div class="camrow">
+            <select id="camSelect"><option value="">No camera selected</option></select>
+            <button class="btn" id="camStart" onclick="toggleCam()">Start camera</button>
+          </div>
+          <video id="camVideo" autoplay playsinline muted></video>
+          <div class="camrow" id="camCapRow" style="display:none;">
+            <select id="camTarget">
+              <option value="front">→ Front</option><option value="back">→ Back</option>
+              <option value="corners">→ Corners/Edges</option><option value="surface">→ Surface/Micro</option>
+            </select>
+            <button class="btn solid" onclick="captureFrame()">📸 Capture frame</button>
+          </div>
+          <div class="small muted">USB microscopes show up as a camera here. Camera needs a secure context — works on <span class="mono">localhost</span>; a plain LAN IP may block it (use the upload slots instead).</div>
+        </div>
+        <div class="slots" id="slots">
+          <div class="slot req" data-slot="front"><div class="ttl">Front *</div><div class="hint">click / drop / camera</div></div>
+          <div class="slot" data-slot="back"><div class="ttl">Back</div><div class="hint">click / drop / camera</div></div>
+          <div class="slot" data-slot="corners"><div class="ttl">Corners / Edges</div><div class="hint">close-ups (optional)</div></div>
+          <div class="slot" data-slot="surface"><div class="ttl">Surface / Micro</div><div class="hint">microscope (optional)</div></div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" style="display:none;">
+      </div>
+
+      <div class="card">
+        <h2>3 · Centering (drag the guides)</h2>
+        <div class="pads">
+          <div class="pad"><div class="colhead">Front</div><canvas id="padFront" width="280" height="380"></canvas><div class="ro" id="roFront"><span class="muted">add a front photo</span></div></div>
+          <div class="pad"><div class="colhead">Back</div><canvas id="padBack" width="280" height="380"></canvas><div class="ro" id="roBack"><span class="muted">add a back photo (optional)</span></div></div>
+        </div>
+        <div class="legend"><span class="swatch" style="background:var(--gold);"></span>card edge &nbsp; <span class="swatch" style="background:var(--info);"></span>inner frame &nbsp;·&nbsp; drag each line to match. <button class="btn" style="padding:4px 9px;font-size:11px;margin-left:6px;" onclick="resetGuides()">Reset guides</button></div>
+      </div>
+
+      <div class="card">
+        <h2>4 · Condition pillars</h2>
+        <div class="small muted" style="margin-bottom:10px;">Run the AI pass to fill these, or set them yourself. The prediction uses these values, so correct anything that looks off.</div>
+        <button class="btn solid" id="aiBtn" onclick="runAI()" style="margin-bottom:6px;">✨ Run AI condition pass</button>
+        <div class="status load" id="aiStatus" style="margin-bottom:10px;"></div>
+        <div class="twocol">
+          <div>
+            <div class="colhead">Front</div>
+            <div class="pillrow"><label>Corners</label><input type="range" min="1" max="10" step="0.5" value="9" id="s_corners_front"><span class="v" id="v_corners_front">9</span></div>
+            <div class="pillrow"><label>Edges</label><input type="range" min="1" max="10" step="0.5" value="9" id="s_edges_front"><span class="v" id="v_edges_front">9</span></div>
+            <div class="pillrow"><label>Surface</label><input type="range" min="1" max="10" step="0.5" value="9" id="s_surface_front"><span class="v" id="v_surface_front">9</span></div>
+          </div>
+          <div>
+            <div class="colhead">Back</div>
+            <div class="pillrow"><label>Corners</label><input type="range" min="1" max="10" step="0.5" value="9" id="s_corners_back"><span class="v" id="v_corners_back">9</span></div>
+            <div class="pillrow"><label>Edges</label><input type="range" min="1" max="10" step="0.5" value="9" id="s_edges_back"><span class="v" id="v_edges_back">9</span></div>
+            <div class="pillrow"><label>Surface</label><input type="range" min="1" max="10" step="0.5" value="9" id="s_surface_back"><span class="v" id="v_surface_back">9</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: report -->
+    <div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <h2 style="margin:0;">Grading report</h2>
+          <div style="display:flex;gap:8px;">
+            <button class="btn" id="ebayBtn" onclick="findEbay()" title="eBay AU graded vs raw comps">🛒 eBay comps</button>
+            <button class="btn solid" id="pdfBtn" onclick="downloadPDF()">⬇ PDF</button>
+          </div>
+        </div>
+        <div id="report"><div class="empty">Add a front photo and set the centering guides to generate a report. Look up the card to pull value-at-grade.</div></div>
+        <div id="extras" style="margin-top:14px;"></div>
+        <div id="ebayextras" style="margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Done</div>
+
+<script src="/vendor/jspdf.umd.min.js"></script>
+<script src="/grade-rules.js"></script>
+<script src="/extras.js"></script>
+<script>
+/* ============================ state ============================ */
+var CFG = null;                 // grading.config.json
+var SLOTS = { front:null, back:null, corners:null, surface:null };  // each {dataUrl, b64, media}
+var _card = null;               // { name, set, number, rarity, finish, id, pc }
+var _ai = null;                 // AI pillar result
+var _pads = {};                 // front/back centering controllers
+var _camStream = null;
+function $(id){ return document.getElementById(id); }
+function val(id){ var e=$(id); return e?e.value.trim():''; }
+function setv(id,v){ var e=$(id); if(e) e.value=(v==null?'':v); }
+function esc(s){ return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function num1(n){ return (Math.round(n*10)/10); }
+var tt; function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('show');},1500); }
+function usd(n){ return n==null?'—':'US$'+(Math.round(n*100)/100).toFixed(2); }
+
+/* ============================ config ============================ */
+async function loadConfig(){
+  try{ var r=await fetch('/data/grading.config.json'); CFG=await r.json(); }
+  catch(e){ CFG=null; }
+}
+
+/* ============================ set picker ============================ */
+var PKM_SETS=[], selectedSet=null, _setActive=-1, SETS_CACHE_KEY='pkm_sets_v1';
+function setStatus(m){ var e=$('setStatus'); if(e) e.textContent=m; }
+function slimSet(s){ return {id:s.id,name:s.name,series:s.series||'',releaseDate:s.releaseDate||'',ptcgoCode:s.ptcgoCode||'',symbol:(s.images&&s.images.symbol)||''}; }
+async function loadSets(){
+  try{ var raw=localStorage.getItem(SETS_CACHE_KEY); if(raw){ var a=JSON.parse(raw); if(Array.isArray(a)&&a.length){PKM_SETS=a;setStatus(a.length+' sets · refreshing…');} } }catch(e){}
+  try{
+    var r=await fetch('/api/pkm/sets?pageSize=500'); if(!r.ok) throw 0;
+    var j=await r.json(); var sets=(j.data||[]).map(slimSet).sort(function(a,b){return (b.releaseDate||'').localeCompare(a.releaseDate||'');});
+    if(sets.length){ PKM_SETS=sets; try{localStorage.setItem(SETS_CACHE_KEY,JSON.stringify(sets));}catch(e){} setStatus(sets.length+' sets'); }
+  }catch(e){ setStatus(PKM_SETS.length?PKM_SETS.length+' sets (cached)':'offline — type set + number manually'); }
+}
+function resolveSet(typed){ var t=(typed||'').trim().toLowerCase(); if(!t)return null; var disp=t.replace(/\s*\([^)]*\)\s*$/,'');
+  return PKM_SETS.find(function(s){return s.id.toLowerCase()===t||(s.ptcgoCode||'').toLowerCase()===t||s.name.toLowerCase()===disp;})
+    ||PKM_SETS.find(function(s){return s.name.toLowerCase().indexOf(disp)>=0||s.id.toLowerCase().indexOf(t)>=0;})||null; }
+function filterSets(t){ t=(t||'').trim().toLowerCase(); if(!t)return PKM_SETS.slice(0,40);
+  return PKM_SETS.filter(function(s){return s.name.toLowerCase().indexOf(t)>=0||(s.ptcgoCode||'').toLowerCase().indexOf(t)>=0||s.id.toLowerCase().indexOf(t)>=0;}).slice(0,40); }
+function renderSetMenu(typed){ var menu=$('setMenu'); if(!menu)return; var list=filterSets(typed); _setActive=-1;
+  if(!list.length){menu.classList.remove('open');menu.innerHTML='';return;}
+  menu.innerHTML=list.map(function(s){ var sym=s.symbol?'<img src="'+s.symbol+'" alt="" loading="lazy">':'<span style="width:22px;flex:none;"></span>';
+    return '<div class="setopt" data-id="'+esc(s.id)+'">'+sym+'<span style="min-width:0;"><span class="nm">'+esc(s.name)+'</span><br><span class="meta">'+esc(s.series)+' · '+esc(s.id)+(s.ptcgoCode?' · '+esc(s.ptcgoCode):'')+'</span></span></div>'; }).join('');
+  menu.classList.add('open');
+  menu.querySelectorAll('.setopt').forEach(function(el){ el.addEventListener('mousedown',function(ev){ev.preventDefault();pickSet(el.getAttribute('data-id'));$('num').focus();}); });
+}
+function pickSet(id){ var s=PKM_SETS.find(function(x){return x.id===id;}); if(!s)return; selectedSet=s; $('setCode').value=s.name+(s.ptcgoCode?' ('+s.ptcgoCode+')':''); $('setMenu').classList.remove('open'); }
+
+/* ============================ card lookup + valuation ============================ */
+async function doLookup(){
+  var _set=selectedSet||resolveSet(val('setCode')); var setId=_set?_set.id:''; var n=val('num').replace(/\s/g,'').replace(/\/.*$/,''); var st=$('idStatus');
+  if(!setId){ st.className='status warn'; st.textContent='Pick a set (try a name or code), or fill the fields manually below.'; return; }
+  if(!n){ st.className='status warn'; st.textContent='Enter a card number.'; return; }
+  st.className='status load'; st.textContent='Looking up '+setId+'-'+n+'…';
+  var act=window.TCG?TCG.activity('Looking up '+setId+'-'+n+'…'):null;
+  try{
+    var r=await fetch('/api/pkm/cards/'+encodeURIComponent(setId+'-'+n));
+    if(!r.ok){ act&&act.fail('no match'); st.className='status warn'; st.textContent='No API match for '+setId+'-'+n+' (new sets can be missing). Fill fields manually — everything still works.'; return; }
+    var j=await r.json(); var c=j.data||j;
+    setv('f_name',c.name); setv('f_set',(c.set&&c.set.name)||setId);
+    setv('f_num',(c.number||n)+'/'+((c.set&&(c.set.printedTotal||c.set.total))||'')); setv('f_rarity',c.rarity||'');
+    setv('f_finish',/gold|metal|hyper/i.test(c.rarity||'')?'Gold / Metal':(/holo/i.test(c.rarity||'')?'Holo':'Non-holo'));
+    _card={ name:c.name, set:(c.set&&c.set.name)||setId, number:val('f_num'), rarity:c.rarity||'', finish:val('f_finish'), id:c.id, pc:null };
+    act&&act.done('pokemontcg.io');
+    st.className='status ok'; st.textContent='✓ '+c.name+' ('+(c.rarity||'?')+')';
+    renderBasePrices(c);
+    pcEnrich(c, n);
+    recompute();
+  }catch(e){ act&&act.fail('blocked'); st.className='status err'; st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.'; }
+}
+function renderBasePrices(c){
+  if(!window.TCG) return;
+  var rows=[], tp=(c.tcgplayer&&c.tcgplayer.prices)||{};
+  Object.keys(tp).forEach(function(k){ var b=tp[k]; if(b&&(b.market!=null||b.mid!=null)) rows.push({source:'TCGplayer',measure:k+' market',group:'market',amount:(b.market!=null?b.market:b.mid),currency:'USD'}); });
+  var cm=c.cardmarket&&c.cardmarket.prices; if(cm&&cm.averageSellPrice) rows.push({source:'Cardmarket',measure:'30d avg',group:'market',amount:cm.averageSellPrice,currency:'EUR'});
+  var dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':''; var sm=c.images&&c.images.small; var lg=c.images&&(c.images.large||c.images.small);
+  _card._ex={ name:c.name, images:[{label:'Front',display:[dg,sm].filter(Boolean),download:lg||dg}], prices:rows.slice(), history:null };
+  TCG.renderExtras($('extras'), _card._ex);
+}
+function pcRowsFrom(pc){
+  var out=[],P=pc.prices||{},ladder=pc.ladder||{},pop=pc.pop||{};
+  function popNote(g){var m=g.match(/(\d+)/);if(!m)return '';var r=pop[m[1]];if(!r)return '';if(/PSA/.test(g))return r.psa!=null?'PSA pop '+r.psa.toLocaleString():'';if(/CGC/.test(g))return r.cgc!=null?'CGC pop '+r.cgc.toLocaleString():'';return r.total!=null?'pop '+r.total.toLocaleString():'';}
+  var rawc=(P.ungraded!=null)?P.ungraded:(ladder['Ungraded']!=null?ladder['Ungraded']:null);
+  if(rawc!=null)out.push({source:'PriceCharting',measure:'eBay-sold raw',group:'market',amount:rawc/100,currency:'USD'});
+  ['Grade 7','Grade 8','Grade 9','Grade 9.5','PSA 10','BGS 10','CGC 10','SGC 10','BGS 10 Black','CGC 10 Pristine'].forEach(function(g){ if(ladder[g]==null)return; out.push({source:'PriceCharting',measure:g,group:'graded',amount:ladder[g]/100,currency:'USD',note:popNote(g)}); });
+  return out;
+}
+function pcEnrich(c,typedNum){
+  try{
+    var nm=c.name, numv=((c.number||typedNum||'')+'').replace(/\s/g,''), setNm=(c.set&&c.set.name)||'';
+    if(!nm||!numv) return;
+    var act=window.TCG?TCG.activity('PriceCharting…'):null;
+    fetch('/api/pc/lookup?name='+encodeURIComponent(nm)+'&number='+encodeURIComponent(numv)+'&set='+encodeURIComponent(setNm)+'&id='+encodeURIComponent(c.id||''))
+      .then(function(r){return r.json();}).then(function(pc){
+        if(!pc||!pc.matched){ act&&act.fail('no PriceCharting match'); return; }
+        _card.pc=pc;
+        var rows=pcRowsFrom(pc);
+        if(rows.length&&_card._ex){ _card._ex.prices=(_card._ex.prices||[]).concat(rows); _card._ex.pcLink=pc.url; TCG.renderExtras($('extras'),_card._ex); }
+        act&&act.done('PriceCharting'+(pc.confidence==='medium'?' (check match)':''));
+        recompute();
+      }).catch(function(){ act&&act.fail('PriceCharting blocked'); });
+  }catch(e){}
+}
+function findEbay(){
+  var name=val('f_name'); if(!name){ toast('Look up or name the card first'); return; }
+  var setName=(val('f_set')||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  var q=('Pokemon '+name+(val('f_num')?' '+val('f_num').replace(/\/.*$/,''):'')+(setName?' '+setName:'')).trim();
+  TCG.ebayComps({query:q,container:$('ebayextras'),status:$('idStatus'),analyze:true,precision:true,numberMatch:val('f_num'),
+    filterKey:'graded',
+    filterOptions:[{key:'graded',label:'Graded',filter:'conditionIds:{2750}'},{key:'raw',label:'Raw · BIN',filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},{key:'all',label:'All',filter:''}]});
+}
+
+/* ============================ capture: upload + camera ============================ */
+function downscale(file_or_img, cb){
+  var img=new Image();
+  img.onload=function(){
+    var MAX=1568, w=img.width, h=img.height, sc=Math.min(1, MAX/Math.max(w,h));
+    var cw=Math.max(1,Math.round(w*sc)), ch=Math.max(1,Math.round(h*sc));
+    var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+    cv.getContext('2d').drawImage(img,0,0,cw,ch);
+    var dataUrl=cv.toDataURL('image/jpeg',0.85);
+    cb({dataUrl:dataUrl, b64:dataUrl.split(',')[1], media:'image/jpeg', w:cw, h:ch});
+  };
+  img.onerror=function(){ cb(null); };
+  if(typeof file_or_img==='string'){ img.src=file_or_img; }
+  else { var fr=new FileReader(); fr.onload=function(e){ img.src=e.target.result; }; fr.readAsDataURL(file_or_img); }
+}
+function setSlot(slot, data){
+  SLOTS[slot]=data;
+  var el=document.querySelector('.slot[data-slot="'+slot+'"]'); if(!el)return;
+  if(!data){
+    el.classList.remove('has');
+    el.innerHTML='<div class="ttl">'+(slot==='front'?'Front *':slot==='back'?'Back':slot==='corners'?'Corners / Edges':'Surface / Micro')+'</div><div class="hint">click / drop / camera</div>';
+  } else {
+    el.classList.add('has');
+    el.innerHTML='<button class="rm" title="Remove" onclick="event.stopPropagation();setSlot(\''+slot+'\',null);refreshAfterImage();">×</button><img src="'+data.dataUrl+'" alt="'+slot+'">';
+  }
+  refreshAfterImage();
+}
+function refreshAfterImage(){
+  if(SLOTS.front) _pads.front.setImage(SLOTS.front.dataUrl); else _pads.front.setImage(null);
+  if(SLOTS.back) _pads.back.setImage(SLOTS.back.dataUrl); else _pads.back.setImage(null);
+  recompute();
+}
+var _pendingSlot=null;
+function wireSlots(){
+  document.querySelectorAll('.slot').forEach(function(el){
+    var slot=el.getAttribute('data-slot');
+    el.addEventListener('click',function(){ if(el.classList.contains('has'))return; _pendingSlot=slot; $('fileInput').click(); });
+    el.addEventListener('dragover',function(e){ e.preventDefault(); el.classList.add('drag'); });
+    el.addEventListener('dragleave',function(){ el.classList.remove('drag'); });
+    el.addEventListener('drop',function(e){ e.preventDefault(); el.classList.remove('drag'); var f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) downscale(f,function(d){ if(d) setSlot(slot,d); }); });
+  });
+  $('fileInput').addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; if(f&&_pendingSlot) downscale(f,function(d){ if(d) setSlot(_pendingSlot,d); }); this.value=''; });
+}
+async function toggleCam(){
+  if(_camStream){ stopCam(); return; }
+  try{
+    _camStream=await navigator.mediaDevices.getUserMedia({video:{deviceId:val('camSelect')?{exact:val('camSelect')}:undefined, width:{ideal:1920}}});
+    $('camVideo').srcObject=_camStream; $('camWrap').classList.add('live'); $('camStart').textContent='Stop camera'; $('camCapRow').style.display='flex';
+    await listCams();
+  }catch(e){ toast('Camera blocked: '+(e.message||e)); }
+}
+function stopCam(){ if(_camStream){_camStream.getTracks().forEach(function(t){t.stop();});} _camStream=null; $('camWrap').classList.remove('live'); $('camStart').textContent='Start camera'; $('camCapRow').style.display='none'; }
+async function listCams(){
+  try{ var devs=await navigator.mediaDevices.enumerateDevices(); var cams=devs.filter(function(d){return d.kind==='videoinput';});
+    var sel=$('camSelect'), cur=sel.value; sel.innerHTML=cams.map(function(d,i){return '<option value="'+d.deviceId+'">'+esc(d.label||('Camera '+(i+1)))+'</option>';}).join('')||'<option value="">No camera found</option>';
+    if(cur) sel.value=cur;
+  }catch(e){}
+}
+function captureFrame(){
+  var v=$('camVideo'); if(!v||!v.videoWidth){ toast('Camera not ready'); return; }
+  var cv=document.createElement('canvas'); cv.width=v.videoWidth; cv.height=v.videoHeight; cv.getContext('2d').drawImage(v,0,0);
+  downscale(cv.toDataURL('image/jpeg',0.9), function(d){ if(d){ setSlot(val('camTarget'),d); toast('Captured → '+val('camTarget')); } });
+}
+
+/* ============================ centering pads ============================ */
+function makePad(canvasId, roId){
+  var cv=$(canvasId), ctx=cv.getContext('2d');
+  var st={img:null,outer:null,inner:null,drag:null};
+  function defaults(){ st.outer={l:cv.width*0.04,t:cv.height*0.04,r:cv.width*0.96,b:cv.height*0.96};
+    var ix=cv.width*0.13, iy=cv.height*0.13; st.inner={l:ix,t:iy,r:cv.width-ix,b:cv.height-iy}; }
+  function setImage(dataUrl){
+    if(!dataUrl){ st.img=null; st.outer=null; st.inner=null; draw(); updateRO(); recompute(); return; }
+    var img=new Image(); img.onload=function(){ st.img=img;
+      var maxW=280, maxH=400, sc=Math.min(maxW/img.width, maxH/img.height); cv.width=Math.round(img.width*sc); cv.height=Math.round(img.height*sc);
+      defaults(); draw(); updateRO(); recompute(); };  // recompute AFTER the async load so the report regenerates
+    img.src=dataUrl;
+  }
+  function draw(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    if(st.img) ctx.drawImage(st.img,0,0,cv.width,cv.height);
+    else { ctx.fillStyle='#0a0e1c'; ctx.fillRect(0,0,cv.width,cv.height); ctx.fillStyle='#566'; ctx.font='12px sans-serif'; ctx.textAlign='center'; ctx.fillText('no image',cv.width/2,cv.height/2); }
+    if(!st.outer) return;
+    rect(st.outer,'#d9a4ff',[]); rect(st.inner,'#5aa9ff',[5,4]);
+  }
+  function rect(r,color,dash){ ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.setLineDash(dash);
+    ctx.strokeRect(r.l,r.t,r.r-r.l,r.b-r.t);
+    ctx.setLineDash([]); ctx.fillStyle=color;
+    [[ (r.l+r.r)/2, r.t],[(r.l+r.r)/2,r.b],[r.l,(r.t+r.b)/2],[r.r,(r.t+r.b)/2]].forEach(function(p){ ctx.fillRect(p[0]-3,p[1]-3,6,6); });
+    ctx.restore(); }
+  function edges(){ if(!st.outer)return []; return [
+    {k:'outer.l',ax:'x',v:st.outer.l,a:st.outer.t,b:st.outer.b},{k:'outer.r',ax:'x',v:st.outer.r,a:st.outer.t,b:st.outer.b},
+    {k:'outer.t',ax:'y',v:st.outer.t,a:st.outer.l,b:st.outer.r},{k:'outer.b',ax:'y',v:st.outer.b,a:st.outer.l,b:st.outer.r},
+    {k:'inner.l',ax:'x',v:st.inner.l,a:st.inner.t,b:st.inner.b},{k:'inner.r',ax:'x',v:st.inner.r,a:st.inner.t,b:st.inner.b},
+    {k:'inner.t',ax:'y',v:st.inner.t,a:st.inner.l,b:st.inner.r},{k:'inner.b',ax:'y',v:st.inner.b,a:st.inner.l,b:st.inner.r}]; }
+  function pos(e){ var rc=cv.getBoundingClientRect(); var cx=(e.touches?e.touches[0].clientX:e.clientX)-rc.left; var cy=(e.touches?e.touches[0].clientY:e.clientY)-rc.top;
+    return {x:cx*(cv.width/rc.width), y:cy*(cv.height/rc.height)}; }
+  function pick(p){ var best=null,bd=10; edges().forEach(function(ed){ var d=ed.ax==='x'?Math.abs(p.x-ed.v):Math.abs(p.y-ed.v); var within=ed.ax==='x'?(p.y>=ed.a-12&&p.y<=ed.b+12):(p.x>=ed.a-12&&p.x<=ed.b+12); if(within&&d<bd){bd=d;best=ed.k;} }); return best; }
+  function down(e){ if(!st.img)return; e.preventDefault(); st.drag=pick(pos(e)); }
+  function move(e){ if(!st.drag)return; e.preventDefault(); var p=pos(e); var parts=st.drag.split('.'); var grp=st[parts[0]], side=parts[1];
+    var v=(side==='l'||side==='r')?Math.max(0,Math.min(cv.width,p.x)):Math.max(0,Math.min(cv.height,p.y)); grp[side]=v; draw(); }
+  function up(){ if(st.drag){ st.drag=null; updateRO(); recompute(); } }
+  function updateRO(){ var ro=$(roId); if(!ro)return; var r=ratios(); if(!r){ ro.innerHTML='<span class="muted">'+(canvasId==='padBack'?'add a back photo (optional)':'add a front photo')+'</span>'; return; }
+    ro.innerHTML='L/R <b class="mono">'+r.lrLabel+'</b> · T/B <b class="mono">'+r.tbLabel+'</b> · worst <b class="mono">'+r.label+'</b>'; }
+  function ratios(){ if(!st.img||!st.outer||!st.inner)return null; var L=st.inner.l-st.outer.l,R=st.outer.r-st.inner.r,T=st.inner.t-st.outer.t,B=st.outer.b-st.inner.b; if(L<0||R<0||T<0||B<0)return null; return GradeRules.centeringPct({l:L,r:R,t:T,b:B}); }
+  cv.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  cv.addEventListener('touchstart',down,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',up);
+  draw();
+  return { setImage:setImage, ratios:ratios, reset:function(){ if(st.img){defaults();draw();updateRO();} } };
+}
+function resetGuides(){ _pads.front.reset(); _pads.back.reset(); recompute(); }
+
+/* ============================ pillar sliders ============================ */
+var PILLARS=['corners','edges','surface'], SIDES=['front','back'];
+function wireSliders(){
+  PILLARS.forEach(function(p){ SIDES.forEach(function(s){ var el=$('s_'+p+'_'+s); el.addEventListener('input',function(){ $('v_'+p+'_'+s).textContent=el.value; recompute(); }); }); });
+}
+function pillarVal(p,s){ return parseFloat(val('s_'+p+'_'+s)); }
+function setPillar(p,s,v){ if(v==null)return; var el=$('s_'+p+'_'+s); el.value=v; $('v_'+p+'_'+s).textContent=v; }
+
+/* ============================ AI pass ============================ */
+async function runAI(){
+  var imgs=[]; var labels=[];
+  [['front','Front'],['back','Back'],['corners','Corners/Edges close-up'],['surface','Surface/Microscope']].forEach(function(pair){
+    var d=SLOTS[pair[0]]; if(d){ imgs.push({mediaType:d.media,dataB64:d.b64}); labels.push(pair[1]); } });
+  if(!imgs.length){ toast('Add at least a front photo'); return; }
+  var st=$('aiStatus'); st.className='status load'; st.textContent='Analysing…'; $('aiBtn').disabled=true;
+  var act=window.TCG?TCG.activity('AI condition pass…'):null;
+  try{
+    var r=await fetch('/api/grade',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({images:imgs,context:{name:val('f_name'),set:val('f_set'),number:val('f_num'),finish:val('f_finish'),imageLabels:labels}})});
+    var res=await r.json();
+    if(!res||!res.ok){ var msg=(res&&res.message)||'AI unavailable'; st.className='status warn'; st.textContent=(res&&res.error==='no_key')?'No API key set — set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env. Set the pillars manually for now.':'AI pass: '+msg; act&&act.fail('AI off'); $('aiBtn').disabled=false; return; }
+    _ai=res;
+    PILLARS.forEach(function(p){ SIDES.forEach(function(s){ var v=res[p]&&res[p][s]; if(v!=null) setPillar(p,s,v); }); });
+    st.className='status ok'; st.textContent='✓ '+res.provider+' ('+res.model+') · confidence '+Math.round((res.confidence||0)*100)+'%';
+    act&&act.done(res.provider);
+    recompute();
+  }catch(e){ st.className='status err'; st.textContent='AI request failed (proxy running?). Set pillars manually.'; act&&act.fail('AI error'); }
+  $('aiBtn').disabled=false;
+}
+
+/* ============================ prediction + valuation ============================ */
+function globalConfidence(){
+  var c = _ai ? (_ai.confidence!=null?_ai.confidence:0.5) : 0.45;
+  if(!SLOTS.back) c -= 0.12;                          // no back seen
+  if(/holo|gold|metal|reverse/i.test(val('f_finish'))) c -= 0.08;  // holo/gold harder
+  return Math.max(0.15, Math.min(0.95, c));
+}
+function ladVal(label){ var l=_card&&_card.pc&&_card.pc.ladder; var c=l&&l[label]; return c!=null?c/100:null; }
+function rawUSD(){ var p=_card&&_card.pc&&_card.pc.prices; if(p&&p.ungraded!=null)return p.ungraded/100; return ladVal('Ungraded'); }
+function firstNonNull(){ for(var i=0;i<arguments.length;i++){ if(arguments[i]!=null) return arguments[i]; } return null; }
+function valueAtGradeUSD(company, grade){
+  if(grade>=10){ var m={PSA:'PSA 10',BGS:'BGS 10',CGC:'CGC 10',SGC:'SGC 10',TAG:'TAG 10'};
+    return firstNonNull(ladVal(m[company]), ladVal('PSA 10'), ladVal('Grade 9.5'), ladVal('Grade 9')); }
+  if(grade>=9.5) return firstNonNull(ladVal('Grade 9.5'), ladVal('BGS 9.5'), ladVal('Grade 9'));
+  if(grade>=9) return firstNonNull(ladVal('Grade 9'), ladVal('PSA 9'));
+  if(grade>=8) return firstNonNull(ladVal('Grade 8'), ladVal('Grade 9'));
+  if(grade>=7) return firstNonNull(ladVal('Grade 7'), ladVal('Grade 8'));
+  var r=rawUSD(); return r!=null? r*Math.max(0.5, grade/9) : null;
+}
+function cheapestTier(company){ var t=(CFG&&CFG.fees&&CFG.fees[company])||[]; return t.slice().sort(function(a,b){return a.price-b.price;})[0]||null; }
+
+function recompute(){
+  if(!CFG){ return; }
+  var rf=_pads.front?_pads.front.ratios():null;
+  if(!rf){ $('report').innerHTML='<div class="empty">Add a <b>front</b> photo (slot 2) and drag the centering guides (slot 3) to match the card edge and inner frame — that generates the report.</div>'; return; }
+  var rb=_pads.back?_pads.back.ratios():null;
+  var input={ centeringFrontWorst:rf.worst, centeringBackWorst:rb?rb.worst:null,
+    corners:{front:pillarVal('corners','front'),back:SLOTS.back?pillarVal('corners','back'):null},
+    edges:{front:pillarVal('edges','front'),back:SLOTS.back?pillarVal('edges','back'):null},
+    surface:{front:pillarVal('surface','front'),back:SLOTS.back?pillarVal('surface','back'):null},
+    confidence:globalConfidence() };
+  var pred=GradeRules.predictAll(input,CFG);
+  renderReport(pred, rf, rb);
+}
+
+/* ============================ report render ============================ */
+function probBars(probs){
+  return probs.slice(0,3).map(function(d){ return '<div style="margin-bottom:2px;"><span class="small mono">'+gradeStr(d.grade)+' · '+Math.round(d.p*100)+'%</span><div class="pbar"><i style="width:'+Math.round(d.p*100)+'%"></i></div></div>'; }).join('');
+}
+function gradeStr(g){ return (g%1===0)?String(g):g.toFixed(1); }
+function renderReport(pred, rf, rb){
+  var co=CFG.companies, order=Object.keys(co);
+  // economics + grader-fit
+  var econ={}, bestCo=null, bestProfit=-Infinity, raw=rawUSD();
+  order.forEach(function(c){
+    var p=pred.perCompany[c]; var tier=cheapestTier(c); var fee=tier?tier.price:30;
+    var values={}; p.probabilities.forEach(function(d){ values[String(d.grade)]=valueAtGradeUSD(c,d.grade); });
+    var e=GradeRules.gradeEconomics(p, values, fee, raw, CFG.marketplaceFeePct);
+    e.tier=tier; econ[c]=e;
+    if(e.ok && e.profitVsRaw>bestProfit){ bestProfit=e.profitVsRaw; bestCo=c; }
+  });
+
+  var H='';
+  // header
+  var nm=val('f_name')||'(unnamed card)', sub=[val('f_num'),val('f_set'),val('f_rarity')].filter(Boolean).join(' · ');
+  H+='<div class="rcard" style="display:flex;gap:12px;align-items:center;">';
+  if(SLOTS.front) H+='<img src="'+SLOTS.front.dataUrl+'" style="width:64px;border-radius:6px;border:1px solid var(--line);">';
+  H+='<div><div style="font-size:16px;font-weight:800;">'+esc(nm)+'</div><div class="small muted">'+esc(sub||'fill identity to value-at-grade')+'</div></div></div>';
+
+  // measured centering
+  H+='<div class="rcard"><h3>Measured centering</h3>';
+  H+='<div class="small">Front — L/R <b class="mono">'+rf.lrLabel+'</b>, T/B <b class="mono">'+rf.tbLabel+'</b> · worst <b class="mono" style="color:var(--gold)">'+rf.label+'</b>'+(rf.worst<=55?' <span class="pill high">10-capable</span>':rf.worst<=60?' <span class="pill medium">~9</span>':' <span class="pill low">caps below 9</span>')+'</div>';
+  if(rb) H+='<div class="small" style="margin-top:4px;">Back — L/R <b class="mono">'+rb.lrLabel+'</b>, T/B <b class="mono">'+rb.tbLabel+'</b> · worst <b class="mono">'+rb.label+'</b></div>';
+  else H+='<div class="small muted" style="margin-top:4px;">No back photo — back centering assumed to pass (confidence reduced).</div>';
+  H+='</div>';
+
+  // predictions
+  H+='<div class="rcard"><h3>Predicted grade by company</h3><table class="predtable"><tr><th>Co.</th><th>Grade</th><th>Likelihoods</th><th>Conf.</th></tr>';
+  order.forEach(function(c){
+    var p=pred.perCompany[c]; var isFit=(c===bestCo);
+    H+='<tr><td><b>'+esc(co[c].label)+'</b>'+(isFit?'<br><span class="pill high" title="best expected return">best fit</span>':'')+'</td>';
+    H+='<td><div class="gradebig'+(isFit?' fit':'')+'" style="padding:2px 6px;display:inline-block;">'+esc(co[c].label.split(' ')[0])+' '+gradeStr(p.grade)+'</div><div class="small muted">'+esc(p.gradeLabel)+(p.tagScore?(' · '+p.tagScore):'')+'</div>';
+    if(p.subgrades) H+='<div class="small muted mono">C'+gradeStr(p.subgrades.centering)+' / Co'+gradeStr(p.subgrades.corners)+' / E'+gradeStr(p.subgrades.edges)+' / S'+gradeStr(p.subgrades.surface)+'</div>';
+    H+='</td><td style="min-width:120px;">'+probBars(p.probabilities)+'</td><td><span class="pill '+p.confidence+'">'+p.confidence+'</span></td></tr>';
+  });
+  H+='</table></div>';
+
+  // financial / should I grade
+  H+='<div class="rcard"><h3>Should I grade it? <span class="small muted" style="text-transform:none;letter-spacing:0;font-weight:400;">· USD · base fees · after '+(CFG.marketplaceFeePct||13)+'% sale fee</span></h3>';
+  if(raw==null){ H+='<div class="small muted">Look up the card so PriceCharting can supply raw + graded values. Showing grade predictions only.</div>'; }
+  else {
+    H+='<div class="small" style="margin-bottom:8px;">Raw now: <b>'+usd(raw)+'</b> (sell raw nets '+usd(raw*(1-(CFG.marketplaceFeePct||13)/100))+')</div>';
+    H+='<table class="predtable"><tr><th>Co.</th><th>@ grade</th><th>Fee · days</th><th>Exp. value</th><th>vs raw</th><th>Verdict</th></tr>';
+    order.forEach(function(c){
+      var p=pred.perCompany[c], e=econ[c]; var atVal=valueAtGradeUSD(c,p.grade);
+      H+='<tr><td><b>'+esc(co[c].label.split(' ')[0])+'</b></td><td class="small">'+gradeStr(p.grade)+' → '+usd(atVal)+'</td>';
+      if(e.ok){ var vc=e.verdict==='Submit'?'Submit':e.verdict==='Borderline'?'Borderline':'bad';
+        H+='<td class="small mono">'+usd(e.fee)+' · '+(e.tier?e.tier.turnaroundDays+'d':'?')+'</td>';
+        H+='<td class="small mono">'+usd(e.expectedValue)+'</td>';
+        H+='<td class="small mono" style="color:'+(e.profitVsRaw>=0?'var(--good)':'var(--bad)')+'">'+(e.profitVsRaw>=0?'+':'')+usd(e.profitVsRaw).replace('US$','$')+'</td>';
+        H+='<td><span style="font-weight:800;color:'+(e.verdict==='Submit'?'var(--good)':e.verdict==='Borderline'?'var(--warn)':'var(--bad)')+'">'+e.verdict+'</span><div class="small muted">score '+e.capitalScore+'</div></td>';
+      } else { H+='<td colspan="4" class="small muted">'+esc(e.reason||'no graded comps')+'</td>'; }
+      H+='</tr>';
+    });
+    H+='</table>';
+    if(bestCo){ var bp=pred.perCompany[bestCo]; H+='<div class="small" style="margin-top:8px;">→ Best home: <b style="color:var(--gold)">'+esc(co[bestCo].label)+' '+gradeStr(bp.grade)+'</b>'+(econ[bestCo].ok?' · expected '+usd(econ[bestCo].expectedValue)+', '+(econ[bestCo].profitVsRaw>=0?'+':'')+usd(econ[bestCo].profitVsRaw).replace('US$','$')+' vs selling raw':'')+'.</div>'; }
+    H+='<div class="small muted" style="margin-top:6px;">Cheapest tier shown per company; faster tiers cost more. Turnaround excludes shipping transit.</div>';
+  }
+  H+='</div>';
+
+  // defects
+  if(_ai && _ai.defects && _ai.defects.length){
+    H+='<div class="rcard"><h3>Detected flaws <span class="small muted" style="text-transform:none;letter-spacing:0;font-weight:400;">· AI vision · advisory</span></h3>';
+    _ai.defects.forEach(function(d){ var col=d.severity==='major'?'var(--bad)':d.severity==='moderate'?'var(--warn)':'var(--muted)';
+      H+='<div class="small" style="padding:3px 0;border-top:1px solid var(--line);"><span class="swatch" style="background:'+col+'"></span><b>'+esc(d.pillar)+'</b> · '+esc(d.side)+' · '+esc(d.location)+' — '+esc(d.note||d.severity)+(d.gradeSignificant?' <span class="pill low">grade-significant</span>':'')+'</div>'; });
+    H+='</div>';
+  }
+  if(_ai && _ai.reasoning){ H+='<div class="rcard"><h3>AI notes</h3><div class="small muted">'+esc(_ai.reasoning)+'</div><div class="small muted" style="margin-top:6px;">'+esc(_ai.provider+' · '+_ai.model)+'</div></div>'; }
+
+  // disclaimers
+  H+='<div class="rcard"><h3>Read this</h3><ul class="disc" style="margin:0;padding-left:16px;">'+(CFG.disclaimers||[]).map(function(d){return '<li>'+esc(d)+'</li>';}).join('')+'</ul>';
+  H+='<div class="small muted" style="margin-top:8px;">Tolerances &amp; fees as of '+esc(CFG.asOf||'')+'.</div></div>';
+
+  $('report').innerHTML=H;
+  window._lastPred={pred:pred, econ:econ, rf:rf, rb:rb, bestCo:bestCo};
+}
+
+/* ============================ PDF ============================ */
+function downloadPDF(){
+  if(!(window.jspdf&&window.jspdf.jsPDF)){ toast('PDF engine not loaded'); return; }
+  if(!window._lastPred){ toast('Generate a report first'); return; }
+  var L=window._lastPred, co=CFG.companies, order=Object.keys(co);
+  var doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14, y=16;
+  function line(txt,size,style,color){ doc.setFont('helvetica',style||'normal'); doc.setFontSize(size||10); if(color)doc.setTextColor(color[0],color[1],color[2]); else doc.setTextColor(20,20,30); doc.text(txt,M,y); y+=size?size*0.52:6; }
+  function gap(n){ y+=n||3; }
+  function pageCheck(){ if(y>278){ doc.addPage(); y=16; } }
+  line('Card Pre-Grading Report',18,'bold',[60,30,90]); gap(1);
+  line((val('f_name')||'(unnamed card)'),12,'bold');
+  line([val('f_num'),val('f_set'),val('f_rarity')].filter(Boolean).join('  ·  ')||'—',9,'normal',[110,110,130]); gap(2);
+  if(SLOTS.front){ try{ doc.addImage(SLOTS.front.dataUrl,'JPEG',W-M-34,12,34,47); }catch(e){} }
+  line('Measured centering',11,'bold',[60,30,90]);
+  line('Front — L/R '+L.rf.lrLabel+', T/B '+L.rf.tbLabel+' (worst '+L.rf.label+')',9);
+  line('Back  — '+(L.rb?('L/R '+L.rb.lrLabel+', T/B '+L.rb.tbLabel+' (worst '+L.rb.label+')'):'not photographed; assumed to pass'),9); gap(2);
+  line('Predicted grade by company',11,'bold',[60,30,90]);
+  order.forEach(function(c){ pageCheck(); var p=L.pred.perCompany[c], e=L.econ[c];
+    var t=co[c].label.split(' ')[0]+' '+gradeStr(p.grade)+'  ('+p.gradeLabel+')'+(p.subgrades?('  ['+gradeStr(p.subgrades.centering)+'/'+gradeStr(p.subgrades.corners)+'/'+gradeStr(p.subgrades.edges)+'/'+gradeStr(p.subgrades.surface)+']'):'');
+    line((c===L.bestCo?'★ ':'  ')+t+'   ·   '+p.confidence+' conf',9,(c===L.bestCo?'bold':'normal'));
+    if(e&&e.ok) line('     @grade '+usd(valueAtGradeUSD(c,p.grade))+'  ·  fee '+usd(e.fee)+'/'+(e.tier?e.tier.turnaroundDays+'d':'?')+'  ·  EV '+usd(e.expectedValue)+'  ·  vs raw '+(e.profitVsRaw>=0?'+':'')+usd(e.profitVsRaw)+'  ·  '+e.verdict,8,'normal',[110,110,130]);
+  });
+  gap(2); pageCheck();
+  var raw=rawUSD(); if(raw!=null) line('Raw value now: '+usd(raw),9,'bold');
+  gap(2); pageCheck(); line('Disclaimers',11,'bold',[60,30,90]);
+  (CFG.disclaimers||[]).forEach(function(d){ pageCheck(); var wrapped=doc.splitTextToSize('• '+d, W-2*M); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(110,110,130); doc.text(wrapped,M,y); y+=wrapped.length*3.2; });
+  pageCheck(); doc.setFontSize(7); doc.text('Estimate only — not an official grade. Tolerances/fees as of '+(CFG.asOf||'')+'. Generated by tcg-listing-tools Card Pre-Grader.',M,288);
+  var fn=(val('f_name')||'card').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'-pregrade.pdf';
+  doc.save(fn); toast('PDF saved');
+}
+
+/* ============================ init ============================ */
+(function(){
+  _pads.front=makePad('padFront','roFront');
+  _pads.back=makePad('padBack','roBack');
+  wireSlots(); wireSliders();
+  $('num').addEventListener('keydown',function(e){ if(e.key==='Enter') doLookup(); });
+  var sc=$('setCode');
+  sc.addEventListener('input',function(){ selectedSet=null; renderSetMenu(sc.value); });
+  sc.addEventListener('focus',function(){ renderSetMenu(sc.value); });
+  sc.addEventListener('keydown',function(e){ var menu=$('setMenu'),opts=menu.querySelectorAll('.setopt');
+    if(e.key==='ArrowDown'){e.preventDefault();_setActive=Math.min(_setActive+1,opts.length-1);opts.forEach(function(o,i){o.classList.toggle('active',i===_setActive);});}
+    else if(e.key==='ArrowUp'){e.preventDefault();_setActive=Math.max(_setActive-1,0);opts.forEach(function(o,i){o.classList.toggle('active',i===_setActive);});}
+    else if(e.key==='Enter'){ if(menu.classList.contains('open')&&opts.length){e.preventDefault();var el=opts[_setActive>=0?_setActive:0];pickSet(el.getAttribute('data-id'));$('num').focus();} }
+    else if(e.key==='Escape'){ menu.classList.remove('open'); } });
+  document.addEventListener('click',function(e){ var r=document.querySelector('.setrow'); if(r&&!r.contains(e.target)) $('setMenu').classList.remove('open'); });
+  ['f_name','f_set','f_num','f_rarity','f_finish'].forEach(function(id){ $(id).addEventListener('input',recompute); });
+  if(navigator.mediaDevices&&navigator.mediaDevices.enumerateDevices) listCams();
+  loadConfig().then(function(){ loadSets(); recompute(); });
+})();
+</script>
+</body>
+</html>

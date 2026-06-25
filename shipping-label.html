@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Shipping Label Maker &mdash; 50&times;30 mm</title>
+<title>Shipping Label Maker</title>
 <style>
   :root{
     --ink:#0c1118; --panel:#141b25; --panel2:#1b2433; --line:#293445;
@@ -69,6 +69,7 @@
     border-radius:8px;padding:7px 10px;font-size:12.5px;}
   .bitem .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .bitem .n b{color:var(--text);} .bitem .n span{color:var(--muted);}
+  .bitem .n .szchip{color:var(--gold-dim);font-weight:600;}
   .bitem .x{cursor:pointer;color:var(--muted);font-weight:700;padding:0 4px;}
   .bitem .x:hover{color:#f06262;}
   .bfont{display:flex;align-items:center;gap:4px;flex:0 0 auto;}
@@ -86,7 +87,7 @@
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
   <div class="tag">Shipping &middot; Thermal labels</div>
   <h1>Shipping Label Maker</h1>
-  <p class="sub">Paste the address you copied from eBay &rarr; get a print-ready <b>50 &times; 30 mm</b> PDF for AUSPRINT. The <code>ebay:</code> username and phone line are stripped automatically; the font auto-fits with a 5 mm safe margin.</p>
+  <p class="sub">Paste the address you copied from eBay &rarr; get a print-ready <b id="subSize">50 &times; 30 mm</b> PDF for AUSPRINT. The <code>ebay:</code> username and phone line are stripped automatically; the font auto-fits with a 5 mm safe margin.</p>
 
   <div class="grid">
     <!-- LEFT: input + controls -->
@@ -104,6 +105,13 @@
       </div>
 
       <div class="controls">
+        <div class="grp">
+          <label>Label size</label>
+          <div class="pills" id="sizePills">
+            <span class="pill on" data-v="50x30" onclick="setSize('50x30')">50 &times; 30</span>
+            <span class="pill" data-v="100x50" onclick="setSize('100x50')">100 &times; 50</span>
+          </div>
+        </div>
         <div class="grp">
           <label>Font size</label>
           <div class="stepper">
@@ -157,7 +165,7 @@
     <!-- RIGHT: preview + output -->
     <div class="card">
       <div class="previewhead">
-        <label style="margin:0;">Preview &middot; 50 &times; 30 mm</label>
+        <label style="margin:0;">Preview &middot; <span id="prevSize">50 &times; 30 mm</span></label>
       </div>
       <iframe id="preview" title="Label preview"></iframe>
       <div class="status load" id="status" style="margin-top:10px;">Paste an eBay address to begin.</div>
@@ -177,9 +185,14 @@
 <script src="/extras.js"></script>
 <script>
 /* ---------- constants ---------- */
-var PAGE_W = 50, PAGE_H = 30;            // mm
 var MM_PER_PT = 25.4 / 72;
-var MIN_PT = 5, MAX_PT = 14;
+// Supported label stocks. Font min/max scale with the usable height so auto-fit targets
+// the same visual fill on every size; hardMax caps how far the manual (+) override can go.
+var SIZES = {
+  '50x30':  { short:'50 × 30',  full:'50 × 30 mm',  w:50,  h:30, minPt:5, maxPt:14, hardMax:40 },
+  '100x50': { short:'100 × 50', full:'100 × 50 mm', w:100, h:50, minPt:8, maxPt:28, hardMax:60 }
+};
+var curSize = '50x30';
 var AU_STATES = 'NSW|VIC|QLD|SA|WA|TAS|ACT|NT';
 var COUNTRY_RE = /^(australia|new zealand|aotearoa|united states( of america)?|usa|u\.s\.a\.|united kingdom|u\.k\.|uk|england|scotland|wales|canada|ireland|singapore|germany|france|japan|china|hong kong|new caledonia|fiji|papua new guinea)$/i;
 var SYM_OK = '\u2713', SYM_WARN = '\u26a0', SYM_DOT = '\u00b7', SYM_DL = '\u2b07';
@@ -230,9 +243,11 @@ function parseAddresses(raw, splitUnits){ return splitBlocks(raw).map(function(b
 function currentOpts(){
   var margin = parseFloat($('a_margin').value); if(!(margin>=0)) margin=5; margin=Math.min(margin,12);
   var spacing = parseFloat($('a_spacing').value); if(!(spacing>=1)) spacing=1.2;
+  var sz = SIZES[curSize] || SIZES['50x30'];
   return {
     align: curAlign, countryMode: curCountry, margin: margin, lineSpacing: spacing,
-    wrap: $('a_wrap').checked, font: $('a_font').value, sizeOverride: sizeOverride
+    wrap: $('a_wrap').checked, font: $('a_font').value, sizeOverride: sizeOverride,
+    size: curSize, pageW: sz.w, pageH: sz.h, minPt: sz.minPt, maxPt: sz.maxPt, hardMax: sz.hardMax
   };
 }
 
@@ -240,7 +255,7 @@ function currentOpts(){
 function physLines(doc, lines, pt, opts){
   // returns [{t,b}] physical lines, honoring wrap + bold-name. Bold is wider, so each
   // line is measured/drawn at its own weight.
-  var usableW = PAGE_W - 2*opts.margin, out = [];
+  var usableW = opts.pageW - 2*opts.margin, out = [];
   doc.setFontSize(pt);
   for(var i=0;i<lines.length;i++){
     var bold = (i===0);
@@ -251,7 +266,7 @@ function physLines(doc, lines, pt, opts){
   return out;
 }
 function fitsAt(doc, lines, pt, opts){
-  var usableW = PAGE_W - 2*opts.margin, usableH = PAGE_H - 2*opts.margin;
+  var usableW = opts.pageW - 2*opts.margin, usableH = opts.pageH - 2*opts.margin;
   var phys = physLines(doc, lines, pt, opts);
   var lineH = pt*opts.lineSpacing*MM_PER_PT;
   if(phys.length*lineH > usableH + 1e-6) return false;
@@ -260,9 +275,9 @@ function fitsAt(doc, lines, pt, opts){
   return true;
 }
 function autoFitPt(doc, lines, opts){
-  if(!lines.length) return MAX_PT;
-  for(var pt=MAX_PT; pt>=MIN_PT; pt-=0.5){ if(fitsAt(doc, lines, pt, opts)) return pt; }
-  return MIN_PT;                          // nothing fits, smallest (overflow flagged elsewhere)
+  if(!lines.length) return opts.maxPt;
+  for(var pt=opts.maxPt; pt>=opts.minPt; pt-=0.5){ if(fitsAt(doc, lines, pt, opts)) return pt; }
+  return opts.minPt;                       // nothing fits, smallest (overflow flagged elsewhere)
 }
 
 /* ---------- country resolution (smart-auto) ---------- */
@@ -282,18 +297,18 @@ function layoutOnePage(doc, rawLines, opts){
   var lines = res.lines;
   var autoPt = autoFitPt(doc, lines, opts);
   var pt = opts.sizeOverride!=null ? opts.sizeOverride : autoPt;
-  pt = Math.max(MIN_PT, Math.min(pt, 40));
+  pt = Math.max(opts.minPt, Math.min(pt, opts.hardMax));
   var phys = physLines(doc, lines, pt, opts);
   var overflow = !fitsAt(doc, lines, pt, opts);
 
   if(opts.guides) drawGuides(doc, opts);                     // preview only; never in the saved PDF
 
-  var usableH = PAGE_H - 2*opts.margin;
+  var usableH = opts.pageH - 2*opts.margin;
   var lineH = pt*opts.lineSpacing*MM_PER_PT;
   var glyphH = pt*MM_PER_PT;                                  // approx ink height of one line
   var blockH = (phys.length-1)*lineH + glyphH;
   var top = opts.margin + Math.max(0, (usableH - blockH)/2);
-  var x = opts.align==='center' ? PAGE_W/2 : opts.margin;
+  var x = opts.align==='center' ? opts.pageW/2 : opts.margin;
   var align = opts.align==='center' ? 'center' : 'left';
 
   doc.setTextColor(0,0,0); doc.setFontSize(pt);
@@ -307,10 +322,10 @@ function layoutOnePage(doc, rawLines, opts){
 // Preview-only guides: the sticker edge + the dashed safe-margin box. Drawn before the text.
 function drawGuides(doc, opts){
   doc.setLineWidth(0.15); doc.setDrawColor(170,180,195);     // sticker edge (light gray)
-  doc.rect(0.25, 0.25, PAGE_W-0.5, PAGE_H-0.5, 'S');
+  doc.rect(0.25, 0.25, opts.pageW-0.5, opts.pageH-0.5, 'S');
   doc.setDrawColor(90,176,255); doc.setLineWidth(0.12);      // safe-margin box (dashed accent)
   if(doc.setLineDashPattern) doc.setLineDashPattern([0.8,0.6], 0);
-  doc.rect(opts.margin, opts.margin, PAGE_W-2*opts.margin, PAGE_H-2*opts.margin, 'S');
+  doc.rect(opts.margin, opts.margin, opts.pageW-2*opts.margin, opts.pageH-2*opts.margin, 'S');
   if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
   doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
 }
@@ -318,14 +333,18 @@ function drawGuides(doc, opts){
 /* ---------- build a (multi-page) document ---------- */
 function buildDoc(items){
   var jsPDF = window.jspdf.jsPDF;
-  var doc = new jsPDF({ unit:'mm', format:[PAGE_W, PAGE_H], orientation:'landscape' });
-  if(Math.round(doc.internal.pageSize.getWidth()) !== PAGE_W){    // axis guard
-    doc = new jsPDF({ unit:'mm', format:[PAGE_H, PAGE_W], orientation:'landscape' });
-  }
-  var infos = [];
+  var doc = null, infos = [];
   for(var i=0;i<items.length;i++){
-    if(i>0) doc.addPage([PAGE_W, PAGE_H], 'landscape');
-    infos.push(layoutOnePage(doc, items[i].lines, items[i].opts));
+    var o = items[i].opts, w = o.pageW, h = o.pageH;     // each page may be a different stock size
+    if(i===0){
+      doc = new jsPDF({ unit:'mm', format:[w, h], orientation:'landscape' });
+      if(Math.round(doc.internal.pageSize.getWidth()) !== w){    // axis guard
+        doc = new jsPDF({ unit:'mm', format:[h, w], orientation:'landscape' });
+      }
+    } else {
+      doc.addPage([w, h], 'landscape');
+    }
+    infos.push(layoutOnePage(doc, items[i].lines, o));
   }
   return { doc: doc, infos: infos };
 }
@@ -391,12 +410,20 @@ function scheduleRender(){ clearTimeout(_renderTimer); _renderTimer=setTimeout(r
 /* ---------- controls ---------- */
 function setAlign(v){ curAlign=v; pillsOn('alignPills',v); regenerate(); }
 function setCountry(v){ curCountry=v; pillsOn('countryPills',v); regenerate(); }
+function setSize(v){ if(!SIZES[v]) return; curSize=v; pillsOn('sizePills',v); sizeOverride=null; updateSizeChrome(); regenerate(); }
+function updateSizeChrome(){
+  var sz = SIZES[curSize]; if(!sz) return;
+  if($('subSize')) $('subSize').textContent = sz.full;
+  if($('prevSize')) $('prevSize').textContent = sz.full;
+  $('a_minmax').value = sz.minPt + ' to ' + sz.maxPt;
+}
 function pillsOn(id,v){ var ps=$(id).querySelectorAll('.pill'); for(var i=0;i<ps.length;i++) ps[i].classList.toggle('on', ps[i].dataset.v===v); }
 function bumpSize(d){
   var base;
   if(sizeOverride!=null) base = sizeOverride;
   else { var lines=cleanLines(); if(!lines.length){ return; } var b=buildDoc([{lines:lines,opts:currentOpts()}]); base=b.infos[0].pt; }
-  sizeOverride = Math.max(MIN_PT, Math.min(base + d, 40));
+  var o = currentOpts();
+  sizeOverride = Math.max(o.minPt, Math.min(base + d, o.hardMax));
   regenerate();
 }
 function resetSize(){ sizeOverride=null; regenerate(); }
@@ -423,7 +450,7 @@ function addAllParsed(){
 }
 
 /* ---------- batch ---------- */
-function pushBatch(lines, opts){ batch.push({ lines: lines.slice(), opts: opts, name: lines[0]||'(no name)', sub: suburbOf(lines) }); }
+function pushBatch(lines, opts){ batch.push({ lines: lines.slice(), opts: opts, name: lines[0]||'(no name)', sub: suburbOf(lines), sizeLabel: (SIZES[opts.size]||{}).short || '' }); }
 function addToBatch(){
   var lines = cleanLines();
   if(!lines.length){ showToast('Nothing to add'); return; }
@@ -445,7 +472,7 @@ function renderBatch(){
               : ov ? ('Custom ' + info.pt.toFixed(1) + ' pt (auto ' + info.autoPt.toFixed(1) + '), click to reset to auto')
               : ('Auto-fit ' + info.pt.toFixed(1) + ' pt');
     h += '<div class="bitem">'
-      +    '<div class="n"><b>'+esc(it.name)+'</b>'+(it.sub?' <span>'+esc(it.sub)+'</span>':'')+'</div>'
+      +    '<div class="n"><b>'+esc(it.name)+'</b>'+(it.sub?' <span>'+esc(it.sub)+'</span>':'')+(it.sizeLabel?' <span class="szchip">'+esc(it.sizeLabel)+'</span>':'')+'</div>'
       +    '<div class="bfont">'
       +      '<button title="Smaller" onclick="batchBump('+i+',-0.5)">&minus;</button>'
       +      '<span class="'+cls+'" title="'+title+'" onclick="batchReset('+i+')">'+(info.overflow?SYM_WARN+' ':'')+info.pt.toFixed(1)+' pt'+(ov?' *':'')+'</span>'
@@ -462,7 +489,7 @@ function batchBump(i, d){
   var it = batch[i]; if(!it) return;
   var base = it.opts.sizeOverride!=null ? it.opts.sizeOverride
            : buildDoc([{ lines: it.lines, opts: it.opts }]).infos[0].autoPt;
-  it.opts.sizeOverride = Math.max(MIN_PT, Math.min(base + d, 40));
+  it.opts.sizeOverride = Math.max(it.opts.minPt, Math.min(base + d, it.opts.hardMax));
   renderBatch();
 }
 function batchReset(i){
@@ -513,6 +540,7 @@ function pasteClip(){
   $('clean').addEventListener('input', scheduleRender);
   ['a_margin','a_spacing','a_wrap','a_font'].forEach(function(id){ $(id).addEventListener('input', regenerate); $(id).addEventListener('change', regenerate); });
   $('a_splitunit').addEventListener('change', onRawInput);   // re-parse: splitting happens at parse time
+  updateSizeChrome();
   renderBatch();
   regenerate();
 })();

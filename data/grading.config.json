@@ -1,0 +1,149 @@
+{
+  "asOf": "2026-06-24",
+  "_warning": "Prices, turnaround times and centering tolerances change CONSTANTLY (PSA paused four Value tiers in June 2026). These are point-in-time approximations compiled from public sources — verify against each company's official site before relying on them. Centering bands below are a transparent approximation; the real algorithms (esp. BGS) are proprietary.",
+  "marketplaceFeePct": 13,
+  "psa10VsPsa9Note": "For modern Pokemon, PSA 10 typically sells for 2-5x a PSA 9 — the '9-vs-10 cliff' is where the value and the prediction error both live.",
+  "companies": {
+    "PSA": {
+      "label": "PSA",
+      "scale": "1-10",
+      "step": 1,
+      "has95": false,
+      "subgradesOnSlab": false,
+      "lowestPlusCap": 1,
+      "known": "Deepest resale liquidity; the de-facto market reference.",
+      "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
+      "topLabel": "Gem Mint 10"
+    },
+    "BGS": {
+      "label": "BGS (Beckett)",
+      "scale": "1-10",
+      "step": 0.5,
+      "has95": true,
+      "subgradesOnSlab": true,
+      "lowestPlusCap": 2,
+      "known": "Mandatory 4 subgrades on every slab; coveted Black Label (all four 10s).",
+      "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
+      "topLabel": "Pristine 10 (Black Label)"
+    },
+    "CGC": {
+      "label": "CGC",
+      "scale": "1-10",
+      "step": 0.5,
+      "has95": true,
+      "subgradesOnSlab": false,
+      "lowestPlusCap": 1.5,
+      "known": "Price/speed/consistency; subgrades discontinued on new slabs.",
+      "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
+      "topLabel": "Pristine 10"
+    },
+    "SGC": {
+      "label": "SGC",
+      "scale": "1-10",
+      "step": 0.5,
+      "has95": true,
+      "subgradesOnSlab": false,
+      "lowestPlusCap": 1.5,
+      "known": "Vintage specialist; eye-appeal weighted; fast.",
+      "pillarWeights": { "centering": 0.25, "corners": 0.30, "edges": 0.20, "surface": 0.25 },
+      "topLabel": "10 Pristine"
+    },
+    "TAG": {
+      "label": "TAG",
+      "scale": "1-10 (+1000)",
+      "step": 0.5,
+      "has95": false,
+      "subgradesOnSlab": true,
+      "lowestPlusCap": 1,
+      "known": "AI/computer-vision grading; richest digital report (DIG).",
+      "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
+      "topLabel": "Pristine 10 (990-1000)"
+    }
+  },
+  "centering": {
+    "_doc": "Per grade, 'front' and 'back' are the MAX allowed larger-side percentage on the worst axis (e.g. 55 means up to 55/45). A measured larger-side % must be <= the band to qualify for that grade. Bands ordered best to worst. Omit 'back' to leave the back unconstrained (SGC).",
+    "PSA": [
+      { "grade": 10, "front": 55, "back": 75 },
+      { "grade": 9, "front": 60, "back": 90 },
+      { "grade": 8, "front": 65, "back": 90 },
+      { "grade": 7, "front": 75, "back": 90 },
+      { "grade": 6, "front": 80, "back": 95 },
+      { "grade": 5, "front": 85, "back": 95 }
+    ],
+    "BGS": [
+      { "grade": 10, "front": 51, "back": 60 },
+      { "grade": 9.5, "front": 55, "back": 60 },
+      { "grade": 9, "front": 57, "back": 70 },
+      { "grade": 8.5, "front": 60, "back": 75 },
+      { "grade": 8, "front": 62, "back": 80 },
+      { "grade": 7.5, "front": 65, "back": 85 },
+      { "grade": 7, "front": 70, "back": 90 },
+      { "grade": 6, "front": 75, "back": 95 }
+    ],
+    "CGC": [
+      { "grade": 10, "front": 55, "back": 75 },
+      { "grade": 9.5, "front": 57, "back": 80 },
+      { "grade": 9, "front": 60, "back": 90 },
+      { "grade": 8.5, "front": 63, "back": 90 },
+      { "grade": 8, "front": 65, "back": 90 },
+      { "grade": 7, "front": 70, "back": 95 },
+      { "grade": 6, "front": 75, "back": 95 }
+    ],
+    "SGC": [
+      { "grade": 10, "front": 55 },
+      { "grade": 9.5, "front": 55 },
+      { "grade": 9, "front": 60 },
+      { "grade": 8.5, "front": 63 },
+      { "grade": 8, "front": 65 },
+      { "grade": 7, "front": 70 },
+      { "grade": 6, "front": 80 }
+    ],
+    "TAG": [
+      { "grade": 10, "front": 55, "back": 65 },
+      { "grade": 9, "front": 60, "back": 75 },
+      { "grade": 8, "front": 65, "back": 85 },
+      { "grade": 7, "front": 70, "back": 90 },
+      { "grade": 6, "front": 78, "back": 95 }
+    ]
+  },
+  "fees": {
+    "_doc": "Base grading fee in USD per card and on-site turnaround in business days (excludes shipping transit). maxValueUsd = declared-value cap for the tier. As of 2026-06-24; verify live.",
+    "PSA": [
+      { "tier": "Regular", "price": 79.99, "turnaroundDays": 25, "maxValueUsd": 1500, "note": "Cheapest tier currently accepting new submissions (Value tiers paused June 2026)." },
+      { "tier": "Express", "price": 149, "turnaroundDays": 12, "maxValueUsd": 2499 },
+      { "tier": "Super Express", "price": 299, "turnaroundDays": 6, "maxValueUsd": 4999 }
+    ],
+    "BGS": [
+      { "tier": "Base (+subgrades)", "price": 17.95, "turnaroundDays": 75, "maxValueUsd": null },
+      { "tier": "Standard", "price": 34.95, "turnaroundDays": 45, "maxValueUsd": null },
+      { "tier": "Express", "price": 79.95, "turnaroundDays": 15, "maxValueUsd": null },
+      { "tier": "Priority", "price": 124.95, "turnaroundDays": 5, "maxValueUsd": null }
+    ],
+    "CGC": [
+      { "tier": "Bulk", "price": 17, "turnaroundDays": 120, "maxValueUsd": 500, "note": "25-card minimum." },
+      { "tier": "Economy", "price": 20, "turnaroundDays": 65, "maxValueUsd": 1000 },
+      { "tier": "Standard", "price": 55, "turnaroundDays": 10, "maxValueUsd": 3000 },
+      { "tier": "Express", "price": 100, "turnaroundDays": 5, "maxValueUsd": 10000 }
+    ],
+    "SGC": [
+      { "tier": "Economy", "price": 20, "turnaroundDays": 180, "maxValueUsd": null },
+      { "tier": "Standard", "price": 25, "turnaroundDays": 50, "maxValueUsd": null },
+      { "tier": "Silver", "price": 50, "turnaroundDays": 18, "maxValueUsd": null },
+      { "tier": "Gold", "price": 75, "turnaroundDays": 8, "maxValueUsd": null }
+    ],
+    "TAG": [
+      { "tier": "Basic", "price": 22, "turnaroundDays": 45, "maxValueUsd": 300, "note": "10-card minimum." },
+      { "tier": "Standard", "price": 39, "turnaroundDays": 30, "maxValueUsd": 500 },
+      { "tier": "Express", "price": 59, "turnaroundDays": 15, "maxValueUsd": 1000 },
+      { "tier": "Priority", "price": 149, "turnaroundDays": 5, "maxValueUsd": 2500 }
+    ]
+  },
+  "disclaimers": [
+    "Estimate only — this is NOT an official grade or a guarantee. Grading companies make the final call and outcomes vary on resubmission.",
+    "Surface and the card back are systematically under-assessed from photos. Fine scratches, print/roller lines and creases may not be visible. Inspect under bright directional (raking) light at multiple tilt angles.",
+    "No authentication. This tool predicts grade, not genuineness. High-value cards (e.g. Charizard secret rares) are heavily counterfeited — authenticate in hand.",
+    "Lower confidence on holo / refractor / gold / chrome surfaces, and at the 9-vs-10 boundary where most of the value (and the error) lives.",
+    "Centering is measured geometrically and is the most reliable signal; corners/edges/surface come from an AI vision pass and are advisory.",
+    "All prices and grading fees are point-in-time and change frequently."
+  ]
+}
