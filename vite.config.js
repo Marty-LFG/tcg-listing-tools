@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import { trackerPlugin } from './lib/tracker.mjs'
 import { lookup as pcLookup } from './lib/pricecharting.mjs'
 import { analyzeCard } from './lib/grader.mjs'
+import { printConfig, buildJob, sendToPrinter } from './lib/labelprint.mjs'
 
 // Streams any remote image through the dev server so the browser can blob-download
 // it (cross-origin <a download> is blocked otherwise).
@@ -282,12 +283,73 @@ function graderProxy(env) {
   }
 }
 
+// ---- Shipping-label printing: raw TCP 9100 to the AUSPRINT PRO (Rongta/TSPL) ----------
+// GET  /api/print            -> { enabled, dpi, ip, page:{w,h} } so the client knows whether
+//                               to enable the Print button and at what DPI to rasterise.
+// POST /api/print { jobs:[{bitmap(base64 1bpp,1=ink), widthDots, heightDots, copies?}], copies? }
+//                            -> wraps each bitmap in TSPL/ZPL and streams it to the printer.
+// Never throws to a 500 that hides the cause; an unconfigured/unreachable printer returns
+// ok:false with a message so the tool degrades to download-only (Golden Rule 7).
+function printProxy(env) {
+  return {
+    name: 'label-print',
+    configureServer(server) {
+      server.middlewares.use('/api/print', async (req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('access-control-allow-origin', '*')
+        const cfg = printConfig(env)
+        const method = (req.method || 'GET').toUpperCase()
+        if (method === 'GET') {
+          return res.end(JSON.stringify({ enabled: cfg.enabled, dpi: cfg.dpi, ip: cfg.ip, lang: cfg.lang, page: { w: cfg.pageWmm, h: cfg.pageHmm }, offXmm: cfg.offXmm, offYmm: cfg.offYmm }))
+        }
+        if (method !== 'POST') {
+          res.statusCode = 405
+          return res.end(JSON.stringify({ ok: false, error: 'method', message: 'GET or POST only' }))
+        }
+        try {
+          if (!cfg.enabled) {
+            res.statusCode = 503
+            return res.end(JSON.stringify({ ok: false, error: 'unconfigured', message: 'Set LABEL_PRINTER_IP in .env to enable printing.' }))
+          }
+          const body = await readJsonBody(req, 16 * 1024 * 1024)
+          const jobs = (body.jobs || []).map((j) => ({
+            data: Buffer.from(String(j.bitmap || ''), 'base64'),
+            widthDots: parseInt(j.widthDots, 10),
+            heightDots: parseInt(j.heightDots, 10),
+            copies: Math.max(1, parseInt(j.copies || body.copies || 1, 10)),
+            wmm: j.wmm != null ? parseFloat(j.wmm) : undefined,   // label SIZE from the in-app size picker
+            hmm: j.hmm != null ? parseFloat(j.hmm) : undefined,
+          })).filter((j) => j.data.length && j.widthDots > 0 && j.heightDots > 0)
+          if (!jobs.length) {
+            res.statusCode = 400
+            return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'no valid jobs in request' }))
+          }
+          for (const j of jobs) {
+            const need = Math.ceil(j.widthDots / 8) * j.heightDots
+            if (j.data.length !== need) {
+              res.statusCode = 400
+              return res.end(JSON.stringify({ ok: false, error: 'size', message: `bitmap is ${j.data.length} bytes, expected ${need} for ${j.widthDots}×${j.heightDots}` }))
+            }
+          }
+          const buf = buildJob(jobs, cfg)
+          console.log('[api/print]', jobs.length, 'label(s) ->', cfg.ip + ':' + cfg.port, cfg.lang, buf.length + 'B')
+          await sendToPrinter(buf, { ip: cfg.ip, port: cfg.port })
+          res.end(JSON.stringify({ ok: true, printed: jobs.length }))
+        } catch (e) {
+          res.statusCode = 502
+          res.end(JSON.stringify({ ok: false, error: 'print_failed', message: String((e && e.message) || e) }))
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // loads .env (and .env.local) from the project root
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), graderProxy(env), trackerPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

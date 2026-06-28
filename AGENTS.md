@@ -145,6 +145,9 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `lib/db.mjs` | `node:sqlite` store — opens `data/tracker.db`, PRAGMAs + idempotent DDL (`watchlist` / `price_snapshots` / `signals`). All DB access funnels here. |
 | `lib/normalize.mjs` | Server-side mirror of each builder's price extraction + FX math + per-game lookup paths (see Golden Rule 9). |
 | `lib/pricecharting.mjs` | Keyless PriceCharting scraper (Pokémon graded/raw/pop). Parses the public card + population pages server-side; matches by exact collector number + name + fuzzy set. Powers `/api/pc` (display-only; not wired into the tracker/collector). |
+| `shipping-label.html` | Shipping Label Maker. Pastes an eBay address → cleaned, auto-fit address label as a jsPDF (50×30 / 100×50 mm); batch → multi-page PDF. Can also **print direct** to the AUSPRINT PRO: rasterises the label to a 1-bpp bitmap (reusing the jsPDF layout) and POSTs to `/api/print` (Print button + Auto-print toggle). Download path is unchanged. |
+| `lib/labelprint.mjs` | Builds TSPL (or ZPL) from a 1-bpp label bitmap and streams it to the thermal printer's raw 9100 socket — the server side of `/api/print`. Pure `node:net`, no deps. Client sends `1`=ink; TSPL wants `0`=black, so it inverts (overridable via `LABEL_PRINTER_INVERT`). |
+| `scripts/labeltest.mjs` | Standalone raw-9100 test/calibration harness for the AUSPRINT PRO: `--lang tspl\|zpl\|bitmap\|self` sends a minimal label so you can confirm the dialect and tune size/position/darkness. |
 | `lib/collector.mjs` | In-process scheduler + `runPass` (self-fetches the proxies) + `computeSignals` (thresholds). |
 | `lib/tracker.mjs` | Vite plugin: owns the DB, exposes `/api/tracker/*`, starts the collector. Registered in `vite.config.js` `plugins`. |
 | `data/tracker.db` | SQLite price history (gitignored, WAL). Created on first server boot. |
@@ -175,6 +178,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/lego/bricklink` | (middleware) | **OAuth1 HMAC-SHA1 signing** per request (4 BrickLink creds). New/used price guide. Needs the server IP registered in the BrickLink console. |
 | `/api/ebay` | (middleware) | Mints+caches an **OAuth2 client-credentials** app token; injects `Bearer` + `X-EBAY-C-MARKETPLACE-ID`. Funko Browse pricing + live name search + Taxonomy item-specifics. **Production keys only** (`SBX-` sandbox keys fail the token mint with `invalid_client`; the middleware surfaces the real error instead of a blind 502). |
 | `/api/pc` | (middleware) | **Keyless** PriceCharting scrape (Pokémon graded/raw/pop) via `lib/pricecharting.mjs`. `GET /api/pc/lookup?name=&number=&set=&id=`. Display-only; always returns `{matched:false}` on failure (Golden Rule 7). Optional `PRICECHARTING_TOKEN` switches it to the official API. |
+| `/api/grade` | (middleware) | **POST-only** AI vision condition pass for `card-grader.html` (`lib/grader.mjs`, Anthropic/OpenAI). Returns `ok:false` (never 500) so the tool degrades to centering-only. |
+| `/api/print` | (middleware) | **POST-only**: streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `GET` returns `{enabled,dpi,ip,page}` so `shipping-label.html` knows whether to enable its Print button + at what DPI to rasterise. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
 
 **`extras.js` public surface** (`window.TCG`):
 

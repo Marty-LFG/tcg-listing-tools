@@ -154,6 +154,8 @@
             <option value="courier">Courier (mono)</option>
           </select></div>
           <div><label>Min / Max pt</label><input id="a_minmax" value="5 to 14" disabled></div>
+          <div><label>Print nudge X (mm)</label><input id="a_offx" type="number" step="0.5" value="0" title="Shift the PRINTED label left/right on the sticker to align with your printer (negative = left). Does NOT affect the PDF / preview."></div>
+          <div><label>Print nudge Y (mm)</label><input id="a_offy" type="number" step="0.5" value="0" title="Shift the PRINTED label up/down on the sticker (negative = up). Does NOT affect the PDF / preview."></div>
           <div class="full"><input type="checkbox" id="a_splitunit" checked><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Put unit / flat / level on its own line (e.g. "Unit 8" above "62 Allowah St")</label></div>
           <div class="full"><input type="checkbox" id="a_wrap"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Wrap long lines (off = shrink font to keep each line whole)</label></div>
         </div>
@@ -173,7 +175,12 @@
       <div class="btns">
         <button class="btn" id="addBtn" onclick="addToBatch()">+ Add to batch</button>
         <button class="btn solid" id="dlBtn" onclick="downloadAll()">&#11015; Download (1)</button>
+        <button class="btn" id="printBtn" onclick="printLabels()" disabled>&#128424; Print (1)</button>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;">
+          <input type="checkbox" id="autoPrint" onchange="toggleAutoPrint()" style="width:auto;" disabled> Auto-print
+        </label>
       </div>
+      <div class="status load" id="printhint" style="margin-top:8px;">Checking for printer&hellip;</div>
 
       <div id="batchlist"></div>
     </div>
@@ -312,12 +319,15 @@ function layoutOnePage(doc, rawLines, opts){
   var align = opts.align==='center' ? 'center' : 'left';
 
   doc.setTextColor(0,0,0); doc.setFontSize(pt);
+  var draws = [];                                            // reused by the thermal raster path
   for(var i=0;i<phys.length;i++){
     doc.setFont(opts.font, phys[i].b?'bold':'normal');
-    doc.text(phys[i].t, x, top + i*lineH, { baseline:'top', align: align });
+    var yy = top + i*lineH;
+    doc.text(phys[i].t, x, yy, { baseline:'top', align: align });
+    draws.push({ t: phys[i].t, x: x, y: yy, pt: pt, bold: phys[i].b, align: align });
   }
   return { pt: pt, autoPt: autoPt, overflow: overflow, dropped: res.dropped,
-           lineCount: phys.length, lines: lines };
+           lineCount: phys.length, lines: lines, draws: draws };
 }
 // Preview-only guides: the sticker edge + the dashed safe-margin box. Drawn before the text.
 function drawGuides(doc, opts){
@@ -367,7 +377,7 @@ function ensurePdf(n){ return /\.pdf$/i.test(n) ? n : n + '.pdf'; }
 
 /* ---------- live preview ---------- */
 function batchCount(){ return batch.length + (cleanLines().length ? 1 : 0); }
-function refreshDownloadLabel(){ $('dlBtn').innerHTML = SYM_DL + ' Download (' + batchCount() + ')'; }
+function refreshDownloadLabel(){ $('dlBtn').innerHTML = SYM_DL + ' Download (' + batchCount() + ')'; updatePrintChrome(); }
 
 function regenerate(){
   var lines = cleanLines();
@@ -404,6 +414,7 @@ function regenerate(){
 
   $('addBtn').disabled=false; $('dlBtn').disabled=false;
   if(!$('fname').value.trim()) $('fname').placeholder = deriveName(lines);
+  scheduleAutoPrint(info, lines);                            // auto-print (if armed) once the label settles
 }
 function scheduleRender(){ clearTimeout(_renderTimer); _renderTimer=setTimeout(regenerate, 180); }
 
@@ -444,7 +455,12 @@ function onRawInput(){
 }
 function addAllParsed(){
   var blocks = $('multi')._blocks || [];
-  for(var i=0;i<blocks.length;i++) pushBatch(blocks[i], currentOpts());
+  var items = [];
+  for(var i=0;i<blocks.length;i++){ var o = currentOpts(); pushBatch(blocks[i], o); items.push({ lines: blocks[i], opts: o }); }
+  if(autoPrint && printCfg.enabled && items.length){       // commit-all -> print all in one job
+    sendPrint(items);
+    var last = items[items.length-1]; _lastAutoHash = autoHash(last.lines, last.opts);
+  }
   $('raw').value=''; $('clean').value=''; $('multi').style.display='none'; sizeOverride=null;
   renderBatch(); regenerate(); showToast('Added '+blocks.length+' to batch');
 }
@@ -454,7 +470,9 @@ function pushBatch(lines, opts){ batch.push({ lines: lines.slice(), opts: opts, 
 function addToBatch(){
   var lines = cleanLines();
   if(!lines.length){ showToast('Nothing to add'); return; }
-  pushBatch(lines, currentOpts());
+  var opts = currentOpts();
+  pushBatch(lines, opts);
+  if(autoPrint && printCfg.enabled) autoPrintOnce(lines, opts);   // commit -> print
   $('raw').value=''; $('clean').value=''; $('multi').style.display='none'; $('fname').value=''; sizeOverride=null;
   renderBatch(); regenerate(); showToast('Added to batch ('+batch.length+')');
 }
@@ -524,6 +542,144 @@ function downloadAll(){
   showToast(items.length + ' label' + (items.length>1?'s':'') + ' saved');
 }
 
+/* ---------- thermal printing (AUSPRINT PRO over /api/print) ---------- */
+// printCfg comes from GET /api/print: { enabled, dpi, ip, page:{w,h} }. Until it loads,
+// printing stays disabled so the tool is download-only when no printer is configured.
+var printCfg = { enabled:false, dpi:300 };
+var autoPrint = false, _lastAutoHash = '', _autoTimer = null;
+
+function loadPrintCfg(){
+  return fetch('/api/print').then(function(r){return r.json();}).then(function(c){
+    if(c && typeof c==='object') printCfg = c;
+  }).catch(function(){ printCfg = { enabled:false, dpi:300 }; }).then(function(){ seedNudge(); updatePrintChrome(); });
+}
+// Seed the print-nudge fields: a saved value (localStorage) wins, else the .env default (GET).
+function seedNudge(){
+  var sx = null, sy = null;
+  try { sx = localStorage.getItem('ship_offx'); sy = localStorage.getItem('ship_offy'); } catch(e){}
+  if(sx==null && printCfg.offXmm!=null) sx = printCfg.offXmm;
+  if(sy==null && printCfg.offYmm!=null) sy = printCfg.offYmm;
+  if($('a_offx') && sx!=null) $('a_offx').value = sx;
+  if($('a_offy') && sy!=null) $('a_offy').value = sy;
+}
+function updatePrintChrome(){
+  var en = !!printCfg.enabled, n = batchCount();
+  var pb = $('printBtn'); if(pb){ pb.disabled = !en || n===0; pb.innerHTML = '🖨 Print (' + n + ')'; }
+  var ap = $('autoPrint'); if(ap) ap.disabled = !en;
+  var h = $('printhint');
+  if(h) h.textContent = en
+    ? ('Prints to AUSPRINT ' + (printCfg.ip||'') + ' @ ' + (printCfg.dpi||300) + 'dpi · at the selected label size')
+    : 'Direct printing off — set LABEL_PRINTER_IP in .env to enable. (Download still works.)';
+}
+
+// Rasterise one composed label to a 1-bpp bitmap (1 = ink, MSB-first, rows padded to a byte)
+// at the printer's dot density, reusing the exact jsPDF layout so what prints matches preview.
+function renderLabelToBitmap(lines, opts, dpi){
+  var built = buildDoc([{ lines: lines, opts: Object.assign({}, opts, { guides:false }) }]);
+  var draws = (built.infos[0] && built.infos[0].draws) || [];
+  var wDots = Math.max(1, Math.round(opts.pageW * dpi/25.4));
+  var hDots = Math.max(1, Math.round(opts.pageH * dpi/25.4));
+  var cv = document.createElement('canvas'); cv.width = wDots; cv.height = hDots;
+  var ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,wDots,hDots);
+  ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
+  var pxPerMm = dpi/25.4, pxPerPt = dpi/72;
+  // Print-only alignment nudge (mm -> dots): compensates for the printer's physical origin
+  // offset. Negative shifts left/up. Applied to the RASTER only — the PDF/preview is untouched.
+  var offX = (parseFloat(($('a_offx')||{}).value) || 0) * pxPerMm;
+  var offY = (parseFloat(($('a_offy')||{}).value) || 0) * pxPerMm;
+  var fam = opts.font==='times' ? '"Times New Roman", Times, serif'
+          : opts.font==='courier' ? '"Courier New", Courier, monospace'
+          : 'Arial, Helvetica, sans-serif';
+  for(var i=0;i<draws.length;i++){
+    var d = draws[i];
+    ctx.font = (d.bold?'bold ':'') + (d.pt*pxPerPt).toFixed(2) + 'px ' + fam;
+    ctx.textAlign = d.align==='center' ? 'center' : 'left';
+    ctx.fillText(d.t, Math.round(d.x*pxPerMm + offX), Math.round(d.y*pxPerMm + offY));
+  }
+  var img = ctx.getImageData(0,0,wDots,hDots).data;
+  var wBytes = Math.ceil(wDots/8);
+  var out = new Uint8Array(wBytes*hDots);                    // 0-filled => background
+  for(var y=0;y<hDots;y++){
+    var row = y*wBytes;
+    for(var x=0;x<wDots;x++){
+      var p = (y*wDots+x)*4;
+      var lum = 0.299*img[p] + 0.587*img[p+1] + 0.114*img[p+2];
+      if(img[p+3] > 128 && lum < 128) out[row + (x>>3)] |= (0x80 >> (x&7));  // dark pixel = ink bit 1
+    }
+  }
+  var bin = '';
+  for(var k=0;k<out.length;k+=8192){ bin += String.fromCharCode.apply(null, out.subarray(k, Math.min(k+8192, out.length))); }
+  return { bitmap: btoa(bin), widthDots: wDots, heightDots: hDots };
+}
+
+// items: [{lines, opts}]. Rasterises each, POSTs the jobs, surfaces progress via TCG.activity,
+// and restores the Print button on any outcome.
+function sendPrint(items){
+  if(!printCfg.enabled || !items.length) return;
+  var n = items.length;
+  var act = (window.TCG && TCG.activity) ? TCG.activity('Printing ' + n + ' label' + (n>1?'s':'')) : null;
+  var jobs;
+  try {
+    jobs = items.map(function(it){
+      var bm = renderLabelToBitmap(it.lines, it.opts, printCfg.dpi || 300);
+      bm.wmm = it.opts.pageW; bm.hmm = it.opts.pageH;     // TSPL label SIZE = the selected label size
+      return bm;
+    });
+  }
+  catch(e){ if(act) act.fail('render failed'); showToast('Print render failed'); return; }
+  if($('printBtn')) $('printBtn').disabled = true;
+  fetch('/api/print', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ jobs: jobs }) })
+    .then(function(r){ return r.json().catch(function(){ return { ok:false, message:'bad response' }; }); })
+    .then(function(res){
+      if(res && res.ok){ if(act) act.done('Printed ' + res.printed); showToast('Printed ' + res.printed + ' label' + (res.printed>1?'s':'')); }
+      else { var m = (res && res.message) || 'print failed'; if(act) act.fail(m); showToast('Print failed: ' + m); }
+    })
+    .catch(function(e){ if(act) act.fail(String(e)); showToast('Print failed (printer offline?)'); })
+    .then(updatePrintChrome, updatePrintChrome);             // restore button state either way
+}
+
+// printLabels(): manual button — prints the current working label + every staged batch label
+// (mirrors downloadAll's set). No dedupe: an explicit click always prints.
+function printLabels(){
+  if(!printCfg.enabled){ showToast('Printer not configured'); return; }
+  var items = batch.slice().map(function(b){ return { lines: b.lines, opts: b.opts }; });
+  var cur = cleanLines();
+  if(cur.length) items.push({ lines: cur, opts: currentOpts() });
+  if(!items.length){ showToast('Nothing to print'); return; }
+  sendPrint(items);
+  if(cur.length){ _lastAutoHash = autoHash(cur, currentOpts()); }   // don't auto-reprint what we just printed
+}
+
+/* ---------- auto-print (commit-triggered, de-duplicated) ---------- */
+function autoHash(lines, opts){ return (opts && opts.size || '') + '|' + lines.join('|'); }
+function autoPrintOnce(lines, opts){
+  if(!autoPrint || !printCfg.enabled || !lines.length) return;
+  var h = autoHash(lines, opts);
+  if(h === _lastAutoHash) return;                            // identical to the last auto-print
+  _lastAutoHash = h;
+  sendPrint([{ lines: lines.slice(), opts: opts }]);
+}
+// Called from regenerate(): when auto-print is on, print the current label once it settles
+// (1.5s after the last edit) and only if it changed — so live typing never spams the printer.
+function scheduleAutoPrint(info, lines){
+  if(!autoPrint || !printCfg.enabled) return;
+  clearTimeout(_autoTimer);
+  if(!lines.length || (info && info.overflow)) return;
+  _autoTimer = setTimeout(function(){
+    var now = cleanLines();
+    if(now.length) autoPrintOnce(now, currentOpts());
+  }, 1500);
+}
+function toggleAutoPrint(){
+  autoPrint = $('autoPrint').checked;
+  try { localStorage.setItem('ship_autoprint', autoPrint ? '1' : '0'); } catch(e){}
+  // arming auto-print should not reprint the label already on screen — seed the dedupe hash
+  var cur = cleanLines();
+  _lastAutoHash = cur.length ? autoHash(cur, currentOpts()) : '';
+  showToast(autoPrint ? 'Auto-print on' : 'Auto-print off');
+}
+
 /* ---------- clipboard ---------- */
 function pasteClip(){
   if(!(navigator.clipboard && navigator.clipboard.readText)){ showToast('Clipboard not available, paste manually'); $('raw').focus(); return; }
@@ -540,9 +696,13 @@ function pasteClip(){
   $('clean').addEventListener('input', scheduleRender);
   ['a_margin','a_spacing','a_wrap','a_font'].forEach(function(id){ $(id).addEventListener('input', regenerate); $(id).addEventListener('change', regenerate); });
   $('a_splitunit').addEventListener('change', onRawInput);   // re-parse: splitting happens at parse time
+  ['a_offx','a_offy'].forEach(function(id){ $(id).addEventListener('change', function(){ try{ localStorage.setItem(id==='a_offx'?'ship_offx':'ship_offy', $(id).value); }catch(e){} }); });
+  try { autoPrint = localStorage.getItem('ship_autoprint')==='1'; } catch(e){}
+  if($('autoPrint')) $('autoPrint').checked = autoPrint;
   updateSizeChrome();
   renderBatch();
   regenerate();
+  loadPrintCfg();                                            // discover the AUSPRINT; enable Print if configured
 })();
 </script>
 </body>

@@ -75,6 +75,41 @@ then browse to `http://cards.lan:5273`. If you use a hostname, also set
 - `/api/img` fetches arbitrary URLs server-side. Harmless on a trusted LAN;
   don't port-forward it.
 
+## Shipping labels → AUSPRINT PRO (direct printing)
+
+The **Shipping Label Maker** (`shipping-label.html`) can print straight to the
+**AUSPRINT PRO** Wi-Fi thermal printer (a rebadged Rongta RP4xx, TSPL) with no
+vendor app and nothing to install — it talks to the printer's raw `9100` socket
+from the dev server (`/api/print` → `lib/labelprint.mjs`).
+
+Setup:
+
+1. **Find the printer's IP.** On your router's admin page, look at the DHCP client
+   list — the AUSPRINT is the device that answers on **port 9100 only** (no web
+   page). Set a **DHCP reservation** for it so the IP never changes.
+2. **Configure it.** In `.env` set `LABEL_PRINTER_IP=` to that address (see the
+   `LABEL_PRINTER_*` block in `.env.example` for the optional knobs: dpi, label
+   size, gap, placement offset, darkness, invert). Restart `pnpm dev`.
+3. **Use it.** Open the Shipping Label Maker — the **🖨 Print** button enables once
+   the printer is found. It prints at whichever **label size is selected** (50×30 /
+   100×50), so pick the size matching the stock you've loaded. It prints the current
+   label plus any staged batch. Tick **Auto-print** to print each label automatically
+   as it settles / is added.
+
+Calibration (one-off, against a real label): use the bundled harness to sanity-check
+the connection and tune placement —
+
+```bash
+node scripts/labeltest.mjs            # sends a TSPL test label to 192.168.4.220:9100
+node scripts/labeltest.mjs --lang self  # prints the printer's own config page
+```
+
+If a printed address sits in the wrong spot, nudge `LABEL_PRINTER_OFFX_MM` /
+`OFFY_MM`; if it's faint, raise `LABEL_PRINTER_DENSITY`; if it prints as a
+photo-negative, set `LABEL_PRINTER_INVERT=true`. The printer is on Wi-Fi on the
+same LAN as the dev-server host, so the host does the printing regardless of which
+LAN client opened the tool.
+
 ## Working on this project (handoff)
 
 If you're an AI coding agent or a new developer picking this up, start with
