@@ -130,6 +130,21 @@ Display-only — it does **not** change the tracked price, so `lib/normalize.mjs
   `Cost`, `Power`, `HP`, `Rarity`, `VariantType`, `MarketPrice`/`LowPrice` (USD),
   `FrontArt`, `BackArt` + `DoubleSided` (leaders/back art).
 
+## Disney Lorcana — Lorcast  (proxy `/api/lorcana`)
+
+- Card: `GET /cards/{set}/{number}` by **set code + bare collector number** (NOT zero-padded —
+  e.g. `1/207` → Elsa, Spirit of Winter). 404 on no match. Single bare card object (no `data` wrapper).
+- Sets: `GET /sets` → `{ results: [{ id, code, name, released_at }] }`. The builder hard-codes the
+  released numbered sets `1`–`12` as clickable pills (the only set selector); promos (`P1`, `D23`, …)
+  are not selectable in the UI yet. Add new numbered sets to the `SETS` object as they release.
+- **Auth:** none (keyless). HTTPS only, ~10 req/s; **prices refresh once daily**.
+- Fields used: `name`, `version`, `collector_number`, `rarity` (`Super_rare` → "Super Rare"),
+  `ink`, `type[]`, `classifications[]`, `cost`, `strength`, `willpower`, `lore`,
+  `image_uris.digital.{small,normal,large}` (**AVIF**), `prices.{usd, usd_foil}` (USD strings;
+  `usd` is `null` for foil-only Enchanted/promo printings → builder auto-selects the Foil finish).
+- **Graded ladder:** layered on via `pcEnrich` → `/api/pc/lookup` (the game-agnostic PriceCharting
+  scraper) using `name + version`, `collector_number`, and the set name. eBay AUD comps as usual.
+
 ## Riftbound — three sources (default keyless)
 
 The builder picks a `source` at runtime: **offline** (default) → **riftscribe** → **scrydex**.
@@ -314,7 +329,7 @@ community datasets are deprecated/frozen at 2021 — verified Jun 2026: the
 
 A local SQLite layer (`node:sqlite`) that snapshots card prices over time. Served by
 `trackerPlugin` (`lib/tracker.mjs`); the collector (`lib/collector.mjs`) **self-fetches the
-proxies above** on a schedule and persists results. Card-games only (Riftbound/MTG/Pokémon/SWU).
+proxies above** on a schedule and persists results. Card-games only (Riftbound/MTG/Pokémon/SWU/Lorcana).
 
 ### Endpoints
 - `GET /api/tracker/watchlist?game=&review=` — tracked cards + latest snapshot + sparkline.
@@ -331,7 +346,8 @@ proxies above** on a schedule and persists results. Card-games only (Riftbound/M
 
 ### Identity keys (what the collector re-fetches by)
 Riftbound `OGN-296` → `/api/rb/cards/OGN-296?include=prices`; MTG `neo-1` → `/api/mtg/cards/neo/1`;
-Pokémon `sv4-25` → `/api/pkm/cards/sv4-25`; SWU `sor/010` → `/api/swu/cards/sor/010`.
+Pokémon `sv4-25` → `/api/pkm/cards/sv4-25`; SWU `sor/010` → `/api/swu/cards/sor/010`;
+Lorcana `1/207` → `/api/lorcana/cards/1/207`.
 
 ### Per-game price mapping (mirrors `lib/normalize.mjs` — keep in sync, Golden Rule 9)
 - **Riftbound** (`scrydex`): variant `foil`/`normal` → `prices` where `condition==='NM'` → `market`,
@@ -339,6 +355,8 @@ Pokémon `sv4-25` → `/api/pkm/cards/sv4-25`; SWU `sor/010` → `/api/swu/cards
 - **MTG** (`scryfall`): `usd` / `usd_foil` / `usd_etched` by finish (else `eur`).
 - **Pokémon** (`pokemontcg`): `tcgplayer.prices[bucket].market` (USD) → else `cardmarket.averageSellPrice` (EUR).
 - **SWU** (`swudb`): `MarketPrice` + `LowPrice` (USD).
+- **Lorcana** (`lorcast`): `prices.usd_foil` for foil variants else `prices.usd` (fallback to the
+  other when one is `null`); USD strings coerced to number.
 
 ### `price_snapshots` row
 `{ ts, market, low, currency, market_aud, fx_usd_aud, source, pct_1d, pct_7d, pct_30d, pct_90d, raw }`.

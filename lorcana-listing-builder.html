@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Disney Lorcana eBay Listing Builder</title>
+<style>
+  :root{
+    --ink:#0e0a1a; --panel:#16111f; --panel2:#1d1729; --line:#322a44;
+    --muted:#9a91ad; --text:#f0ecf7; --gold:#c9a24b; --yellow:#c9a24b; --yellow-dim:#7a6326;
+    --field:#120d1d; --on-ink:#1a1326;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .pill{padding:8px 13px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+    border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
+  .pill.on{background:var(--gold);color:var(--on-ink);border-color:var(--gold);}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  .lookup{display:flex;gap:10px;margin-bottom:6px;}
+  .lookup input{flex:1;font-size:22px;font-weight:700;padding:12px 14px;background:var(--field);
+    border:1px solid var(--line);border-radius:10px;color:var(--text);outline:none;}
+  .lookup input:focus{border-color:var(--gold);}
+  .lookup button{padding:0 18px;border:1px solid var(--gold);background:var(--gold);color:var(--on-ink);
+    border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;}
+  .status{font-size:12.5px;min-height:18px;margin:4px 0 14px;}
+  .status.ok{color:#36d399;} .status.warn{color:#e7c66b;} .status.err{color:#f06262;} .status.load{color:var(--muted);}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+  .f-full{grid-column:1/3;}
+  .fields input,.fields select,.fields textarea{width:100%;padding:8px 10px;background:var(--field);
+    border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  .fields input:focus,.fields select:focus,.fields textarea:focus{border-color:var(--gold);}
+  .fields textarea{resize:vertical;min-height:64px;line-height:1.45;}
+  .stat4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;}
+  .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .btns{display:flex;gap:8px;}
+  .btn{padding:8px 14px;border:1px solid var(--yellow-dim);background:transparent;color:var(--gold);
+    border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;}
+  .btn:hover{background:var(--gold);color:var(--on-ink);}
+  .btn.solid{background:var(--gold);color:var(--on-ink);border-color:var(--gold);}
+  iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);
+    color:var(--on-ink);padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+      <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Disney Lorcana</div>
+  <h1>eBay Listing Builder</h1>
+  <p class="sub">Pick a set, type a card number, get a ready-to-paste eBay description. Live card data, images &amp; daily prices via the Lorcast API.</p>
+
+  <div class="grid">
+    <div class="card">
+      <details style="margin-bottom:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);">
+        <summary style="cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none;">API connection (proxy)</summary>
+        <div style="padding:0 14px 14px;">
+          <label>Base URL</label>
+          <input id="c_base" style="width:100%;padding:8px 10px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;" oninput="saveBase()">
+          <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">Lorcast is keyless but blocks direct browser calls (no CORS). Run <code>pnpm dev</code> and leave this as <code>/api/lorcana</code> &mdash; vite.config.js proxies to api.lorcast.com server-side.</div>
+        </div>
+      </details>
+      <label>Set</label>
+      <div class="pills" id="pills"></div>
+
+      <label>Card number</label>
+      <div class="lookup">
+        <input id="num" placeholder="e.g. 27  or  207" autocomplete="off">
+        <button onclick="doLookup()">Look up</button>
+      </div>
+      <div class="status load" id="status">Pick a set, enter a number, hit Look up.</div>
+
+      <div class="fields">
+        <div class="f-full"><label>Card name (incl. version)</label><input id="f_name"></div>
+        <div><label>Set (display)</label><input id="f_set"></div>
+        <div><label>Number</label><input id="f_num"></div>
+        <div><label>Rarity</label><input id="f_rarity"></div>
+        <div><label>Variant / finish</label><select id="f_variant">
+          <option>Standard</option><option>Foil</option></select></div>
+        <div><label>Card type</label><input id="f_type"></div>
+        <div><label>Ink</label><input id="f_ink" placeholder="Amber / Amethyst / …"></div>
+        <div class="f-full"><label>Classifications</label><input id="f_class" placeholder="Floodborn · Hero · Queen"></div>
+        <div class="f-full"><label>Cost / Strength / Willpower / Lore (characters — blank to hide)</label>
+          <div class="stat4"><input id="f_cost" placeholder="Cost"><input id="f_strength" placeholder="Strength"><input id="f_willpower" placeholder="Willpower"><input id="f_lore" placeholder="Lore"></div></div>
+        <div><label>Language</label><input id="f_lang" value="English"></div>
+        <div><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
+        <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
+      </div>
+      <div class="hint"><b>Auto-fill needs the proxy running</b> (Lorcast blocks direct browser calls via CORS). Start <code>pnpm dev</code>, keep Base URL at the default, and look-ups will work. No proxy? Type fields manually &mdash; the preview always builds. Enchanted cards are foil-only &mdash; the variant auto-sets to Foil so pricing lands.</div>
+    </div>
+
+    <div class="card">
+            <div style="margin-bottom:14px;">
+        <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;"><span>eBay title</span><span id="titlecount" style="font-size:11px;color:var(--muted);font-weight:400;">0/80</span></label>
+        <div style="display:flex;gap:8px;">
+          <input id="f_title" oninput="updateTitleCount()" placeholder="look up a card — title builds here" style="flex:1;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+          <button class="btn" onclick="regenTitle()" title="Rebuild from fields">&#8635;</button>
+          <button class="btn solid" onclick="copyTitle()">Copy</button>
+        </div>
+      </div>
+      <div class="previewhead">
+        <label style="margin:0;">Live preview</label>
+        <div class="btns">
+          <button class="btn" onclick="copyText()">Copy plain text</button>
+          <button class="btn solid" onclick="copyHTML()">Copy HTML</button>
+        </div>
+      </div>
+      <iframe id="preview"></iframe>
+      <div id="extras" style="margin-top:16px;"></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide. Sold where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button> <button class="btn" onclick="addTrack()" title="Cache this card's price and track its trend over time">&#128202; Track price</button></div>
+      <div id="ebayextras" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Copied!</div>
+
+<script src="/extras.js"></script>
+<script>
+
+var _lastAutoTitle='';
+function updateTitleCount(){var el=document.getElementById('f_title'),c=document.getElementById('titlecount');if(!el||!c)return;var n=el.value.length;c.textContent=n+'/80';c.style.color=n>80?'#f06262':'var(--muted)';}
+function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.getElementById('f_title');if(el){el.value=t;_lastAutoTitle=t;updateTitleCount();}}
+function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_name')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
+function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
+
+// Lorcana chase rarities -> short eBay tokens. Common/Uncommon drop out.
+function rarAbbr(r){var rl=(r||'').toLowerCase();
+  if(/enchanted/.test(rl))return 'ENH';
+  if(/legendary/.test(rl))return 'LEG';
+  if(/super\s*rare/.test(rl))return 'SR';
+  if(/\brare\b/.test(rl))return 'RARE';
+  return '';}
+
+function genTitle(){
+  var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),variant=val('f_variant'),lang=val('f_lang'),cond=val('f_cond');
+  if(!window.TCG)return name;
+  var code=((setn||'').match(/\(([^)]+)\)/)||[])[1]||'';
+  var v=(variant||'').trim();if(/standard|normal|base|none/i.test(v))v='';
+  var parts=[
+    {text:name,prio:100},
+    {text:num,prio:88},
+    {text:'- Disney Lorcana '+(setn||''),abbr:'- Lorcana'+(code?' ('+code+')':''),prio:72},
+    {text:TCG.langCode(lang),prio:30},
+    {text:v?v.toUpperCase():'',prio:80},
+    {text:rarAbbr(rar),prio:58},
+    {text:TCG.condCode(cond),prio:62}
+  ];
+  return TCG.fitTitle(parts,80);
+}
+
+const SETS = {
+  '1':'The First Chapter', '2':'Rise of the Floodborn', '3':'Into the Inklands',
+  '4':"Ursula's Return", '5':'Shimmering Skies', '6':'Azurite Sea',
+  '7':"Archazia's Island", '8':'Reign of Jafar', '9':'Fabled',
+  '10':'Whispers in the Well', '11':'Winterspell', '12':'Wilds Unknown'
+};
+let curSet='1', lastHTML='';
+let lorBase='/api/lorcana';
+try{const _b=localStorage.getItem('lorcana_base'); if(_b) lorBase=_b;}catch(e){}
+function saveBase(){lorBase=document.getElementById('c_base').value.trim();try{localStorage.setItem('lorcana_base',lorBase);}catch(e){}}
+
+function val(id){return document.getElementById(id).value.trim();}
+function set(id,v){document.getElementById(id).value=(v==null?'':v);}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// "Super_rare" -> "Super Rare"; title-cases each word.
+function prettyRarity(r){return (r||'').replace(/_/g,' ').replace(/\b\w/g,function(ch){return ch.toUpperCase();});}
+
+// Mirror of lib/normalize.mjs MAPPERS.lorcana — keep both in sync (Golden Rule 9).
+function priceFromCard(c,variant){
+  var p=c&&c.prices; if(!p)return null;
+  var foil=/foil/i.test(variant||'');
+  var m=foil?(p.usd_foil!=null?p.usd_foil:p.usd):(p.usd!=null?p.usd:p.usd_foil);
+  if(m==null)return null;
+  return {market:+m,low:null,currency:'USD'};
+}
+
+function readFields(){
+  return {name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
+    variant:val('f_variant'),type:val('f_type'),ink:val('f_ink'),cls:val('f_class'),
+    cost:val('f_cost'),strength:val('f_strength'),willpower:val('f_willpower'),lore:val('f_lore'),
+    lang:val('f_lang'),cond:val('f_cond'),pitch:val('f_pitch')};
+}
+
+function findEbay(){
+  const f=readFields(), st=document.getElementById('status');
+  if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
+  const nm=(f.name||'').replace(/\s*-\s*/g,' ').trim();             // "Elsa - Spirit of Winter" -> "Elsa Spirit of Winter"
+  const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  const q=('Disney Lorcana '+nm+(setName?' '+setName:'')).trim();
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
+    analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'Lorcast',
+    card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
+    // Lorcana eBay titles key on character + version, rarely the bare collector number, so
+    // number-matching would zero out comps; rely on name + junk/lang drops (same as SWU).
+    precision:true, numberMatch:null,
+    filterKey:'raw',
+    filterOptions:[
+      {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
+      {key:'rawAll', label:'Raw · incl. auctions', filter:'conditionIds:{4000}'},
+      {key:'graded', label:'Graded', filter:'conditionIds:{2750}'},
+      {key:'all',    label:'All listings', filter:''}
+    ]});
+}
+
+function genPitch(f, rawRarity){
+  const setName=SETS[curSet], name=f.name, type=(f.type||'card').toLowerCase();
+  const ink=f.ink, v=f.variant;
+  const foil=/foil/i.test(v||'');
+  const chaseRarity=['Legendary','Super Rare','Enchanted'].includes(rawRarity);
+  const inkPhrase = ink ? ink+'-ink ' : '';
+  if(foil||chaseRarity){
+    const vWord = foil ? 'foil ' : '';
+    return `The ${vWord}${name} ${type} from Disney Lorcana — ${setName}. A ${inkPhrase}standout chase card prized by collectors and players alike.`;
+  }
+  return `${name} — a ${inkPhrase}${type} from Disney Lorcana's ${setName} set. ${rawRarity||''} rarity${foil?', foil finish':''}.`;
+}
+
+function buildHTML(f){
+  const rows=[['Set',f.set],['Card number',f.num],
+    ['Rarity',f.rarity+(f.variant && f.variant!=='Standard'?' — '+f.variant:'')],
+    ['Card type',f.type]];
+  if(f.ink) rows.push(['Ink',f.ink]);
+  if(f.cls) rows.push(['Classifications',f.cls]);
+  const stat=[f.cost,f.strength,f.willpower,f.lore];
+  if(stat.some(x=>x!=='')) rows.push(['Cost / Strength / Willpower / Lore',stat.map(x=>x===''?'–':x).join(' / ')]);
+  rows.push(['Finish',f.variant]); rows.push(['Language',f.lang]);
+  let tr='';
+  rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f7f9;':'';
+    tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
+  const vSpan=(f.variant && f.variant!=='Standard')?` <span style="color:#b6bac4;font-weight:600;">(${esc(f.variant)})</span>`:'';
+  return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
+  <div style="background:#1a1326;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #c9a24b;">
+    <div style="color:#c9a24b;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Disney Lorcana</div>
+    <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${vSpan}</div>
+    <div style="color:#9a91ad;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+  </div>
+  <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
+  <div style="padding:0 24px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1326;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:4px;">Card details</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>${tr}</tbody></table>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="background:#f6f7f9;border-left:4px solid #1a1326;border-radius:0 8px 8px 0;padding:14px 16px;">
+      <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1326;font-weight:700;margin-bottom:4px;">Condition</div>
+      <p style="margin:0;">${esc(f.cond)}. Pulled straight to sleeve and stored in a toploader.</p>
+    </div>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1326;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
+    <p style="margin:0;">Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.</p>
+  </div>
+  <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
+</div>`;
+}
+
+function render(){
+  const f=readFields(); lastHTML=buildHTML(f);
+  document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';if(typeof syncTitle==="function")syncTitle();
+}
+
+// PriceCharting graded ladder — copied from pokemon-listing-builder.html. Non-blocking: a card
+// lookup never depends on PriceCharting (Golden Rule 7). Prices come back as integer cents.
+function pcRows(pc){
+  var out=[],P=pc.prices||{},ladder=pc.ladder||{},pop=pc.pop||{};
+  var conf=pc.confidence?{level:pc.confidence==='high'?'high':'medium',text:'match '+pc.confidence}:null;
+  function popNote(g){var m=g.match(/(\d+)/);if(!m)return '';var r=pop[m[1]];if(!r)return '';
+    if(/PSA/.test(g))return r.psa!=null?'PSA pop '+r.psa.toLocaleString():'';
+    if(/CGC/.test(g))return r.cgc!=null?'CGC pop '+r.cgc.toLocaleString():'';
+    return r.total!=null?'pop '+r.total.toLocaleString():'';}
+  var rawc=(P.ungraded!=null)?P.ungraded:(ladder['Ungraded']!=null?ladder['Ungraded']:null);
+  if(rawc!=null)out.push({source:'PriceCharting',measure:'eBay-sold raw',group:'market',amount:rawc/100,currency:'USD',conf:conf});
+  var added=0;
+  ['Grade 7','Grade 8','Grade 9','Grade 9.5','PSA 10','BGS 10','CGC 10','SGC 10','BGS 10 Black','CGC 10 Pristine'].forEach(function(g){
+    if(ladder[g]==null)return;added++;
+    out.push({source:'PriceCharting',measure:g,group:'graded',amount:ladder[g]/100,currency:'USD',note:popNote(g)});
+  });
+  if(!added){
+    if(P.grade9!=null)out.push({source:'PriceCharting',measure:'Grade 9',group:'graded',amount:P.grade9/100,currency:'USD',note:popNote('Grade 9')});
+    if(P.psa10!=null)out.push({source:'PriceCharting',measure:'PSA 10',group:'graded',amount:P.psa10/100,currency:'USD',note:popNote('PSA 10')});
+    if(P.bgs10!=null)out.push({source:'PriceCharting',measure:'BGS 10',group:'graded',amount:P.bgs10/100,currency:'USD',note:popNote('BGS 10')});
+  }
+  return out;
+}
+function pcEnrich(el,ex,baseRows,c,typedNum){
+  try{
+    var nm=c.name,numv=((c.number||typedNum||'')+'').replace(/\s/g,''),setNm=(c.set&&c.set.name)||'';
+    if(!nm||!numv)return;
+    var q='/api/pc/lookup?name='+encodeURIComponent(nm)+'&number='+encodeURIComponent(numv)+'&set='+encodeURIComponent(setNm)+'&id='+encodeURIComponent(c.id||'');
+    var act=window.TCG?TCG.activity('PriceCharting…'):null;
+    fetch(q).then(function(r){return r.json();}).then(function(pc){
+      if(!pc||!pc.matched){act&&act.fail('no PriceCharting match');return;}
+      var rows=pcRows(pc);
+      if(!rows.length){act&&act.fail('no PriceCharting prices');return;}
+      ex.prices=baseRows.concat(rows);ex.pcLink=pc.url;
+      TCG.renderExtras(el,ex);
+      act&&act.done('PriceCharting'+(pc.confidence==='medium'?' (check match)':''));
+    }).catch(function(){act&&act.fail('PriceCharting blocked');});
+  }catch(e){}
+}
+
+async function doLookup(){
+  const raw=document.getElementById('num').value.trim();
+  const st=document.getElementById('status');
+  if(!raw){st.className='status warn';st.textContent='Enter a card number first.';return;}
+  const num=raw.replace(/\s/g,'');                                 // Lorcast uses the bare collector_number (no zero-pad)
+  const reqSet=curSet;                                             // pin the set for this request — selectSet() may change curSet mid-fetch
+  st.className='status load'; st.textContent='Looking up '+reqSet+'/'+num+' …';
+  const act=window.TCG?TCG.activity('Looking up '+reqSet+'/'+num+'…'):null;
+  try{
+    const res=await fetch(`${lorBase.replace(/\/$/,'')}/cards/${encodeURIComponent(reqSet)}/${encodeURIComponent(num)}`);
+    if(reqSet!==curSet){ act&&act.done(''); return; }             // user switched sets while this was in flight — let the newer lookup win
+    if(!res.ok){
+      act&&act.fail('no match');
+      st.className='status warn';
+      st.textContent='No match for set '+reqSet+' #'+num+'. Check the number or fill fields manually — preview still works.';
+      return;
+    }
+    const j=await res.json(); const c=(j&&j.data&&!Array.isArray(j.data))?j.data:j;
+    if(!c||!c.name){act&&act.fail('no card');st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
+    const name=c.name+(c.version?' - '+c.version:'');
+    const rarity=prettyRarity(c.rarity);
+    const cnum=c.collector_number||num;                            // canonical number from the API — keeps the tracker identity_key stable
+    set('f_name',name);
+    set('f_set',SETS[reqSet]+' ('+reqSet+')');
+    set('f_num',cnum);
+    set('f_rarity',rarity);
+    set('f_type',(c.type||[]).join('/'));
+    set('f_ink',c.ink||'');
+    set('f_class',(c.classifications||[]).join(' · '));
+    set('f_cost',c.cost!=null?c.cost:'');
+    set('f_strength',c.strength!=null?c.strength:'');
+    set('f_willpower',c.willpower!=null?c.willpower:'');
+    set('f_lore',c.lore!=null?c.lore:'');
+    // Set the finish deterministically each lookup (no leak between cards): foil-only printings
+    // (Enchanted/promo — no normal price) -> Foil so pricing lands; everything else -> Standard.
+    set('f_variant', (c.prices && c.prices.usd==null && c.prices.usd_foil!=null) ? 'Foil' : 'Standard');
+    const f=readFields();
+    set('f_pitch',genPitch(f,rarity));
+    const pr=priceFromCard(c,val('f_variant'));
+    act&&act.done('Lorcast');
+    st.className='status ok';
+    st.textContent='✓ '+name+'  ('+(rarity||'?')+')'+(pr&&pr.market!=null?'  ·  ~US$'+pr.market+(/foil/i.test(val('f_variant'))?' foil':' market'):'');
+    _trk={game:'lorcana',identity_key:reqSet+'/'+cnum,name:name,variant:(/foil/i.test(val('f_variant'))?'Foil':''),price:pr};
+    render();
+    if(window.TCG){
+      const img=(c.image_uris&&c.image_uris.digital)||{};
+      const lg=img.large||img.normal||img.small||'';
+      const nm=img.normal||img.large||img.small||'';
+      const _pr=[];
+      if(c.prices){
+        if(c.prices.usd!=null)      _pr.push({source:'Lorcast',measure:'market',group:'market',amount:+c.prices.usd,currency:'USD'});
+        if(c.prices.usd_foil!=null) _pr.push({source:'Lorcast',measure:'foil market',group:'market',amount:+c.prices.usd_foil,currency:'USD'});
+      }
+      const exEl=document.getElementById('extras');
+      const ex={name:name,images:[{label:'Front',display:[lg,nm].filter(Boolean),download:lg||nm}],prices:_pr.slice(),history:null};
+      TCG.renderExtras(exEl,ex);
+      pcEnrich(exEl,ex,_pr,{name:c.name+(c.version?' '+c.version:''),number:cnum,set:{name:SETS[reqSet]},id:c.id},cnum);
+    }
+    regenTitle();
+  }catch(e){
+    act&&act.fail('lookup blocked');
+    st.className='status err';
+    st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';
+  }
+}
+
+function selectSet(id){curSet=id;
+  document.querySelectorAll('.pill').forEach(p=>p.classList.toggle('on',p.dataset.id===id));
+  if(document.getElementById('num').value.trim()) doLookup();}
+
+function copyHTML(){copy(lastHTML,'HTML copied!');}
+function copyText(){const t=document.createElement('div');t.innerHTML=lastHTML;
+  copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}
+function copy(text,msg){const done=()=>showToast(msg);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fb(text,done));}else fb(text,done);}
+function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
+let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
+let _trk=null;
+async function addTrack(){
+  if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
+  const r=await TCG.addToTracker(_trk);
+  showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
+}
+
+(function(){
+  const _cb=document.getElementById('c_base'); if(_cb) _cb.value=lorBase;
+  const pills=document.getElementById('pills');
+  for(const sid in SETS){const b=document.createElement('button');
+    b.className='pill'+(sid===curSet?' on':'');b.dataset.id=sid;
+    b.textContent=sid;b.title=SETS[sid];b.onclick=()=>selectSet(sid);pills.appendChild(b);}
+  document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
+  ['f_name','f_set','f_num','f_rarity','f_variant','f_type','f_ink','f_class','f_cost','f_strength','f_willpower','f_lore','f_lang','f_cond','f_pitch']
+    .forEach(id=>document.getElementById(id).addEventListener('input',render));
+  render();
+})();
+</script>
+</body>
+</html>

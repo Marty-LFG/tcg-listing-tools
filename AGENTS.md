@@ -126,6 +126,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `pokemon-listing-builder.html` | Pokémon builder. Has the most-developed set picker (cached custom combobox with set symbols + printed-code search) and the large EN/JP language tile. |
 | `mtg-listing-builder.html` | Magic builder (Scryfall). |
 | `swu-listing-builder.html` | Star Wars: Unlimited builder (swu-db). |
+| `lorcana-listing-builder.html` | Disney Lorcana builder (Lorcast). Set-pills + number lookup (SWU pattern); one Lorcast call returns image + gameplay + `prices.{usd,usd_foil}`. Image + price panel and the PriceCharting graded ladder (`pcEnrich`, reuses `/api/pc`) render into `#extras`; eBay AUD comps overlay into `#ebayextras`. |
 | `riftbound-listing-builder.html` | Riftbound builder. Three interchangeable sources (`source` ∈ `offline`/`riftscribe`/`scrydex`): **offline** = baked `data/riftbound.json` (default, all 4 sets, keyless, images + stats); **riftscribe** = `/api/rbs` live keyless; **scrydex** = `/api/rb` (optional key) for market price + the price-trend graph. eBay AUD comps overlay (`findRBComps`, renders into `#ebayextras`) works under any source. |
 | `lego-listing-builder.html` | LEGO set builder. Set-number lookup → Rebrickable (core) + Brickset (RRP/age) + BrickLink (new/used market price). LEGO condition/postage model + item-specifics block. |
 | `funko-listing-builder.html` | Funko Pop builder. **Hybrid** autocomplete — instant offline catalog + live eBay Browse search (post-2021 coverage; parses name/franchise/Pop#/image from listing titles) — + manual number/exclusive/flags; eBay Browse price comps. Funko condition/postage model + item-specifics block. |
@@ -169,6 +170,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/pkm` | `api.pokemontcg.io/v2` | Optional `X-Api-Key` from `POKEMONTCG_API_KEY` (keyless works, lower limit). |
 | `/api/mtg` | `api.scryfall.com` | Adds `User-Agent` + `Accept`. No key. |
 | `/api/swu` | swu-db API | No key. |
+| `/api/lorcana` | `api.lorcast.com/v0` | Keyless Disney Lorcana API. One call returns image + gameplay + `prices.{usd,usd_foil}` (USD, daily). No key. |
 | `/api/rb`  | `api.scrydex.com/riftbound/v1` | Injects `X-Api-Key` + `X-Team-ID` from `.env`. **Optional** — only for live Riftbound pricing + trend; coverage comes from baked data / riftscribe. |
 | `/api/rbs` | `riftscribe.gg/api` | Keyless community Riftbound card API (live alternative to Scrydex). No key. |
 | `/api/fx`  | `api.frankfurter.app` | FX rates for AUD conversion. No key. |
@@ -331,8 +333,8 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
 Market is **AU/NZ**; prices shown/sold in **AUD**; postage model is **free
 postage within Australia**. eBay AU's **buyer protection fee** is what the
 landing-page calculator backs out. Cards are sold as raw (graded handled too).
-The four card games supported are Pokémon, Magic: The Gathering, Star Wars:
-Unlimited, and Riftbound. The tool also lists **LEGO sets** and **Funko Pop!
+The five card games supported are Pokémon, Magic: The Gathering, Star Wars:
+Unlimited, Riftbound, and Disney Lorcana. The tool also lists **LEGO sets** and **Funko Pop!
 vinyl** — boxed collectibles whose condition (sealed/used-complete, box grade)
 and postage (bulky/calculated, not free penny-sleeve) differ from cards, which is
 why those builders carry their own condition/postage wording and item specifics. Accuracy of set / number / variant / condition in titles and item
@@ -351,7 +353,7 @@ price API).
 registered in `vite.config.js` `plugins`) opens `data/tracker.db`, serves
 `/api/tracker/*`, and starts an in-process collector (`setInterval`, default 24h,
 singleton/HMR-guarded). To honour Golden Rule 1, the collector **self-fetches its own
-proxy** (`http://127.0.0.1:5273/api/rb|mtg|pkm|swu|fx`) — reusing all existing auth
+proxy** (`http://127.0.0.1:5273/api/rb|mtg|pkm|swu|lorcana|fx`) — reusing all existing auth
 with zero proxy duplication. It maps responses via `lib/normalize.mjs` (Golden Rule 9),
 stores native + AUD prices, and computes signals. Every successful fetch also upserts the
 **full raw upstream payload** into `card_cache` (one row per card, latest wins) — a durable

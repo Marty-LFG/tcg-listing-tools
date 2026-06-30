@@ -372,6 +372,16 @@ export default defineConfig(({ mode }) => {
               console.log('[api/swu]', req.url, '-> api.swu-db.com' + proxyReq.path))
           },
         },
+        // Disney Lorcana -> Lorcast (api.lorcast.com/v0, KEYLESS — CORS bypass + daily prices)
+        '/api/lorcana': {
+          target: 'https://api.lorcast.com',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/lorcana/, '/v0'),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) =>
+              console.log('[api/lorcana]', req.url, '-> api.lorcast.com' + proxyReq.path))
+          },
+        },
         // Magic: The Gathering -> Scryfall (free, CORS-friendly)
         '/api/mtg': {
           target: 'https://api.scryfall.com',

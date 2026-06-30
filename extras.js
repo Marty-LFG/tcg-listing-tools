@@ -29,11 +29,35 @@
     try {
       const r = await fetch('/api/img?u=' + encodeURIComponent(url));
       if (!r.ok) throw 0;
-      const b = await r.blob(); const o = URL.createObjectURL(b);
+      let b = await r.blob();
+      // eBay accepts AVIF, but PNG is universally safe — transcode AVIF (Lorcast) to PNG in-browser.
+      // The browser already has an AVIF decoder; createImageBitmap -> canvas -> PNG needs no deps and
+      // no server CPU. Falls back to the original AVIF blob if the browser can't transcode it.
+      if (/\.avif$/i.test(filename) || /image\/avif/i.test(b.type)) {
+        const png = await avifBlobToPng(b);
+        if (png) { b = png; filename = filename.replace(/\.avif$/i, '.png'); }
+      }
+      const o = URL.createObjectURL(b);
       const a = document.createElement('a'); a.href = o; a.download = filename;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(o), 3000);
     } catch (e) { window.open(url, '_blank'); }
+  }
+
+  // Decode an image blob (e.g. AVIF) and re-encode as a PNG blob, or null if unsupported.
+  function avifBlobToPng(blob) {
+    return new Promise(function (resolve) {
+      if (typeof createImageBitmap !== 'function') return resolve(null);
+      createImageBitmap(blob).then(function (bmp) {
+        try {
+          const c = document.createElement('canvas');
+          c.width = bmp.width; c.height = bmp.height;
+          c.getContext('2d').drawImage(bmp, 0, 0);
+          if (bmp.close) bmp.close();
+          c.toBlob(function (out) { resolve(out); }, 'image/png');
+        } catch (e) { resolve(null); }
+      }).catch(function () { resolve(null); });
+    });
   }
 
   TCG.clear = function (el) { if (el) el.innerHTML = ''; };
@@ -209,7 +233,7 @@
     if (hasImg) {
       html += `<div style="${box}margin-bottom:14px;"><div style="${head}">Card image</div><div style="display:flex;gap:14px;flex-wrap:wrap;">`;
       imgs.forEach(function (p, idx) {
-        var ext = (p.dl.match(/\.(png|jpe?g|webp)(?:\?|$)/i) || [])[1] || 'png';
+        var ext = (p.dl.match(/\.(png|jpe?g|webp|avif)(?:\?|$)/i) || [])[1] || 'png';
         html += `<div style="text-align:center;">
           <img id="tcg-img-${idx}" src="${p.disp[0] || p.dl}" alt="${esc(p.label)}" loading="lazy" data-disp="${encodeURIComponent(JSON.stringify(p.disp))}" style="width:150px;max-width:42vw;border-radius:8px;display:block;border:1px solid var(--line,#333);background:var(--field,#111);min-height:60px;">
           <button class="tcg-dl" data-url="${encodeURIComponent(p.dl)}" data-fn="${name}-${(p.label||'art').toLowerCase()}.${ext}" style="margin-top:8px;width:100%;padding:6px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:7px;font-weight:700;font-size:12px;cursor:pointer;" title="Downloads best available quality">&#8595; ${esc(p.label)} <span style="opacity:.55;font-weight:400;">HQ</span></button>
