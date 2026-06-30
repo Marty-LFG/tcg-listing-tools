@@ -20,10 +20,9 @@
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
   @media(max-width:860px){.grid{grid-template-columns:1fr;}}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
-  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
-  .pill{padding:8px 13px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
-    border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;}
-  .pill.on{background:var(--gold);color:var(--on-ink);border-color:var(--gold);}
+  .setsel{width:100%;margin-bottom:16px;padding:11px 13px;background:var(--field);border:1px solid var(--line);
+    border-radius:10px;color:var(--text);font-size:14px;font-weight:600;outline:none;cursor:pointer;font-family:inherit;}
+  .setsel:focus{border-color:var(--gold);}
   label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
   .lookup{display:flex;gap:10px;margin-bottom:6px;}
   .lookup input{flex:1;font-size:22px;font-weight:700;padding:12px 14px;background:var(--field);
@@ -71,7 +70,7 @@
         </div>
       </details>
       <label>Set</label>
-      <div class="pills" id="pills"></div>
+      <select id="setSel" class="setsel"></select>
 
       <label>Card number</label>
       <div class="lookup">
@@ -376,7 +375,7 @@ async function doLookup(){
 }
 
 function selectSet(id){curSet=id;
-  document.querySelectorAll('.pill').forEach(p=>p.classList.toggle('on',p.dataset.id===id));
+  var sel=document.getElementById('setSel'); if(sel && sel.value!==id) sel.value=id;
   if(document.getElementById('num').value.trim()) doLookup();}
 
 function copyHTML(){copy(lastHTML,'HTML copied!');}
@@ -396,10 +395,11 @@ async function addTrack(){
 
 (function(){
   const _cb=document.getElementById('c_base'); if(_cb) _cb.value=lorBase;
-  const pills=document.getElementById('pills');
-  for(const sid in SETS){const b=document.createElement('button');
-    b.className='pill'+(sid===curSet?' on':'');b.dataset.id=sid;
-    b.textContent=sid;b.title=SETS[sid];b.onclick=()=>selectSet(sid);pills.appendChild(b);}
+  const sel=document.getElementById('setSel');
+  for(const sid in SETS){const o=document.createElement('option');
+    o.value=sid;o.textContent=sid+' · '+SETS[sid];sel.appendChild(o);}
+  sel.value=curSet;
+  sel.addEventListener('change',()=>selectSet(sel.value));
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
   ['f_name','f_set','f_num','f_rarity','f_variant','f_type','f_ink','f_class','f_cost','f_strength','f_willpower','f_lore','f_lang','f_cond','f_pitch']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));
