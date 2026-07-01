@@ -62,8 +62,10 @@
       </details>
 
       <div class="setrow"><label>Set</label>
-        <input id="setCode" list="setList" placeholder="type to search, e.g. Bloomburrow or blb" autocomplete="off">
-        <datalist id="setList"></datalist>
+        <div style="position:relative;">
+          <input id="setCode" placeholder="type to search, e.g. Bloomburrow or blb" autocomplete="off">
+          <div id="setMenu"></div>
+        </div>
       </div>
 
       <label>Collector number</label>
@@ -166,7 +168,8 @@ function findEbay(){
     card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
     // MTG titles rarely carry the collector number (and different printings reuse the name),
     // so number-matching would over-filter; rely on name+set query + accessory/lot/lang drops.
-    precision:true, numberMatch:null,
+    // Foil/nonfoil DO appear in titles and differ a lot in price, so split by finish.
+    precision:true, numberMatch:null, finish:(/non/i.test(f.finish)?'nonfoil':(/foil/i.test(f.finish)?'foil':null)),
     filterKey:'raw',
     filterOptions:[
       {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
@@ -213,14 +216,16 @@ function buildHTML(f){
 function render(){const f=readFields();lastHTML=buildHTML(f);
   document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';if(typeof syncTitle==="function")syncTitle();}
 
+let MTG_SETS=[], mtgCombo=null;
 async function loadSets(){
   try{
     const r=await fetch(base.replace(/\/$/,'')+'/sets');
     if(!r.ok) return;
     const j=await r.json();
-    const sets=(j.data||[]).filter(s=>!s.digital).sort((a,b)=>(b.released_at||'').localeCompare(a.released_at||''));
-    const dl=document.getElementById('setList'); dl.innerHTML='';
-    sets.forEach(s=>{const o=document.createElement('option'); o.value=s.code; o.label=s.name+' ('+(s.code||'').toUpperCase()+')'; dl.appendChild(o);});
+    // Scryfall returns icon_svg_uri per set (monochrome SVG) — shown on a light chip in the menu.
+    MTG_SETS=(j.data||[]).filter(s=>!s.digital).sort((a,b)=>(b.released_at||'').localeCompare(a.released_at||''))
+      .map(s=>({value:s.code, label:s.name, code:(s.code||'').toUpperCase(), icon:s.icon_svg_uri||''}));
+    if(mtgCombo) mtgCombo.refresh();
   }catch(e){}
 }
 async function doLookup(){
@@ -270,6 +275,15 @@ async function addTrack(){
 }
 (function(){
   document.getElementById('c_base').value=base;
+  if(window.TCG&&TCG.setCombobox){
+    mtgCombo=TCG.setCombobox({
+      input:document.getElementById('setCode'),
+      menu:document.getElementById('setMenu'),
+      items:()=>MTG_SETS,
+      display:(it)=>it.value,                    // fill the field with the set code — doLookup reads it directly
+      onPick:()=>{ if(document.getElementById('num').value.trim()) doLookup(); }
+    });
+  }
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
   ['f_name','f_set','f_num','f_rarity','f_colour','f_type','f_treat','f_finish','f_lang','f_cond','f_pitch']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));

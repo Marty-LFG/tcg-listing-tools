@@ -390,21 +390,32 @@
   TCG.analyzeComps = function (rows, opts) {
     opts = opts || {};
     var mode = opts.mode || 'asking';
-    var src = rows || [], nRaw = src.length, filtered = false;
+    var src = rows || [], nRaw = src.length, filtered = false, numbered = false, finish = null;
     if (opts.precision) {
       filtered = true;
       var numRe = buildNumberRe(opts.numberMatch);
+      numbered = !!numRe;                                            // was a collector-number filter actually applied?
+      finish = (opts.finish === 'foil' || opts.finish === 'nonfoil') ? opts.finish : null;
       var wantLang = opts.lang || 'en';
       src = src.filter(function (r) {
         var t = r.title || '';
         if (numRe && !numRe.test(t)) return false;                 // must carry THIS card's number
         if (JUNK_RE.test(t)) return false;                          // not an accessory / lot
         if (wantLang === 'en' && (/[぀-ヿ一-鿿]/.test(t) || /\b(japanese|japonais|korean|chinese|español|deutsch|italiano|português)\b/i.test(t))) return false;
+        if (finish) {
+          // Same collector number sells foil AND non-foil — keep only the matching finish so a foil
+          // isn't priced off cheaper non-foil (and vice-versa). Unlabelled listings stay (most singles
+          // don't state it); only the EXPLICITLY opposite finish is dropped.
+          var nonfoil = /\bnon[\s-]?foil\b|\bnonfoil\b|\bnon[\s-]?holo\b/i.test(t);
+          var isFoil = !nonfoil && /\bcold\s*foil\b|\brainbow\s*foil\b|\bfoil\b|\breverse\s*holo\b|\bholo(?:foil|graphic)?\b/i.test(t);
+          if (finish === 'foil' && nonfoil) return false;
+          if (finish === 'nonfoil' && isFoil) return false;
+        }
         return true;
       });
     }
     var all = src.map(function (r) { return Object.assign({}, r, { delivered: r.price + (r.ship||0), known: r.ship != null, graded: isGraded(r) }); });
-    var result = { mode: mode, nRaw: nRaw, nMatched: all.length, filtered: filtered, nTotal: all.length, nComparable: 0, rows: all, histogram: [], segments: {}, confidence: { level: 'low', score: 0, reasons: [] } };
+    var result = { mode: mode, nRaw: nRaw, nMatched: all.length, filtered: filtered, numbered: numbered, finish: finish, nTotal: all.length, nComparable: 0, rows: all, histogram: [], segments: {}, confidence: { level: 'low', score: 0, reasons: [] } };
 
     // comparable = raw, fixed-price, known delivered (what a buyer actually pays for the card).
     // Relax progressively if that's too thin, so a graded-only filter analyses the graded cluster
@@ -467,6 +478,7 @@
       else reasons.push('differs from ' + (opts.refLabel||'reference') + ' by ' + Math.round(result.refDelta) + '%');
     }
     if (result.segments.auction.n > result.segments.fixed.n) reasons.push('many auctions (volatile)');
+    if (result.finish) reasons.push(result.finish === 'foil' ? 'foil only (non-foil removed)' : 'non-foil only (foil removed)');
     result.confidence = { level: score >= 5 ? 'high' : score >= 3 ? 'medium' : 'low', score: score, reasons: reasons };
     return result;
   };
@@ -525,7 +537,7 @@
     if (a.fair == null) { el.innerHTML = '<div style="' + box + '"><div style="' + head + '">eBay comps</div><div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">' + a.nTotal + ' listings, but none comparable (raw · fixed-price · known postage) to price from.</div></div>'; return; }
     var modePill = '<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:999px;padding:2px 8px;white-space:nowrap;border:1px solid ' + (a.mode === 'sold' ? '#36d399' : '#f0c020') + ';color:' + (a.mode === 'sold' ? '#36d399' : '#f0c020') + ';">' + (a.mode === 'sold' ? 'sold' : 'asking · not sold') + '</span>';
     var html = '<div style="' + box + '"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
-      + '<div><div style="' + head + '">eBay market analysis · AUD</div><div style="font-size:11px;color:var(--muted,#888);margin-top:2px;">' + a.nComparable + ' comparable' + (a.filtered ? ' · matched ' + a.nMatched + ' of ' + a.nRaw + ' for this exact card' : ' of ' + a.nTotal) + '</div></div>'
+      + '<div><div style="' + head + '">eBay market analysis · AUD</div><div style="font-size:11px;color:var(--muted,#888);margin-top:2px;">' + a.nComparable + ' comparable' + (a.filtered ? ' · matched ' + a.nMatched + ' of ' + a.nRaw + (a.numbered ? ' for this exact card' : ' for this card') : ' of ' + a.nTotal) + '</div></div>'
       + '<div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;">' + confBadge(a.confidence) + modePill + '</div></div>';
     if (a.confidence && a.confidence.reasons && a.confidence.reasons.length)
       html += '<div style="font-size:11px;color:var(--muted,#888);margin-top:8px;line-height:1.5;">' + a.confidence.reasons.map(function (x) { return esc(x); }).join(' · ') + '</div>';
@@ -577,7 +589,7 @@
     d += '<div style="font-size:10.5px;color:var(--muted,#888);margin-top:4px;"><span style="color:var(--gold,#c8aa6e);">●</span> raw &nbsp; <span style="color:#5aa9ff;">●</span> graded &nbsp; ○ auction &nbsp; ◌ ring = AU seller</div>';
     d += '<div style="' + head + 'margin:16px 0 8px;">Breakdown</div><div style="display:flex;gap:8px;flex-wrap:wrap;">' + chip('Raw', seg.raw) + chip('Graded', seg.graded) + chip('🇦🇺 AU', seg.au) + chip('🌏 All', seg.ww) + (seg.auction.n ? '<span style="font-size:11px;border:1px solid var(--line,#333);border-radius:999px;padding:3px 9px;color:var(--muted,#888);">auctions <b>' + seg.auction.n + '</b></span>' : '') + '</div>';
     d += '<div style="' + head + 'margin:16px 0 6px;">Why this confidence</div><ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text,#eee);line-height:1.6;">' + a.confidence.reasons.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
-    d += '<div style="font-size:11px;color:var(--muted,#888);margin-top:12px;line-height:1.5;">Source: eBay ' + (a.mode === 'sold' ? 'Marketplace Insights (sold)' : 'Browse (current asking)') + ', AU marketplace · delivered = item + postage.' + (a.mode !== 'sold' ? ' Sold history needs eBay Marketplace Insights access.' : '') + (a.ref && a.ref.aud ? ' Reference ' + esc(ctx.refLabel||'API') + ' ' + ebMoney(a.ref.aud) + '.' : '') + (a.filtered ? ' Narrowed to this exact card (number-matched; accessories, lots & other languages removed): ' + a.nMatched + ' of ' + a.nRaw + ' listings.' : '') + '</div>';
+    d += '<div style="font-size:11px;color:var(--muted,#888);margin-top:12px;line-height:1.5;">Source: eBay ' + (a.mode === 'sold' ? 'Marketplace Insights (sold)' : 'Browse (current asking)') + ', AU marketplace · delivered = item + postage.' + (a.mode !== 'sold' ? ' Sold history needs eBay Marketplace Insights access.' : '') + (a.ref && a.ref.aud ? ' Reference ' + esc(ctx.refLabel||'API') + ' ' + ebMoney(a.ref.aud) + '.' : '') + (a.filtered ? ' Narrowed to ' + (a.numbered ? 'this exact card (number-matched; ' : 'this card (') + 'accessories, lots & other languages removed): ' + a.nMatched + ' of ' + a.nRaw + ' listings.' : '') + '</div>';
     d += '<div style="' + head + 'margin:16px 0 6px;">Cheapest listings</div><div style="overflow:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="text-align:left;color:var(--muted,#888);font-size:10px;text-transform:uppercase;"><th style="padding:0 6px;">Delivered</th><th style="padding:0 6px;">Item+ship</th><th style="padding:0 6px;">Condition</th><th style="padding:0 6px;">Loc</th><th style="padding:0 6px;">Listed</th><th></th></tr></thead><tbody>' + table + '</tbody></table></div>';
     d += '<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">' + (card.identity_key ? '<button id="comps-save2" style="padding:9px 14px;border:1px solid var(--gold,#c8aa6e);background:transparent;color:var(--gold,#c8aa6e);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">＋ Save fair value to tracker</button>' : '') + '<button id="comps-close" style="padding:9px 14px;border:1px solid var(--line,#333);background:transparent;color:var(--muted,#888);border-radius:8px;font-weight:700;font-size:12.5px;cursor:pointer;">Close</button></div>';
     d += '</div>';
@@ -641,7 +653,7 @@
       }
       if (!rows.length) { S('warn', 'No eBay comps for "' + q + '".'); if (el) el.innerHTML = ''; return; }
       if (opts.analyze) {
-        var analysis = TCG.analyzeComps(rows, { mode: mode, ref: opts.ref, refLabel: opts.refLabel, precision: opts.precision, numberMatch: opts.numberMatch, lang: opts.lang });
+        var analysis = TCG.analyzeComps(rows, { mode: mode, ref: opts.ref, refLabel: opts.refLabel, precision: opts.precision, numberMatch: opts.numberMatch, finish: opts.finish, lang: opts.lang });
         renderCompsPro(el, analysis, { card: opts.card, refLabel: opts.refLabel, query: q, filterOptions: opts.filterOptions, filterKey: activeFilterKey, _opts: opts });
         S('ok', '✓ ' + rows.length + ' comps · fair value ' + (analysis.fair != null ? ebMoney(analysis.fair) : 'n/a') + (analysis.confidence ? ' (' + analysis.confidence.level + ' confidence)' : ''));
         return { count: rows.length, mode: mode, analysis: analysis };
@@ -743,5 +755,92 @@
     el.innerHTML=html;
     var btn=el.querySelector('#tcg-is-copy');
     if(btn)btn.addEventListener('click',function(){copyToClipboard(rows.map(function(p){return p[0]+'\t'+p[1];}).join('\n'),btn);});
+  };
+
+  // TCG.setCombobox(opts) — a filterable dropdown with a per-row icon (a reusable version of the
+  // Pokémon set picker, so any builder can show set symbols — native <select>/<datalist> can't).
+  // Markup: an <input> + an (empty) menu element, both inside a position:relative wrapper.
+  //   opts.input  : the typing/display field (HTMLInputElement)
+  //   opts.menu   : the (empty) dropdown container (HTMLElement) — gets class 'tcg-cb-menu'
+  //   opts.items  : array OR () => array of { value, label, code?, icon? } (read fresh each open,
+  //                 so data loaded after init shows up without re-wiring)
+  //   opts.onPick : (item) => void
+  //   opts.display: optional (item) => string put in the input on pick (defaults to item.label)
+  //   opts.limit  : max rows rendered (default 40)
+  // Returns { refresh, open, close }. Self-themes via the host page's --gold/--line/--field vars.
+  TCG.setCombobox = function (opts) {
+    var input = opts.input, menu = opts.menu;
+    if (!input || !menu) return null;
+    var getItems = typeof opts.items === 'function' ? opts.items : function () { return opts.items || []; };
+    var onPick = opts.onPick || function () {};
+    var toDisplay = opts.display || function (it) { return it.label; };
+    var limit = opts.limit || 40;
+    injectCss();
+    menu.classList.add('tcg-cb-menu');
+    var active = -1, shown = [];
+
+    function norm(s) { return (s == null ? '' : '' + s).toLowerCase(); }
+    function filter(q) {
+      q = norm(q).trim();
+      var items = getItems() || [], out = [];
+      for (var i = 0; i < items.length && out.length < limit; i++) {
+        var it = items[i];
+        if (!q || norm(it.label).indexOf(q) >= 0 || norm(it.code).indexOf(q) >= 0 || norm(it.value).indexOf(q) >= 0) out.push(it);
+      }
+      return out;
+    }
+    function render(q) {
+      shown = filter(q); active = -1;
+      if (!shown.length) { menu.classList.remove('open'); menu.innerHTML = ''; return; }
+      var h = '';
+      for (var i = 0; i < shown.length; i++) {
+        var it = shown[i];
+        var icon = it.icon ? '<img src="' + esc(it.icon) + '" alt="" loading="lazy">' : '<span class="tcg-cb-ico"></span>';
+        var code = it.code ? '<span class="tcg-cb-code">' + esc(it.code) + '</span>' : '';
+        h += '<div class="tcg-cb-opt" data-i="' + i + '">' + icon + '<span class="tcg-cb-lbl">' + esc(it.label) + '</span>' + code + '</div>';
+      }
+      menu.innerHTML = h; menu.classList.add('open');
+      var rows = menu.querySelectorAll('.tcg-cb-opt');
+      for (var j = 0; j < rows.length; j++) {
+        rows[j].addEventListener('mousedown', function (e) { e.preventDefault(); pick(shown[+this.getAttribute('data-i')]); });
+      }
+    }
+    function mark() {
+      var rows = menu.querySelectorAll('.tcg-cb-opt');
+      for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('on', i === active);
+      if (active >= 0 && rows[active]) rows[active].scrollIntoView({ block: 'nearest' });
+    }
+    function pick(it) { if (!it) return; input.value = toDisplay(it); menu.classList.remove('open'); onPick(it); }
+    function open() { render(input.value); }
+    function close() { menu.classList.remove('open'); }
+
+    input.addEventListener('input', function () { render(input.value); });
+    input.addEventListener('focus', function () { render(input.value); });
+    input.addEventListener('blur', function () { setTimeout(close, 150); });
+    input.addEventListener('keydown', function (e) {
+      if (!menu.classList.contains('open')) { if (e.key === 'ArrowDown') render(input.value); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, shown.length - 1); mark(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); mark(); }
+      else if (e.key === 'Enter') { if (active >= 0) { e.preventDefault(); pick(shown[active]); } }
+      else if (e.key === 'Escape') { close(); }
+    });
+
+    return { refresh: function () { if (document.activeElement === input) render(input.value); }, open: open, close: close };
+
+    function injectCss() {
+      if (document.getElementById('tcg-cb-css')) return;
+      var s = document.createElement('style'); s.id = 'tcg-cb-css';
+      s.textContent =
+        '.tcg-cb-menu{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;background:var(--panel2,#171b25);' +
+        'border:1px solid var(--line,#333);border-radius:10px;max-height:300px;overflow:auto;display:none;box-shadow:0 12px 28px rgba(0,0,0,.45);}' +
+        '.tcg-cb-menu.open{display:block;}' +
+        '.tcg-cb-opt{display:flex;align-items:center;gap:10px;padding:8px 11px;cursor:pointer;font-size:13px;color:var(--text,#eee);}' +
+        '.tcg-cb-opt:hover,.tcg-cb-opt.on{background:rgba(255,255,255,.07);}' +
+        '.tcg-cb-opt img{width:24px;height:24px;flex:none;object-fit:contain;border-radius:5px;background:#e9ebf0;padding:2px;}' +
+        '.tcg-cb-opt .tcg-cb-ico{width:24px;flex:none;}' +
+        '.tcg-cb-lbl{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.tcg-cb-code{font-size:11px;color:var(--muted,#8a8f9c);text-transform:uppercase;font-weight:700;flex:none;}';
+      document.head.appendChild(s);
+    }
   };
 })();

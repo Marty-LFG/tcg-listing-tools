@@ -157,7 +157,9 @@ function genTitle(){
   return TCG.fitTitle(parts,80);
 }
 
-const SETS = {
+// Fallback set list (used offline / if Lorcast /sets is unreachable). loadSets() refreshes this
+// from the live API on init so new numbered sets + promos appear without editing this file.
+let SETS = {
   '1':'The First Chapter', '2':'Rise of the Floodborn', '3':'Into the Inklands',
   '4':"Ursula's Return", '5':'Shimmering Skies', '6':'Azurite Sea',
   '7':"Archazia's Island", '8':'Reign of Jafar', '9':'Fabled',
@@ -200,9 +202,11 @@ function findEbay(){
   return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
     analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'Lorcast',
     card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
-    // Lorcana eBay titles key on character + version, rarely the bare collector number, so
-    // number-matching would zero out comps; rely on name + junk/lang drops (same as SWU).
-    precision:true, numberMatch:null,
+    // Lorcana eBay titles reliably carry the collector number (e.g. "207/204"), and the name alone
+    // can't separate the base printing from the Enchanted/alt-art (distinct high numbers) — so
+    // number-match to pin THIS exact card (like Riftbound). f_num holds the bare collector number.
+    // Foil and non-foil share a number, so also split by finish (drops the explicitly-opposite finish).
+    precision:true, numberMatch:f.num, finish:(/foil/i.test(f.variant)?'foil':'nonfoil'),
     filterKey:'raw',
     filterOptions:[
       {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
@@ -393,13 +397,38 @@ async function addTrack(){
   showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
 }
 
-(function(){
-  const _cb=document.getElementById('c_base'); if(_cb) _cb.value=lorBase;
-  const sel=document.getElementById('setSel');
+function rebuildSetMenu(){
+  const sel=document.getElementById('setSel'); if(!sel) return;
+  sel.innerHTML='';
   for(const sid in SETS){const o=document.createElement('option');
     o.value=sid;o.textContent=sid+' · '+SETS[sid];sel.appendChild(o);}
+  if(!(curSet in SETS)) curSet=Object.keys(SETS)[0]||'1';
   sel.value=curSet;
-  sel.addEventListener('change',()=>selectSet(sel.value));
+}
+// Refresh the set list from Lorcast /sets: released numbered sets first (ascending), then promos.
+// Keeps the hard-coded fallback if the API is unreachable, so the builder always has a set list.
+async function loadSets(){
+  try{
+    const r=await fetch(lorBase.replace(/\/$/,'')+'/sets');
+    if(!r.ok) return;
+    const j=await r.json();
+    const today=new Date().toISOString().slice(0,10);
+    const list=(j.results||[]).filter(s=>s.code && (!s.released_at || s.released_at<=today));
+    if(!list.length) return;
+    list.sort((a,b)=>{const na=/^\d+$/.test(a.code),nb=/^\d+$/.test(b.code);
+      if(na&&nb) return (+a.code)-(+b.code);
+      if(na!==nb) return na?-1:1;
+      return (a.released_at||'').localeCompare(b.released_at||'');});
+    const next={}; list.forEach(s=>{next[s.code]=s.name;});
+    SETS=next; rebuildSetMenu();
+  }catch(e){}
+}
+
+(function(){
+  const _cb=document.getElementById('c_base'); if(_cb) _cb.value=lorBase;
+  rebuildSetMenu();
+  document.getElementById('setSel').addEventListener('change',e=>selectSet(e.target.value));
+  loadSets();   // refresh from the live Lorcast set list (fallback stays if offline)
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
   ['f_name','f_set','f_num','f_rarity','f_variant','f_type','f_ink','f_class','f_cost','f_strength','f_willpower','f_lore','f_lang','f_cond','f_pitch']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));

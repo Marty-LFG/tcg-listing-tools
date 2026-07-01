@@ -541,7 +541,8 @@ function findRBComps(){
     card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
     // Riftbound titles reliably carry the printed number (e.g. "030/298"), so number-matching
     // works well and even separates base from "030a" alt-art. f_num holds the printed form.
-    precision:true, numberMatch:f.num,
+    // Foil and non-foil share a number, so also split by finish.
+    precision:true, numberMatch:f.num, finish:(/non/i.test(f.finish)?'nonfoil':(/foil|holo/i.test(f.finish)?'foil':null)),
     filterKey:'raw',
     filterOptions:[
       {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},

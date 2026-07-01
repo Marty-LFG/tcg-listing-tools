@@ -28,7 +28,8 @@ Pieces:
   `funko-listing-builder.html` (hybrid offline-catalog + live-eBay autocomplete +
   manual flags + eBay AU price comps). Same shape as the card builders, but with a
   collectibles condition/postage model and a copy-paste **item-specifics** block.
-- **`extras.js`** — shared `TCG.*` module used by all six builders.
+- **`extras.js`** — shared `TCG.*` module used by all seven builders (incl. `TCG.setCombobox`, the icon dropdown).
+- **`logos/`** — bundled game logos for the home tiles (pokemon/mtg/funko/lego SVG, swu/lorcana PNG, riftbound = LoL wordmark). Shown on a white chip so dark + light logos both read.
 - **`vite.config.js`** — the dev-server proxies + image-streaming, BrickLink
   OAuth1-signing, and eBay OAuth2 token-minting middlewares.
 - **`data/funko_pop.json`** — vendored, filtered Funko catalog (built by
@@ -197,6 +198,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `fitTitle(parts, max=80)` | Assemble an eBay title from prioritised parts; full → abbreviated → drop-lowest-priority until ≤ max chars. |
 | `histFromTrends(market, trends)` | Reconstruct a rough price series from Scrydex trend deltas (Riftbound graph). |
 | `clear(el)` | Empty an extras panel. |
+| `setCombobox({input, menu, items, onPick, display})` | Filterable dropdown with a per-row **icon** (reusable version of the Pokémon set picker — native `<select>`/`<datalist>` can't show images). `items` is an array or `()=>array` of `{value,label,code?,icon?}`. Self-themes + injects its own CSS. Used by MTG (Scryfall `icon_svg_uri`). |
 
 **Per-lookup lifecycle in a builder:**
 

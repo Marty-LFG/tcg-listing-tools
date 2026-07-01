@@ -11,6 +11,15 @@
   h1{font-size:22px;margin:0 0 4px;}
   p.sub{color:#7e8db0;font-size:14px;margin:0 0 24px;}
   .cards{display:grid;gap:14px;}
+  .cols{display:grid;gap:14px;}
+  .col{display:grid;gap:14px;align-content:start;}
+  .col .pricecard{margin-bottom:0;}
+  /* Desktop: two columns — tools/utilities left, games right. Stacks on narrow screens. */
+  @media(min-width:920px){
+    .wrap{max-width:1060px;}
+    body{align-items:flex-start;}
+    .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start;}
+  }
   a.tool{display:block;text-decoration:none;border:1px solid #1f3050;border-radius:14px;padding:20px;background:#0e1a30;transition:.15s;}
   a.tool:hover{border-color:#3a517e;transform:translateY(-2px);}
   .eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
@@ -22,6 +31,10 @@
   a.tool.grade{background:#160c24;border-color:#3a2456;}
   .name{font-size:18px;font-weight:700;color:#fff;margin-top:4px;}
   .desc{font-size:13px;color:#7e8db0;margin-top:6px;}
+  a.tool.game{display:flex;align-items:center;gap:16px;}
+  .logo{flex:none;width:96px;height:62px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;padding:8px;}
+  .logo img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;}
+  .tooltext{flex:1;min-width:0;}
   .note{font-size:12px;color:#56627e;margin-top:24px;line-height:1.6;}
   code{background:#11203a;padding:2px 6px;border-radius:5px;color:#c8aa6e;}
   .pricecard{border:1px solid #1f3050;border-radius:14px;padding:18px 20px;background:#0e1a30;margin-bottom:22px;}
@@ -45,6 +58,8 @@
   <div class="wrap">
     <h1>TCG eBay Listing Tools</h1>
     <p class="sub">Pick a builder. Card data is proxied through this dev server, so lookups just work.</p>
+    <div class="cols">
+     <div class="col">
     <div class="pricecard">
       <div class="pc-head">eBay AU pricing &middot; back out your list price</div>
       <div class="pc-grid">
@@ -76,41 +91,68 @@
         <div class="name">🏷️ Shipping Label Maker</div>
         <div class="desc">Paste an eBay address → print-ready 50×30 mm PDF for AUSPRINT. Strips the junk lines, auto-fits the font, batches multiple orders into one file.</div>
       </a>
-      <a class="tool rb" href="/riftbound-listing-builder.html">
-        <div class="eyebrow">Riftbound &middot; League of Legends</div>
-        <div class="name">Riftbound Listing Builder</div>
-        <div class="desc">Offline data for the first 3 sets + live Scrydex (all sets, incl. Unleashed, with pricing).</div>
+     </div>
+     </div>
+     <div class="col">
+     <div class="cards">
+      <a class="tool game rb" href="/riftbound-listing-builder.html">
+        <div class="logo"><img src="/logos/riftbound.svg" alt="Riftbound / League of Legends"></div>
+        <div class="tooltext">
+          <div class="eyebrow">Riftbound &middot; League of Legends</div>
+          <div class="name">Riftbound Listing Builder</div>
+          <div class="desc">Offline data for the first 3 sets + live Scrydex (all sets, incl. Unleashed, with pricing).</div>
+        </div>
       </a>
-      <a class="tool swu" href="/swu-listing-builder.html">
-        <div class="eyebrow">Star Wars: Unlimited</div>
-        <div class="name">SWU Listing Builder</div>
-        <div class="desc">Live card data via swu-db across all seven released sets.</div>
+      <a class="tool game swu" href="/swu-listing-builder.html">
+        <div class="logo"><img src="/logos/swu.png" alt="Star Wars: Unlimited"></div>
+        <div class="tooltext">
+          <div class="eyebrow">Star Wars: Unlimited</div>
+          <div class="name">SWU Listing Builder</div>
+          <div class="desc">Live card data via swu-db across all seven released sets.</div>
+        </div>
       </a>
-      <a class="tool lorcana" href="/lorcana-listing-builder.html">
-        <div class="eyebrow">Disney Lorcana</div>
-        <div class="name">Lorcana Listing Builder</div>
-        <div class="desc">Live card data, images &amp; daily prices via Lorcast across all sets.</div>
+      <a class="tool game lorcana" href="/lorcana-listing-builder.html">
+        <div class="logo"><img src="/logos/lorcana.png" alt="Disney Lorcana"></div>
+        <div class="tooltext">
+          <div class="eyebrow">Disney Lorcana</div>
+          <div class="name">Lorcana Listing Builder</div>
+          <div class="desc">Live card data, images &amp; daily prices via Lorcast across all sets.</div>
+        </div>
       </a>
-      <a class="tool pkm" href="/pokemon-listing-builder.html">
-        <div class="eyebrow">Pok&eacute;mon TCG</div>
-        <div class="name">Pok&eacute;mon Listing Builder</div>
-        <div class="desc">Live card data via pokemontcg.io across every set.</div>
+      <a class="tool game pkm" href="/pokemon-listing-builder.html">
+        <div class="logo"><img src="/logos/pokemon.svg" alt="Pok&eacute;mon TCG"></div>
+        <div class="tooltext">
+          <div class="eyebrow">Pok&eacute;mon TCG</div>
+          <div class="name">Pok&eacute;mon Listing Builder</div>
+          <div class="desc">Live card data via pokemontcg.io across every set.</div>
+        </div>
       </a>
-      <a class="tool mtg" href="/mtg-listing-builder.html">
-        <div class="eyebrow">Magic: The Gathering</div>
-        <div class="name">Magic Listing Builder</div>
-        <div class="desc">Live card data via Scryfall across every set and printing.</div>
+      <a class="tool game mtg" href="/mtg-listing-builder.html">
+        <div class="logo"><img src="/logos/mtg.svg" alt="Magic: The Gathering"></div>
+        <div class="tooltext">
+          <div class="eyebrow">Magic: The Gathering</div>
+          <div class="name">Magic Listing Builder</div>
+          <div class="desc">Live card data via Scryfall across every set and printing.</div>
+        </div>
       </a>
-      <a class="tool lego" href="/lego-listing-builder.html">
-        <div class="eyebrow">LEGO &middot; Sets</div>
-        <div class="name">LEGO Listing Builder</div>
-        <div class="desc">Set lookup via Rebrickable + Brickset, with real new/used pricing from BrickLink.</div>
+      <a class="tool game lego" href="/lego-listing-builder.html">
+        <div class="logo"><img src="/logos/lego.svg" alt="LEGO"></div>
+        <div class="tooltext">
+          <div class="eyebrow">LEGO &middot; Sets</div>
+          <div class="name">LEGO Listing Builder</div>
+          <div class="desc">Set lookup via Rebrickable + Brickset, with real new/used pricing from BrickLink.</div>
+        </div>
       </a>
-      <a class="tool funko" href="/funko-listing-builder.html">
-        <div class="eyebrow">Funko Pop! &middot; Vinyl</div>
-        <div class="name">Funko Pop! Listing Builder</div>
-        <div class="desc">Offline name/series catalog + manual flags, with live eBay AU price comps.</div>
+      <a class="tool game funko" href="/funko-listing-builder.html">
+        <div class="logo"><img src="/logos/funko.svg" alt="Funko Pop!"></div>
+        <div class="tooltext">
+          <div class="eyebrow">Funko Pop! &middot; Vinyl</div>
+          <div class="name">Funko Pop! Listing Builder</div>
+          <div class="desc">Offline name/series catalog + manual flags, with live eBay AU price comps.</div>
+        </div>
       </a>
+     </div>
+     </div>
     </div>
     <div class="note">Riftbound's Scrydex lookups need <code>SCRYDEX_API_KEY</code> and <code>SCRYDEX_TEAM_ID</code> in your <code>.env</code>. SWU needs nothing. LEGO uses <code>REBRICKABLE_API_KEY</code> / <code>BRICKSET_API_KEY</code> / BrickLink keys; Funko pricing uses <code>EBAY_APP_ID</code> / <code>EBAY_CERT_ID</code>. Every builder works for manual entry with no setup.<br><br>Heads-up: the price calculator above backs out the eBay <b>buyer-protection fee assuming free postage</b> — for large LEGO sets sold with <b>calculated postage</b> it won't include the postage component.</div>
   </div>
