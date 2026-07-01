@@ -2,7 +2,7 @@
 
 Entry point for AI coding agents (Claude Code and similar) working on this repo.
 Humans wanting plain run instructions: see `README.md`. Dense API reference:
-see `docs/DATA_SOURCES.md`.
+see `docs/DATA_SOURCES.md`. Visual design system: see `DESIGN.md`.
 
 ---
 
@@ -17,8 +17,8 @@ Pieces:
 
 - **`index.html`** — landing page. Hosts a self-contained **eBay AU pricing
   calculator** (backs out a list price so the buyer's fee-inclusive total hits a
-  target) and links to the four builders.
-- **Four card builders** — `pokemon-`, `mtg-`, `swu-`, `riftbound-listing-builder.html`.
+  target) and links to every builder + tool (inventory, grader, tracker, shipping).
+- **Five card builders** — `pokemon-`, `mtg-`, `swu-`, `lorcana-`, `riftbound-listing-builder.html`.
   Each: pick a set + card number → fetch live card data through a proxy → fill
   editable fields → generate an eBay HTML description + an 80-char-optimised eBay
   title → copy. Plus a shared "extras" panel: card images (with download),
@@ -71,9 +71,9 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    (`039a`), Scryfall `frame_effects`/`border_color`, SWU `VariantType`, Scrydex
    variant/rarity. Don't collapse them into one "version".
 
-6. **Condition / postage / footer blocks are per-product-type.** For the **four
+6. **Condition / postage / footer blocks are per-product-type.** For the **five
    card builders** they are identical, owner-verified wording — if you edit one
-   card builder, edit all four: condition = `"{cond}. Pulled straight to sleeve
+   card builder, edit all five: condition = `"{cond}. Pulled straight to sleeve
    and stored in a toploader."` (default `Ungraded, Near Mint`); postage =
    `"Ships in a penny sleeve and toploader inside a rigid mailer, with FREE
    postage within Australia."`; footer = `"From a smoke-free home. Fast dispatch.
@@ -98,7 +98,7 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    server-side copy. If you change how a builder reads a price (Scrydex variant
    pick, Scryfall `usd*`, pokemontcg bucket, SWU `MarketPrice`/`LowPrice`), update
    `lib/normalize.mjs` to match — they must stay in sync (like Golden Rule 6's
-   "edit all four card builders together").
+   "edit all five card builders together").
 
 ---
 
@@ -144,7 +144,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `scripts/start-tcg-tools.cmd` | Double-click / Task Scheduler entry point for Windows. |
 | `scripts/WINDOWS_SERVICE.md` | pnpm setup + NSSM / firewall instructions for Windows LAN hosting + the daily Claude analysis task. |
 | `tracker.html` | Price-tracker dashboard: opportunities / downtrends / momentum / review-queue / all-tracked, with sparklines (reuses `TCG.lineGraph`). Linked from `index.html`. |
-| `lib/db.mjs` | `node:sqlite` store — opens `data/tracker.db`, PRAGMAs + idempotent DDL (`watchlist` / `price_snapshots` / `signals`). All DB access funnels here. |
+| `lib/db.mjs` | `node:sqlite` store — opens `data/tracker.db`, PRAGMAs + idempotent DDL (`watchlist` / `price_snapshots` / `signals` / `card_cache`, plus the inventory tables `inventory_items` / `inventory_valuations` / `grading_submissions` / `sku_counter`, §13) + an additive `image_url` migration. All DB access funnels here. |
 | `lib/normalize.mjs` | Server-side mirror of each builder's price extraction + FX math + per-game lookup paths (see Golden Rule 9). |
 | `lib/pricecharting.mjs` | Keyless PriceCharting scraper (Pokémon graded/raw/pop). Parses the public card + population pages server-side; matches by exact collector number + name + fuzzy set. Powers `/api/pc` (display-only; not wired into the tracker/collector). |
 | `shipping-label.html` | Shipping Label Maker. Pastes an eBay address → cleaned, auto-fit address label as a jsPDF (50×30 / 100×50 mm); batch → multi-page PDF. Can also **print direct** to the AUSPRINT PRO: rasterises the label to a 1-bpp bitmap (reusing the jsPDF layout) and POSTs to `/api/print` (Print button + Auto-print toggle). Download path is unchanged. |
@@ -152,6 +152,11 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `scripts/labeltest.mjs` | Standalone raw-9100 test/calibration harness for the AUSPRINT PRO: `--lang tspl\|zpl\|bitmap\|self` sends a minimal label so you can confirm the dialect and tune size/position/darkness. |
 | `lib/collector.mjs` | In-process scheduler + `runPass` (self-fetches the proxies) + `computeSignals` (thresholds). |
 | `lib/tracker.mjs` | Vite plugin: owns the DB, exposes `/api/tracker/*`, starts the collector. Registered in `vite.config.js` `plugins`. |
+| `inventory.html` | **Graded-card inventory dashboard** ("Binders Keepers"). Stock list (filters + value sparklines), P/L summary tiles, add/edit modal (with PSA cert auto-fill), and the grading-submission pipeline (create → promote to stock). Reuses `TCG.lineGraph`/`ebayComps`/`toAUD`. Linked from `index.html`. See §13. |
+| `lib/inventory.mjs` | Vite plugin: owns the inventory tables (in the same `data/tracker.db`), exposes `/api/inventory/*` (items CRUD, valuation refresh, submissions + promote, `/summary`). Mirrors `lib/tracker.mjs`. Registered in `vite.config.js` `plugins`. |
+| `lib/certlookup.mjs` | Multi-company cert-lookup registry powering `/api/cert`. Dispatches to a per-company provider (PSA only today) else returns `{matched:false, verifyUrl}` (official cert page) for manual entry. Reads `data/grading-companies.json`. The single extension point for adding new company lookups. |
+| `lib/psa.mjs` | PSA public cert-verification provider (`lookupCert`) used by `lib/certlookup.mjs`. Needs `PSA_API_TOKEN`; `{matched:false}` on missing token/any failure. Field mapping UNVERIFIED against a live token. |
+| `data/grading-companies.json` | Inventory-facing grading-company registry (12: PSA/BGS/CGC/SGC/TAG majors, plus ARK, TCG Grading, Card Grading Australia, PCG (Western Premier Card Grading), PCGCN (unrelated Chinese PCG, pcgcard.cn), EMC (Encapsulated Memories Company), JBH (Joyful Box House)): label, scale, cert format, official `certUrl` (nullable when no public page), `lookup` flag, region. Add a company here by appending a row — dropdowns are data-driven. **Broader** than the pre-grader's tolerance set in `grading.config.json` (which stays PSA/BGS/CGC/SGC/TAG — don't add companies there without real tolerances, Golden Rule 4). Shared by server (`certlookup.mjs`) + client (`inventory.html`). |
 | `data/tracker.db` | SQLite price history (gitignored, WAL). Created on first server boot. |
 | `data/tracker.config.json` | Tracker cadence + signal thresholds (editable). |
 | `.claude/skills/price-analyst/SKILL.md` | Skill for the daily headless analysis (read export → research → flag → auto-add → digest → notify). |
@@ -159,6 +164,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `scripts/run-claude-analysis.cmd` | Task Scheduler entry point for the daily `claude --print` analysis. |
 | `README.md` | Human run + hosting instructions. |
 | `docs/DATA_SOURCES.md` | Per-game API endpoints, response schemas, key handling, rate limits. |
+| `vault.css` | Shared **"Vault Ledger"** design layer (§7 / `DESIGN.md`). Linked after each builder/grader/shipping page's inline `<style>` to re-theme the neutral CSS vars + Fraunces/IBM Plex fonts + atmospheric background; each page keeps its own `--gold` accent. |
+| `DESIGN.md` | The suite-wide "Vault Ledger" design system: palette, typography, `vault.css` layering, the per-company slab badge, the Collectr-style card-in-slab preview. Read before restyling shared UI. |
 
 ---
 
@@ -182,6 +189,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/ebay` | (middleware) | Mints+caches an **OAuth2 client-credentials** app token; injects `Bearer` + `X-EBAY-C-MARKETPLACE-ID`. Funko Browse pricing + live name search + Taxonomy item-specifics. **Production keys only** (`SBX-` sandbox keys fail the token mint with `invalid_client`; the middleware surfaces the real error instead of a blind 502). |
 | `/api/pc` | (middleware) | **Keyless** PriceCharting scrape (Pokémon graded/raw/pop) via `lib/pricecharting.mjs`. `GET /api/pc/lookup?name=&number=&set=&id=`. Display-only; always returns `{matched:false}` on failure (Golden Rule 7). Optional `PRICECHARTING_TOKEN` switches it to the official API. |
 | `/api/grade` | (middleware) | **POST-only** AI vision condition pass for `card-grader.html` (`lib/grader.mjs`, Anthropic/OpenAI). Returns `ok:false` (never 500) so the tool degrades to centering-only. |
+| `/api/cert` | (middleware) | **Multi-company** graded-slab cert lookup (`lib/certlookup.mjs`) for the inventory add form. `GET /api/cert?company=PSA&cert=…` → `{matched, identity, grade, company, verifyUrl, …}`; `GET /api/cert/providers` → the company registry. PSA auto-fills (`PSA_API_TOKEN`); every other company has no public API ⇒ `{matched:false, verifyUrl}` (official page, or null) + manual entry (Golden Rule 7). |
+| `/api/inventory` | (plugin) | Graded-card **inventory** API (`lib/inventory.mjs`): `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `POST /items/:id/refresh-value` (PriceCharting graded value), `POST /items/:id/value-manual`, `POST /items/:id/fetch-image` (resolve+cache card image), `GET /items/:id/valuations`, `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote`, `GET /summary`, `GET /export`. See §13. |
 | `/api/print` | (middleware) | **POST-only**: streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `GET` returns `{enabled,dpi,ip,page}` so `shipping-label.html` knows whether to enable its Print button + at what DPI to rasterise. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
 
 **`extras.js` public surface** (`window.TCG`):
@@ -261,8 +270,17 @@ part's text so dropping a part never leaves a dangling dash. Reference format
   token-minting **middleware** in `vite.config.js`, not a plain `proxy:` entry
   (see `bricklinkProxy`/`ebayProxy`).
 - **Theme any new shared UI** with the existing CSS vars: `--gold`, `--line`,
-  `--muted`, `--text`, `--field`, `--panel2`, `--panel`, `--ink`. All four
-  builders define these (SWU aliases `--gold` to its yellow).
+  `--muted`, `--text`, `--field`, `--panel2`, `--panel`, `--ink`. Each page defines
+  these (SWU aliases `--gold` to its yellow). The suite-wide **"Vault Ledger" look**
+  lives in **`vault.css`** — linked after each page's inline `<style>`, it re-themes
+  those neutral vars to one dark palette + Fraunces/IBM&nbsp;Plex fonts + an atmospheric
+  background, while each page keeps its own `--gold` accent (games/tools stay
+  identifiable). `index.html`, `tracker.html` and `inventory.html` carry the full
+  styling inline; the builders / grader / shipping pages inherit it via the `vault.css`
+  `<link>` (+ the two Google-Fonts links) before `</head>`. Never restyle inside the
+  eBay preview iframe — it's a separate inline-styled doc (Golden Rule 8). See
+  **`DESIGN.md`** for the full design system (tokens, typography, components, the
+  per-company slab badge).
 
 ---
 
@@ -348,7 +366,7 @@ disputes), so correctness there outranks cleverness.
 ## 12. Price tracker (caching + trends + Claude analysis)
 
 A prototype layer that persists prices so the owner can spot opportunities. Scope:
-the four **card games** only (LEGO/Funko deferred — fuzzier identity, no clean
+the five **card games** only (LEGO/Funko deferred — fuzzier identity, no clean
 price API).
 
 **One process owns it: the Vite service.** `trackerPlugin(env)` (in `lib/tracker.mjs`,
@@ -390,3 +408,47 @@ sets `last_error='scrydex_unauthorized'` and the card tracks without a price.
 **`node:sqlite`** (built-in, Node 24) keeps deps vite-only; the launcher passes
 `--disable-warning=ExperimentalWarning`. Fallback is `better-sqlite3` — change only the
 import in `lib/db.mjs`.
+
+---
+
+## 13. Graded-card inventory (Binders Keepers)
+
+Phase 1 of turning the suite into an inventory platform (eventual source of truth for
+eBay/Shopify). Scope now: **graded-card stock**, cost basis / P&L, live graded valuation,
+and a grading-submission pipeline. Slab photos + channel push are deferred (reserved columns
+`ebay_listing_id`/`shopify_product_id`/`channel_status` in the schema).
+
+**Same DB, new tables.** `lib/db.mjs` DDL gains `inventory_items`, `inventory_valuations`,
+`grading_submissions`, `sku_counter` (idempotent `CREATE TABLE IF NOT EXISTS`, so existing
+`tracker.db` users just get the tables on next boot — no migration). Money is INTEGER CENTS
+(Golden Rule 3). An item can FK a `watchlist` row (`watchlist_id`) so the collector keeps its
+raw market price fresh; **graded** value is separate (see below). `inventoryPlugin(env)` in
+`lib/inventory.mjs` shares the same `openDb()` handle as the tracker and serves `/api/inventory/*`.
+
+**Valuation.** `POST /api/inventory/items/:id/refresh-value` calls `lib/pricecharting.mjs`
+`lookup()` and maps its `ladder{label→cents}` to the item's `grading_company`+`grade`
+(`PSA 10` → `Grade 9` → raw anchor). Stored as USD cents + a row in `inventory_valuations`
+(history → the value sparkline). A user override (`value_manual=1` via `/value-manual`) is not
+overwritten by a refresh unless `?force=1`. eBay graded sold comps (`TCG.ebayComps` with the
+graded filter, browser-side) can be saved as a `source:'ebay'` valuation. P/L math is done
+client-side with `TCG.toAUD` (native currency stored, FX applied at display — app convention);
+`/summary` returns per-currency value subtotals + AUD cost/realized totals.
+
+**Card image.** On create + `POST /items/:id/fetch-image`, the server resolves a card image
+best-effort (`resolveImage` in `lib/inventory.mjs`): by `identity_key` via `lib/normalize.mjs`
+`imageFrom()`/`lookupPath()`, else a name/number **search** (pokemontcg / scryfall / lorcast)
+that **backfills `identity_key`**; PSA cert lookups also return a slab image. Cached in
+`inventory_items.image_url`; never blocks a write. The list renders the image inside the mini
+**slab badge** (per-company theme from `data/grading-companies.json`; see `DESIGN.md`).
+Subgrades are stored as JSON.
+
+**Entry paths.** (a) manual add/edit modal on `inventory.html`; (b) "Add to inventory" button in
+all five card builders (shared `TCG.addToInventory`, reuses each builder's `_trk` + `f_set`/`f_num`);
+(c) `card-grader.html` "To pipeline" button — the pre-grader predicts a grade on a RAW card, so it
+creates a **submission** (recommended company/tier + predicted value as declared value), NOT a graded
+item (Golden Rule 4); (d) multi-company cert lookup (`/api/cert`) — PSA auto-fills (`PSA_API_TOKEN`); every other company has no public API so the form surfaces a `verifyUrl` deep-link (where one exists) + manual entry. Company registry is `data/grading-companies.json` (broader than the pre-grader's tolerance set — recording an owned slab needs no tolerances).
+
+**Pipeline.** `grading_submissions` tracks cards sent off (company, tier, cost, `expected_return_at`
+from `data/grading.config.json` `fees[].turnaroundDays` — a calendar-day estimate). `POST
+/submissions/:id/promote` creates the graded `inventory_items` row carrying identity + grade + cert,
+folds `grading_cost_cents` into `acq_fees_cents`, and is idempotent (re-promote returns the same item).

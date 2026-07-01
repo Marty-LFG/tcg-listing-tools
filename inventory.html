@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory · Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;--purple:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;min-height:100vh;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55;
+    background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:46px 46px;
+    -webkit-mask-image:radial-gradient(circle at 50% 12%,#000,transparent 82%);mask-image:radial-gradient(circle at 50% 12%,#000,transparent 82%);}
+  .wrap{max-width:1200px;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;}
+  a:hover{text-decoration:underline;text-underline-offset:3px;}
+  /* masthead */
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);letter-spacing:.02em;}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);letter-spacing:.01em;}
+  .sub .dot{color:var(--faint);margin:0 7px;}
+  .actions{display:flex;gap:9px;}
+  /* buttons */
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s ease;letter-spacing:.005em;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);}
+  .btn.sm{padding:6px 10px;font-size:11.5px;border-radius:8px;}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  .btn.ghost:hover{color:var(--text);border-color:var(--line2);background:rgba(255,255,255,.03);}
+  .btn.danger{border-color:rgba(240,102,110,.38);color:var(--red);background:rgba(240,102,110,.06);}
+  .btn.danger:hover{background:rgba(240,102,110,.14);border-color:var(--red);}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.go:hover{background:rgba(67,214,160,.17);border-color:var(--green);}
+  .btn.blue{border-color:rgba(106,176,255,.4);color:var(--blue);background:rgba(106,176,255,.08);}
+  .btn.blue:hover{background:rgba(106,176,255,.16);border-color:var(--blue);}
+  /* banner */
+  .banner{font-size:12.5px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:14px 0;}
+  .banner.warn{border-color:rgba(240,192,74,.4);color:var(--amber);background:rgba(240,192,74,.05);}
+  /* summary tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:22px 0 6px;}
+  .tile{position:relative;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 18px;overflow:hidden;box-shadow:var(--shadow);transition:.2s ease;animation:rise .5s both;}
+  .tile:hover{transform:translateY(-2px);border-color:var(--line2);}
+  .tile::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--gold),transparent 70%);opacity:.55;}
+  .tile .lbl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .tile .val{font-family:var(--mono);font-size:26px;font-weight:600;margin-top:9px;letter-spacing:-.02em;line-height:1;}
+  .tile .sub2{font-size:11.5px;color:var(--faint);margin-top:6px;}
+  .tiles .tile:nth-child(2){animation-delay:.06s;} .tiles .tile:nth-child(3){animation-delay:.12s;} .tiles .tile:nth-child(4){animation-delay:.18s;}
+  .val.up{color:var(--green);} .val.down{color:var(--red);}
+  /* sections */
+  .sec{margin-top:30px;}
+  .sec-h{font-family:var(--sans);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:10px;}
+  .count{font-family:var(--mono);background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:11px;color:var(--text);}
+  .empty{color:var(--muted);font-size:13px;padding:20px;text-align:center;border:1px dashed var(--line);border-radius:14px;background:rgba(255,255,255,.012);}
+  /* filters toolbar */
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:11px 13px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));}
+  .filters .sec-h{margin:0;color:var(--gold);}
+  select,input,textarea{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--sans);transition:.15s;}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  input::placeholder,textarea::placeholder{color:var(--faint);}
+  /* item cards */
+  .card{position:relative;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:15px 17px 15px 20px;margin-bottom:12px;box-shadow:var(--shadow);transition:.18s ease;animation:rise .45s both;}
+  .card:hover{border-color:var(--line2);transform:translateY(-1px);}
+  .card::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:var(--line2);opacity:.7;}
+  .card:has(.pill.in_stock)::before{background:var(--green);} .card:has(.pill.listed)::before{background:var(--blue);} .card:has(.pill.sold)::before{background:var(--faint);} .card:has(.pill.overdue)::before{background:var(--amber);}
+  .row{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+  .nm{font-family:var(--sans);font-weight:600;font-size:15.5px;letter-spacing:-.005em;display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+  .key{color:var(--muted);font-size:12px;font-family:var(--mono);margin-top:4px;letter-spacing:-.01em;}
+  .sku{color:var(--gold);font-size:11px;font-family:var(--mono);margin-top:3px;letter-spacing:.03em;opacity:.92;}
+  .money{font-family:var(--mono);font-weight:600;font-size:17px;letter-spacing:-.02em;}
+  .badge{font-family:var(--mono);font-size:12px;font-weight:600;border-radius:8px;padding:2px 8px;border:1px solid var(--line2);}
+  .badge.up,.up{color:var(--green);border-color:rgba(67,214,160,.35);background:rgba(67,214,160,.08);}
+  .badge.down,.down{color:var(--red);border-color:rgba(240,102,110,.35);background:rgba(240,102,110,.08);}
+  .badge.flat,.flat{color:var(--muted);}
+  .grade-badge{font-family:var(--mono);background:rgba(217,164,255,.08);border:1px solid rgba(217,164,255,.4);color:var(--purple);border-radius:8px;padding:2px 8px;font-size:12px;font-weight:600;}
+  .pill{font-family:var(--sans);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;border:1px solid var(--line2);border-radius:999px;padding:2px 9px;color:var(--muted);}
+  .pill.in_stock{border-color:rgba(67,214,160,.4);color:var(--green);background:rgba(67,214,160,.07);}
+  .pill.listed{border-color:rgba(106,176,255,.4);color:var(--blue);background:rgba(106,176,255,.07);}
+  .pill.sold{border-color:var(--line2);color:var(--faint);}
+  .pill.overdue{border-color:rgba(240,192,74,.5);color:var(--amber);background:rgba(240,192,74,.08);}
+  .spark{width:120px;flex:none;opacity:.9;}
+  .note{color:var(--muted);font-size:12px;margin-top:5px;}
+  .group-h{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--gold);margin:22px 0 10px;}
+  .compbox{margin-top:10px;}
+  .status{font-size:12px;color:var(--muted);margin-top:7px;font-family:var(--mono);}
+  .status.ok{color:var(--green);} .status.warn{color:var(--amber);} .status.err{color:var(--red);} .status.load{color:var(--blue);}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(6,7,11,.62);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding:42px 16px;overflow:auto;z-index:50;}
+  .overlay.on{display:flex;animation:fade .2s;}
+  .modal{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line2);border-radius:20px;max-width:680px;width:100%;padding:24px 26px;box-shadow:0 34px 90px -22px rgba(0,0,0,.82);animation:rise .28s both;}
+  .modal h2{font-family:var(--serif);font-weight:600;margin:0 0 18px;font-size:22px;letter-spacing:-.01em;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:13px 14px;}
+  .grid .full{grid-column:1 / -1;}
+  .fld{display:flex;flex-direction:column;gap:5px;}
+  .fld label{font-size:10px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:600;}
+  .fld input,.fld select,.fld textarea{width:100%;}
+  .modal-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--line);}
+  .certrow{display:flex;gap:10px;align-items:flex-end;background:rgba(212,176,114,.05);border:1px solid rgba(212,176,114,.24);border-radius:12px;padding:12px 14px;margin-bottom:16px;}
+  .certrow .fld{flex:1;}
+  .hint{font-size:11px;color:var(--faint);margin-top:3px;font-family:var(--mono);}
+  #slabPreview{background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;justify-content:center;}
+  /* motion + scrollbar */
+  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  @keyframes fade{from{opacity:0;}to{opacity:1;}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+  ::-webkit-scrollbar{width:11px;height:11px;}
+  ::-webkit-scrollbar-thumb{background:#20242e;border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+  ::-webkit-scrollbar-thumb:hover{background:#2c3140;background-clip:padding-box;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Binders Keepers <span class="thin">Inventory</span></h1>
+        <p class="sub"><a href="/">← all tools</a><span class="dot">·</span>graded-card stock, cost basis &amp; live P/L<span class="dot">·</span><span id="updated">—</span></p>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn go" onclick="openItem()">＋ Add card</button>
+      <button class="btn ghost" onclick="refreshValues(this)">↻ Refresh values</button>
+    </div>
+  </header>
+
+  <div id="banner"></div>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="sec">
+    <div class="filters">
+      <span class="sec-h" style="margin:0;">Stock</span>
+      <select id="f_game" onchange="load()"><option value="">All games</option></select>
+      <select id="f_company" onchange="load()"><option value="">All companies</option></select>
+      <select id="f_status" onchange="load()"><option value="">All status</option><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select>
+      <input id="f_q" placeholder="search name / SKU / cert" style="width:190px;" oninput="debouncedLoad()">
+    </div>
+    <div id="stock"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h">🔬 Grading pipeline <span class="count" id="subcount">0</span>
+      <button class="btn sm blue" style="margin-left:auto;" onclick="openSub()">＋ New submission</button>
+    </div>
+    <div id="subs"></div>
+  </div>
+</div>
+
+<!-- Item add/edit modal -->
+<div class="overlay" id="itemOverlay">
+  <div class="modal">
+    <h2 id="itemTitle">Add graded card</h2>
+    <div class="certrow">
+      <div class="fld" style="flex:0 0 150px;"><label>Cert company</label><select id="m_certco" onchange="updateCertHint()"></select></div>
+      <div class="fld"><label>Cert #</label><input id="m_certno" placeholder="slab cert number"></div>
+      <button class="btn sm" onclick="certLookup()">Look up</button>
+      <span class="status" id="m_certstatus" style="margin:0 0 8px;"></span>
+    </div>
+    <div class="hint" id="certhint" style="margin:-6px 0 12px;"></div>
+    <div class="grid">
+      <div class="fld"><label>Game *</label><select id="m_game"></select></div>
+      <div class="fld"><label>Name *</label><input id="m_name"></div>
+      <div class="fld"><label>Set</label><input id="m_set"></div>
+      <div class="fld"><label>Number</label><input id="m_number" placeholder="e.g. 199 or 4/102"></div>
+      <div class="fld"><label>Variant / finish</label><input id="m_variant" placeholder="Holo, Alt Art…"></div>
+      <div class="fld"><label>Language</label><input id="m_lang" value="EN"></div>
+      <div class="fld"><label>Grading company</label><select id="m_company" onchange="updateSlabPreview();toggleSubgrades()"><option value="">— raw / none —</option></select></div>
+      <div class="fld"><label>Grade</label><input id="m_grade" type="number" step="0.5" placeholder="10" oninput="updateSlabPreview()"></div>
+      <div class="fld"><label>Grade label</label><input id="m_gradelabel" placeholder="Gem Mint 10"></div>
+      <div class="fld"><label>Slab preview</label><div id="slabPreview" style="display:flex;align-items:center;min-height:64px;"></div></div>
+      <div class="fld full"><label>Image URL (optional — auto-filled from PSA / lookups; or paste one)</label><input id="m_image" oninput="updateSlabPreview()" placeholder="https://…card image"></div>
+      <div class="fld"><label>Graded date</label><input id="m_graded" type="date"></div>
+      <div class="fld full" id="subgradeRow" style="display:none;"><label>Subgrades (optional)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="m_sg_cent" type="number" step="0.5" min="0" max="10" placeholder="Centering" style="flex:1;min-width:88px;">
+          <input id="m_sg_corn" type="number" step="0.5" min="0" max="10" placeholder="Corners" style="flex:1;min-width:88px;">
+          <input id="m_sg_edge" type="number" step="0.5" min="0" max="10" placeholder="Edges" style="flex:1;min-width:88px;">
+          <input id="m_sg_surf" type="number" step="0.5" min="0" max="10" placeholder="Surface" style="flex:1;min-width:88px;">
+        </div>
+      </div>
+      <div class="fld"><label>Quantity</label><input id="m_qty" type="number" value="1" min="1"></div>
+      <div class="fld"><label>Location</label><input id="m_location" placeholder="Box A / shelf 2"></div>
+      <div class="fld"><label>Status</label><select id="m_status" onchange="toggleSale()"><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select></div>
+      <div class="fld"><label>Cost paid (A$)</label><input id="m_cost" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="fld"><label>Acquisition / grading fees (A$)</label><input id="m_fees" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="fld"><label>Acquired date</label><input id="m_acqdate" type="date"></div>
+      <div class="fld"><label>Source / vendor</label><input id="m_vendor"></div>
+      <div class="fld"><label>Target sell price (A$)</label><input id="m_target" type="number" step="0.01"></div>
+      <div class="fld"><label>Manual value</label><input id="m_value" type="number" step="0.01" placeholder="optional"></div>
+      <div class="fld"><label>Value currency</label><select id="m_valcur"><option>AUD</option><option>USD</option></select></div>
+      <div class="fld full" id="saleFields" style="display:none;">
+        <div class="grid">
+          <div class="fld"><label>Sale price (A$)</label><input id="m_saleprice" type="number" step="0.01"></div>
+          <div class="fld"><label>Sale fees (A$)</label><input id="m_salefees" type="number" step="0.01"></div>
+          <div class="fld"><label>Sold date</label><input id="m_saledate" type="date"></div>
+        </div>
+      </div>
+      <div class="fld full"><label>Notes</label><textarea id="m_notes" rows="2"></textarea></div>
+      <div class="fld full" id="linkRow"><label><input type="checkbox" id="m_link" style="width:auto;"> Also track raw market price in the Price Tracker</label></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeItem()">Cancel</button>
+      <button class="btn go" id="itemSave" onclick="saveItem(this)">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Submission modal -->
+<div class="overlay" id="subOverlay">
+  <div class="modal">
+    <h2 id="subTitle">New grading submission</h2>
+    <div class="grid">
+      <div class="fld"><label>Game *</label><select id="s_game"></select></div>
+      <div class="fld"><label>Name *</label><input id="s_name"></div>
+      <div class="fld"><label>Set</label><input id="s_set"></div>
+      <div class="fld"><label>Number</label><input id="s_number"></div>
+      <div class="fld"><label>Variant / finish</label><input id="s_variant"></div>
+      <div class="fld"><label>Language</label><input id="s_lang" value="EN"></div>
+      <div class="fld"><label>Grading company *</label><select id="s_company" onchange="fillTiers()"></select></div>
+      <div class="fld"><label>Tier</label><select id="s_tier"></select></div>
+      <div class="fld"><label>Declared value (A$)</label><input id="s_declared" type="number" step="0.01"></div>
+      <div class="fld"><label>Grading cost (A$)</label><input id="s_cost" type="number" step="0.01"></div>
+      <div class="fld"><label>Submitted date</label><input id="s_submitted" type="date"></div>
+      <div class="fld"><label>Status</label><select id="s_status"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="received">Received back</option><option value="graded">Graded</option></select></div>
+      <div class="fld full"><label>Tracking #</label><input id="s_tracking"></div>
+      <div class="fld full"><label>Notes</label><textarea id="s_notes" rows="2"></textarea></div>
+    </div>
+    <div class="hint">Expected-return date is estimated from the tier's turnaround (calendar days; excludes shipping transit).</div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeSub()">Cancel</button>
+      <button class="btn go" id="subSave" onclick="saveSub(this)">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Promote modal -->
+<div class="overlay" id="promoteOverlay">
+  <div class="modal">
+    <h2>Promote to inventory</h2>
+    <div class="note" id="promoteWho" style="margin-bottom:12px;"></div>
+    <div class="grid">
+      <div class="fld"><label>Final grade</label><input id="p_grade" type="number" step="0.5"></div>
+      <div class="fld"><label>Grade label</label><input id="p_gradelabel"></div>
+      <div class="fld"><label>Cert #</label><input id="p_cert"></div>
+      <div class="fld"><label>Purchase cost (A$)</label><input id="p_cost" type="number" step="0.01"></div>
+      <div class="fld"><label>Location</label><input id="p_location"></div>
+    </div>
+    <div class="hint">The grading cost from the submission is carried over as a cost-basis fee automatically.</div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closePromote()">Cancel</button>
+      <button class="btn go" onclick="doPromote(this)">Promote</button>
+    </div>
+  </div>
+</div>
+
+<script src="/extras.js"></script>
+<script>
+const B='/api/inventory';
+const GAMES=['riftbound','mtg','pokemon','swu','lorcana'];
+const GAME_NAMES={riftbound:'Riftbound',mtg:'Magic: The Gathering',pokemon:'Pokémon',swu:'Star Wars: Unlimited',lorcana:'Disney Lorcana'};
+let GRADING=null;
+let COS=[{code:'PSA',label:'PSA'},{code:'BGS',label:'Beckett (BGS)'},{code:'CGC',label:'CGC'},{code:'SGC',label:'SGC'},{code:'TAG',label:'TAG'},{code:'ARK',label:'ARK Grading'},{code:'PCG',label:'Premier Card Grading'}];
+let COMPANIES=COS.map(c=>c.code);
+let editItemId=null, editSubId=null, promoteSub=null;
+
+function api(path,opts){return fetch(B+path,opts).then(r=>r.ok?r.json():Promise.reject(r));}
+function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function val(id){return document.getElementById(id).value.trim();}
+function setV(id,v){const el=document.getElementById(id);if(el)el.value=(v==null?'':v);}
+function numv(id){const v=val(id);return v===''?null:(parseFloat(v));}
+function dc(id){const v=val(id);return v===''?null:Math.round(parseFloat(v)*100);}     // dollars input -> cents
+function aud(d){return d==null?'—':'A$'+(Math.round(d*100)/100).toFixed(2);}
+function centsAud(c){return c==null?'—':aud(c/100);}
+
+// Mini "slab" badge SVG in the grading company's brand colours (Collectr-style).
+function slabTheme(code){return ((COS.find(function(c){return c.code===code;})||{}).theme)||{bg:'#3a3f4b',fg:'#e8ecf4',accent:'#5a6273'};}
+function slabBadge(company,grade,w,imageUrl){
+  w=w||46; var h=Math.round(w*1.36);
+  var t=slabTheme(company), code=company||'RAW';
+  var g=(grade==null||grade==='')?'':(''+grade);
+  if(imageUrl){
+    var bandH=Math.round(h*0.30);
+    return '<div style="width:'+w+'px;height:'+h+'px;border-radius:'+(w*0.12).toFixed(1)+'px;background:#eef1f6;border:1px solid #c2cad6;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;flex-direction:column;">'
+      +'<div style="height:'+bandH+'px;background:'+t.bg+';color:'+t.fg+';display:flex;align-items:center;justify-content:center;gap:3px;font-family:Arial,Helvetica,sans-serif;font-weight:800;font-size:'+Math.max(7,Math.round(w*0.16))+'px;line-height:1;">'+esc(code)+(g?' <b style="font-size:'+Math.round(w*0.2)+'px;">'+esc(g)+'</b>':'')+'</div>'
+      +'<div style="flex:1;background:#dbe1ea;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="'+esc(imageUrl)+'" alt="" loading="lazy" style="width:100%;height:100%;object-fit:contain;" onerror="this.parentNode.style.display=\'none\'"></div>'
+    +'</div>';
+  }
+  var band=Math.round(h*0.42), p=2, winY=band+p+2;
+  var codeSize=Math.max(6,Math.round(w*(code.length>4?0.155:0.2)));
+  var s='<svg viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));">';
+  s+='<rect x="0.7" y="0.7" width="'+(w-1.4)+'" height="'+(h-1.4)+'" rx="'+(w*0.12).toFixed(1)+'" fill="#eef1f6" stroke="#c2cad6" stroke-width="1"/>';
+  s+='<rect x="'+(p+1)+'" y="'+(p+1)+'" width="'+(w-2*p-2)+'" height="'+band+'" rx="'+(w*0.07).toFixed(1)+'" fill="'+t.bg+'"/>';
+  s+='<text x="'+(w/2)+'" y="'+(p+band*0.4)+'" text-anchor="middle" dominant-baseline="central" font-family="Arial,Helvetica,sans-serif" font-weight="800" font-size="'+codeSize+'" fill="'+t.fg+'">'+esc(code)+'</text>';
+  if(g)s+='<text x="'+(w/2)+'" y="'+(p+band*0.78)+'" text-anchor="middle" dominant-baseline="central" font-family="Arial,Helvetica,sans-serif" font-weight="900" font-size="'+Math.round(w*0.3)+'" fill="'+t.fg+'">'+esc(g)+'</text>';
+  s+='<rect x="'+(p+2)+'" y="'+winY+'" width="'+(w-2*p-4)+'" height="'+(h-winY-p-1)+'" rx="2" fill="#dbe1ea"/>';
+  s+='<rect x="'+(p+4)+'" y="'+(winY+2)+'" width="'+(w-2*p-8)+'" height="'+(h-winY-p-5)+'" rx="1.5" fill="'+(t.accent||'#bcc6d4')+'" opacity="0.30"/>';
+  s+='</svg>';
+  return s;
+}
+function updateSlabPreview(){var el=document.getElementById('slabPreview');if(!el)return;var co=val('m_company'),img=val('m_image')||null;if(!co&&!img){el.innerHTML='<span style="color:var(--muted);font-size:12px;">raw / ungraded</span>';return;}el.innerHTML=slabBadge(co||'RAW',numv('m_grade'),54,img);}
+
+// value of an item converted to AUD dollars (null if unknown / FX down for a non-AUD value)
+function valueAud(it){
+  if(it.value_cents==null)return null;
+  const d=it.value_cents/100, cur=it.value_currency||'USD';
+  if(cur==='AUD')return d;
+  const a=(window.TCG&&TCG.toAUD)?TCG.toAUD(d,cur):null;
+  return a==null?null:a;
+}
+function costAud(it){return ((it.cost_cents||0)+(it.acq_fees_cents||0))/100;}
+function unrealized(it){const v=valueAud(it);if(v==null)return null;return v-costAud(it);}
+function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
+  return (it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100;}
+function plBadge(d){if(d==null)return '<span class="badge flat">—</span>';
+  const cls=d>0.005?'up':d<-0.005?'down':'flat';const s=d>0?'+':'';return '<span class="badge '+cls+'">'+s+aud(d)+'</span>';}
+
+// ---- rendering ----
+function tile(lbl,valHtml,sub2){return '<div class="tile"><div class="lbl">'+lbl+'</div><div class="val">'+valHtml+'</div>'+(sub2?'<div class="sub2">'+sub2+'</div>':'')+'</div>';}
+function renderSummary(s){
+  let totalVal=0, fxOk=true;
+  for(const cur in (s.valueByCurrency||{})){const d=s.valueByCurrency[cur]/100;let a=(cur==='AUD')?d:((window.TCG&&TCG.toAUD)?TCG.toAUD(d,cur):null);if(a==null){fxOk=false;a=d;}totalVal+=a;}
+  const cost=s.totalCostCents/100, unreal=totalVal-cost, real=s.realizedPlCents/100;
+  const uCls=unreal>0.005?'up':unreal<-0.005?'down':'', rCls=real>0.005?'up':real<-0.005?'down':'';
+  document.getElementById('tiles').innerHTML=
+    tile('Inventory value','<span>'+aud(totalVal)+'</span>',(fxOk?'':'FX unavailable — approx · ')+(s.counts.in_stock+s.counts.listed)+' active')
+    +tile('Total cost',aud(cost),'held stock')
+    +tile('Unrealized P/L','<span class="'+uCls+'">'+(unreal>0?'+':'')+aud(unreal)+'</span>','vs live value')
+    +tile('Realized P/L','<span class="'+rCls+'">'+(real>0?'+':'')+aud(real)+'</span>',s.counts.sold+' sold');
+}
+function sparkHtml(it){
+  const s=(it.spark||[]).filter(p=>p.price!=null);
+  if(s.length<2)return '<div class="spark" style="color:var(--muted);font-size:11px;">no value history</div>';
+  return '<div class="spark">'+(window.TCG?TCG.lineGraph(s):'')+'</div>';
+}
+function itemRow(it){
+  const slab=it.grading_company?('<div style="flex:0 0 auto;" title="'+esc(it.grading_company+(it.grade!=null?' '+it.grade:''))+'">'+slabBadge(it.grading_company,it.grade,46,it.image_url)+'</div>'):'';
+  const sgTxt=(function(){try{if(!it.subgrades)return '';var o=JSON.parse(it.subgrades);var pr=[];if(o.centering!=null)pr.push('Ctr '+o.centering);if(o.corners!=null)pr.push('C '+o.corners);if(o.edges!=null)pr.push('E '+o.edges);if(o.surface!=null)pr.push('S '+o.surface);return pr.length?'<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">'+pr.join(' · ')+'</div>':'';}catch(e){return '';}})();
+  const v=valueAud(it), vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?' <small style="color:var(--muted);font-weight:600;">· '+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</small>':'';
+  const pl=it.status==='sold'?realized(it):unrealized(it);
+  const plLbl=it.status==='sold'?'realized':'unrealized';
+  return '<div class="card"><div class="row">'
+    +slab
+    +'<div style="min-width:180px;flex:1;">'
+      +'<div class="nm">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
+      +'<div class="key">'+esc(GAME_NAMES[it.game]||it.game)+(it.number?' · #'+esc(it.number):'')+(it.variant?' · '+esc(it.variant):'')+(it.cert_number?' · cert '+esc(it.cert_number):'')+'</div>'
+      +'<div class="sku">'+esc(it.sku)+(it.location?' · 📍 '+esc(it.location):'')+'</div>'
+      +sgTxt
+      +(it.notes?'<div class="note">'+esc(it.notes)+'</div>':'')
+      +'<div class="compbox" id="comp'+it.id+'"></div><div class="status" id="cs'+it.id+'"></div>'
+    +'</div>'
+    +sparkHtml(it)
+    +'<div style="text-align:right;min-width:150px;">'
+      +'<div class="money">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+vnative+'</div>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+'</div>'
+      +'<div style="margin-top:5px;">'+plBadge(pl)+' <span style="font-size:10px;color:var(--muted);">'+plLbl+'</span></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
+      +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
+      +'<button class="btn sm blue" title="eBay graded comps" onclick="comps('+it.id+')">eBay</button>'
+      +(!it.image_url?'<button class="btn sm ghost" title="Fetch card image" onclick="fetchImage('+it.id+',this)">🖼</button>':'')
+      +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
+      +'<button class="btn sm danger" onclick="removeItem('+it.id+')">✕</button>'
+    +'</div>'
+  +'</div></div>';
+}
+function subRow(sub){
+  const overdue=sub.expected_return_at&&sub.status!=='graded'&&sub.expected_return_at< new Date().toISOString().slice(0,10);
+  const eta=sub.expected_return_at?('<span class="pill '+(overdue?'overdue':'')+'">ETA '+esc(sub.expected_return_at)+'</span>'):'';
+  const canPromote=sub.status!=='graded'||!sub.promoted_item_id;
+  return '<div class="card"><div class="row">'
+    +'<div style="min-width:200px;flex:1;">'
+      +'<div class="nm">'+esc(sub.name)+' <span class="grade-badge">'+esc(sub.grading_company)+(sub.tier?' · '+esc(sub.tier):'')+'</span></div>'
+      +'<div class="key">'+esc(GAME_NAMES[sub.game]||sub.game)+(sub.number?' · #'+esc(sub.number):'')+(sub.variant?' · '+esc(sub.variant):'')+'</div>'
+      +'<div class="note">'+(sub.grading_cost_cents!=null?'cost '+centsAud(sub.grading_cost_cents)+' · ':'')+(sub.submitted_at?'sent '+esc(sub.submitted_at)+' · ':'')+eta+(sub.tracking?' · 📦 '+esc(sub.tracking):'')+(sub.result_grade!=null?' · got '+esc(sub.grading_company)+' '+esc(sub.result_grade):'')+'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
+      +(sub.promoted_item_id?'<span class="pill in_stock">promoted</span>':'')
+      +(canPromote&&!sub.promoted_item_id?'<button class="btn sm go" onclick="openPromote('+sub.id+')">Promote</button>':'')
+      +'<button class="btn sm" onclick="editSub('+sub.id+')">Edit</button>'
+      +'<button class="btn sm danger" onclick="removeSub('+sub.id+')">✕</button>'
+    +'</div>'
+  +'</div></div>';
+}
+
+let CURRENT=[], SUBS=[];
+async function load(){
+  document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
+  const params=new URLSearchParams();
+  ['game','company','status'].forEach(k=>{const v=document.getElementById('f_'+k).value;if(v)params.set(k,v);});
+  const qv=document.getElementById('f_q').value.trim();if(qv)params.set('q',qv);
+  try{
+    const [summary,itemsR,subsR]=await Promise.all([api('/summary'),api('/items?'+params.toString()),api('/submissions')]);
+    CURRENT=itemsR.items; SUBS=subsR.submissions;
+    renderSummary(summary);
+    document.getElementById('banner').innerHTML = GRADING? '' : '<div class="banner warn">Could not load grading.config.json — company/tier lists use defaults.</div>';
+    document.getElementById('stock').innerHTML = CURRENT.length? CURRENT.map(itemRow).join('') : '<div class="empty">No cards yet. Click “＋ Add card”, or use “Add to inventory” from a listing builder or the pre-grader.</div>';
+    document.getElementById('subcount').textContent=SUBS.length;
+    const active=SUBS.filter(s=>!s.promoted_item_id), done=SUBS.filter(s=>s.promoted_item_id);
+    document.getElementById('subs').innerHTML = SUBS.length? (active.map(subRow).join('')+(done.length?'<div class="group-h">Promoted</div>'+done.map(subRow).join(''):'')) : '<div class="empty">No submissions. Track cards you send off to PSA/BGS/etc. here.</div>';
+  }catch(e){ document.getElementById('stock').innerHTML='<div class="banner warn">Failed to load inventory — is the dev server running? ('+esc(e.status||e)+')</div>'; }
+}
+let _t=null; function debouncedLoad(){clearTimeout(_t);_t=setTimeout(load,300);}
+
+// ---- item modal ----
+function fillGameSelect(id,withAll){const el=document.getElementById(id);el.innerHTML=(withAll?'<option value="">All games</option>':'')+GAMES.map(g=>'<option value="'+g+'">'+GAME_NAMES[g]+'</option>').join('');}
+function fillCompanySelect(id,blank){const el=document.getElementById(id);if(!el)return;el.innerHTML=(blank?'<option value="">'+esc(blank)+'</option>':'')+COS.map(c=>'<option value="'+esc(c.code)+'">'+esc(c.label||c.code)+'</option>').join('');}
+function updateCertHint(){const el=document.getElementById('m_certco'),h=document.getElementById('certhint');if(!el||!h)return;const p=COS.find(c=>c.code===el.value);if(!p){h.textContent='';return;}const link=p.certUrl?(' · <a href="'+esc(p.certUrl.replace('{cert}',''))+'" target="_blank" rel="noopener">verify page ↗</a>'):'';h.innerHTML='Format: '+esc(p.certFormat||'—')+' · '+(p.lookup?'auto-fill available':'manual entry (no public API)')+link;}
+function toggleSale(){document.getElementById('saleFields').style.display = val('m_status')==='sold'?'block':'none';}
+function toggleSubgrades(){var el=document.getElementById('subgradeRow');if(!el)return;var p=COS.find(function(c){return c.code===val('m_company');});el.style.display=(p&&p.subgrades)?'block':'none';}
+function openItem(){editItemId=null;document.getElementById('itemTitle').textContent='Add graded card';
+  ['m_certno','m_name','m_set','m_number','m_variant','m_grade','m_gradelabel','m_graded','m_location','m_cost','m_fees','m_acqdate','m_vendor','m_target','m_value','m_notes','m_saleprice','m_salefees','m_saledate','m_image','m_sg_cent','m_sg_corn','m_sg_edge','m_sg_surf'].forEach(i=>setV(i,''));
+  setV('m_lang','EN');setV('m_qty','1');document.getElementById('m_game').value='pokemon';document.getElementById('m_company').value='';document.getElementById('m_status').value='in_stock';
+  document.getElementById('m_certstatus').textContent='';document.getElementById('m_link').checked=false;document.getElementById('linkRow').style.display='block';toggleSale();
+  (function(){var cc=document.getElementById('m_certco');if(cc)cc.value='PSA';updateCertHint();updateSlabPreview();toggleSubgrades();})();
+  document.getElementById('itemOverlay').classList.add('on');}
+function editItem(id){
+  const it=CURRENT.find(x=>x.id===id);if(!it)return;editItemId=id;
+  document.getElementById('itemTitle').textContent='Edit — '+it.sku;
+  setV('m_certno',it.cert_number);setV('m_name',it.name);setV('m_set',it.set_name);setV('m_number',it.number);setV('m_variant',it.variant);setV('m_lang',it.language||'EN');
+  document.getElementById('m_game').value=it.game;document.getElementById('m_company').value=it.grading_company||'';setV('m_grade',it.grade);setV('m_gradelabel',it.grade_label);setV('m_graded',it.graded_date);
+  setV('m_qty',it.quantity||1);setV('m_location',it.location);document.getElementById('m_status').value=it.status;
+  setV('m_cost',it.cost_cents!=null?it.cost_cents/100:'');setV('m_fees',it.acq_fees_cents!=null?it.acq_fees_cents/100:'');setV('m_acqdate',it.acquired_at);setV('m_vendor',it.source_vendor);
+  setV('m_target',it.target_price_cents!=null?it.target_price_cents/100:'');setV('m_value','');document.getElementById('m_valcur').value=it.value_currency||'AUD';setV('m_notes',it.notes);setV('m_image',it.image_url);
+  (function(){var sg={};try{sg=it.subgrades?JSON.parse(it.subgrades):{};}catch(e){}setV('m_sg_cent',sg.centering!=null?sg.centering:'');setV('m_sg_corn',sg.corners!=null?sg.corners:'');setV('m_sg_edge',sg.edges!=null?sg.edges:'');setV('m_sg_surf',sg.surface!=null?sg.surface:'');})();
+  setV('m_saleprice',it.sale_price_cents!=null?it.sale_price_cents/100:'');setV('m_salefees',it.sale_fees_cents!=null?it.sale_fees_cents/100:'');setV('m_saledate',it.sold_at);
+  document.getElementById('m_certstatus').textContent='';document.getElementById('linkRow').style.display='none';toggleSale();
+  (function(){var cc=document.getElementById('m_certco');if(cc)cc.value=it.grading_company||'PSA';updateCertHint();updateSlabPreview();toggleSubgrades();})();
+  document.getElementById('itemOverlay').classList.add('on');}
+function closeItem(){document.getElementById('itemOverlay').classList.remove('on');}
+async function certLookup(){
+  const co=(document.getElementById('m_certco')||{}).value||'PSA';
+  const cert=val('m_certno');const s=document.getElementById('m_certstatus');
+  if(!cert){s.className='status warn';s.textContent='Enter a cert number first.';return;}
+  document.getElementById('m_company').value=co;   // record the grading company regardless of auto-fill
+  s.className='status load';s.textContent='Looking up '+esc(co)+'…';
+  try{
+    const r=await fetch('/api/cert?company='+encodeURIComponent(co)+'&cert='+encodeURIComponent(cert)).then(x=>x.json());
+    if(r&&r.matched&&r.identity){
+      setV('m_name',r.identity.name);setV('m_set',r.identity.set_name);setV('m_number',r.identity.number);setV('m_variant',r.identity.variant);setV('m_lang',r.identity.language||'EN');
+      if(r.grade!=null)setV('m_grade',r.grade);if(r.grade_label)setV('m_gradelabel',r.grade_label);
+      if(r.image_url)setV('m_image',r.image_url);updateSlabPreview();
+      s.className='status ok';s.textContent='✓ '+esc(r.identity.name||'found — fields filled');
+    }else{
+      const link=(r&&r.verifyUrl)?(' <a href="'+esc(r.verifyUrl)+'" target="_blank" rel="noopener">Verify on '+esc(co)+' ↗</a>'):'';
+      s.className='status warn';
+      s.innerHTML=(co==='PSA'?'No PSA match — check the cert, or set PSA_API_TOKEN in .env.':(esc(co)+' has no auto-fill API — open the official page to confirm, then fill the fields manually.'))+link;
+    }
+  }catch(e){s.className='status err';s.textContent='Lookup failed — fill manually.';}
+}
+async function saveItem(btn){
+  if(!val('m_name')){alert('Name is required.');return;}
+  const body={game:val('m_game'),name:val('m_name'),set_name:val('m_set')||null,number:val('m_number')||null,variant:val('m_variant')||null,language:val('m_lang')||'EN',
+    grading_company:val('m_company')||null,grade:numv('m_grade'),grade_label:val('m_gradelabel')||null,cert_number:val('m_certno')||null,graded_date:val('m_graded')||null,
+    quantity:parseInt(val('m_qty')||'1',10)||1,location:val('m_location')||null,status:val('m_status')||'in_stock',
+    cost_cents:dc('m_cost'),acq_fees_cents:dc('m_fees'),acquired_at:val('m_acqdate')||null,source_vendor:val('m_vendor')||null,
+    target_price_cents:dc('m_target'),notes:val('m_notes')||null};
+  const mv=dc('m_value');if(mv!=null){body.value_cents=mv;body.value_currency=val('m_valcur')||'AUD';body.value_source='manual';body.value_manual=1;}
+  if(body.status==='sold'){body.sale_price_cents=dc('m_saleprice');body.sale_fees_cents=dc('m_salefees');body.sold_at=val('m_saledate')||null;}
+  const iu=val('m_image');if(iu)body.image_url=iu;
+  var sg={};var _sc=numv('m_sg_cent');if(_sc!=null)sg.centering=_sc;var _co=numv('m_sg_corn');if(_co!=null)sg.corners=_co;var _ed=numv('m_sg_edge');if(_ed!=null)sg.edges=_ed;var _su=numv('m_sg_surf');if(_su!=null)sg.surface=_su;
+  body.subgrades=Object.keys(sg).length?sg:null;
+  btn.disabled=true;
+  try{
+    if(editItemId){await api('/items/'+editItemId,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)});}
+    else{if(document.getElementById('m_link').checked&&body.number)body.link_watchlist=true;await api('/items',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});}
+  }catch(e){alert('Save failed.');}
+  btn.disabled=false;closeItem();load();
+}
+
+// ---- valuation ----
+async function refreshOne(id,btn){if(btn)btn.disabled=true;
+  try{const r=await api('/items/'+id+'/refresh-value',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+    const cs=document.getElementById('cs'+id);if(cs)cs.textContent=r.updated?('✓ '+ (r.grade_label||'')+' '+centsAud(r.value_cents)):('no update — '+esc(r.reason||''));}catch(e){}
+  if(btn)btn.disabled=false;load();}
+async function refreshValues(btn){const t=btn.textContent;btn.disabled=true;btn.textContent='Refreshing…';
+  const ids=CURRENT.filter(it=>it.number&&!it.value_manual).map(it=>it.id);
+  let n=0;for(const id of ids){try{const r=await api('/items/'+id+'/refresh-value',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});if(r.updated)n++;}catch(e){}btn.textContent='Refreshing… '+(++n>ids.length?ids.length:n)+'/'+ids.length;}
+  btn.textContent=t;btn.disabled=false;load();}
+function comps(id){
+  const it=CURRENT.find(x=>x.id===id);if(!it)return;
+  const box=document.getElementById('comp'+id), st=document.getElementById('cs'+id);
+  box.innerHTML='';
+  const q=[it.name,it.number?('#'+it.number):'',it.grading_company,(it.grade!=null?it.grade:'')].filter(Boolean).join(' ');
+  if(window.TCG&&TCG.ebayComps){
+    TCG.ebayComps({query:q,container:box,status:st,analyze:true,filterOptions:[{key:'graded',label:'Graded',filter:'conditionIds:{2750}'},{key:'all',label:'All',filter:''}],filterKey:'graded'});
+  } else { st.textContent='eBay comps unavailable.'; }
+}
+
+async function fetchImage(id,btn){if(btn)btn.disabled=true;try{const r=await api('/items/'+id+'/fetch-image',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});if(!r.updated){if(btn){btn.textContent='none';setTimeout(function(){btn.textContent='🖼';btn.disabled=false;},1200);}return;}}catch(e){}load();}
+
+// ---- submission modal ----
+function fillTiers(){const co=val('s_company');const tiers=(GRADING&&GRADING.fees&&GRADING.fees[co])?GRADING.fees[co]:[];
+  document.getElementById('s_tier').innerHTML='<option value="">—</option>'+tiers.map(t=>'<option value="'+esc(t.tier)+'">'+esc(t.tier)+' ('+t.turnaroundDays+'d)</option>').join('');}
+function openSub(){editSubId=null;document.getElementById('subTitle').textContent='New grading submission';
+  ['s_name','s_set','s_number','s_variant','s_declared','s_cost','s_submitted','s_tracking','s_notes'].forEach(i=>setV(i,''));
+  setV('s_lang','EN');document.getElementById('s_game').value='pokemon';document.getElementById('s_company').value=COMPANIES[0];document.getElementById('s_status').value='draft';fillTiers();
+  document.getElementById('subOverlay').classList.add('on');}
+function editSub(id){const sub=SUBS.find(x=>x.id===id);if(!sub)return;editSubId=id;document.getElementById('subTitle').textContent='Edit submission';
+  setV('s_name',sub.name);setV('s_set',sub.set_name);setV('s_number',sub.number);setV('s_variant',sub.variant);setV('s_lang',sub.language||'EN');
+  document.getElementById('s_game').value=sub.game;document.getElementById('s_company').value=sub.grading_company;fillTiers();document.getElementById('s_tier').value=sub.tier||'';
+  setV('s_declared',sub.declared_value_cents!=null?sub.declared_value_cents/100:'');setV('s_cost',sub.grading_cost_cents!=null?sub.grading_cost_cents/100:'');
+  setV('s_submitted',sub.submitted_at);document.getElementById('s_status').value=sub.status;setV('s_tracking',sub.tracking);setV('s_notes',sub.notes);
+  document.getElementById('subOverlay').classList.add('on');}
+function closeSub(){document.getElementById('subOverlay').classList.remove('on');}
+async function saveSub(btn){
+  if(!val('s_name')){alert('Name is required.');return;}
+  const body={game:val('s_game'),name:val('s_name'),set_name:val('s_set')||null,number:val('s_number')||null,variant:val('s_variant')||null,language:val('s_lang')||'EN',
+    grading_company:val('s_company'),tier:val('s_tier')||null,declared_value_cents:dc('s_declared'),grading_cost_cents:dc('s_cost'),
+    submitted_at:val('s_submitted')||null,status:val('s_status')||'draft',tracking:val('s_tracking')||null,notes:val('s_notes')||null};
+  btn.disabled=true;
+  try{
+    if(editSubId){await api('/submissions/'+editSubId,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)});}
+    else{await api('/submissions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});}
+  }catch(e){alert('Save failed.');}
+  btn.disabled=false;closeSub();load();
+}
+async function removeSub(id){if(!confirm('Delete this submission?'))return;try{await api('/submissions/'+id,{method:'DELETE'});}catch(e){}load();}
+
+// ---- promote ----
+function openPromote(id){const sub=SUBS.find(x=>x.id===id);if(!sub)return;promoteSub=sub;
+  document.getElementById('promoteWho').textContent=sub.name+' — '+(GAME_NAMES[sub.game]||sub.game)+' → '+sub.grading_company;
+  setV('p_grade',sub.result_grade);setV('p_gradelabel',sub.result_grade_label);setV('p_cert',sub.cert_number);setV('p_cost','');setV('p_location','');
+  document.getElementById('promoteOverlay').classList.add('on');}
+function closePromote(){document.getElementById('promoteOverlay').classList.remove('on');}
+async function doPromote(btn){if(!promoteSub)return;btn.disabled=true;
+  const body={result_grade:numv('p_grade'),result_grade_label:val('p_gradelabel')||null,cert_number:val('p_cert')||null,cost_cents:dc('p_cost'),location:val('p_location')||null};
+  try{await api('/submissions/'+promoteSub.id+'/promote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});}catch(e){alert('Promote failed.');}
+  btn.disabled=false;closePromote();load();
+}
+
+async function removeItem(id){if(!confirm('Delete this inventory item? (cannot be undone)'))return;try{await api('/items/'+id,{method:'DELETE'});}catch(e){}load();}
+
+// ---- boot ----
+(async function init(){
+  fillGameSelect('f_game',true);fillGameSelect('m_game',false);fillGameSelect('s_game',false);
+  try{GRADING=await fetch('/data/grading.config.json').then(r=>r.json());}catch(e){}
+  try{const reg=await fetch('/data/grading-companies.json').then(r=>r.json());if(reg&&reg.companies&&reg.companies.length){COS=reg.companies;COMPANIES=COS.map(c=>c.code);}}catch(e){}
+  fillCompanySelect('f_company','All companies');fillCompanySelect('m_company','— raw / none —');fillCompanySelect('s_company','');fillCompanySelect('m_certco',null);
+  updateCertHint();fillTiers();
+  if(window.TCG&&TCG.loadFx)await TCG.loadFx();
+  load();
+})();
+</script>
+</body>
+</html>

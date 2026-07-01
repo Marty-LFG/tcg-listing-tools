@@ -1,9 +1,10 @@
 # TCG eBay Listing Tools
 
-Vite-served eBay listing builders for trading cards (Pokémon, Magic, Star Wars:
-Unlimited, Riftbound) plus **LEGO sets** and **Funko Pop! vinyl**. The Vite dev
-server proxies the data APIs so the browser never hits CORS, and all API keys stay
-server-side (in the proxy config, never shipped to the client).
+Vite-served eBay listing tools for trading cards (Pokémon, Magic, Star Wars:
+Unlimited, Riftbound, Disney Lorcana) plus **LEGO sets** and **Funko Pop! vinyl** —
+plus a price tracker, a card pre-grader, a graded-card inventory, and a shipping-label
+maker. The Vite dev server proxies the data APIs so the browser never hits CORS, and
+all API keys stay server-side (in the proxy config, never shipped to the client).
 
 ## Run
 
@@ -13,7 +14,12 @@ cp .env.example .env   # all keys optional — Riftbound works keyless; Scrydex 
 pnpm dev
 ```
 
-Vite opens the landing page. Pick a builder.
+Vite opens the landing page. Pick a builder or a tool.
+
+The landing page links to seven listing **builders** — Pokémon, Magic, Star Wars:
+Unlimited, Riftbound, Disney Lorcana, LEGO, Funko Pop! — plus four **tools**:
+Graded Card Inventory (`inventory.html`), Price Tracker (`tracker.html`),
+Card Pre-Grader (`card-grader.html`), and Shipping Label Maker (`shipping-label.html`).
 
 ## How it works
 
@@ -23,10 +29,17 @@ Vite opens the landing page. Pick a builder.
 - `/api/rbs/*`  is proxied to `https://riftscribe.gg/api/*`  (no auth — keyless Riftbound data)
 - `/api/mtg/*`  is proxied to `https://api.scryfall.com/*`  (no auth)
 - `/api/pkm/*`  is proxied to `https://api.pokemontcg.io/v2/*`  (no auth)
+- `/api/lorcana/*` → `https://api.lorcast.com/v0/*` (no auth — Disney Lorcana, daily USD prices)
 - `/api/lego/rebrickable/*` → Rebrickable, `/api/lego/brickset/*` → Brickset
   (key injected), `/api/lego/bricklink/*` → BrickLink (OAuth1-signed middleware)
 - `/api/ebay/*` → eBay (OAuth2 app-token middleware) for Funko price comps &
   item-specifics
+- `/api/pc/*` → PriceCharting (keyless scrape; graded/raw/pop prices)
+- `/api/cert*` → multi-company graded-slab cert lookup (`lib/certlookup.mjs`; PSA auto-fills
+  with `PSA_API_TOKEN`, others deep-link to their verify page)
+- `/api/inventory/*` → graded-card inventory API (`lib/inventory.mjs`; items CRUD, valuation,
+  grading pipeline)
+- `/api/grade` → pre-grader AI vision condition pass; `/api/print` → thermal label printer
 
 The tools call those relative paths, so everything is same-origin — no CORS,
 no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
@@ -39,7 +52,24 @@ no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
   supplies AUD price comps. Scrydex is optional and only adds live market price + a trend
   graph. Pick the source in the builder's "Data source" dropdown.
 - SWU is entirely live via swu-db; Base URL is preset to `/api/swu`.
-- Both builders always allow manual field entry; the preview builds regardless.
+- Every builder always allows manual field entry; the preview builds regardless.
+
+## Graded-card inventory (Binders Keepers)
+
+The **Graded Card Inventory** dashboard (`inventory.html`) tracks graded-card stock with
+cost basis and live P/L. It stores items in the same `data/tracker.db` (money in integer
+cents), generates SKUs (`BK-<GAMECODE>-000001`), pulls live graded valuation via PriceCharting
++ eBay sold comps, and runs a grading-submission pipeline (send a raw card off → promote it to
+graded stock once it's back). Card images resolve server-side by identity or a name/number
+search, plus the PSA cert image. Reserved eBay/Shopify channel fields lay the groundwork for a
+future sync — this is Phase 1 of an inventory source of truth.
+
+**Cert lookup (multi-company).** The "Add card" form auto-fills from a slab's cert number.
+Twelve grading companies are registered in `data/grading-companies.json` (PSA, BGS, CGC, SGC,
+TAG, ARK, TCG Grading, Card Grading Australia, PCG, PCGCN, EMC, JBH). Only **PSA** has a public
+cert API — set `PSA_API_TOKEN` in `.env` for real auto-fill; every other company deep-links to
+its official verify page and you fill the fields in manually. Everything works without a token —
+manual entry always works.
 
 ## Run on your home server (LAN access)
 
@@ -74,6 +104,9 @@ then browse to `http://cards.lan:5273`. If you use a hostname, also set
   in `.env`, never sent to browsers — but lookups spend your credits).
 - `/api/img` fetches arbitrary URLs server-side. Harmless on a trusted LAN;
   don't port-forward it.
+- The suite shares a **"Vault Ledger"** look (`vault.css` + Fraunces / IBM Plex fonts; see
+  `DESIGN.md`). Fonts load from **Google Fonts** (`<link>` tags per page), so first paint
+  expects outbound internet; a fully offline LAN still works but falls back to system fonts.
 
 ## Shipping labels → AUSPRINT PRO (direct printing)
 
@@ -115,4 +148,5 @@ LAN client opened the tool.
 If you're an AI coding agent or a new developer picking this up, start with
 **`AGENTS.md`** — it covers the architecture, the invariants you must not break
 (the proxies are dev-server-only!), how each builder is structured, and common
-tasks. API endpoints and response schemas are in **`docs/DATA_SOURCES.md`**.
+tasks. API endpoints and response schemas are in **`docs/DATA_SOURCES.md`**; the shared
+visual design system ("Vault Ledger") is in **`DESIGN.md`**.

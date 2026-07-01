@@ -67,6 +67,8 @@ Display-only — it does **not** change the tracked price, so `lib/normalize.mjs
 
 - Endpoint (this tool): `GET /api/pc/lookup?name=&number=&set=&id=` → `{ matched, url, confidence,
   productName, consoleName, prices:{ungraded, grade9, psa10, bgs10}, pop:{ "<grade>":{psa,cgc,total} } }`.
+  A full `ladder:{ "<label>":cents }` map (e.g. `Grade 8`, `PSA 10`, `BGS 9.5`) is also returned —
+  the inventory valuation (`/api/inventory/items/:id/refresh-value`) maps it to a slab's company+grade rung.
   **Prices are integer cents** (Golden Rule 3); the Pokémon builder divides by 100 for its USD rows.
   Any failure / no-match / block returns `{matched:false}` and never throws (Golden Rule 7).
 - **Matching** (`pickBestMatch`, load-bearing): a PriceCharting product is accepted only when the
@@ -101,6 +103,37 @@ Display-only — it does **not** change the tracked price, so `lib/normalize.mjs
   instead of scraping — same output shape (that branch is **unverified** until a token exists).
 - **ToS:** `robots.txt` allows `/game` and `/search-products`. Fine for this **private, single-user**
   tool; redistribution / public hosting would need PriceCharting's written permission (→ buy the API).
+
+## Cert lookup — multi-company graded-slab verify  (proxy `/api/cert`)
+
+Backs the graded-card inventory add form (`inventory.html`). Given a slab's grading company +
+cert number, tries to auto-fill the card identity + grade.
+
+- `GET /api/cert?company=<CODE>&cert=<n>` → `{ matched, company, verifyUrl,
+  identity:{name,set_name,number,year,variant,language}, grade, grade_label, grading_company,
+  cert_number, image_url, raw }` on a hit; else `{ matched:false, company, verifyUrl, manual:true,
+  reason }`. Routed by `lib/certlookup.mjs`; never throws (Golden Rule 7).
+- `GET /api/cert/providers` → the `data/grading-companies.json` registry (drives the company
+  dropdown + the mini-slab badge themes). **12 companies:** PSA, BGS, CGC, SGC, TAG, ARK (AU),
+  TCG Grading (AU), CGA / Card Grading Australia (AU), PCG (Western Premier Card Grading, AU/US),
+  PCGCN (Chinese PCG, `pcgcard.cn`), EMC (Encapsulated Memories Company), JBH (Joyful Box House,
+  CN). Each carries `code/label/scale/step/subgrades/certFormat/certUrl/lookup/region/note` + a
+  `theme{bg,fg,accent}`.
+- **Auth / providers:** **PSA is the only company with a public cert API** (see below). Every
+  other company has no public JSON API, so `/api/cert` returns `matched:false` + a `verifyUrl`
+  deep-link to that company's official verify page (cert pre-filled where the URL format is known,
+  e.g. TAG `tagd.co/{cert}`, PCGCN's QR page) and the form degrades to **manual entry**
+  (Golden Rule 7). This registry is **broader** than the pre-grader's tolerance set in
+  `data/grading.config.json` (PSA/BGS/CGC/SGC/TAG) — you can own a slab from any company, but only
+  those with known tolerances get a predicted grade.
+
+### PSA — cert API  (`lib/psa.mjs`)
+- Upstream `https://api.psacard.com/publicapi`: `GET /cert/GetByCertNumber/{cert}` (card + grade)
+  and `GET /cert/GetImagesByCertNumber/{cert}` (best-effort front slab image). **Auth:**
+  `Authorization: Bearer <PSA_API_TOKEN>` (optional `.env` var; server-side only). Missing token /
+  any failure → `{matched:false}` (degrades to manual). **Field mapping is UNVERIFIED against a
+  live token** — confirm `PSACert.{Subject,Brand,CardNumber,Year,Variety,CardGrade,
+  GradeDescription,Category}` once a token exists.
 
 ## Magic: The Gathering — Scryfall  (proxy `/api/mtg`)
 
@@ -370,6 +403,48 @@ carries them (Growth+ tier), else snapshot history — the same path the other g
 upserted on **every successful fetch** (any source). `payload` is the full raw upstream JSON.
 A durable local copy of whatever the API returned; also conserves credits (Scrydex bills per
 request). The mapped price subset is still stored per-snapshot in `price_snapshots.raw`.
+
+---
+
+## Graded-card inventory — local DB  (`/api/inventory`, `data/tracker.db`)
+
+The "Binders Keepers" inventory platform: graded-card stock, cost basis / P&L, live graded
+valuation, and a grading-submission pipeline. Served by `inventoryPlugin` (`lib/inventory.mjs`),
+which shares the tracker's `openDb()` handle and adds four tables to the **same** `data/tracker.db`
+(`inventory_items`, `inventory_valuations`, `grading_submissions`, `sku_counter`; idempotent
+create + an additive `image_url` migration). **Money is integer cents** (Golden Rule 3). SKUs are
+generated `BK-<GAMECODE>-000001` (RB/MTG/PKM/SWU/LOR) from an atomic `sku_counter`.
+
+### Endpoints
+- `GET /api/inventory/items?game=&company=&grade=&status=&q=` — stock list (+ a value sparkline
+  per item). `POST /items` — create (generates the SKU; optional `link_watchlist` keeps raw price
+  fresh via the tracker; auto-resolves a card image).
+- `GET/PATCH/DELETE /items/:id` — read / partial update (whitelisted cols) / hard delete.
+- `POST /items/:id/refresh-value` — pull live **graded** value from PriceCharting (maps the
+  returned `ladder` to the item's company+grade rung; USD). `?force=1` overrides a manual value.
+- `POST /items/:id/value-manual` — set a value directly (`source:'manual'` = hard override; any
+  other source lets a later refresh update it).
+- `POST /items/:id/fetch-image` — resolve + cache the card image (see below).
+- `GET /items/:id/valuations` — value history for the detail sparkline.
+- `GET /summary` — portfolio counts + `totalCostCents`, `realizedPlCents`, `valueByCurrency`,
+  `byGame`, `byCompany`.
+- `GET /export` — full items + submissions bundle (accounting / Claude).
+- `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote` —
+  grading pipeline; promote creates the stock item (idempotent) and computes `expected_return_at`
+  from `data/grading.config.json` turnaround days.
+
+### Card-image resolution (`resolveImage` in `lib/inventory.mjs`)
+Best-effort, never throws. First the **identity route** via `normalize.mjs`
+`lookupPath(game, identity_key)` → the game proxy → `imageFrom()` (Pokémon `images.large`, MTG
+`image_uris`, Lorcana `image_uris.digital`, SWU `FrontArt`, Riftbound `images[]`). With no
+identity_key it falls back to a **name (+ number) SEARCH** — Pokémon `/api/pkm/cards?q=`, MTG
+`/api/mtg/cards/named?fuzzy=`, Lorcana `/api/lorcana/cards/search?q=` — and **backfills
+`identity_key`** when the search resolves one. PSA cert lookups can also supply a slab image via
+`/api/cert`. Cached in `inventory_items.image_url`; the list renders it inside the mini slab badge.
+
+### Reserved channel fields
+`inventory_items` carries `ebay_listing_id` / `shopify_product_id` / `channel_status` for a future
+eBay/Shopify sync — reserved, not wired yet.
 
 ---
 

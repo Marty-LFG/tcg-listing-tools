@@ -138,6 +138,20 @@
     } catch (e) { return null; }
   };
 
+  // POST a card to graded-card INVENTORY (Binders Keepers). Returns {id,sku,created} or null.
+  // p = {game, identity_key, name, set_name?, number?, variant?, language?,
+  //      grading_company?, grade?, grade_label?, subgrades?, cert_number?, graded_date?,
+  //      quantity?, location?, status?, cost_cents?, acq_fees_cents?, acquired_at?, source_vendor?,
+  //      target_price_cents?, value_cents?, value_currency?, value_source?, notes?, link_watchlist?}
+  TCG.addToInventory = async function (p) {
+    try {
+      const r = await fetch('/api/inventory/items', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p),
+      });
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  };
+
   // ---- pricing-panel helpers (shared) ----
   // Confidence pill — only used where we have a REAL signal (PriceCharting match today).
   var CONF_COL = { high: '#36d399', medium: '#f0c020', low: '#f06262' };

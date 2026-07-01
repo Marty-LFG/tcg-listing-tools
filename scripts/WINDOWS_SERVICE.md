@@ -50,7 +50,11 @@ The Vite dev server listens on **0.0.0.0:5273**, so other devices on your networ
    notepad .env
    ```
 
-   Scrydex keys are required for Riftbound live lookups; other keys are optional (see `.env.example`).
+   All API keys are optional — the suite runs keyless (see `.env.example`). Scrydex adds live
+   Riftbound market pricing + a trend graph (Riftbound also works keyless via Riftscribe + eBay
+   comps); the graded-card inventory tool can auto-fill from a PSA cert number if you set the
+   optional `PSA_API_TOKEN`. Add the eBay / LEGO / PriceCharting / printer keys to unlock those
+   features.
 
 5. **Windows Defender Firewall** — allow inbound TCP **5273** on the profile you use (Private is typical at home). From an **elevated** Command Prompt (Run as administrator):
 

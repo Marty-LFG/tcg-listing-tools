@@ -1,7 +1,9 @@
 import { defineConfig, loadEnv } from 'vite'
 import crypto from 'node:crypto'
 import { trackerPlugin } from './lib/tracker.mjs'
+import { inventoryPlugin } from './lib/inventory.mjs'
 import { lookup as pcLookup } from './lib/pricecharting.mjs'
+import { certLookup, certProviders } from './lib/certlookup.mjs'
 import { analyzeCard } from './lib/grader.mjs'
 import { printConfig, buildJob, sendToPrinter } from './lib/labelprint.mjs'
 
@@ -237,6 +239,35 @@ function pcProxy(env) {
   }
 }
 
+// ---- Cert lookup: multi-company graded-slab lookup for the inventory add form ----
+// GET /api/cert?company=PSA&cert=12345678 -> { matched, identity, grade, grade_label, company,
+//   verifyUrl, ... } via lib/certlookup.mjs. PSA auto-fills (needs PSA_API_TOKEN); every other
+//   company (any non-PSA company in data/grading-companies.json) returns matched:false + a verifyUrl deep-link so the form
+//   degrades to manual entry (Golden Rule 7).
+// GET /api/cert/providers -> the data/grading-companies.json registry (company dropdown source).
+function certProxy(env) {
+  return {
+    name: 'cert-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/cert', async (req, res) => {
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('access-control-allow-origin', '*')
+        try {
+          const u = new URL(req.url, 'http://localhost')
+          if (u.pathname.replace(/\/+$/, '').endsWith('/providers')) return res.end(JSON.stringify(certProviders()))
+          const company = u.searchParams.get('company') || 'PSA'
+          const cert = u.searchParams.get('cert') || ''
+          if (!cert) { res.statusCode = 400; return res.end(JSON.stringify({ matched: false, error: 'cert required' })) }
+          const out = await certLookup(company, cert, env)
+          res.end(JSON.stringify(out))
+        } catch (e) {
+          res.end(JSON.stringify({ matched: false, error: String((e && e.message) || e) }))
+        }
+      })
+    },
+  }
+}
+
 // ---- Pre-grading: AI vision condition pass (Anthropic OR OpenAI) ----------
 // POST /api/grade { images:[{mediaType,dataB64}], context } -> per-pillar condition scores +
 // defects from lib/grader.mjs. The browser measures centering itself; this only scores the
@@ -349,7 +380,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

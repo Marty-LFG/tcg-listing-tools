@@ -1,0 +1,45 @@
+/* vault.css — shared "Vault Ledger" design layer for the Binders Keepers tool suite.
+   Linked AFTER each page's inline <style> so it re-themes the shared CSS variables
+   (--ink / --panel / --panel2 / --line / --field / --muted / --text) to one dark palette,
+   sets the Fraunces + IBM Plex typography, adds the atmospheric background, and refines the
+   shared primitives (.card, inputs, .btn, .tag, code). Each page KEEPS its own --gold accent
+   (Pokémon/SWU/LEGO yellow, grader purple, shipping blue) so tools stay identifiable — the
+   same idea as the hub tiles. Load the fonts via the two <link> tags added next to this one.
+   Deliberately does NOT touch layout, JS, or the eBay listing-preview iframe (separate doc). */
+:root{
+  --bg2:#0d0f15;
+  --ink:#0b0d12; --panel:#14171f; --panel2:#1b1f2a;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
+  --field:#0b0d12; --text:#e9edf6; --muted:#8b93a6; --faint:#5b6373;
+  --gold-soft:rgba(212,176,114,.14);
+  --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+  --serif:'Fraunces',Georgia,'Times New Roman',serif;
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+body{
+  font-family:var(--sans) !important;color:var(--text);
+  background:
+    radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.06),transparent 60%),
+    radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.05),transparent 55%),
+    linear-gradient(180deg,#0b0d12,#08090d 62%) !important;
+  background-attachment:fixed !important;
+}
+h1,h2.hd,.title{font-family:var(--serif);font-weight:600;letter-spacing:-.012em;}
+code,kbd{font-family:var(--mono);}
+/* the small tracked accent label most pages call ".tag" -> monospace, keeps its --gold colour */
+.tag{font-family:var(--mono) !important;letter-spacing:.14em !important;font-weight:600 !important;}
+/* unify container cards with a subtle gradient + depth */
+.card{background:linear-gradient(180deg,var(--panel),var(--bg2)) !important;border:1px solid var(--line) !important;border-radius:16px !important;box-shadow:var(--shadow);}
+/* inputs: rounded, gold focus ring */
+input,select,textarea{font-family:var(--sans);border-radius:9px;}
+input:focus,select:focus,textarea:focus{border-color:var(--gold) !important;box-shadow:0 0 0 3px var(--gold-soft);outline:none;}
+/* buttons: subtle lift on hover (colours stay per-page) */
+.btn{font-family:var(--sans);transition:.16s ease;}
+.btn:hover{transform:translateY(-1px);}
+/* refined scrollbar */
+::-webkit-scrollbar{width:11px;height:11px;}
+::-webkit-scrollbar-thumb{background:#20242e;border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+::-webkit-scrollbar-thumb:hover{background:#2c3140;background-clip:padding-box;}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important;}}

@@ -94,6 +94,9 @@
   .toast.show{opacity:1;}
   .empty{font-size:13px;color:var(--muted);line-height:1.6;padding:8px 2px;}
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
 </head>
 <body>
 <div class="wrap">
@@ -188,6 +191,7 @@
           <h2 style="margin:0;">Grading report</h2>
           <div style="display:flex;gap:8px;">
             <button class="btn" id="ebayBtn" onclick="findEbay()" title="eBay AU graded vs raw comps">🛒 eBay comps</button>
+            <button class="btn" id="invBtn" onclick="addToInventory()" title="Queue this card in the grading pipeline (Binders Keepers inventory)">📇 To pipeline</button>
             <button class="btn solid" id="pdfBtn" onclick="downloadPDF()">⬇ PDF</button>
           </div>
         </div>
@@ -570,6 +574,34 @@ function renderReport(pred, rf, rb){
 
   $('report').innerHTML=H;
   window._lastPred={pred:pred, econ:econ, rf:rf, rb:rb, bestCo:bestCo};
+}
+
+/* ============ Add to inventory (grading pipeline) ============ */
+// The pre-grader predicts a grade on a RAW card — it is NOT a slab grade (Golden Rule 4).
+// So "add to inventory" queues a grading-pipeline SUBMISSION (recommended company + tier +
+// predicted value as the declared value). When the real slab returns you promote it to
+// graded stock (with the actual grade) from the inventory dashboard.
+async function addToInventory(){
+  if(!(window.TCG&&TCG.addToInventory)){ toast('Inventory unavailable'); return; }
+  if(!_card){ toast('Look up a card first'); return; }
+  var L=window._lastPred;
+  if(!L){ toast('Generate a report first'); return; }
+  var co=L.bestCo||'PSA', p=L.pred&&L.pred.perCompany?L.pred.perCompany[co]:null;
+  var tier=(typeof cheapestTier==='function')?cheapestTier(co):null;
+  var valUSD=(p&&typeof valueAtGradeUSD==='function')?valueAtGradeUSD(co,p.grade):null;
+  var body={
+    game:'pokemon', identity_key:_card.id, name:_card.name, set_name:_card.set,
+    number:_card.number, variant:_card.finish||null, language:'EN',
+    grading_company:co, tier:tier?tier.tier:null,
+    declared_value_cents: valUSD!=null?Math.round(valUSD*100):null,
+    grading_cost_cents: (tier&&tier.price!=null)?Math.round(tier.price*100):null,
+    status:'draft',
+    notes:'From pre-grader — predicted '+co+' '+(p?gradeStr(p.grade):'?')+(p?' ('+p.confidence+' conf)':'')
+  };
+  try{
+    var r=await fetch('/api/inventory/submissions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    toast(r.ok?'✓ Queued in grading pipeline':'Add failed');
+  }catch(e){ toast('Add failed'); }
 }
 
 /* ============================ PDF ============================ */

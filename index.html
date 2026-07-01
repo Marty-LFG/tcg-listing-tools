@@ -3,61 +3,82 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TCG eBay Listing Tools</title>
+<title>TCG Listing Tools · Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  body{margin:0;min-height:100vh;background:#0a0e17;color:#eaf0fb;display:flex;align-items:center;justify-content:center;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px;}
-  .wrap{max-width:560px;width:100%;}
-  h1{font-size:22px;margin:0 0 4px;}
-  p.sub{color:#7e8db0;font-size:14px;margin:0 0 24px;}
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--green:#43d6a0;--amber:#f0c04a;--red:#f0666e;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:34px 24px 72px;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:46px 46px;-webkit-mask-image:radial-gradient(circle at 50% 10%,#000,transparent 80%);mask-image:radial-gradient(circle at 50% 10%,#000,transparent 80%);}
+  .wrap{max-width:600px;width:100%;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;}
+  .mast{display:flex;align-items:center;gap:15px;margin-bottom:26px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);letter-spacing:.02em;}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin:0;line-height:1.05;}
+  p.sub{color:var(--muted);font-size:12.5px;margin:5px 0 0;font-family:var(--mono);}
   .cards{display:grid;gap:14px;}
-  .cols{display:grid;gap:14px;}
-  .col{display:grid;gap:14px;align-content:start;}
+  .cols{display:grid;gap:16px;}
+  .col{display:grid;gap:16px;align-content:start;}
   .col .pricecard{margin-bottom:0;}
-  /* Desktop: two columns — tools/utilities left, games right. Stacks on narrow screens. */
   @media(min-width:920px){
-    .wrap{max-width:1060px;}
-    body{align-items:flex-start;}
+    .wrap{max-width:1080px;}
     .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start;}
   }
-  a.tool{display:block;text-decoration:none;border:1px solid #1f3050;border-radius:14px;padding:20px;background:#0e1a30;transition:.15s;}
-  a.tool:hover{border-color:#3a517e;transform:translateY(-2px);}
-  .eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
-  .rb .eyebrow{color:#c8aa6e;} .swu .eyebrow{color:#ffe81f;} .pkm .eyebrow{color:#f0c020;} .mtg .eyebrow{color:#c9923f;}
-  .lego .eyebrow{color:#ffcf00;} .funko .eyebrow{color:#27d3c4;} .trk .eyebrow{color:#36d399;} .ship .eyebrow{color:#5ab0ff;}
-  .grade .eyebrow{color:#d9a4ff;} .lorcana .eyebrow{color:#c9a24b;}
-  a.tool.trk{background:#0c1f1a;border-color:#1f5040;}
-  a.tool.ship{background:#0c1722;border-color:#234055;}
-  a.tool.grade{background:#160c24;border-color:#3a2456;}
-  .name{font-size:18px;font-weight:700;color:#fff;margin-top:4px;}
-  .desc{font-size:13px;color:#7e8db0;margin-top:6px;}
+  a.tool{display:block;text-decoration:none;border:1px solid var(--line);border-radius:16px;padding:18px 20px;background:linear-gradient(180deg,var(--panel),var(--bg2));transition:.18s ease;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  a.tool::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--gold),transparent 70%);opacity:0;transition:.18s;}
+  a.tool:hover{border-color:var(--line2);transform:translateY(-2px);}
+  a.tool:hover::before{opacity:.5;}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;}
+  .rb .eyebrow{color:#d4b072;} .swu .eyebrow{color:#ffe81f;} .pkm .eyebrow{color:#f0c04a;} .mtg .eyebrow{color:#d59a4a;}
+  .lego .eyebrow{color:#ffcf00;} .funko .eyebrow{color:#3fdccb;} .trk .eyebrow{color:#43d6a0;} .ship .eyebrow{color:#6ab0ff;}
+  .grade .eyebrow{color:#d9a4ff;} .lorcana .eyebrow{color:#cbb06a;} .inv .eyebrow{color:#5fd39c;}
+  .name{font-family:var(--sans);font-size:17px;font-weight:600;color:#fff;margin-top:5px;letter-spacing:-.01em;}
+  .desc{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.5;}
   a.tool.game{display:flex;align-items:center;gap:16px;}
-  .logo{flex:none;width:96px;height:62px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;padding:8px;}
+  .logo{flex:none;width:96px;height:62px;border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;padding:8px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);}
   .logo img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;}
   .tooltext{flex:1;min-width:0;}
-  .note{font-size:12px;color:#56627e;margin-top:24px;line-height:1.6;}
-  code{background:#11203a;padding:2px 6px;border-radius:5px;color:#c8aa6e;}
-  .pricecard{border:1px solid #1f3050;border-radius:14px;padding:18px 20px;background:#0e1a30;margin-bottom:22px;}
-  .pc-head{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:#36d399;margin-bottom:14px;}
+  .note{font-size:12px;color:var(--faint);margin-top:26px;line-height:1.6;}
+  code{font-family:var(--mono);background:rgba(212,176,114,.1);border:1px solid rgba(212,176,114,.25);padding:1px 6px;border-radius:6px;color:var(--gold);font-size:.9em;}
+  .pricecard{position:relative;border:1px solid var(--line);border-radius:16px;padding:18px 20px;background:linear-gradient(180deg,var(--panel),var(--bg2));margin-bottom:0;overflow:hidden;box-shadow:var(--shadow);}
+  .pricecard::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--green),transparent 70%);opacity:.55;}
+  .pc-head{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:var(--green);margin-bottom:14px;}
   .pc-grid{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;}
   .pc-field{flex:1;min-width:150px;}
-  .pc-field label{display:block;font-size:11px;color:#7e8db0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
-  .pc-inwrap{display:flex;align-items:center;gap:6px;background:#0a1424;border:1px solid #1f3050;border-radius:10px;padding:0 12px;}
-  .pc-inwrap span{color:#7e8db0;font-size:15px;}
-  .pc-inwrap input{flex:1;background:transparent;border:none;outline:none;color:#eaf0fb;font-size:20px;font-weight:700;padding:11px 0;width:100%;}
+  .pc-field label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.11em;margin-bottom:6px;font-weight:600;}
+  .pc-inwrap{display:flex;align-items:center;gap:6px;background:var(--ink);border:1px solid var(--line2);border-radius:10px;padding:0 12px;transition:.15s;}
+  .pc-inwrap:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .pc-inwrap span{color:var(--muted);font-size:15px;font-family:var(--mono);}
+  .pc-inwrap input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:20px;font-weight:600;padding:11px 0;width:100%;font-family:var(--mono);letter-spacing:-.01em;}
   .pc-result{flex:1;min-width:150px;}
-  .pc-result .lbl{font-size:11px;color:#7e8db0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
-  .pc-result .val{font-size:26px;font-weight:800;color:#fff;line-height:1;}
-  .pc-status{display:flex;align-items:center;gap:7px;font-size:13px;margin-top:9px;color:#aab5cf;}
-  .pc-status .dot{width:11px;height:11px;border-radius:50%;display:inline-block;}
-  .dot.ok{background:#36d399;} .dot.warn{background:#f0c020;} .dot.err{background:#f06262;}
-  .pc-note{font-size:12px;color:#56627e;margin-top:12px;line-height:1.5;}
+  .pc-result .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.11em;margin-bottom:6px;font-weight:600;}
+  .pc-result .val{font-family:var(--mono);font-size:27px;font-weight:600;color:#fff;line-height:1;letter-spacing:-.02em;}
+  .pc-status{display:flex;align-items:center;gap:7px;font-size:12.5px;margin-top:10px;color:var(--muted);font-family:var(--mono);}
+  .pc-status .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.6);} .dot.warn{background:var(--amber);} .dot.err{background:var(--red);}
+  .pc-note{font-size:12px;color:var(--faint);margin-top:12px;line-height:1.5;}
 </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>TCG eBay Listing Tools</h1>
-    <p class="sub">Pick a builder. Card data is proxied through this dev server, so lookups just work.</p>
+    <div class="mast">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>TCG Listing Tools</h1>
+        <p class="sub">Pick a builder — card data is proxied through this dev server, so lookups just work.</p>
+      </div>
+    </div>
     <div class="cols">
      <div class="col">
     <div class="pricecard">
@@ -76,6 +97,11 @@
       <div class="pc-note" id="pc_note">Buyer’s total includes eBay’s buyer protection fee (A$0.30 + tiered %). Some round totals aren’t reachable — you’ll get the closest.</div>
     </div>
     <div class="cards">
+      <a class="tool inv" href="/inventory.html">
+        <div class="eyebrow">Inventory &middot; Binders Keepers</div>
+        <div class="name">📇 Graded Card Inventory</div>
+        <div class="desc">Track graded-card stock, cost basis &amp; live P/L, on-demand graded valuation (PriceCharting + eBay sold), and the grading-submission pipeline. Groundwork for an eBay/Shopify source of truth.</div>
+      </a>
       <a class="tool grade" href="/card-grader.html">
         <div class="eyebrow">Pre-grading &middot; PSA / BGS / CGC / SGC / TAG</div>
         <div class="name">🔬 Card Pre-Grader</div>

@@ -56,6 +56,9 @@
   .toast.show{opacity:1;}
   .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
 </head>
 <body>
 <div class="wrap">
@@ -141,7 +144,7 @@
       </div>
       <iframe id="preview"></iframe>
       <div id="extras" style="margin-top:16px;"></div>
-      <div style="margin-top:14px;"><button class="btn" onclick="findRBComps()" title="Delivered prices (item + shipping), AU &amp; worldwide. Sold comps where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button> <button class="btn" onclick="addTrack()" title="Cache this card's price and track its trend over time">&#128202; Track price</button></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findRBComps()" title="Delivered prices (item + shipping), AU &amp; worldwide. Sold comps where eBay allows, else current asking.">&#128178; eBay comps (delivered AUD)</button> <button class="btn" onclick="addTrack()" title="Cache this card's price and track its trend over time">&#128202; Track price</button> <button class="btn" onclick="addInv()" title="Add this card to Binders Keepers inventory">&#128203; Add to inventory</button></div>
       <div id="ebayextras" style="margin-top:12px;"></div>
     </div>
   </div>
@@ -565,6 +568,14 @@ function copy(text,msg){const done=()=>showToast(msg);
 function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
 let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
 let _trk=null;
+async function addInv(){
+  if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
+  if(!(window.TCG&&TCG.addToInventory)){showToast('Inventory unavailable');return;}
+  const body=Object.assign({},_trk,{set_name:val('f_set')||null,number:val('f_num')||null,status:'in_stock'});
+  delete body.price;
+  const r=await TCG.addToInventory(body);
+  showToast(r?('Added to inventory ✓ '+(r.sku||'')):'Add failed');
+}
 async function addTrack(){
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   const r=await TCG.addToTracker(_trk);
