@@ -140,6 +140,8 @@ function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.get
 function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_name')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
 function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
 
+// MIRROR: genTitle/genPitch/buildHTML are ported in lib/listing-copy.mjs (bulk tool).
+// Edit both sides together and run scripts/check-listing-copy.mjs (Golden Rules 6/9).
 function genTitle(){
   var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),fin=val('f_finish'),lang=val('f_lang'),cond=val('f_cond');
   if(!window.TCG)return name;

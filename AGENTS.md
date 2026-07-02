@@ -452,3 +452,53 @@ item (Golden Rule 4); (d) multi-company cert lookup (`/api/cert`) — PSA auto-f
 from `data/grading.config.json` `fees[].turnaroundDays` — a calendar-day estimate). `POST
 /submissions/:id/promote` creates the graded `inventory_items` row carrying identity + grade + cert,
 folds `grading_cost_cents` into `acq_fees_cents`, and is idempotent (re-promote returns the same item).
+
+---
+
+## 14. Bulk listing tool (Binders Keepers: Bulk)
+
+Two workflows, one pipeline (full design in `docs/BULK_LISTING_DESIGN.md`, build order in
+`docs/BULK_LISTING_EXECUTION_PLAN.md`); the page is `bulk-listing-builder.html`, the API is
+`bulkPlugin(env)` → `/api/bulk/*` in `lib/bulk.mjs`:
+
+- **A — Enumerate a set** (`POST /api/bulk/enumerate`, Pokémon + Lorcana): every card expands
+  into one row per *(card × printing)* from its price-key set (`tcgplayer.prices` keys /
+  `usd`|`usd_foil`). `ENUMERATORS[game]` in `lib/enumerate.mjs` is an adapter table like
+  normalize's MAPPERS — a new game is one entry.
+- **B — Import a Collectr portfolio CSV** (`POST /api/bulk/import/collectr`, raw CSV body):
+  `lib/collectr.mjs` (pure parser: Variance→edition+finish, Grade→company/grade/label, verbatim
+  numbers, `Misty (18)` cleanup) + `lib/collectr-resolve.mjs` (best-effort enrich: fuzzy
+  set→identity with a **card-name overlap guard**, stock image, live price for raw rows,
+  PriceCharting graded ladder for slabs). Real fixtures: `data/samples/collectr-*.csv`.
+
+Both stream **NDJSON** (`{row}`… then `{summary}`) into the ONE grid (source switch, batch
+picker, include-checkbox per row, `mkt|tier|PC|ovr|needs price` chips). Pipeline:
+`POST /api/bulk/price` (hybrid: override > live market ≥ threshold > tier floor from
+`data/bulk-pricing.config.json`; graded: Collectr > PriceCharting > `needs_price` — NEVER
+fabricated, Golden Rule 4; `Math.round(x*100)` happens ONCE in `lib/pricing.mjs`, GR3) →
+`POST /api/inventory/batches` (`bulk_batches` header + `inventory_items` rows; raw rows upsert
+via the partial-unique `uq_inv_bulk_identity` [raw-only — graded slabs are always distinct
+physical items]; listed/sold rows are never touched; absent fields never null stored data) →
+`POST /api/bulk/export/csv` (File Exchange CSV, `CustomLabel`=SKU idempotency; validation
+errors HARD-block the whole export; artifact + `channel_exports` audit row).
+
+**Live eBay AU taxonomy (resolved 2026-07-02; pinned in `data/ebay-categories.json` [gitignored
+cache] + baked as defaults in `lib/channels/ebay-map.mjs`):** all card games → category
+**183454** "CCG Individual Cards"; the only required aspect is **Game**; conditionId 4000 raw /
+2750 graded; the Professional Grader enum covers PSA/BGS/CGC/SGC/TAG/ARK/CGA/…; only
+`Card Condition` + `Customised` are variation-enabled, so **multi-variation "pick your card" is
+EXPERIMENTAL** — per-card is the primary shape. 1st Edition maps to the `Features` aspect + a
+high-prio title token.
+
+**Mirror rules (extends Golden Rules 6/9):** `lib/listing-copy.mjs` holds verbatim ports of
+`extras.js` `fitTitle`/`condCode`/`langCode` and both builders' `genTitle`/`genPitch`/`buildHTML`
+(classic scripts can't import ESM), plus the single printing→finish→variant vocabulary and the
+GR6 wording constants (slab wording ⚠ pending owner sign-off). `lib/fees.mjs` is the one home
+for the AU fee bands (`index.html` imports it as a `<script type="module">`). **If you touch
+either side of any mirror, run `node scripts/check-listing-copy.mjs`** — byte-identical parity
+is the gate.
+
+**Validation (§8 style):** `scripts/check-{listing-copy,pricing,collectr,collectr-graded,collectr-ebay,enumerate}.mjs`
+— run all six after touching bulk code. Before uploading any REAL batch: eBay Seller Hub →
+Reports → Upload with a **3-row sample first** (the File Exchange multi-variation idiom is
+unverified on this account; Phase 2 Sell-API is gated on `sell.inventory` production approval).

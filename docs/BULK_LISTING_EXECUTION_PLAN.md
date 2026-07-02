@@ -2,7 +2,7 @@
 
 Companion to [BULK_LISTING_DESIGN.md](BULK_LISTING_DESIGN.md). This is the *build order*: PR-sized tasks, their dependencies, the gate that proves each one done, and which open decisions block which task.
 
-> **Status:** not started — no P0/P1 task has landed as of 2026-07-02. This is the intended build order, not a record of work done.
+> **Status (updated 2026-07-02): Phase 0 + Phase 1 LANDED**, including the Collectr import workflow (P1-9…P1-14 from the unified plan). Both workflows verified live: Base Set enumerate → price (30 market / 34 tier) → save → idempotent re-save (0 dup) → CSV export; the real Collectr graded export → 31+/33 resolved, all 3 slabs PriceCharting-priced, `needs_price` hard-block wired. Live taxonomy spike done (category **183454**, required aspect **Game**, variation support limited → per-card primary). Remaining: the owner's 3-row **sample upload gate** on the real eBay account (P1-7 hard gate — do this before any real batch), owner review of the slab wording, Phase 2 (`sell.inventory` approval + Sell API sink), Phase 3 (MTG/SWU/Riftbound enumerators, seller-net fees, sold-reconciliation).
 
 ## How to read this
 

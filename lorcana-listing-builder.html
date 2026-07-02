@@ -143,6 +143,8 @@ function rarAbbr(r){var rl=(r||'').toLowerCase();
   if(/\brare\b/.test(rl))return 'RARE';
   return '';}
 
+// MIRROR: rarAbbr/genTitle/genPitch/buildHTML are ported in lib/listing-copy.mjs (bulk
+// tool). Edit both sides together and run scripts/check-listing-copy.mjs (Golden Rules 6/9).
 function genTitle(){
   var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),variant=val('f_variant'),lang=val('f_lang'),cond=val('f_cond');
   if(!window.TCG)return name;

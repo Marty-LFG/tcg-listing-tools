@@ -177,16 +177,23 @@
           <div class="desc">Offline name/series catalog + manual flags, with live eBay AU price comps.</div>
         </div>
       </a>
+      <a class="tool game" href="/bulk-listing-builder.html">
+        <div class="logo" style="font-size:26px;display:flex;align-items:center;justify-content:center;">&#128230;</div>
+        <div class="tooltext">
+          <div class="eyebrow">Bulk &middot; Multi-game</div>
+          <div class="name">Bulk Listing Builder</div>
+          <div class="desc">Enumerate a whole set (commons/uncommons + holo variants) or import a Collectr portfolio CSV &rarr; price &rarr; eBay File Exchange CSV.</div>
+        </div>
+      </a>
      </div>
      </div>
     </div>
     <div class="note">Riftbound's Scrydex lookups need <code>SCRYDEX_API_KEY</code> and <code>SCRYDEX_TEAM_ID</code> in your <code>.env</code>. SWU needs nothing. LEGO uses <code>REBRICKABLE_API_KEY</code> / <code>BRICKSET_API_KEY</code> / BrickLink keys; Funko pricing uses <code>EBAY_APP_ID</code> / <code>EBAY_CERT_ID</code>. Every builder works for manual entry with no setup.<br><br>Heads-up: the price calculator above backs out the eBay <b>buyer-protection fee assuming free postage</b> — for large LEGO sets sold with <b>calculated postage</b> it won't include the postage component.</div>
   </div>
-<script>
-function feeAU(L){if(L<=0)return 0;var f=0.30;f+=0.08*Math.min(L,20);if(L>20)f+=0.06*(Math.min(L,500)-20);if(L>500)f+=0.04*(Math.min(L,5000)-500);return f;}
-function totalFromList(L){return Math.round((L+feeAU(L))*100)/100;}
-function listForTarget(T){if(T<=21.90)return (T-0.30)/1.08;if(T<=530.70)return (T-0.70)/1.06;if(T<=5210.70)return (T-10.70)/1.04;return T-210.70;}
-function pcSolve(T){if(!(T>0))return null;var Lc=Math.round(listForTarget(T)*100)/100;var best=null;for(var d=-4;d<=4;d++){var L=Math.round((Lc+d*0.01)*100)/100;if(L<=0)continue;var tot=totalFromList(L);var diff=Math.round((tot-T)*100);if(best===null||Math.abs(diff)<Math.abs(best.diff)||(Math.abs(diff)===Math.abs(best.diff)&&L<best.L))best={L:L,tot:tot,diff:diff};}return best;}
+<script type="module">
+// Fee math lives in lib/fees.mjs (single source — also used by lib/pricing.mjs).
+// Module script = deferred, so the elements below exist when this runs.
+import { totalFromList, pcSolve } from '/lib/fees.mjs';
 function pcFmt(n){return 'A$'+(Math.round(n*100)/100).toFixed(2);}
 function pcRender(){
   var T=parseFloat(document.getElementById('pc_target').value);

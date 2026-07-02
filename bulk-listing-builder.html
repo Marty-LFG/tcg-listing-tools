@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bulk Listing Builder — TCG Tools</title>
+<style>
+  :root{--gold:#f0c020;--line:#26305a;--muted:#8b94b8;--text:#e8ecf8;--field:#0e1430;--panel2:#141b3c;--panel:#101638;--ink:#0a0f28;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--gold)}
+  .wrap{max-width:1280px;margin:0 auto;padding:18px 20px 60px;}
+  h1{font-size:20px;margin:0 0 2px;} .sub{color:var(--muted);margin:0 0 16px;font-size:13px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px;}
+  label{display:block;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:0 0 4px;}
+  input,select{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:7px 9px;font:inherit;}
+  input:focus,select:focus{outline:none;border-color:var(--gold);}
+  .btn{background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:7px 14px;font:inherit;cursor:pointer;}
+  .btn:hover{border-color:var(--gold);} .btn.primary{background:var(--gold);color:#1a1a22;font-weight:700;border-color:var(--gold);}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+  .row>div{min-width:130px;flex:1;} .row>div.grow{flex:2;}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;}
+  .seg button{background:var(--panel2);border:0;color:var(--muted);padding:8px 16px;font:inherit;cursor:pointer;}
+  .seg button.on{background:var(--gold);color:#1a1a22;font-weight:700;}
+  .status{margin-top:8px;font-size:13px;color:var(--muted);} .status.ok{color:#79d67c;} .status.warn{color:#e6b34c;} .status.err{color:#f06262;}
+  .chip{display:inline-block;border-radius:6px;padding:0 6px;font-size:11px;font-weight:700;}
+  .chip.mkt{background:#173a24;color:#79d67c;} .chip.tier{background:#3a3117;color:#e6b34c;} .chip.pc{background:#17293a;color:#6db3e8;}
+  .chip.needs{background:#3a1717;color:#f06262;} .chip.override{background:#2a173a;color:#c58cf0;}
+  .chip.graded{background:#1c2b5e;color:#f0c020;} .chip.miss{background:#2a2a33;color:#9aa;}
+  #gridWrap{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:10px;}
+  table.grid{width:100%;border-collapse:collapse;font-size:13px;}
+  table.grid th{position:sticky;top:0;background:var(--panel2);text-align:left;padding:7px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);z-index:2;}
+  table.grid td{padding:5px 8px;border-top:1px solid var(--line);vertical-align:middle;}
+  table.grid td img{width:30px;height:42px;object-fit:contain;border-radius:3px;background:#000;}
+  table.grid input.cell{width:76px;padding:4px 6px;} table.grid input.qty{width:52px;}
+  .title-prev{color:var(--muted);font-size:12px;max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .foot{display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-top:12px;}
+  .foot b{color:var(--gold);} .foot .note{color:var(--muted);font-size:12px;}
+  .batchrow{display:flex;gap:10px;align-items:center;padding:9px 4px;border-top:1px solid var(--line);}
+  .batchrow:first-child{border-top:0;}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px;}
+  .pill{font-size:11px;border:1px solid var(--line);border-radius:20px;padding:1px 9px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bulk Listing Builder <span class="pill">Pokémon · Lorcana → eBay AU CSV</span></h1>
+  <p class="sub">Two ways in, one pipeline: enumerate a whole <b>set</b> (commons/uncommons with holo variants) or import a <b>Collectr</b> portfolio export — price the lot, save to inventory, export an eBay File Exchange CSV. <a href="/">← home</a></p>
+
+  <div class="seg" id="viewSeg">
+    <button class="on" data-v="build">Build</button>
+    <button data-v="batches">Batches</button>
+  </div>
+
+  <!-- ============================ BUILD VIEW ============================ -->
+  <div id="view_build">
+    <div class="card">
+      <div class="seg" id="srcSeg" style="margin-bottom:12px;">
+        <button class="on" data-s="enumerate">Enumerate set</button>
+        <button data-s="collectr">Import from Collectr</button>
+      </div>
+
+      <div id="src_enumerate">
+        <div class="row">
+          <div><label>Game</label>
+            <select id="e_game"><option value="pokemon">Pokémon</option><option value="lorcana">Disney Lorcana</option></select></div>
+          <div class="grow"><label>Set</label><select id="e_set"><option value="">loading sets…</option></select></div>
+          <div><label>Rarities</label>
+            <select id="e_rar"><option value="common,uncommon">Commons + Uncommons</option><option value="common">Commons only</option><option value="uncommon">Uncommons only</option><option value="">Everything (incl. rares)</option></select></div>
+          <div style="flex:0;"><button class="btn primary" id="e_go">Enumerate set</button></div>
+        </div>
+      </div>
+
+      <div id="src_collectr" style="display:none;">
+        <div class="row">
+          <div class="grow"><label>Collectr CSV export</label><input type="file" id="c_file" accept=".csv,text/csv"></div>
+          <div><label>Market Price currency</label>
+            <select id="c_cur"><option value="AUD">AUD (no conversion)</option><option value="USD">USD (convert via FX)</option></select></div>
+          <div><label>Enrich (live price + image)</label>
+            <select id="c_enrich"><option value="1">Best-effort (prefer live)</option><option value="0">Off — Collectr data only</option></select></div>
+          <div style="flex:0;"><button class="btn primary" id="c_go" disabled>Import</button></div>
+        </div>
+        <div class="hint">Vintage set names often won’t match the card APIs — those rows keep Collectr’s own data (badge <span class="chip miss">unmatched</span>) and are still listable. Graded slabs with no market price get a PriceCharting graded value, or <span class="chip needs">needs price</span>.</div>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <div class="grow"><label>Save into batch</label>
+          <select id="b_pick"><option value="">➕ New batch</option></select></div>
+        <div class="grow"><label>New batch name</label><input id="b_name" placeholder="e.g. Paldea Evolved bulk / 30th Vintage"></div>
+        <div><label>Listing shape</label>
+          <select id="b_shape"><option value="per_card">One listing per card</option><option value="multi_variation">Multi-variation (experimental)</option></select></div>
+      </div>
+      <div class="status" id="status">Pick a source above to begin.</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:8px;">
+        <div style="flex:0;white-space:nowrap;"><button class="btn" id="selAll">Select all</button> <button class="btn" id="selNone">None</button> <button class="btn" id="selMkt" title="Deselect rows with no market data">Only w/ market</button></div>
+        <div style="flex:0;white-space:nowrap;"><label style="display:inline">Qty for selected&nbsp;</label><input id="qtyAll" class="cell" style="width:60px;display:inline-block" type="number" min="1" placeholder="–"><button class="btn" id="qtyApply">Set</button></div>
+        <div style="flex:1;"></div>
+        <div style="flex:0;white-space:nowrap;">
+          <button class="btn" id="priceBtn" disabled>💲 Price rows</button>
+          <button class="btn" id="saveBtn" disabled>💾 Save batch</button>
+          <button class="btn primary" id="exportBtn" disabled>⬇ Export eBay CSV</button>
+        </div>
+      </div>
+      <div id="gridWrap">
+        <table class="grid"><thead><tr>
+          <th><input type="checkbox" id="hdrChk" checked></th><th></th><th>Card</th><th>No.</th><th>Rarity</th><th>Variant</th>
+          <th>Badges</th><th>Market A$</th><th>Price A$</th><th>Qty</th><th>Title preview</th>
+        </tr></thead><tbody id="gridBody"><tr><td colspan="11" style="color:var(--muted);padding:22px;">No rows yet — enumerate a set or import a Collectr CSV.</td></tr></tbody></table>
+      </div>
+      <div class="foot">
+        <span id="f_count">0 rows</span>
+        <span>Total list value <b id="f_value">A$0.00</b></span>
+        <span>Est. buyer-protection fees <b id="f_fees">A$0.00</b></span>
+        <span class="note">Fees = eBay AU buyer-protection only (not seller net / insertion fees — AGENTS.md §10).</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ BATCHES VIEW ============================ -->
+  <div id="view_batches" style="display:none;">
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <div><h1 style="font-size:16px;margin:0;">Saved batches</h1></div>
+        <div style="flex:1"></div>
+        <div style="flex:0"><button class="btn" id="bRefresh">↻ Refresh</button></div>
+      </div>
+      <div id="batchList" style="margin-top:10px;"><div class="hint">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="/extras.js"></script>
+<script type="module">
+import { buildTitle, rowToFields } from '/lib/listing-copy.mjs';
+import { feeAU } from '/lib/fees.mjs';
+
+const $ = (id) => document.getElementById(id);
+const S = (cls, msg) => { const el = $('status'); el.className = 'status ' + cls; el.textContent = msg; };
+
+// ---------------- state ----------------
+let rows = [];            // canonical rows (ImportRow shape) — the single grid model
+let batchId = null;       // set after save (or picking an existing batch)
+let saved = false;
+let source = 'enumerate';
+
+// ---------------- view/segment switching ----------------
+$('viewSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  [...$('viewSeg').children].forEach((x) => x.classList.toggle('on', x === b));
+  $('view_build').style.display = b.dataset.v === 'build' ? '' : 'none';
+  $('view_batches').style.display = b.dataset.v === 'batches' ? '' : 'none';
+  if (b.dataset.v === 'batches') loadBatches();
+});
+$('srcSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  source = b.dataset.s;
+  [...$('srcSeg').children].forEach((x) => x.classList.toggle('on', x === b));
+  $('src_enumerate').style.display = source === 'enumerate' ? '' : 'none';
+  $('src_collectr').style.display = source === 'collectr' ? '' : 'none';
+});
+
+// ---------------- set picker + batch picker ----------------
+async function loadSets() {
+  const game = $('e_game').value;
+  $('e_set').innerHTML = '<option value="">loading…</option>';
+  try {
+    const r = await fetch('/api/bulk/sets?game=' + game);
+    const j = await r.json();
+    $('e_set').innerHTML = (j.sets || []).map((s) => `<option value="${s.value}" data-name="${(s.label || '').replace(/"/g, '&quot;')}">${s.label}${s.code ? ' (' + s.code + ')' : ''}</option>`).join('') || '<option value="">no sets (proxy down?)</option>';
+  } catch { $('e_set').innerHTML = '<option value="">sets unavailable — proxy down (GR7: manual entry still works in single builders)</option>'; }
+}
+$('e_game').addEventListener('change', loadSets);
+loadSets();
+
+async function loadBatchPicker() {
+  try {
+    const r = await fetch('/api/inventory/batches');
+    const j = await r.json();
+    const cur = $('b_pick').value;
+    $('b_pick').innerHTML = '<option value="">➕ New batch</option>' + (j.batches || []).map((b) =>
+      `<option value="${b.id}">#${b.id} ${b.set_name || b.game || ''} · ${b.source} · ${b.item_count} items · ${b.status}</option>`).join('');
+    $('b_pick').value = cur;
+  } catch {}
+}
+loadBatchPicker();
+$('b_pick').addEventListener('change', () => { batchId = $('b_pick').value ? +$('b_pick').value : null; saved = !!batchId; refreshButtons(); });
+
+// ---------------- NDJSON consumption (shared by both sources) ----------------
+async function consumeNdjson(resp, label) {
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', added = 0, summary = null;
+  const act = window.TCG ? TCG.activity(label) : null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let obj; try { obj = JSON.parse(line); } catch { continue; }
+      if (obj.row) { obj.row._inc = true; rows.push(obj.row); added++; if (added % 25 === 0) { act && act.update(added + ' rows…'); renderGrid(); } }
+      else if (obj.summary) summary = obj.summary;
+    }
+  }
+  renderGrid();
+  act && act.done(added + ' rows');
+  return { added, summary };
+}
+
+// ---------------- Workflow A: enumerate ----------------
+$('e_go').addEventListener('click', async () => {
+  const game = $('e_game').value, setId = $('e_set').value;
+  if (!setId) return S('warn', 'Pick a set first.');
+  const setName = $('e_set').selectedOptions[0]?.dataset?.name || '';
+  const rar = $('e_rar').value ? $('e_rar').value.split(',') : null;
+  rows = []; saved = false; batchId = $('b_pick').value ? +$('b_pick').value : null;
+  if (!$('b_name').value) $('b_name').value = setName + ' bulk';
+  S('ok', 'Enumerating ' + setName + '…');
+  try {
+    const r = await fetch('/api/bulk/enumerate', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game, setId, setName, filters: rar ? { rarities: rar } : undefined }) });
+    if (!r.ok) return S('err', 'Enumerate failed (' + r.status + ') — ' + (await r.text()).slice(0, 200));
+    const { added, summary } = await consumeNdjson(r, 'Enumerating ' + setName);
+    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows (card × printing)' + (summary && summary.warnings.length ? ' · ' + summary.warnings.length + ' warnings' : '') + '. Now: 💲 Price rows.');
+  } catch (e) { S('err', 'Enumerate failed — is the dev server proxy running? ' + e.message); }
+  refreshButtons();
+});
+
+// ---------------- Workflow B: Collectr import ----------------
+$('c_file').addEventListener('change', () => { $('c_go').disabled = !$('c_file').files.length; });
+$('c_go').addEventListener('click', async () => {
+  const f = $('c_file').files[0]; if (!f) return;
+  const text = await f.text();
+  rows = []; saved = false; batchId = $('b_pick').value ? +$('b_pick').value : null;
+  S('ok', 'Importing ' + f.name + '…');
+  try {
+    const r = await fetch('/api/bulk/import/collectr?market_currency=' + $('c_cur').value + '&enrich=' + $('c_enrich').value,
+      { method: 'POST', headers: { 'content-type': 'text/csv' }, body: text });
+    if (!r.ok) return S('err', 'Import failed (' + r.status + ') — ' + (await r.text()).slice(0, 200));
+    const { added, summary } = await consumeNdjson(r, 'Importing Collectr CSV');
+    if (summary && !$('b_name').value) $('b_name').value = (summary.portfolios || [])[0] || f.name.replace(/\.csv$/i, '');
+    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows · ' + (summary ? summary.resolved + ' matched, ' + summary.graded + ' graded, ' + summary.needs_price + ' need a price, ' + summary.unsupported_game + ' unsupported-game' : '') + '. Now: 💲 Price rows.');
+  } catch (e) { S('err', 'Import failed — ' + e.message); }
+  refreshButtons();
+});
+
+// ---------------- pricing ----------------
+$('priceBtn').addEventListener('click', async () => {
+  const act = window.TCG ? TCG.activity('Pricing ' + rows.length + ' rows') : null;
+  try {
+    const r = await fetch('/api/bulk/price', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rows: rows.map((x) => ({ game: x.game, rarity: x.rarity, finish: x.finish, graded: x.graded,
+        override_aud: x.override_aud, market_aud: x.market_aud, market_usd: x.market_usd, pc_value_usd: x.pc_value_usd })) }) });
+    const j = await r.json();
+    (j.rows || []).forEach((p, i) => { if (!rows[i]) return; if (rows[i]._manual) return;   // user-typed price wins
+      rows[i].price_cents = p.price_cents; rows[i].value_source = p.value_source; rows[i].market_cents = p.market_cents; });
+    window._fx = j.fx_usd_aud;
+    act && act.done('priced');
+    renderGrid();
+    S('ok', '✓ priced (override > live market > tier floor; graded: Collectr > PriceCharting > needs-price). FX ' + (j.fx_usd_aud || 'n/a'));
+  } catch (e) { act && act.fail(); S('err', 'Pricing failed — ' + e.message); }
+  refreshButtons();
+});
+
+// ---------------- save ----------------
+$('saveBtn').addEventListener('click', async () => {
+  const inc = rows.filter((r) => r._inc);
+  if (!inc.length) return S('warn', 'No rows selected.');
+  const games = [...new Set(inc.map((r) => r.game).filter(Boolean))];
+  const body = {
+    batch_id: batchId || undefined,
+    batch: { game: games.length === 1 ? games[0] : null, source, set_name: $('b_name').value || null,
+             listing_shape: $('b_shape').value, fx_usd_aud: window._fx || null, status: 'saved' },
+    link_watchlist: true,
+    rows: inc.map((r) => ({ game: r.game, identity_key: r.identity_key, name: r.name, set_name: r.set_name,
+      number: r.number, variant: r.variant, language: r.language, rarity: r.rarity, edition: r.edition,
+      condition: r.condition, graded: r.graded, grading_company: r.grading_company, grade: r.grade,
+      grade_label: r.grade_label, image: r.image, quantity: r.quantity, price_cents: r.price_cents,
+      value_source: r.value_source, market_cents: r.market_cents,
+      cost_cents: r.cost_aud != null ? Math.round(r.cost_aud * 100) : null, notes: r.notes })),
+  };
+  const act = window.TCG ? TCG.activity('Saving batch') : null;
+  try {
+    const r = await fetch('/api/inventory/batches', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) { act && act.fail(); return S('err', 'Save failed — ' + (j.error || r.status)); }
+    batchId = j.batch_id; saved = true;
+    act && act.done('#' + j.batch_id);
+    S('ok', '✓ saved batch #' + j.batch_id + ' — ' + j.inserted + ' new, ' + j.updated + ' updated, ' + j.skipped + ' skipped (listed/sold untouched)' + (j.errors.length ? ', ' + j.errors.length + ' errors' : ''));
+    loadBatchPicker();
+  } catch (e) { act && act.fail(); S('err', 'Save failed — ' + e.message); }
+  refreshButtons();
+});
+
+// ---------------- export ----------------
+$('exportBtn').addEventListener('click', async () => {
+  if (!batchId) return S('warn', 'Save the batch first.');
+  const act = window.TCG ? TCG.activity('Exporting eBay CSV') : null;
+  try {
+    const r = await fetch('/api/bulk/export/csv', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ batch_id: batchId, shape: $('b_shape').value }) });
+    if (r.status === 422) {
+      const j = await r.json();
+      act && act.fail('blocked');
+      return S('err', '⛔ ' + j.error + ' — first: ' + (j.problems || []).slice(0, 3).map((p) => p.sku + ': ' + p.errors[0]).join(' · '));
+    }
+    if (!r.ok) { act && act.fail(); return S('err', 'Export failed (' + r.status + ')'); }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ebay-bulk-batch' + batchId + '.csv';
+    a.click(); URL.revokeObjectURL(a.href);
+    act && act.done();
+    S('ok', '✓ CSV exported — upload via eBay Seller Hub → Reports → Upload. Validate with a small sample first!');
+  } catch (e) { act && act.fail(); S('err', 'Export failed — ' + e.message); }
+});
+
+// ---------------- grid (windowed render) ----------------
+const WINDOW = 60;
+let winStart = 0;
+$('gridWrap').addEventListener('scroll', () => {
+  const el = $('gridWrap');
+  const per = 54;   // approx row px
+  const start = Math.max(0, Math.floor(el.scrollTop / per) - 10);
+  if (Math.abs(start - winStart) > 8) { winStart = start; renderGrid(true); }
+});
+
+function badge(r) {
+  const b = [];
+  if (r.graded) b.push('<span class="chip graded">' + (r.grading_company || 'GRADED') + ' ' + (r.grade != null ? r.grade : '') + '</span>');
+  if (r.edition && /1st/i.test(r.edition)) b.push('<span class="chip pc">1st Ed</span>');
+  if (r.source === 'collectr' && !r.game) b.push('<span class="chip needs">unsupported</span>');
+  else if (r.source === 'collectr' && !r.resolved) b.push('<span class="chip miss">unmatched</span>');
+  if (r.value_source === 'needs_price') b.push('<span class="chip needs">needs price</span>');
+  return b.join(' ');
+}
+function srcChip(r) {
+  if (r.value_source === 'market') return '<span class="chip mkt">mkt</span>';
+  if (r.value_source === 'bulk_tier') return '<span class="chip tier">tier</span>';
+  if (r.value_source === 'pricecharting') return '<span class="chip pc">PC</span>';
+  if (r.value_source === 'override') return '<span class="chip override">ovr</span>';
+  return '';
+}
+const A$ = (c) => c == null ? '—' : 'A$' + (c / 100).toFixed(2);
+
+function renderGrid(windowOnly) {
+  const tb = $('gridBody');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="11" style="color:var(--muted);padding:22px;">No rows yet.</td></tr>'; updateFoot(); return; }
+  const slice = rows.slice(winStart, winStart + WINDOW);
+  const padTop = winStart * 54, padBot = Math.max(0, (rows.length - winStart - slice.length) * 54);
+  tb.innerHTML =
+    (padTop ? `<tr style="height:${padTop}px"><td colspan="11"></td></tr>` : '') +
+    slice.map((r, i) => {
+      const gi = winStart + i;
+      let title = '';
+      try { title = (r.title_override || buildTitle(r.game || 'pokemon', rowToFields(r))); } catch {}
+      return `<tr data-i="${gi}">
+        <td><input type="checkbox" class="inc" ${r._inc ? 'checked' : ''}></td>
+        <td>${r.image ? `<img loading="lazy" src="${r.image}">` : ''}</td>
+        <td>${r.name || ''}<div class="title-prev">${r.set_name || ''}</div></td>
+        <td>${r.number || ''}</td><td>${r.rarity || ''}</td><td>${r.variant || ''}</td>
+        <td>${badge(r)}</td>
+        <td>${A$(r.market_cents)} ${srcChip(r)}</td>
+        <td><input class="cell price" type="number" step="0.01" min="0" value="${r.price_cents != null ? (r.price_cents / 100).toFixed(2) : ''}"></td>
+        <td><input class="cell qty" type="number" min="1" value="${r.quantity || 1}"></td>
+        <td class="title-prev" title="${title.replace(/"/g, '&quot;')}">${title} <span class="pill">${title.length}</span></td>
+      </tr>`;
+    }).join('') +
+    (padBot ? `<tr style="height:${padBot}px"><td colspan="11"></td></tr>` : '');
+  if (!windowOnly) updateFoot();
+}
+
+$('gridBody').addEventListener('change', (e) => {
+  const tr = e.target.closest('tr[data-i]'); if (!tr) return;
+  const r = rows[+tr.dataset.i]; if (!r) return;
+  if (e.target.classList.contains('inc')) r._inc = e.target.checked;
+  else if (e.target.classList.contains('price')) { const v = parseFloat(e.target.value); r.price_cents = isFinite(v) ? Math.round(v * 100) : null; r.value_source = 'override'; r._manual = true; }
+  else if (e.target.classList.contains('qty')) r.quantity = Math.max(1, Math.round(+e.target.value || 1));
+  updateFoot();
+});
+$('hdrChk').addEventListener('change', (e) => { rows.forEach((r) => r._inc = e.target.checked); renderGrid(); });
+$('selAll').addEventListener('click', () => { rows.forEach((r) => r._inc = true); renderGrid(); });
+$('selNone').addEventListener('click', () => { rows.forEach((r) => r._inc = false); renderGrid(); });
+$('selMkt').addEventListener('click', () => { rows.forEach((r) => r._inc = r.market_cents != null || r.value_source === 'pricecharting' || r.override_aud != null); renderGrid(); });
+$('qtyApply').addEventListener('click', () => { const v = Math.max(1, Math.round(+$('qtyAll').value || 0)); if (!v) return; rows.forEach((r) => { if (r._inc) r.quantity = v; }); renderGrid(); });
+
+let footT = null;
+function updateFoot() {
+  clearTimeout(footT);
+  footT = setTimeout(() => {
+    const inc = rows.filter((r) => r._inc);
+    const cents = inc.reduce((a, r) => a + (r.price_cents || 0) * (r.quantity || 1), 0);
+    const fees = inc.reduce((a, r) => a + (r.price_cents ? feeAU(r.price_cents / 100) * (r.quantity || 1) : 0), 0);
+    $('f_count').textContent = inc.length + ' of ' + rows.length + ' rows selected';
+    $('f_value').textContent = A$(cents);
+    $('f_fees').textContent = 'A$' + fees.toFixed(2);
+  }, 150);
+}
+function refreshButtons() {
+  $('priceBtn').disabled = !rows.length;
+  $('saveBtn').disabled = !rows.length;
+  $('exportBtn').disabled = !batchId || !saved;
+}
+
+// ---------------- batches view ----------------
+async function loadBatches() {
+  const el = $('batchList');
+  try {
+    const r = await fetch('/api/inventory/batches');
+    const j = await r.json();
+    if (!(j.batches || []).length) { el.innerHTML = '<div class="hint">No batches yet.</div>'; return; }
+    el.innerHTML = j.batches.map((b) => `
+      <div class="batchrow" data-id="${b.id}">
+        <div style="min-width:46px;color:var(--muted)">#${b.id}</div>
+        <div style="flex:2"><b>${b.set_name || b.game || '(unnamed)'}</b><div class="hint">${b.source} · ${b.game || 'mixed'} · shape ${b.listing_shape}</div></div>
+        <div style="flex:1">${b.item_count} items · ${b.unit_count} units</div>
+        <div style="flex:1">${b.listed_count} listed · ${b.sold_count} sold</div>
+        <div><span class="pill">${b.status}</span></div>
+        <div style="white-space:nowrap">
+          <button class="btn act-open">Open in grid</button>
+          <button class="btn act-listed" title="Mark every in-stock item listed">Mark listed</button>
+          <button class="btn act-export">⬇ CSV</button>
+        </div>
+      </div>`).join('');
+  } catch (e) { el.innerHTML = '<div class="hint">Failed to load — ' + e.message + '</div>'; }
+}
+$('bRefresh').addEventListener('click', loadBatches);
+$('batchList').addEventListener('click', async (e) => {
+  const rowEl = e.target.closest('.batchrow'); if (!rowEl) return;
+  const id = +rowEl.dataset.id;
+  if (e.target.classList.contains('act-open')) {
+    const r = await fetch('/api/inventory/batches/' + id);
+    const j = await r.json();
+    rows = (j.items || []).map((it) => ({
+      source: j.batch.source, game: it.game, identity_key: it.identity_key, name: it.name,
+      set_name: it.set_name, number: it.number, variant: it.variant, language: it.language,
+      rarity: it.rarity, edition: it.edition, condition: it.condition,
+      graded: !!it.grading_company, grading_company: it.grading_company, grade: it.grade, grade_label: it.grade_label,
+      image: it.image_url, quantity: it.quantity, price_cents: it.target_price_cents,
+      value_source: it.value_source, market_cents: it.value_currency === 'AUD' ? it.value_cents : null,
+      cost_aud: it.cost_cents != null ? it.cost_cents / 100 : null, notes: it.notes,
+      title_override: it.title_override, resolved: !!it.identity_key, _inc: it.status === 'in_stock',
+      finish: /reverse/i.test(it.variant || '') ? 'Reverse Holofoil' : /holo/i.test(it.variant || '') ? 'Holofoil' : /enchanted/i.test(it.variant || '') ? 'Enchanted' : /foil/i.test(it.variant || '') ? 'Foil' : 'Normal',
+      _status: it.status,
+    }));
+    batchId = id; saved = true;
+    $('b_pick').value = String(id);
+    document.querySelector('#viewSeg button[data-v="build"]').click();
+    renderGrid(); refreshButtons();
+    S('ok', '✓ batch #' + id + ' loaded — ' + rows.length + ' rows (' + rows.filter((r) => !r._inc).length + ' listed/sold deselected).');
+  } else if (e.target.classList.contains('act-listed')) {
+    await fetch('/api/inventory/batches/' + id + '/mark', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ to: 'listed' }) });
+    loadBatches();
+  } else if (e.target.classList.contains('act-export')) {
+    const r = await fetch('/api/bulk/export/csv', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ batch_id: id, shape: 'per_card' }) });
+    if (r.status === 422) { const j = await r.json(); alert('Export blocked:\n' + (j.problems || []).map((p) => p.sku + ': ' + p.errors.join(', ')).join('\n')); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'ebay-bulk-batch' + id + '.csv'; a.click(); URL.revokeObjectURL(a.href);
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "_comment": "Bulk-listing hybrid pricing config (owner-editable, live-read per request — no restart needed). Tier floors are CONSERVATIVE owner-set floors, not market claims (Golden Rule 4): an un-edited batch under-prices. All amounts AUD floats; the engine converts to integer cents exactly once.",
+  "currency": "AUD",
+  "min_price_aud": 0.49,
+  "rounding_endings": [0.49, 0.99],
+  "market_threshold_aud": {
+    "_comment": "At/above this, the live market price is used (rounded); below it the tier floor applies.",
+    "default": 2.0
+  },
+  "tiers": {
+    "_comment": "tiers[game][rarityClass][finishClass] AUD floor. rarityClass: common|uncommon|rare|default. finishClass: Base|Holo|Reverse Holo|Foil|Enchanted|default.",
+    "pokemon": {
+      "common":   { "Base": 0.49, "Reverse Holo": 1.49, "Holo": 1.99, "default": 0.99 },
+      "uncommon": { "Base": 0.69, "Reverse Holo": 1.49, "Holo": 1.99, "default": 0.99 },
+      "rare":     { "Base": 0.99, "Reverse Holo": 1.99, "Holo": 2.49, "default": 1.99 },
+      "default":  { "Base": 0.99, "default": 1.99 }
+    },
+    "lorcana": {
+      "common":   { "Base": 0.49, "Foil": 1.49, "default": 0.99 },
+      "uncommon": { "Base": 0.69, "Foil": 1.49, "default": 0.99 },
+      "rare":     { "Base": 0.99, "Foil": 1.99, "default": 1.99 },
+      "default":  { "Base": 0.99, "default": 1.99 }
+    },
+    "default": { "default": { "default": 0.99 } }
+  }
+}

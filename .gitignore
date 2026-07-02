@@ -6,3 +6,11 @@ data/tracker.db
 data/tracker.db-wal
 data/tracker.db-shm
 reports/
+
+# eBay channel secrets + artifacts (bulk listing tool) — NEVER commit.
+# data/ebay-oauth.json holds the Sell-API refresh token (a long-lived credential);
+# data/ebay-categories.json is a pinned live-Taxonomy cache; data/exports/ holds
+# generated listing CSVs. data/samples/ (test fixtures) stays tracked.
+data/ebay-oauth.json
+data/ebay-*.json
+data/exports/

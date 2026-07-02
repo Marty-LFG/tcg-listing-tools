@@ -1,0 +1,4 @@
+{
+  "_comment": "Collectr import defaults (owner-editable, live-read). market_currency: the currency Collectr's 'Market Price' column is displayed in for THIS account — the owner's Collectr shows AUD (confirmed 2026-07-02), so no FX is applied; set to USD to convert via /api/fx instead. Overridable per import via ?market_currency=.",
+  "market_currency": "AUD"
+}

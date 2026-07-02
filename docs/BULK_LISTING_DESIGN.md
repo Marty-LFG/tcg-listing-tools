@@ -1,7 +1,16 @@
 # Bulk eBay Listing Tool — Design & Phased Plan ("Binders Keepers: Bulk")
 
 **Repo:** `C:\_dev\tcg-listing-tools` · **Market:** eBay AU · **Money:** integer cents throughout
-**Status:** design (not yet built) — *re-verified against repo HEAD on 2026-07-02: still 0% built; all premises about the shipped inventory schema confirmed current; internal line-number citations refreshed.* Produced from a 6-dimension design pass + adversarial critique against the 9 Golden Rules and real eBay AU constraints.
+**Status:** **Phase 0 + Phase 1 BUILT (2026-07-02)** — both workflows (set enumeration + Collectr CSV import) work end-to-end through pricing → inventory persistence → eBay File Exchange CSV, verified live against the running dev server + the real Collectr exports (`data/samples/`). Harness suite: `scripts/check-{listing-copy,pricing,collectr,collectr-graded,collectr-ebay,enumerate}.mjs` — all green. Phase 2 (Sell Inventory API) remains gated on `sell.inventory` production approval.
+
+**Live findings that amended this design during the build (2026-07-02):**
+- **eBay AU taxonomy resolved live** (tree 15 v125): ALL card games land in category **183454 "CCG Individual Cards"**; the ONLY required aspect is **Game**; `Card Condition` values are a 4-value enum; the Professional Grader enum covers PSA/BGS/CGC/SGC/TAG/ARK/CGA/…. Pinned in `data/ebay-categories.json` (gitignored live cache) + baked as defaults in `lib/channels/ebay-map.mjs`.
+- **Multi-variation constraint confirmed:** only `Card Condition`/`Customised` are variation-enabled in 183454 — card-per-variation listings are NOT aspect-supported on EBAY_AU. **Per-card is the primary shape**; the variation CSV (custom `Card` specific) ships EXPERIMENTAL behind the sample-upload gate.
+- **Mirror-with-parity-harness instead of runtime delegation:** the builders' classic `<script>`s can't import ESM, so `lib/listing-copy.mjs` + `lib/fees.mjs` are **verbatim ports** (the repo's existing GR9 convention) enforced by `scripts/check-listing-copy.mjs` byte-identical parity — not live delegation from `extras.js`. `index.html`'s calculator DOES import `lib/fees.mjs` directly (it became a `<script type="module">`). MIRROR comments mark all browser-side copies.
+- **Wrong-set guard:** the fuzzy set-matcher verifies the fetched card's NAME overlaps the row's name before accepting an identity (a bad fuzzy match otherwise attaches the wrong price/image); set-name-in-query matches prefer the LONGEST contained name ("Sun & Moon Base Set" → "Sun & Moon", not "Base") and a trailing "… Base Set" alias is tried.
+- **Slab wording (⚠ owner-review):** graded listings swap the card condition/postage lines for slab-appropriate wording (`SLAB_CONDITION_SUFFIX`/`SLAB_POSTAGE` in `lib/listing-copy.mjs`) — new copy, pending owner verification per GR6.
+
+Original design (produced from a 6-dimension design pass + adversarial critique against the 9 Golden Rules and real eBay AU constraints) follows.
 
 ---
 

@@ -679,6 +679,9 @@
     } catch (e) { S('err', 'eBay lookup blocked (proxy not running?).'); }
   };
 
+  // MIRROR: condCode/langCode/fitTitle are ported verbatim in lib/listing-copy.mjs
+  // (the bulk tool's shared copy — classic scripts can't import ESM). If you edit
+  // any of the three, edit BOTH sides and run scripts/check-listing-copy.mjs.
   TCG.condCode=function(s){
     s=(s||'').trim();var l=s.toLowerCase();
     var g=l.match(/(psa|cgc|bgs|sgc)\s*([0-9]+(?:\.5)?)/);
