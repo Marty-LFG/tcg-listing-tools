@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import crypto from 'node:crypto'
 import { trackerPlugin } from './lib/tracker.mjs'
+import { repricerPlugin } from './lib/repricer.mjs'
 import { lookup as pcLookup } from './lib/pricecharting.mjs'
 import { analyzeCard } from './lib/grader.mjs'
 import { printConfig, buildJob, sendToPrinter } from './lib/labelprint.mjs'
@@ -349,7 +350,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), repricerPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

@@ -5,4 +5,8 @@ dist
 data/tracker.db
 data/tracker.db-wal
 data/tracker.db-shm
+data/repricer.db
+data/repricer.db-wal
+data/repricer.db-shm
+data/ebay-user-token.json
 reports/
