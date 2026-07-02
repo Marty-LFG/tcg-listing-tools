@@ -90,7 +90,7 @@
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
   <div class="tag">Shipping &middot; Thermal labels</div>
   <h1>Shipping Label Maker</h1>
-  <p class="sub">Paste the address you copied from eBay &rarr; get a print-ready <b id="subSize">50 &times; 30 mm</b> PDF for AUSPRINT. The <code>ebay:</code> username and phone line are stripped automatically; the font auto-fits with a 5 mm safe margin.</p>
+  <p class="sub">Paste the address you copied from eBay &rarr; get a print-ready <b id="subSize">100 &times; 50 mm</b> PDF for AUSPRINT. The <code>ebay:</code> username and phone line are stripped automatically; the font auto-fits with a 5 mm safe margin.</p>
 
   <div class="grid">
     <!-- LEFT: input + controls -->
@@ -111,8 +111,8 @@
         <div class="grp">
           <label>Label size</label>
           <div class="pills" id="sizePills">
-            <span class="pill on" data-v="50x30" onclick="setSize('50x30')">50 &times; 30</span>
-            <span class="pill" data-v="100x50" onclick="setSize('100x50')">100 &times; 50</span>
+            <span class="pill" data-v="50x30" onclick="setSize('50x30')">50 &times; 30</span>
+            <span class="pill on" data-v="100x50" onclick="setSize('100x50')">100 &times; 50</span>
           </div>
         </div>
         <div class="grp">
@@ -170,7 +170,7 @@
     <!-- RIGHT: preview + output -->
     <div class="card">
       <div class="previewhead">
-        <label style="margin:0;">Preview &middot; <span id="prevSize">50 &times; 30 mm</span></label>
+        <label style="margin:0;">Preview &middot; <span id="prevSize">100 &times; 50 mm</span></label>
       </div>
       <iframe id="preview" title="Label preview"></iframe>
       <div class="status load" id="status" style="margin-top:10px;">Paste an eBay address to begin.</div>
@@ -202,7 +202,7 @@ var SIZES = {
   '50x30':  { short:'50 × 30',  full:'50 × 30 mm',  w:50,  h:30, minPt:5, maxPt:14, hardMax:40 },
   '100x50': { short:'100 × 50', full:'100 × 50 mm', w:100, h:50, minPt:8, maxPt:28, hardMax:60 }
 };
-var curSize = '50x30';
+var curSize = '100x50';
 var AU_STATES = 'NSW|VIC|QLD|SA|WA|TAS|ACT|NT';
 var COUNTRY_RE = /^(australia|new zealand|aotearoa|united states( of america)?|usa|u\.s\.a\.|united kingdom|u\.k\.|uk|england|scotland|wales|canada|ireland|singapore|germany|france|japan|china|hong kong|new caledonia|fiji|papua new guinea)$/i;
 var SYM_OK = '\u2713', SYM_WARN = '\u26a0', SYM_DOT = '\u00b7', SYM_DL = '\u2b07';
