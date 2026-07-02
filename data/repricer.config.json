@@ -1,0 +1,19 @@
+{
+  "scan_enabled": false,
+  "cadence_hours": 24,
+  "target": "cheapest_in_cluster",
+  "guardrails": {
+    "min_uplift_pct": 10,
+    "min_uplift_aud": 1.0,
+    "min_comparable": 8,
+    "required_confidence": "high",
+    "max_increase_pct_per_run": 40,
+    "proposal_ttl_hours": 24,
+    "never_decrease": true
+  },
+  "exclude_seller_username": "omg.its.alcatrazz",
+  "telegram": {
+    "digest_enabled": true,
+    "poll_enabled": true
+  }
+}

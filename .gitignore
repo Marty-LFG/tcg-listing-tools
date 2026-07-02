@@ -5,6 +5,9 @@ dist
 data/tracker.db
 data/tracker.db-wal
 data/tracker.db-shm
+data/repricer.db
+data/repricer.db-wal
+data/repricer.db-shm
 reports/
 
 # eBay channel secrets + artifacts (bulk listing tool) — NEVER commit.

@@ -159,6 +159,14 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `data/grading-companies.json` | Inventory-facing grading-company registry (12: PSA/BGS/CGC/SGC/TAG majors, plus ARK, TCG Grading, Card Grading Australia, PCG (Western Premier Card Grading), PCGCN (unrelated Chinese PCG, pcgcard.cn), EMC (Encapsulated Memories Company), JBH (Joyful Box House)): label, scale, cert format, official `certUrl` (nullable when no public page), `lookup` flag, region. Add a company here by appending a row — dropdowns are data-driven. **Broader** than the pre-grader's tolerance set in `grading.config.json` (which stays PSA/BGS/CGC/SGC/TAG — don't add companies there without real tolerances, Golden Rule 4). Shared by server (`certlookup.mjs`) + client (`inventory.html`). |
 | `data/tracker.db` | SQLite price history (gitignored, WAL). Created on first server boot. |
 | `data/tracker.config.json` | Tracker cadence + signal thresholds (editable). |
+| `lib/telegram.mjs` | Dependency-free Telegram Bot client (global `fetch` only): `sendMessage`+inline buttons, `editMessageText`, `answerCallbackQuery`, and a singleton HMR-guarded **long-poll loop** (NAT-friendly — no webhook). Powers the repricer's alerts + one-tap Approve/Skip. Token is `.env`-only, never reaches the browser. See §15. |
+| `lib/repricer-db.mjs` | The store-repricer's SQLite store — a **separate** `data/repricer.db` (not `tracker.db`): `listings` / `price_checks` / `reprice_proposals` / `seen_chats` / `meta`. Same `node:sqlite`/WAL approach as `lib/db.mjs`. |
+| `lib/repricer.mjs` | Vite plugin: owns `data/repricer.db`, exposes `/api/repricer/*`, runs the Telegram poller, and (Phase 2+) hosts the eBay user-token OAuth consent flow. Registered in `vite.config.js` `plugins`. See §15. |
+| `lib/ebay-oauth.mjs` | eBay **user-token** OAuth (Authorization Code grant): consent URL, code→refresh-token exchange, headless refresh, and an encrypted-at-rest refresh-token store (`data/ebay-oauth.json`). Distinct from the client-credentials **app** token in `vite.config.js` (which stays for Browse/Insights). |
+| `lib/ebay-trading.mjs` | Low-level Trading (XML) API caller: signs requests with the OAuth user token via `X-EBAY-API-IAF-TOKEN` (site 15 / AU), plus `getUser`/`geteBayOfficialTime` smoke calls. The `GetMyeBaySelling`/`ReviseInventoryStatus`/`ReviseFixedPriceItem` builders land here in Phases 3–4. |
+| `data/repricer.db` | Store-repricer SQLite (gitignored, WAL). Created on first server boot. |
+| `data/repricer.config.json` | Repricer guardrails + cadence (up-only thresholds, min comps/confidence, TTL). Tracked (like `tracker.config.json`). |
+| `data/ebay-oauth.json` | Encrypted eBay refresh token + metadata (gitignored). Written after the one-time consent. |
 | `.claude/skills/price-analyst/SKILL.md` | Skill for the daily headless analysis (read export → research → flag → auto-add → digest → notify). |
 | `scripts/notify.ps1` | Windows desktop toast (WinRT, `msg.exe` fallback) for signal alerts. |
 | `scripts/run-claude-analysis.cmd` | Task Scheduler entry point for the daily `claude --print` analysis. |
@@ -192,6 +200,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/cert` | (middleware) | **Multi-company** graded-slab cert lookup (`lib/certlookup.mjs`) for the inventory add form. `GET /api/cert?company=PSA&cert=…` → `{matched, identity, grade, company, verifyUrl, …}`; `GET /api/cert/providers` → the company registry. PSA auto-fills (`PSA_API_TOKEN`); every other company has no public API ⇒ `{matched:false, verifyUrl}` (official page, or null) + manual entry (Golden Rule 7). |
 | `/api/inventory` | (plugin) | Graded-card **inventory** API (`lib/inventory.mjs`): `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `POST /items/:id/refresh-value` (PriceCharting graded value), `POST /items/:id/value-manual`, `POST /items/:id/fetch-image` (resolve+cache card image), `GET /items/:id/valuations`, `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote`, `GET /summary`, `GET /export`. See §13. |
 | `/api/print` | (middleware) | **POST-only**: streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `GET` returns `{enabled,dpi,ip,page}` so `shipping-label.html` knows whether to enable its Print button + at what DPI to rasterise. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
+| `/api/repricer` | `repricerPlugin` (`lib/repricer.mjs`) | Store repricer + Telegram. `/config`, `/me`, `/chatid`, `/proposals`, `POST /test-alert`; `/oauth`, `/oauth/start`, `POST /oauth/exchange`, `/oauth/status`, `POST /oauth/test` (eBay user-token consent). Owns `data/repricer.db` + the Telegram long-poll loop. See §15. |
 
 **`extras.js` public surface** (`window.TCG`):
 
@@ -315,7 +324,16 @@ BRICKSET_API_KEY=...     # LEGO RRP/age/dims (free key, may need approval)
 BRICKLINK_CONSUMER_KEY=...  BRICKLINK_CONSUMER_SECRET=...   # LEGO new/used pricing
 BRICKLINK_TOKEN=...         BRICKLINK_TOKEN_SECRET=...       # (OAuth1; register server IP)
 EBAY_APP_ID=...  EBAY_CERT_ID=...  EBAY_MARKETPLACE=EBAY_AU  # Funko pricing + item-specifics
+EBAY_RUNAME=...          # repricer only — RuName for the user-token consent (localhost is rejected)
+TELEGRAM_BOT_TOKEN=...   # repricer alerts + approvals (from @BotFather)
+TELEGRAM_CHAT_ID=...     # target channel/group (-100... form; find via GET /api/repricer/chatid)
 ```
+
+The **repricer's eBay writes need a `user` token, not the app token above.** `EBAY_APP_ID`/`EBAY_CERT_ID`
+are reused (same keyset) but a one-time browser consent mints a refresh token (stored encrypted in
+`data/ebay-oauth.json` — the single shared eBay user-token store, also seedable from a pasted
+`EBAY_REFRESH_TOKEN`; bulk's Phase-2 Sell-API reuses the same token). See §15. `TELEGRAM_*` and
+`EBAY_RUNAME` are all independent — unset just disables that piece (Golden Rule 7).
 Each key is independent — a missing one just disables that source; every builder
 still works for manual entry. BrickLink also requires the dev server's outbound
 **IP to be registered** in the BrickLink API console, or calls 4xx.
@@ -502,3 +520,60 @@ is the gate.
 — run all six after touching bulk code. Before uploading any REAL batch: eBay Seller Hub →
 Reports → Upload with a **3-row sample first** (the File Exchange multi-variation idiom is
 unverified on this account; Phase 2 Sell-API is gated on `sell.inventory` production approval).
+---
+
+## 15. Store repricer + Telegram (up-only auto-pricing)
+
+A subsystem that scans **our own** eBay listings on a schedule, compares each to competitor comps,
+tracks the gap over time, alerts the team on **Telegram**, and can **raise** a price — never lower.
+Separate DB (`data/repricer.db`) + plugin (`repricerPlugin`), currently independent of the shared
+`tracker.db` used by §12/§13/§14. **Convention note:** the rest of the suite funnels through one
+`openDb()` (§12) — revisit at Phase 3 whether to fold the repricer's listings table into `lib/db.mjs`
+and populate the inventory system's reserved `ebay_listing_id`/`channel_status` columns (§13) instead
+of a parallel store.
+
+**Hard invariant: the system NEVER decreases a price.** Decreases are human-only. Every increase is
+gated behind a **Telegram Approve tap** (owner's choice) — no autonomous writes. Enforced in code at
+the proposal layer *and* re-checked immediately before any eBay write.
+
+**Why the Trading API (not the Sell Inventory API).** Our listings are created **manually in Seller
+Hub**. The modern Sell Inventory API is *blind* to manual listings unless each is migrated via
+`bulkMigrateListing` — a one-way conversion that then **disables** Trading revises. So we use the
+legacy **Trading API** by `ItemID`: `GetMyeBaySelling` (read own listings), `ReviseInventoryStatus`
+(least-invasive price bump, 4/call), `ReviseFixedPriceItem` (Best-Offer floor thresholds). eBay has
+no first-party up-repricer; the up-only logic is ours.
+
+**Two eBay tokens, don't confuse them.** The existing `/api/ebay` proxy uses a client-credentials
+**app** token (Browse/Insights/Taxonomy — public data). The repricer's reads/writes need a **user**
+token via the OAuth **Authorization Code grant** (`lib/ebay-oauth.mjs`): a one-time browser consent as
+the seller mints an ~18-month refresh token (encrypted at rest in **`data/ebay-oauth.json`** — the
+shared eBay user-token slot that the bulk tool's Phase-2 Sell-API also reserves (§14 / `.env.example`);
+key derived from `EBAY_CERT_ID`; also seedable from a pasted `EBAY_REFRESH_TOKEN`); 2-hour access
+tokens are refreshed headlessly. `EBAY_RUNAME` is required (a localhost redirect is rejected by eBay).
+Trading calls carry it in `X-EBAY-API-IAF-TOKEN` (site 15). `lib/ebay-oauth.mjs` is intended as the
+**single** eBay user-token acquirer for the repo — bulk's Phase-2 Sell-API should import it, not build a
+second `ebaySellProxy`.
+
+**Comps + decision (Phase 3+).** Reuses `TCG.analyzeComps` (extras.js) — to be mirrored server-side as
+`lib/comps.mjs` per Golden Rule 9 **plus a `scripts/check-comps.mjs` byte-parity harness** (the §14
+mirror-rule now mandates a check script + cross-ref comments on both sides). Reuse `lib/fees.mjs` for AU
+fee math rather than re-implementing it. Target = **cheapest *in-cluster* − $0.01** (the densest price
+cluster, so a lowball outlier can't drag it down); **our own listings are excluded** from the comp set.
+A raise is only proposed when `nComparable ≥ 8 AND confidence = high AND uplift ≥ threshold`
+(thresholds in `data/repricer.config.json`). Sold comps (Marketplace Insights) sharpen this once granted.
+
+**Telegram (`lib/telegram.mjs`).** Dependency-free (global `fetch`). Sends HTML-formatted cards with
+inline **Approve/Skip** buttons; receives taps via a **long-poll `getUpdates` loop** (NAT-friendly, no
+webhook/public URL — singleton + HMR-guarded like `startCollector`). Offset cursor persisted in
+`repricer.db` `meta`. Setup: `@BotFather` token → `.env`; add bot to the channel (admin) → `GET
+/api/repricer/chatid` surfaces the `-100...` id.
+
+**Rate-limit pacing.** Browse (comps) is the binding constraint (5,000/day default) — cache comps per
+card+condition and dedupe across duplicate listings; file the free eBay *Application Growth Check*
+before scaling. Trading is comfortable (5,000/day). Global ~500ms throttle; batch revises 4/call.
+
+**Build phases.** 1 = Telegram loop + dry-run `test-alert` (**done**). 2 = user-token OAuth middleware
+(`lib/ebay-oauth.mjs` + `lib/ebay-trading.mjs` + `/api/repricer/oauth/*`). 3 = `GetMyeBaySelling`
+collector + comps compare → alert-only. 4 = wire `ReviseInventoryStatus` to the Approve tap. 5 =
+Best-Offer floors + a `tracker.html`-style dashboard. A dry-run `test` proposal (`kind:'test'`) never
+writes to eBay — it's how the full alert→approve→edit loop is validated before real repricing.
