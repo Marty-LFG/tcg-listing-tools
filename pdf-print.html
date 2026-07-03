@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Label Printer</title>
+<style>
+  :root{
+    --ink:#0c1118; --panel:#141b25; --panel2:#1b2433; --line:#293445;
+    --muted:#8b94a6; --text:#eef2f8; --gold:#5ab0ff; --gold-dim:#2f5f86;
+    --field:#0d141e;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  code{background:#11203a;padding:1px 5px;border-radius:5px;color:var(--gold);font-size:12px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  input,select{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line);
+    border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  input:focus,select:focus{border-color:var(--gold);}
+  input[type=range]{padding:0;}
+  .controls{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;}
+  .grp{display:flex;flex-direction:column;gap:7px;}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .pill{height:34px;display:inline-flex;align-items:center;padding:0 14px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+    border-radius:999px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s;user-select:none;}
+  .pill:hover{border-color:var(--gold-dim);color:var(--text);}
+  .pill.on{background:var(--gold);color:#06101c;border-color:var(--gold);}
+  .stepper{display:flex;align-items:center;gap:6px;}
+  .stepper .step{width:34px;height:34px;border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    border-radius:8px;font-size:18px;font-weight:700;cursor:pointer;line-height:1;padding:0;}
+  .stepper .step:hover{border-color:var(--gold);color:var(--gold);}
+  .stepval{min-width:82px;height:34px;display:flex;flex-direction:column;justify-content:center;text-align:center;font-size:13px;color:var(--text);font-weight:700;}
+  .stepval small{display:block;color:var(--muted);font-weight:400;font-size:10px;letter-spacing:.3px;margin-top:1px;}
+  .btn{padding:9px 15px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);
+    border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;width:auto;}
+  .btn:hover{background:var(--gold);color:#06101c;}
+  .btn.solid{background:var(--gold);color:#06101c;border-color:var(--gold);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn:disabled:hover{background:transparent;color:var(--gold);}
+  .minibtn{padding:5px 10px;font-size:11.5px;border-radius:7px;}
+  .status{font-size:12.5px;min-height:18px;margin:0;line-height:1.4;}
+  .status.ok{color:#36d399;} .status.warn{color:#f0b429;} .status.err{color:#f06262;} .status.load{color:var(--muted);}
+  /* drop zone */
+  .drop{border:1.5px dashed var(--line);border-radius:12px;background:var(--panel2);padding:26px 18px;text-align:center;
+    cursor:pointer;transition:.15s;color:var(--muted);}
+  .drop:hover,.drop.over{border-color:var(--gold);color:var(--text);background:#16202e;}
+  .drop b{color:var(--text);}
+  .drop .big{font-size:30px;line-height:1;margin-bottom:8px;}
+  /* file list */
+  .flist{margin-top:14px;display:flex;flex-direction:column;gap:6px;}
+  .fitem{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:12.5px;}
+  .fitem .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .fitem .n b{color:var(--text);} .fitem .n span{color:var(--muted);}
+  .fitem .x{cursor:pointer;color:var(--muted);font-weight:700;padding:0 4px;}
+  .fitem .x:hover{color:#f06262;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5;}
+  .adv{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:0 13px 14px;}
+  .adv .full{grid-column:1/3;display:flex;align-items:center;gap:8px;}
+  .adv .full input[type=checkbox]{width:auto;}
+  details{margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);}
+  summary{cursor:pointer;padding:10px 13px;font-weight:600;font-size:12.5px;list-style:none;color:var(--muted);}
+  summary::-webkit-details-marker{display:none;}
+  .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);
+    color:#06101c;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  /* preview thumbnails */
+  .pglist{display:flex;flex-direction:column;gap:12px;margin-top:4px;max-height:70vh;overflow:auto;padding-right:4px;}
+  .pgcard{border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:10px;}
+  .pgcard.off{opacity:.45;}
+  .pghead{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;}
+  .pghead .sel{width:auto;}
+  .pghead .meta{flex:1;color:var(--muted);}
+  .pghead .meta b{color:var(--text);}
+  .pgcanvaswrap{background:#f4f6f8;border-radius:6px;padding:6px;display:flex;justify-content:center;}
+  .pgcanvaswrap canvas{max-width:100%;height:auto;image-rendering:pixelated;background:#fff;
+    box-shadow:0 1px 4px rgba(0,0,0,.4);}
+  .rangebar{display:flex;align-items:center;gap:10px;}
+  .rangebar input[type=range]{flex:1;}
+  .rangeval{min-width:34px;text-align:right;font-weight:700;font-size:12.5px;}
+</style>
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Print &middot; Thermal labels</div>
+  <h1>PDF Label Printer</h1>
+  <p class="sub">Drop a <b>PDF</b> &rarr; it rasterises each page and prints straight to the AUSPRINT over the network &mdash; no vendor app. Each page prints at its own size (the PDF's page size becomes the label size), or force-fit to a stock. Handy for pre-made labels like storage-box tags, barcodes, and address slips.</p>
+
+  <div class="grid">
+    <!-- LEFT: input + controls -->
+    <div class="card">
+      <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+        <div class="big">&#128196;</div>
+        <div><b>Drop a PDF here</b> or click to browse</div>
+        <div style="font-size:11.5px;margin-top:4px;">Multiple PDFs and multi-page PDFs are fine</div>
+      </div>
+      <input type="file" id="file" accept="application/pdf,.pdf" multiple style="display:none;">
+      <div class="flist" id="flist"></div>
+
+      <div class="controls">
+        <div class="grp">
+          <label>Label size</label>
+          <div class="pills" id="sizePills">
+            <span class="pill on" data-v="native" onclick="setSizeMode('native')" title="Use each PDF page's own size as the label size">Use PDF size</span>
+            <span class="pill" data-v="50x30" onclick="setSizeMode('50x30')">Fit 50 &times; 30</span>
+            <span class="pill" data-v="100x50" onclick="setSizeMode('100x50')">Fit 100 &times; 50</span>
+          </div>
+        </div>
+        <div class="grp">
+          <label>Rotate</label>
+          <div class="pills" id="rotPills">
+            <span class="pill on" data-v="0" onclick="setRotate(0)">0&deg;</span>
+            <span class="pill" data-v="90" onclick="setRotate(90)">90&deg;</span>
+            <span class="pill" data-v="180" onclick="setRotate(180)">180&deg;</span>
+            <span class="pill" data-v="270" onclick="setRotate(270)">270&deg;</span>
+          </div>
+        </div>
+        <div class="grp">
+          <label>Copies (each page)</label>
+          <div class="stepper">
+            <button class="step" onclick="bumpCopies(-1)" title="Fewer">&minus;</button>
+            <div class="stepval" id="copiesval">1</div>
+            <button class="step" onclick="bumpCopies(1)" title="More">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <label>Black threshold &mdash; higher = more ink</label>
+        <div class="rangebar">
+          <input type="range" id="thresh" min="16" max="240" step="4" value="150" oninput="onThreshInput()">
+          <span class="rangeval" id="threshval">150</span>
+        </div>
+      </div>
+
+      <details>
+        <summary>Advanced</summary>
+        <div class="adv">
+          <div class="full"><input type="checkbox" id="a_dither" onchange="rerenderAll()"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Dither (Floyd&ndash;Steinberg) &mdash; better for photos/gradients, worse for crisp text</label></div>
+          <div class="full"><input type="checkbox" id="a_invert" onchange="rerenderAll()"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Invert (print white-on-black) &mdash; only if output comes out as a photo-negative</label></div>
+          <div><label>Print nudge X (mm)</label><input id="a_offx" type="number" step="0.5" value="0" title="Shift the printed image left/right on the sticker (negative = left)."></div>
+          <div><label>Print nudge Y (mm)</label><input id="a_offy" type="number" step="0.5" value="0" title="Shift the printed image up/down on the sticker (negative = up)."></div>
+          <div><label>DPI</label><input id="a_dpi" type="number" step="1" value="300" title="Printer dot density. AUSPRINT PRO = 300, base AUSPRINT = 203. Auto-filled from the printer."></div>
+          <div><label>Fit padding (mm)</label><input id="a_pad" type="number" step="0.5" min="0" value="1" title="Only used by the Fit-to-stock modes: white border kept around the scaled page."></div>
+        </div>
+      </details>
+
+      <div class="hint">Tip: for labels that already come sized correctly (like a 50&times;30 storage tag), keep <b>Use PDF size</b> &mdash; the printer is told the exact page size and prints 1:1. Use <b>Fit</b> only when the PDF page doesn't match your loaded stock.</div>
+    </div>
+
+    <!-- RIGHT: preview + output -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;">
+        <label style="margin:0;">Print preview &middot; <span id="prevCount">0 pages</span></label>
+        <div style="display:flex;gap:6px;">
+          <button class="btn minibtn" onclick="selectAll(true)">All</button>
+          <button class="btn minibtn" onclick="selectAll(false)">None</button>
+        </div>
+      </div>
+      <div class="status load" id="status">Drop a PDF to begin. What you see below is exactly the 1&#8209;bit image sent to the printer.</div>
+
+      <div class="pglist" id="pglist"></div>
+
+      <div class="btns">
+        <button class="btn solid" id="printBtn" onclick="printSelected()" disabled>&#128424; Print (0)</button>
+        <button class="btn" id="dlBtn" onclick="downloadPreview()" disabled title="Save the rasterised 1-bit preview of the first selected page as a PNG">&#11015; Save raster PNG</button>
+      </div>
+      <div class="status load" id="printhint" style="margin-top:8px;">Checking for printer&hellip;</div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Done</div>
+
+<script src="/vendor/pdf.min.js"></script>
+<script>
+/* ============================================================================
+   PDF Label Printer — renders arbitrary PDF pages to the SAME 1-bpp raster the
+   shipping-label tool sends, and POSTs them to /api/print (raw TCP 9100 to the
+   AUSPRINT PRO / Rongta, TSPL BITMAP). No backend changes: reuses lib/labelprint.mjs
+   and the existing /api/print contract { jobs:[{ bitmap, widthDots, heightDots,
+   wmm, hmm, copies }] } — bitmap is base64 of a 1-bpp, MSB-first, row-byte-padded
+   buffer where bit 1 = ink (server inverts to TSPL's 0=black).
+   ============================================================================ */
+
+var MM_PER_IN = 25.4, PT_PER_IN = 72;
+var pdfjsOk = !!(window.pdfjsLib && window.pdfjsLib.getDocument);
+if (pdfjsOk) window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js';
+
+/* ---------- state ---------- */
+// pages: flat, print-ordered list. Each: { id, docName, pageNo, page(PDFPageProxy),
+//   ptW, ptH (unrotated page box in points), selected, raster:{bitmap,widthDots,heightDots,wmm,hmm}|null,
+//   previewCanvas }
+var pages = [];
+var sizeMode = 'native';      // 'native' | '50x30' | '100x50'
+var rotate = 0;               // 0 | 90 | 180 | 270 (degrees CW, added to the page's own rotation)
+var copies = 1;
+var _uid = 0;
+var STOCK = { '50x30': { w:50, h:30 }, '100x50': { w:100, h:50 } };
+
+/* ---------- tiny helpers ---------- */
+function $(id){ return document.getElementById(id); }
+var tt; function showToast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('show');},1500); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function setStatus(cls, msg){ var s=$('status'); s.className='status '+cls; s.textContent=msg; }
+function dpi(){ var d=parseInt(($('a_dpi')||{}).value,10); return (d>=72 && d<=1200) ? d : 300; }
+function threshold(){ var t=parseInt($('thresh').value,10); return (t>=1&&t<=255)?t:150; }
+
+/* ---------- printer config (GET /api/print) ---------- */
+var printCfg = { enabled:false, dpi:300 };
+function loadPrintCfg(){
+  return fetch('/api/print').then(function(r){return r.json();}).then(function(c){
+    if(c && typeof c==='object') printCfg = c;
+  }).catch(function(){ printCfg = { enabled:false, dpi:300 }; }).then(function(){
+    if(printCfg.dpi && $('a_dpi')) $('a_dpi').value = printCfg.dpi;
+    if(printCfg.offXmm!=null && $('a_offx')) $('a_offx').value = printCfg.offXmm;
+    if(printCfg.offYmm!=null && $('a_offy')) $('a_offy').value = printCfg.offYmm;
+    updatePrintChrome();
+  });
+}
+function updatePrintChrome(){
+  var en = !!printCfg.enabled, n = selectedCount();
+  var pb = $('printBtn'); if(pb){ pb.disabled = !en || n===0; pb.innerHTML = '🖨 Print (' + n + ')'; }
+  var db = $('dlBtn'); if(db) db.disabled = n===0;
+  var h = $('printhint');
+  if(h) h.textContent = en
+    ? ('Prints to AUSPRINT ' + (printCfg.ip||'') + ' @ ' + dpi() + 'dpi · ' + (printCfg.lang||'tspl').toUpperCase())
+    : 'Direct printing off — set LABEL_PRINTER_IP in .env to enable. (Raster PNG export still works.)';
+}
+
+/* ---------- file loading ---------- */
+function onFiles(fileList){
+  var files = Array.prototype.slice.call(fileList||[]).filter(function(f){
+    return /pdf$/i.test(f.name) || f.type==='application/pdf';
+  });
+  if(!files.length){ showToast('No PDF files'); return; }
+  if(!pdfjsOk){ setStatus('err','PDF engine failed to load (vendor/pdf.min.js). Restart the dev server.'); return; }
+  files.reduce(function(chain, f){
+    return chain.then(function(){ return loadOnePdf(f); });
+  }, Promise.resolve()).then(function(){
+    renderFileList(); rerenderAll();
+  });
+}
+function loadOnePdf(file){
+  setStatus('load','Reading ' + file.name + '…');
+  return file.arrayBuffer().then(function(buf){
+    return window.pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  }).then(function(doc){
+    var chain = Promise.resolve();
+    for(var n=1;n<=doc.numPages;n++){
+      (function(pageNo){
+        chain = chain.then(function(){ return doc.getPage(pageNo); }).then(function(page){
+          var vp = page.getViewport({ scale:1 });   // unrotated page box, in points
+          pages.push({ id:++_uid, docName:file.name, pageNo:pageNo, page:page,
+            ptW:vp.width, ptH:vp.height, selected:true, raster:null, previewCanvas:null });
+        });
+      })(n);
+    }
+    return chain;
+  }).catch(function(e){
+    setStatus('err','Could not read ' + file.name + ': ' + ((e&&e.message)||e));
+    throw e;
+  });
+}
+function removeDoc(docName){
+  pages = pages.filter(function(p){ return p.docName!==docName; });
+  renderFileList(); rerenderAll();
+}
+function renderFileList(){
+  var el = $('flist');
+  // group by docName, preserving first-seen order
+  var order = [], byDoc = {};
+  pages.forEach(function(p){ if(!byDoc[p.docName]){ byDoc[p.docName]=0; order.push(p.docName); } byDoc[p.docName]++; });
+  if(!order.length){ el.innerHTML=''; return; }
+  el.innerHTML = order.map(function(name){
+    return '<div class="fitem"><div class="n"><b>'+esc(name)+'</b> <span>'+byDoc[name]+' page'+(byDoc[name]>1?'s':'')+'</span></div>'+
+           '<div class="x" title="Remove" onclick="removeDoc(\''+esc(name).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">&times;</div></div>';
+  }).join('');
+}
+
+/* ---------- rasterisation: PDF page -> 1-bpp ---------- */
+// Render one page to a full-DPI canvas honouring size mode + rotation, then threshold/
+// dither to the 1-bpp buffer the printer wants. Returns { bitmap, widthDots, heightDots,
+// wmm, hmm } — label size (mm) always equals the raster's true physical size at dpi.
+function rasterisePage(p){
+  var D = dpi();
+  var pxPerMm = D / MM_PER_IN;
+  // page raster at target dpi (scale maps PDF points -> dots: dpi/72), with rotation
+  var vp = p.page.getViewport({ scale: D / PT_PER_IN, rotation: rotate });
+  var pageW = Math.max(1, Math.round(vp.width)), pageH = Math.max(1, Math.round(vp.height));
+
+  return p.page.render({ canvasContext: (function(){
+      var c = document.createElement('canvas'); c.width=pageW; c.height=pageH;
+      p._tmp = c; var ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,pageW,pageH); return ctx;
+    })(), viewport: vp }).promise.then(function(){
+    var pageCanvas = p._tmp; p._tmp = null;
+
+    // choose the output canvas: native = page size; fit = stock size with the page contained
+    var outCanvas, wmm, hmm;
+    if(sizeMode==='native'){
+      outCanvas = pageCanvas;
+      wmm = pageW / pxPerMm; hmm = pageH / pxPerMm;
+    } else {
+      var st = STOCK[sizeMode];
+      wmm = st.w; hmm = st.h;
+      var outW = Math.max(1, Math.round(st.w * pxPerMm)), outH = Math.max(1, Math.round(st.h * pxPerMm));
+      var pad = Math.max(0, parseFloat(($('a_pad')||{}).value) || 0) * pxPerMm;
+      outCanvas = document.createElement('canvas'); outCanvas.width=outW; outCanvas.height=outH;
+      var octx = outCanvas.getContext('2d');
+      octx.fillStyle='#fff'; octx.fillRect(0,0,outW,outH);
+      var availW = Math.max(1, outW-2*pad), availH = Math.max(1, outH-2*pad);
+      var s = Math.min(availW/pageW, availH/pageH);       // contain
+      var dw = pageW*s, dh = pageH*s;
+      octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+      octx.drawImage(pageCanvas, (outW-dw)/2, (outH-dh)/2, dw, dh);
+    }
+
+    // print-only nudge (mm -> dots): shift the ink within the label
+    var offX = Math.round(((parseFloat(($('a_offx')||{}).value)||0)) * pxPerMm);
+    var offY = Math.round(((parseFloat(($('a_offy')||{}).value)||0)) * pxPerMm);
+    if(offX || offY){
+      var w=outCanvas.width, h=outCanvas.height;
+      var shifted=document.createElement('canvas'); shifted.width=w; shifted.height=h;
+      var sctx=shifted.getContext('2d'); sctx.fillStyle='#fff'; sctx.fillRect(0,0,w,h);
+      sctx.drawImage(outCanvas, offX, offY);
+      outCanvas = shifted;
+    }
+
+    var r = to1bpp(outCanvas, threshold(), $('a_dither').checked, $('a_invert').checked);
+    r.wmm = wmm; r.hmm = hmm;
+    p.raster = r;
+    p.previewCanvas = bitmapToCanvas(r);
+    return r;
+  });
+}
+
+// Canvas -> { bitmap(base64), widthDots, heightDots } (1=ink, MSB-first, rows padded to a
+// whole byte) — the same convention as shipping-label.html renderLabelToBitmap().
+function to1bpp(canvas, thresh, dither, invert){
+  var w=canvas.width, h=canvas.height;
+  var img=canvas.getContext('2d').getImageData(0,0,w,h).data;
+  var wBytes=Math.ceil(w/8);
+  var out=new Uint8Array(wBytes*h);
+  // luminance buffer (0..255), white where transparent
+  var lum=new Float32Array(w*h);
+  for(var i=0,j=0;i<img.length;i+=4,j++){
+    var a=img[i+3];
+    lum[j] = a<128 ? 255 : (0.299*img[i]+0.587*img[i+1]+0.114*img[i+2]);
+  }
+  function ink(v){ var isInk = v < thresh; return invert ? !isInk : isInk; }
+  if(dither){
+    // Floyd–Steinberg on the luminance buffer, thresholded at `thresh`
+    for(var y=0;y<h;y++){
+      for(var x=0;x<w;x++){
+        var idx=y*w+x, old=lum[idx];
+        var black = old < thresh;
+        var nv = black ? 0 : 255;
+        var err = old - nv;
+        if(x+1<w)            lum[idx+1]   += err*7/16;
+        if(y+1<h){
+          if(x>0)            lum[idx+w-1] += err*3/16;
+                             lum[idx+w]   += err*5/16;
+          if(x+1<w)          lum[idx+w+1] += err*1/16;
+        }
+        var isInk = invert ? !black : black;
+        if(isInk) out[y*wBytes+(x>>3)] |= (0x80 >> (x&7));
+      }
+    }
+  } else {
+    for(var yy=0;yy<h;yy++){
+      var row=yy*wBytes;
+      for(var xx=0;xx<w;xx++){
+        if(ink(lum[yy*w+xx])) out[row+(xx>>3)] |= (0x80 >> (xx&7));
+      }
+    }
+  }
+  var bin='';
+  for(var k=0;k<out.length;k+=8192){ bin += String.fromCharCode.apply(null, out.subarray(k, Math.min(k+8192,out.length))); }
+  return { bitmap: btoa(bin), widthDots:w, heightDots:h };
+}
+
+// Rebuild a viewable canvas from the 1-bpp buffer so the preview is byte-for-byte what prints.
+function bitmapToCanvas(r){
+  var w=r.widthDots, h=r.heightDots, wBytes=Math.ceil(w/8);
+  var bin=atob(r.bitmap);
+  var c=document.createElement('canvas'); c.width=w; c.height=h;
+  var ctx=c.getContext('2d'); var id=ctx.createImageData(w,h); var d=id.data;
+  for(var y=0;y<h;y++){
+    for(var x=0;x<w;x++){
+      var bit=(bin.charCodeAt(y*wBytes+(x>>3)) >> (7-(x&7))) & 1;   // 1 = ink (black)
+      var p=(y*w+x)*4, v=bit?0:255;
+      d[p]=d[p+1]=d[p+2]=v; d[p+3]=255;
+    }
+  }
+  ctx.putImageData(id,0,0);
+  return c;
+}
+
+/* ---------- render pipeline (debounced) ---------- */
+var _rt=null;
+function rerenderAll(){ clearTimeout(_rt); _rt=setTimeout(rerenderNow, 60); }
+function rerenderNow(){
+  updatePrintChrome();
+  if(!pages.length){ $('pglist').innerHTML=''; $('prevCount').textContent='0 pages'; setStatus('load','Drop a PDF to begin. What you see below is exactly the 1‑bit image sent to the printer.'); return; }
+  setStatus('load','Rasterising ' + pages.length + ' page' + (pages.length>1?'s':'') + '…');
+  pages.reduce(function(chain,p){ return chain.then(function(){ return rasterisePage(p); }); }, Promise.resolve())
+    .then(function(){ paintPreviews(); var n=selectedCount();
+      setStatus('ok', pages.length + ' page' + (pages.length>1?'s':'') + ' ready · ' + n + ' selected to print'); updatePrintChrome();
+    })
+    .catch(function(e){ setStatus('err','Render failed: ' + ((e&&e.message)||e)); });
+}
+function paintPreviews(){
+  var el=$('pglist');
+  el.innerHTML = pages.map(function(p){
+    var r=p.raster;
+    var meta = r ? ('<b>'+esc(p.docName)+'</b> · p'+p.pageNo+' · '+r.wmm.toFixed(1)+'×'+r.hmm.toFixed(1)+' mm · '+r.widthDots+'×'+r.heightDots+' dots') : esc(p.docName);
+    return '<div class="pgcard'+(p.selected?'':' off')+'" id="pg_'+p.id+'">'+
+      '<div class="pghead"><input class="sel" type="checkbox" '+(p.selected?'checked':'')+' onchange="toggleSel('+p.id+',this.checked)">'+
+      '<div class="meta">'+meta+'</div></div>'+
+      '<div class="pgcanvaswrap" id="cw_'+p.id+'"></div></div>';
+  }).join('');
+  // attach the actual raster canvases
+  pages.forEach(function(p){
+    if(p.previewCanvas){ var wrap=$('cw_'+p.id); if(wrap){ wrap.innerHTML=''; wrap.appendChild(p.previewCanvas); } }
+  });
+  $('prevCount').textContent = pages.length + ' page' + (pages.length>1?'s':'');
+}
+
+/* ---------- selection ---------- */
+function selectedCount(){ return pages.filter(function(p){return p.selected;}).length; }
+function toggleSel(id,on){ var p=pages.find(function(x){return x.id===id;}); if(p){ p.selected=!!on; var c=$('pg_'+id); if(c) c.classList.toggle('off',!on); setStatus('ok', selectedCount()+' selected to print'); updatePrintChrome(); } }
+function selectAll(on){ pages.forEach(function(p){ p.selected=!!on; }); paintPreviews(); setStatus('ok', selectedCount()+' selected to print'); updatePrintChrome(); }
+
+/* ---------- controls ---------- */
+function pillsOn(id,v){ var ps=$(id).querySelectorAll('.pill'); for(var i=0;i<ps.length;i++) ps[i].classList.toggle('on', ps[i].dataset.v===String(v)); }
+function setSizeMode(v){ sizeMode=v; pillsOn('sizePills',v); rerenderAll(); }
+function setRotate(v){ rotate=v; pillsOn('rotPills',v); rerenderAll(); }
+function bumpCopies(d){ copies=Math.max(1,Math.min(99,copies+d)); $('copiesval').textContent=copies; }
+function onThreshInput(){ $('threshval').textContent=threshold(); rerenderAll(); }
+
+/* ---------- printing ---------- */
+function printSelected(){
+  if(!printCfg.enabled){ showToast('Printer not configured'); return; }
+  var sel = pages.filter(function(p){return p.selected && p.raster;});
+  if(!sel.length){ showToast('Nothing selected'); return; }
+  var jobs = sel.map(function(p){
+    return { bitmap:p.raster.bitmap, widthDots:p.raster.widthDots, heightDots:p.raster.heightDots,
+             wmm:p.raster.wmm, hmm:p.raster.hmm, copies:copies };
+  });
+  $('printBtn').disabled=true;
+  var total = sel.length*copies;
+  setStatus('load','Sending ' + total + ' label' + (total>1?'s':'') + ' to the printer…');
+  fetch('/api/print', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ jobs:jobs }) })
+    .then(function(r){ return r.json().catch(function(){ return { ok:false, message:'bad response' }; }); })
+    .then(function(res){
+      if(res && res.ok){ setStatus('ok','Printed ' + res.printed + ' label' + (res.printed>1?'s':'') + '.'); showToast('Printed ' + res.printed); }
+      else { var m=(res&&res.message)||'print failed'; setStatus('err','Print failed: ' + m); showToast('Print failed'); }
+    })
+    .catch(function(e){ setStatus('err','Print failed (printer offline?): ' + e); showToast('Print failed'); })
+    .then(updatePrintChrome, updatePrintChrome);
+}
+function downloadPreview(){
+  var p = pages.find(function(x){return x.selected && x.previewCanvas;});
+  if(!p){ showToast('Nothing selected'); return; }
+  p.previewCanvas.toBlob(function(blob){
+    var url=URL.createObjectURL(blob); var a=document.createElement('a');
+    a.href=url; a.download=(p.docName.replace(/\.pdf$/i,''))+'-p'+p.pageNo+'-raster.png';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},3000);
+  });
+}
+
+/* ---------- init ---------- */
+(function(){
+  if(!pdfjsOk){ setStatus('err','PDF engine failed to load (vendor/pdf.min.js missing). Restart the dev server.'); }
+  $('file').addEventListener('change', function(e){ onFiles(e.target.files); e.target.value=''; });
+  var dz=$('drop');
+  ['dragenter','dragover'].forEach(function(ev){ dz.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.add('over'); }); });
+  ['dragleave','drop'].forEach(function(ev){ dz.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); dz.classList.remove('over'); }); });
+  dz.addEventListener('drop', function(e){ onFiles(e.dataTransfer.files); });
+  // let a PDF be dropped anywhere on the page too
+  ['dragover','drop'].forEach(function(ev){ document.addEventListener(ev,function(e){ e.preventDefault(); }); });
+  ['a_offx','a_offy','a_dpi','a_pad'].forEach(function(id){ var el=$(id); if(el) el.addEventListener('change', rerenderAll); });
+  loadPrintCfg();
+})();
+</script>
+</body>
+</html>
