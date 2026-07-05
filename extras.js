@@ -238,7 +238,7 @@
     }).filter(function (p) { return p.disp.length || p.dl; });
     const hasImg = imgs.length;
     const prices = (data.prices || []).filter(p => p && p.amount != null && p.amount !== '');
-    if (!hasImg && !prices.length) { container.innerHTML = ''; return; }
+    if (!hasImg && !prices.length && !data.priceNote) { container.innerHTML = ''; return; }
 
     const box = 'border:1px solid var(--line,#333);border-radius:12px;padding:14px;background:var(--panel2,#1a1a1a);';
     const head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;margin-bottom:10px;';
@@ -278,6 +278,10 @@
         }
       } else {
         html += `<div style="font-size:12px;color:var(--muted,#888);">${esc(data.priceNote)}</div>`;
+      }
+      // Optional native-market reference link (e.g. PriceCharting Japanese console) — shown in both states.
+      if (data.priceLink && data.priceLink.href) {
+        html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line,#333);font-size:11px;"><a href="${esc(data.priceLink.href)}" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">${esc(data.priceLink.label || 'Verify on PriceCharting')} &#8599;</a></div>`;
       }
       html += '</div>';
     }
@@ -398,6 +402,20 @@
     var n = s.match(/\d{1,4}/); return n ? new RegExp('\\b0*' + String(+n[0]) + '\\b') : null;
   }
 
+  // Classify a listing TITLE's card language from text signals (no reliable eBay aspect exists —
+  // see docs/DATA_SOURCES.md). Returns 'ko' | 'jp' | 'cn' | 'eu' | 'en'. Order matters: kana is
+  // JP-certain, hangul KO-certain; a Latin language word is decisive; bare Han (no kana/keyword)
+  // is ambiguous JP-or-CN and defaults to JP (the dominant CJK Pokémon market).
+  TCG.classifyLang = function (title) {
+    var t = title || '';
+    if (/[가-힯]/.test(t) || /\b(korean|kor)\b/i.test(t)) return 'ko';
+    if (/[぀-ヿ]/.test(t) || /\b(japanese|jpn?|nihongo)\b/i.test(t)) return 'jp';   // kana ⇒ JP
+    if (/中文|简体|繁體|宝可梦|寶可夢/.test(t) || /\b(chinese|s[-\s]?chinese|simplified|traditional)\b/i.test(t)) return 'cn';
+    if (/\b(french|fran[çc]ais|deutsch|german|italiano|italian|espa(?:ñ|n)ol|spanish|portugu[eê]s|portuguese|russian)\b/i.test(t)) return 'eu';
+    if (/[一-鿿]/.test(t)) return 'jp';                                             // bare Han ⇒ default JP
+    return 'en';
+  };
+
   // TCG.analyzeComps(rows, {mode, ref, refLabel, precision, numberMatch, lang}) -> rich analysis.
   // With precision:true, rows are first narrowed to listings that are plausibly THIS exact card
   // (title carries the collector number, not an accessory/lot, right language) before any stats.
@@ -410,12 +428,19 @@
       var numRe = buildNumberRe(opts.numberMatch);
       numbered = !!numRe;                                            // was a collector-number filter actually applied?
       finish = (opts.finish === 'foil' || opts.finish === 'nonfoil') ? opts.finish : null;
-      var wantLang = opts.lang || 'en';
+      // Map the builder's dataLang (en/ja/zh-cn/zh-tw/ko) to a classifier category.
+      var wantLang = ({ ja: 'jp', 'zh-cn': 'cn', 'zh-tw': 'cn', ko: 'ko', en: 'en' })[opts.lang] || opts.lang || 'en';
       src = src.filter(function (r) {
         var t = r.title || '';
         if (numRe && !numRe.test(t)) return false;                 // must carry THIS card's number
         if (JUNK_RE.test(t)) return false;                          // not an accessory / lot
-        if (wantLang === 'en' && (/[぀-ヿ一-鿿]/.test(t) || /\b(japanese|japonais|korean|chinese|español|deutsch|italiano|português)\b/i.test(t))) return false;
+        var cl = TCG.classifyLang(t);
+        // EN mode: keep only English-classified (drops CJK + any foreign-language listing — a strict
+        // superset of the old behaviour). JP/CN/KO modes: keep the wanted language AND bilingual
+        // English-titled listings (most JP/CN cards on eBay AU carry English Pokémon names); drop
+        // only titles CONFIRMED to be a DIFFERENT foreign language.
+        if (wantLang === 'en') { if (cl !== 'en') return false; }
+        else if (cl !== wantLang && cl !== 'en') return false;
         if (finish) {
           // Same collector number sells foil AND non-foil — keep only the matching finish so a foil
           // isn't priced off cheaper non-foil (and vice-versa). Unlabelled listings stay (most singles
@@ -696,7 +721,7 @@
     return (s.split(/[\s,]+/)[0]||'').toUpperCase();
   };
   TCG.langCode=function(s){
-    var l=(s||'').trim().toLowerCase();
+    var l=(s||'').trim().toLowerCase().replace(/\s*\(.*$/,'');   // "Chinese (Simp.)" -> "chinese"
     var map={english:'EN',japanese:'JP',chinese:'ZH',korean:'KO',german:'DE',french:'FR',italian:'IT',spanish:'ES',portuguese:'PT',russian:'RU'};
     if(map[l])return map[l];
     if(!s)return 'EN';

@@ -222,13 +222,14 @@ function pcProxy(env) {
           const number = (u.searchParams.get('number') || '').trim()
           const set = (u.searchParams.get('set') || '').trim()
           const cardId = (u.searchParams.get('id') || '').trim()
+          const lang = (u.searchParams.get('lang') || '').trim().toLowerCase()
           if (!name || !number) {
             res.statusCode = 400
             return res.end(JSON.stringify({ matched: false, error: 'name and number required' }))
           }
-          console.log('[api/pc]', name, '#' + number, set ? '(' + set + ')' : '')
+          console.log('[api/pc]', name, '#' + number, set ? '(' + set + ')' : '', lang ? '[' + lang + ']' : '')
           const result = await pcLookup({
-            name, number, setName: set, cardId,
+            name, number, setName: set, cardId, lang,
             token: (env.PRICECHARTING_TOKEN || '').trim(),
           })
           res.end(JSON.stringify(result))
@@ -440,6 +441,18 @@ export default defineConfig(({ mode }) => {
               if (env.POKEMONTCG_API_KEY) proxyReq.setHeader('X-Api-Key', env.POKEMONTCG_API_KEY)
               console.log('[api/pkm]', req.url, '-> api.pokemontcg.io' + proxyReq.path)
             })
+          },
+        },
+        // Pokemon JP/CN/KO -> TCGdex (community REST, KEYLESS, multilingual). English stays on
+        // /api/pkm (pokemontcg.io) for pricing; this serves native JP/CN/KO set + card data + images.
+        // e.g. /api/tcgdex/ja/cards/SV3-001 -> https://api.tcgdex.net/v2/ja/cards/SV3-001
+        '/api/tcgdex': {
+          target: 'https://api.tcgdex.net',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/tcgdex/, '/v2'),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) =>
+              console.log('[api/tcgdex]', req.url, '-> api.tcgdex.net' + proxyReq.path))
           },
         },
         // Riftbound -> riftscribe.gg (community REST API, KEYLESS) — the no-key live

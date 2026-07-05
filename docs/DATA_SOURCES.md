@@ -56,6 +56,47 @@ score, and the divergence flag; API market prices carry no fabricated volatility
   `https://static.dotgg.gg/pokemon/card/{c.id}.webp` (the dotgg code IS the
   pokemontcg.io id, e.g. `swsh10tg-TG01`, case-sensitive) — used as primary when
   pokemontcg.io returns no image, and as an `onerror` swap when its image breaks.
+  **dotgg is EN-only** (keyed on the pokemontcg.io id) — never built for a JP/CN/KO id.
+
+## Pokémon JP / CN / KO — TCGdex  (proxy `/api/tcgdex`, keyless)
+
+English uses pokemontcg.io (above). **Japanese, Simplified Chinese, Traditional Chinese, and
+Korean** use **TCGdex** (`https://api.tcgdex.net/v2/{lang}`, lang ∈ `ja`, `zh-cn`, `zh-tw`, `ko`) —
+keyless, and it uses the **printed set code as the set id** (JP `SV3`/`M5`, CN `CSV4C`), which is
+exactly the symbol the user searches by. The language toggle in the builder scopes the whole picker
++ lookup to one language (bare codes like `SV10` collide across the EN and JP namespaces).
+
+- **Baked set index:** `scripts/build-pokemon-intl-sets.mjs` → `data/pokemon-intl-sets.json`
+  (`{ ja:[…], "zh-cn":[…], "zh-tw":[…], ko:[…] }`; per set `{code, tcgdexId, name_native, name_en?,
+  serie, releaseDate, cardCount, enEquivalent?, seeded?}`). TCGdex's brief `/sets` list lacks
+  serie/date, so the bake enriches per-set **incrementally** (reuses already-baked rows — first
+  build ~400 fetches, daily refresh a handful) and merges a human-curated overlay
+  `data/pokemon-intl-seed.json` (English names + nullable N:1 `enEquivalent` + injection of
+  not-yet-ingested sets like `M5` Abyss Eye). Codes are UPPERCASE-normalised (TCGdex casing is
+  inconsistent: `csm1a` vs `CSV4C`). The builder loads the file client-side
+  (`fetch('/data/pokemon-intl-sets.json')`, cached under `localStorage` `pkm_intl_sets_v1`). Wired
+  into the daily `lib/refresh.mjs` bake (`pokemon-intl`), which also picks up sets TCGdex ingests
+  after a physical release.
+- **Set search:** the picker matches the UPPERCASE printed **code** OR `name_native` OR `name_en`
+  OR `enEquivalent.name`, so `M5`, `アビスアイ`, `Abyss Eye`, and `Pitch Black` all resolve M5.
+  **Code/symbol search is complete for every set** (id = printed code); **English-name search is
+  complete for curated sets** and falls back to native-name search for the long tail.
+- **Card + image:** `GET /api/tcgdex/{lang}/cards/{code}-{localId}`. TCGdex localIds are
+  **zero-padded 3-digit** (`SV3-001`, not `SV3-1`) — the builder tries `001`→`1`→`01`. The card
+  `image` is a **base URL with no extension** (`…/ja/SV/SV3/001`); append `/low.webp` (display) /
+  `/high.webp` (download). **Coverage reality:** JP card data is good for the SV era; the newest JP
+  sets and most **CN card data are sparse/absent** in TCGdex (set *lists* are complete, card data
+  is not) — a miss degrades to manual field entry (comps still work).
+- **Language-aware eBay comps:** `findEbay` appends the language word (`Japanese`/`Chinese`/`Korean`;
+  never `English`) + the native printed code to the query and passes `lang`; `TCG.classifyLang(title)`
+  (extras.js) then keeps only rows whose title language matches (kana ⇒ JP-certain, hangul ⇒ KO,
+  bare Han ⇒ JP; JP/CN/KO modes also keep bilingual English-titled listings, drop confirmed-other).
+- **Pricing:** pokemontcg.io TCGplayer/Cardmarket prices are English-market and **wrong** for
+  JP/CN/KO, so they are **suppressed** for non-EN; eBay AU comps are the primary signal. As a
+  **native-market reference** (JP only), the panel always shows a PriceCharting "Pokemon Japanese"
+  console link, and attempts an inline scrape via `/api/pc/lookup?…&lang=jp` (see below).
+- **Scope:** listing-builder only. JP/CN/KO cards are **not** written to the tracker/inventory/bulk
+  pipeline (which key on pokemontcg.io ids) — `identity_key` is left blank so those actions are gated.
 
 ## PriceCharting — graded/raw/pop (Pokémon)  (proxy `/api/pc`, keyless scrape)
 
@@ -65,8 +106,11 @@ eBay-sold-based **raw anchor**, and **PSA/CGC population** counts. There is **no
 Cloudflare bot-block; a Node fetch with browser headers passes where the browser/WebFetch get 403).
 Display-only — it does **not** change the tracked price, so `lib/normalize.mjs` is untouched.
 
-- Endpoint (this tool): `GET /api/pc/lookup?name=&number=&set=&id=` → `{ matched, url, confidence,
-  productName, consoleName, prices:{ungraded, grade9, psa10, bgs10}, pop:{ "<grade>":{psa,cgc,total} } }`.
+- Endpoint (this tool): `GET /api/pc/lookup?name=&number=&set=&id=[&lang=jp]` → `{ matched, url,
+  confidence, productName, consoleName, prices:{ungraded, grade9, psa10, bgs10}, pop:{ "<grade>":{psa,cgc,total} } }`.
+  **`lang=jp`** biases the search to the **"Pokemon Japanese"** console, caps confidence at `medium`
+  (JP coverage is sparse/fuzzier), and — since a JP set and its EN equivalent share collector numbers
+  — **rejects any match whose console isn't Japanese** (never shows the English same-number card).
   A full `ladder:{ "<label>":cents }` map (e.g. `Grade 8`, `PSA 10`, `BGS 9.5`) is also returned —
   the inventory valuation (`/api/inventory/items/:id/refresh-value`) maps it to a slab's company+grade rung.
   **Prices are integer cents** (Golden Rule 3); the Pokémon builder divides by 100 for its USD rows.

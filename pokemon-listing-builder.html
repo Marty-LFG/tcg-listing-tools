@@ -155,7 +155,7 @@ function genTitle(){
     {text:setn,prio:70},
     {text:rar,abbr:rarShort,prio:78},
     {text:finTok,abbr:finAbbr,prio:55},
-    {text:TCG.langCode(lang),prio:30},
+    {text:TCG.langCode(lang),prio:/^\s*english\s*$/i.test(lang)?30:66},   // non-EN: keep JP/ZH/KO in title (INAD safety)
     {text:TCG.condCode(cond),prio:62}
   ];
   return TCG.fitTitle(parts,80);
@@ -177,11 +177,16 @@ function findEbay(){
   const f=readFields(), st=document.getElementById('status');
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
   const setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();   // "Base Set (BS)" -> "Base Set"
-  const q=('Pokemon '+f.name+(f.num?' '+f.num:'')+(setName?' '+setName:'')).trim();
+  const dl=activeDataLang();
+  // For JP/CN/KO: bias eBay recall with the language word (never "English" — EN listings are
+  // unmarked) and the native printed code (M5 / sv8a), which JP/CN sellers commonly put in titles.
+  const kw=langEbayKeyword();                                        // '' | Japanese | Chinese | Korean
+  const codeTok=(dl!=='en'&&selectedSet&&selectedSet.code)?selectedSet.code:'';
+  const q=('Pokemon '+f.name+(f.num?' '+f.num:'')+(setName?' '+setName:'')+(codeTok?' '+codeTok:'')+(kw?' '+kw:'')).trim();
   return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
     analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'TCGplayer',
     card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
-    precision:true, numberMatch:f.num,   // f.num = "232/91" — require the exact card number in titles
+    precision:true, numberMatch:f.num, lang:dl,   // f.num = "232/91"; lang drives the comps language filter
     finish:(/non/i.test(f.finish)?'nonfoil':(/holo|foil/i.test(f.finish)?'foil':null)),   // Holo/Reverse vs Non-holo split
 
     // eBay conditionId 4000 = Ungraded (raw), 2750 = Graded. Default to raw Buy-It-Now so graded
@@ -235,6 +240,23 @@ function render(){const f=readFields();lastHTML=buildHTML(f);
 
 let PKM_SETS=[]; let selectedSet=null; let _setActive=-1;
 const SETS_CACHE_KEY='pkm_sets_v1';
+// JP/CN/KO catalogs, baked from TCGdex (scripts/build-pokemon-intl-sets.mjs). Shape:
+// { ja:[rec…], 'zh-cn':[…], 'zh-tw':[…], ko:[…] }; rec = {code,tcgdexId,name_native,name_en?,serie,releaseDate,enEquivalent?}.
+let PKM_INTL=null;
+const INTL_CACHE_KEY='pkm_intl_sets_v1';
+function loadCachedIntl(){try{var raw=localStorage.getItem(INTL_CACHE_KEY);if(raw){var o=JSON.parse(raw);if(o&&typeof o==='object'){PKM_INTL=o;return true;}}}catch(e){}return false;}
+async function loadIntlSets(){
+  if(PKM_INTL)return PKM_INTL;
+  loadCachedIntl();
+  try{var r=await fetch('/data/pokemon-intl-sets.json');
+    if(r.ok){var o=await r.json();if(o&&typeof o==='object'){PKM_INTL=o;try{localStorage.setItem(INTL_CACHE_KEY,JSON.stringify(o));}catch(e){}}}
+  }catch(e){}
+  return PKM_INTL||{};
+}
+// The set list for the ACTIVE language: EN → pokemontcg.io PKM_SETS; else the baked intl catalog.
+function activeSets(){var dl=activeDataLang();if(dl==='en')return PKM_SETS;return (PKM_INTL&&PKM_INTL[dl])||[];}
+// The id used for the card lookup + image path (EN: pokemontcg.io id; intl: TCGdex printed code).
+function setLookupId(s){return s?(s.tcgdexId!==undefined?s.tcgdexId:s.id):'';}
 function setStatus(m){var e=document.getElementById('setStatus');if(e)e.textContent=m;}
 function slimSet(s){return {id:s.id,name:s.name,series:s.series||'',releaseDate:s.releaseDate||'',ptcgoCode:s.ptcgoCode||'',symbol:(s.images&&s.images.symbol)||''};}
 function loadCachedSets(){try{var raw=localStorage.getItem(SETS_CACHE_KEY);if(raw){var a=JSON.parse(raw);if(Array.isArray(a)&&a.length){PKM_SETS=a;return true;}}}catch(e){}return false;}
@@ -252,36 +274,107 @@ async function loadSets(){
   }catch(e){act&&act.fail('sets offline (cached)');setStatus(hadCache?PKM_SETS.length+' sets (offline — cached)':'couldn’t load sets — type a set id');}
 }
 function resolveSet(typed){
-  var t=(typed||'').trim().toLowerCase();if(!t)return null;
+  var list=activeSets();var t=(typed||'').trim().toLowerCase();if(!t||!list.length)return null;
   var disp=t.replace(/\s*\([^)]*\)\s*$/,'');
-  return PKM_SETS.find(function(s){return s.id.toLowerCase()===t||(s.ptcgoCode||'').toLowerCase()===t||s.name.toLowerCase()===disp;})
-    ||PKM_SETS.find(function(s){return (s.ptcgoCode||'').toLowerCase()===t;})
-    ||PKM_SETS.find(function(s){return s.name.toLowerCase().indexOf(disp)>=0||s.id.toLowerCase().indexOf(t)>=0;})||null;
+  if(isIntlLang()){
+    var tu=t.toUpperCase();var eqName=function(s){return s.enEquivalent&&(s.enEquivalent.name||'').toLowerCase();};
+    // Exact: printed code (M5 / CSV4C) or native/English/EN-equivalent set name.
+    return list.find(function(s){return s.code.toUpperCase()===tu||(s.tcgdexId||'').toUpperCase()===tu
+        ||(s.name_native||'').toLowerCase()===disp||(s.name_en||'').toLowerCase()===disp||eqName(s)===disp;})
+      // Substring on any name field, or code.
+      ||list.find(function(s){return (s.name_native||'').toLowerCase().indexOf(disp)>=0
+        ||(s.name_en||'').toLowerCase().indexOf(disp)>=0
+        ||(eqName(s)||'').indexOf(disp)>=0
+        ||s.code.toLowerCase().indexOf(t)>=0;})||null;
+  }
+  return list.find(function(s){return s.id.toLowerCase()===t||(s.ptcgoCode||'').toLowerCase()===t||s.name.toLowerCase()===disp;})
+    ||list.find(function(s){return (s.ptcgoCode||'').toLowerCase()===t;})
+    ||list.find(function(s){return s.name.toLowerCase().indexOf(disp)>=0||s.id.toLowerCase().indexOf(t)>=0;})||null;
 }
 function filterSets(typed){
-  var t=(typed||'').trim().toLowerCase();
-  if(!t)return PKM_SETS.slice(0,40);
-  return PKM_SETS.filter(function(s){return s.name.toLowerCase().indexOf(t)>=0||(s.ptcgoCode||'').toLowerCase().indexOf(t)>=0||s.id.toLowerCase().indexOf(t)>=0;}).slice(0,40);
+  var list=activeSets();var t=(typed||'').trim().toLowerCase();
+  if(!t)return list.slice(0,40);
+  if(isIntlLang()){
+    return list.filter(function(s){return s.code.toLowerCase().indexOf(t)>=0
+      ||(s.name_native||'').toLowerCase().indexOf(t)>=0
+      ||(s.name_en||'').toLowerCase().indexOf(t)>=0
+      ||(s.enEquivalent&&(s.enEquivalent.name||'').toLowerCase().indexOf(t)>=0);}).slice(0,40);
+  }
+  return list.filter(function(s){return s.name.toLowerCase().indexOf(t)>=0||(s.ptcgoCode||'').toLowerCase().indexOf(t)>=0||s.id.toLowerCase().indexOf(t)>=0;}).slice(0,40);
 }
 function markActive(opts){opts.forEach(function(o,i){o.classList.toggle('active',i===_setActive);});if(_setActive>=0&&opts[_setActive])opts[_setActive].scrollIntoView({block:'nearest'});}
+// Normalise either record shape (EN slim / intl) to the menu's display fields.
+function setMenuRow(s){
+  if(isIntlLang()){
+    var nm=s.name_en||s.name_native||s.code;
+    var nat=(s.name_native&&s.name_native!==nm)?esc(s.name_native)+' · ':'';
+    var eq=(s.enEquivalent&&s.enEquivalent.name)?' · EN: '+esc(s.enEquivalent.name):'';
+    return {rid:s.code,sym:'',name:nm,code:s.code,meta:nat+esc(s.serie||'')+' · '+esc(s.code)+eq};
+  }
+  return {rid:s.id,sym:s.symbol,name:s.name,code:s.ptcgoCode||'',meta:esc(s.series)+' · '+esc(s.id)};
+}
 function renderSetMenu(typed){
   var menu=document.getElementById('setMenu');if(!menu)return;var list=filterSets(typed);_setActive=-1;
   if(!list.length){menu.classList.remove('open');menu.innerHTML='';return;}
-  menu.innerHTML=list.map(function(s){
-    var sym=s.symbol?'<img src="'+s.symbol+'" alt="" loading="lazy">':'<span style="width:22px;flex:none;"></span>';
-    var code=s.ptcgoCode?'<span class="code">'+esc(s.ptcgoCode)+'</span>':'';
-    return '<div class="setopt" data-id="'+esc(s.id)+'">'+sym+'<span style="min-width:0;"><span class="nm">'+esc(s.name)+'</span>'+code+'<br><span class="meta">'+esc(s.series)+' · '+esc(s.id)+'</span></span></div>';
+  menu.innerHTML=list.map(function(s){var r=setMenuRow(s);
+    var sym=r.sym?'<img src="'+r.sym+'" alt="" loading="lazy">':'<span style="width:22px;flex:none;"></span>';
+    var code=r.code?'<span class="code">'+esc(r.code)+'</span>':'';
+    return '<div class="setopt" data-id="'+esc(r.rid)+'">'+sym+'<span style="min-width:0;"><span class="nm">'+esc(r.name)+'</span>'+code+'<br><span class="meta">'+r.meta+'</span></span></div>';
   }).join('');
   menu.classList.add('open');
   menu.querySelectorAll('.setopt').forEach(function(el){el.addEventListener('mousedown',function(ev){ev.preventDefault();pickSet(el.getAttribute('data-id'));document.getElementById('num').focus();});});
 }
-function pickSet(id){var s=PKM_SETS.find(function(x){return x.id===id;});if(!s)return;selectedSet=s;document.getElementById('setCode').value=s.name+(s.ptcgoCode?' ('+s.ptcgoCode+')':'');closeSetMenu();}
+function pickSet(id){
+  var list=activeSets();
+  var s=isIntlLang()?list.find(function(x){return x.code===id;}):list.find(function(x){return x.id===id;});
+  if(!s)return;selectedSet=s;
+  var label=isIntlLang()?((s.name_en||s.name_native||s.code)+' ('+s.code+')'):(s.name+(s.ptcgoCode?' ('+s.ptcgoCode+')':''));
+  document.getElementById('setCode').value=label;closeSetMenu();
+}
 function closeSetMenu(){var m=document.getElementById('setMenu');if(m)m.classList.remove('open');}
-const LANGS=[['EN','English'],['JP','Japanese'],['FR','French'],['DE','German'],['IT','Italian'],['ES','Spanish'],['PT','Portuguese'],['KO','Korean'],['ZH','Chinese']];
-function codeFromLang(name){var n=(name||'').trim().toLowerCase();var mp={english:'EN',japanese:'JP',french:'FR',german:'DE',italian:'IT',spanish:'ES',portuguese:'PT',korean:'KO',chinese:'ZH'};if(mp[n])return mp[n];if(!name)return 'EN';return (window.TCG?TCG.langCode(name):name.slice(0,2).toUpperCase());}
+// One source of truth for language: [code, label, dataLang, ebayKeyword].
+// dataLang 'en' = pokemontcg.io (also every European print, which shares EN set identity/numbering);
+// ja / zh-cn / zh-tw / ko = the baked TCGdex intl index (data/pokemon-intl-sets.json).
+const LANGS=[
+  ['EN','English','en',''],
+  ['JP','Japanese','ja','Japanese'],
+  ['CN','Chinese (Simp.)','zh-cn','Chinese'],
+  ['TW','Chinese (Trad.)','zh-tw','Chinese'],
+  ['KO','Korean','ko','Korean'],
+  ['FR','French','en','French'],
+  ['DE','German','en','German'],
+  ['IT','Italian','en','Italian'],
+  ['ES','Spanish','en','Spanish'],
+  ['PT','Portuguese','en','Portuguese']
+];
+function langRow(name){var n=(name||'').trim().toLowerCase();if(!n)return LANGS[0];
+  return LANGS.find(function(l){return l[1].toLowerCase()===n;})
+    ||LANGS.find(function(l){return l[0].toLowerCase()===n;})
+    ||(/(trad|繁)/i.test(name)?LANGS[3]:(/(chin|中文|简|simp)/i.test(name)?LANGS[2]:null))
+    ||LANGS[0];}
+function codeFromLang(name){return langRow(name)[0];}
+function activeDataLang(){return langRow(val('f_lang'))[2];}
+function isIntlLang(){return activeDataLang()!=='en';}
+function langEbayKeyword(){return langRow(val('f_lang'))[3];}
 function renderLangBtn(){var b=document.getElementById('langBtn');if(b)b.textContent=codeFromLang(val('f_lang'));}
 function buildLangMenu(){var m=document.getElementById('langMenu');if(!m)return;m.innerHTML=LANGS.map(function(l){return '<div class="langopt" data-name="'+l[1]+'"><span>'+l[1]+'</span><b>'+l[0]+'</b></div>';}).join('');m.querySelectorAll('.langopt').forEach(function(el){el.addEventListener('mousedown',function(ev){ev.preventDefault();setLang(el.getAttribute('data-name'));toggleLangMenu(false);});});}
-function setLang(name){var fl=document.getElementById('f_lang');if(fl)fl.value=name;renderLangBtn();render();if(typeof syncTitle==='function')syncTitle();}
+function setLang(name){
+  var fl=document.getElementById('f_lang');if(fl)fl.value=name;
+  renderLangBtn();
+  // Switching language re-scopes the set picker to that language's catalog; drop any picked set.
+  selectedSet=null;
+  var sc=document.getElementById('setCode');if(sc){sc.value='';sc.placeholder=setPlaceholder();}
+  var dl=activeDataLang();
+  if(dl!=='en'){loadIntlSets().then(updateSetStatus);}
+  updateSetStatus();closeSetMenu();
+  render();if(typeof syncTitle==='function')syncTitle();
+}
+function setPlaceholder(){switch(activeDataLang()){
+  case 'ja':return 'Japanese set code or name, e.g. M5 or Abyss Eye';
+  case 'zh-cn':case 'zh-tw':return 'Chinese set code or name, e.g. CSV4C';
+  case 'ko':return 'Korean set code or name, e.g. SV3';
+  default:return 'set name or printed code, e.g. PAR or Paradox Rift';}}
+function updateSetStatus(){var n=activeSets().length;setStatus(n?(n+' sets'):'loading sets…');}
 function toggleLangMenu(force){var m=document.getElementById('langMenu');if(!m)return;var open=(force===undefined)?!m.classList.contains('open'):!!force;m.classList.toggle('open',open);}
 // PriceCharting enrichment (graded/raw/pop). Non-blocking: the base extras panel is already
 // rendered; this appends PriceCharting rows when they arrive. A failure/no-match is silent so a
@@ -326,9 +419,12 @@ function pcEnrich(el,ex,baseRows,c,typedNum){
   }catch(e){}
 }
 async function doLookup(){
-  const _setObj=selectedSet||resolveSet(val('setCode')); const setId=_setObj?_setObj.id:'', num=val('num').replace(/\s/g,''), st=document.getElementById('status');
-  if(!setId){st.className='status warn';st.textContent='Pick a set — try a name or the printed code (e.g. PAR).';return;}
+  const _setObj=selectedSet||resolveSet(val('setCode')); const num=val('num').replace(/\s/g,''), st=document.getElementById('status');
+  const dl=activeDataLang();
+  if(!_setObj){st.className='status warn';st.textContent='Pick a set — try a name or the printed code'+(dl==='en'?' (e.g. PAR).':' (e.g. M5).');return;}
   if(!num){st.className='status warn';st.textContent='Enter a card number.';return;}
+  if(dl!=='en')return doLookupIntl(_setObj,num,dl);
+  const setId=_setObj.id;
   st.className='status load';st.textContent='Looking up '+setId+'-'+num+'\u2026';
   const act=window.TCG?TCG.activity('Looking up '+setId+'-'+num+'\u2026'):null;
   try{
@@ -357,6 +453,89 @@ async function doLookup(){
       TCG.renderExtras(_exEl,_ex);pcEnrich(_exEl,_ex,_pr,c,num);}regenTitle();
   }catch(e){act&&act.fail('lookup blocked');st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
 }
+// JP / Simplified-CN / Traditional-CN / KO lookup via TCGdex (native card data + image).
+// pokemontcg.io has no such cards; TCGdex has no reliable prices, so the panel is image + a
+// native-market note, and eBay comps (Phase: language-aware) are the price signal. GR7: any
+// failure falls back to manual entry and never throws.
+// TCGdex localIds are zero-padded ("001", "025"); users type "1"/"25". Try the 3-digit form
+// first (the convention), then fall back — and pass non-numeric promo ids (TG01, SV-P) through.
+function intlNumCandidates(num){
+  var n=String(num||'').trim(),out=[];
+  if(/^\d+$/.test(n)){var i=parseInt(n,10);out.push(('00'+i).slice(-3),String(i),('0'+i).slice(-2));}
+  else{out.push(n,n.toUpperCase());}
+  return out.filter(function(v,ix,a){return v&&a.indexOf(v)===ix;});
+}
+// Native-market reference for Japanese cards (user decision): a PriceCharting "Pokemon Japanese"
+// console link (always available) + a best-effort inline scrape when the name is matchable. CN/KO
+// have ~no PriceCharting coverage, so they get eBay comps only. GR7: never blocks/throws.
+function pcJapaneseSearchUrl(name,number,setName){
+  var latin=(name||'').replace(/[぀-ヿ一-鿿가-힯]/g,'').replace(/[^\w\s-]/g,' ').trim();  // drop CJK, keep ex/V
+  if(latin.length<3)latin='';
+  var numHead=String(number||'').split('/')[0];
+  var q=[latin,numHead,setName,'japanese pokemon'].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+  return 'https://www.pricecharting.com/search-products?type=prices&q='+encodeURIComponent(q);
+}
+function pcEnrichIntl(el,ex,c,typedNum,dl){
+  if(dl!=='ja')return;   // Simplified-CN / Traditional-CN / KO aren't covered by PriceCharting
+  try{
+    var nm=val('f_name')||c.name, numv=((c.localId||typedNum||'')+'').replace(/\s/g,''), setNm=val('f_set')||'';
+    if(!nm||!numv)return;
+    // Always offer the native-market reference link (works even when the auto-match can't).
+    ex.priceLink={href:pcJapaneseSearchUrl(nm,numv,setNm),label:'Graded / raw on PriceCharting (Japanese)'};
+    TCG.renderExtras(el,ex);
+    var q='/api/pc/lookup?lang=jp&name='+encodeURIComponent(nm)+'&number='+encodeURIComponent(numv)+'&set='+encodeURIComponent(setNm)+'&id='+encodeURIComponent(c.id||'');
+    var act=window.TCG?TCG.activity('PriceCharting JP…'):null;
+    fetch(q).then(function(r){return r.json();}).then(function(pc){
+      if(!pc||!pc.matched){act&&act.fail('no PriceCharting JP match');return;}
+      var rows=pcRows(pc);
+      if(!rows.length){act&&act.fail('no PriceCharting prices');return;}
+      ex.prices=(ex.prices||[]).concat(rows);ex.pcLink=pc.url;
+      TCG.renderExtras(el,ex);
+      act&&act.done('PriceCharting JP'+(pc.confidence==='medium'?' (check match)':''));
+    }).catch(function(){act&&act.fail('PriceCharting blocked');});
+  }catch(e){}
+}
+async function doLookupIntl(setObj,num,dl){
+  const code=setLookupId(setObj), st=document.getElementById('status');
+  const tag=dl.toUpperCase(), cardLabel=code+'-'+num;
+  st.className='status load';st.textContent='Looking up '+cardLabel+' ('+tag+')…';
+  const act=window.TCG?TCG.activity('Looking up '+cardLabel+'…'):null;
+  try{
+    let c=null;
+    var cands=intlNumCandidates(num);
+    for(var i=0;i<cands.length;i++){
+      var rr=await fetch('/api/tcgdex/'+encodeURIComponent(dl)+'/cards/'+encodeURIComponent(code+'-'+cands[i]));
+      if(rr.ok){var jj=await rr.json();if(jj&&jj.name){c=jj;break;}}
+    }
+    if(!c||!c.name){act&&act.fail('no card');st.className='status warn';st.textContent='No card data for '+cardLabel+' in TCGdex ('+tag+') — fill fields manually (comps still work).';return;}
+    const total=(c.set&&c.set.cardCount&&(c.set.cardCount.official||c.set.cardCount.total))||setObj.cardCount||'';
+    set('f_name',c.name);
+    set('f_set',setObj.name_en||setObj.name_native||(c.set&&c.set.name)||code);
+    set('f_num',(c.localId||num)+(total?'/'+total:''));
+    set('f_rarity',c.rarity||'');
+    set('f_poke',c.name);
+    set('f_stage',c.stage||'');
+    set('f_type',(c.types||[]).join(' / '));
+    set('f_finish',/holo|shiny|rare|ex|special/i.test(c.rarity||'')?'Holo':'Non-holo');
+    set('f_pitch',genPitch(readFields()));
+    // Listing-only for JP/CN/KO (identity_key stays blank so tracker/inventory/comps-save are gated,
+    // avoiding collisions with the pokemontcg.io id space). See addTrack/addInv.
+    _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:c.name,variant:val('f_finish'),price:null};
+    act&&act.done('TCGdex '+tag);
+    st.className='status ok';st.textContent='✓ '+c.name+'  ('+(c.rarity||'?')+')  ·  '+tag;
+    render();
+    if(window.TCG){
+      var img=c.image||'';   // base URL, no extension — append quality + ext
+      var imgs=img?[{label:'Front',display:[img+'/low.webp',img+'/high.webp'],download:img+'/high.webp',fallback:img+'/high.webp'}]:[];
+      var _exEl=document.getElementById('extras');
+      var _ex={name:c.name,images:imgs,prices:[],history:null,
+        priceNote:'TCGplayer/Cardmarket don’t price '+tag+' prints — use the eBay comps below as the native-market reference.'};
+      TCG.renderExtras(_exEl,_ex);
+      if(typeof pcEnrichIntl==='function')pcEnrichIntl(_exEl,_ex,c,num,dl);
+    }
+    regenTitle();
+  }catch(e){act&&act.fail('lookup blocked');st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
+}
 function copyHTML(){copy(lastHTML,'HTML copied!');}
 function copyText(){const t=document.createElement('div');t.innerHTML=lastHTML;copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}
 function copy(text,msg){const done=()=>showToast(msg);
@@ -365,6 +544,7 @@ function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;t
 let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
 let _trk=null;
 async function addInv(){
+  if(_trk&&_trk._intl){showToast('JP/CN/KO cards are listing-only for now');return;}
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   if(!(window.TCG&&TCG.addToInventory)){showToast('Inventory unavailable');return;}
   const body=Object.assign({},_trk,{set_name:val('f_set')||null,number:val('f_num')||null,status:'in_stock'});
@@ -373,6 +553,7 @@ async function addInv(){
   showToast(r?('Added to inventory ✓ '+(r.sku||'')):'Add failed');
 }
 async function addTrack(){
+  if(_trk&&_trk._intl){showToast('JP/CN/KO cards are listing-only for now');return;}
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   const r=await TCG.addToTracker(_trk);
   showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
@@ -398,7 +579,7 @@ async function addTrack(){
     document.addEventListener('click',function(e){var r=document.querySelector('.setrow');if(r&&!r.contains(e.target)){closeSetMenu();toggleLangMenu(false);}});
     buildLangMenu();renderLangBtn();
   })();
-  loadSets(); render();
+  loadSets(); loadIntlSets(); render();
 })();
 </script>
 </body>

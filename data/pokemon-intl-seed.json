@@ -1,0 +1,14 @@
+{
+  "_comment": "Human-curated overlay for the baked multi-language Pokemon set index (scripts/build-pokemon-intl-sets.mjs -> data/pokemon-intl-sets.json). Keyed by language then UPPERCASED printed set code. Two jobs: (1) ENRICH a set TCGdex already carries with an English display name (name_en, so English-name search works) and its nullable English-equivalent set (enEquivalent, N:1 and often absent); (2) INJECT a brand-new set TCGdex has not ingested yet (supply name_native + serie + releaseDate so it appears until the API catches up, then the API record is merged over it). Add rows here as new JP/CN/KO sets drop or when you confirm an English mapping. name_en is the set's own English rendering (e.g. Abyss Eye), NOT the enEquivalent English set (e.g. Pitch Black) - both are searchable. enEquivalent.id is a pokemontcg.io set id, used only for a last-resort fallback image; leave blank if unknown.",
+  "ja": {
+    "M5":   { "name_en": "Abyss Eye",   "name_native": "アビスアイ",       "serie": "ポケモンカードゲーム MEGA", "releaseDate": "2026-05-22", "enEquivalent": { "id": "", "name": "Pitch Black" } },
+    "M1L":  { "name_en": "Mega Brave",     "enEquivalent": { "id": "me1", "name": "Mega Evolution" } },
+    "M1S":  { "name_en": "Mega Symphonia", "enEquivalent": { "id": "me1", "name": "Mega Evolution" } },
+    "SV2A": { "name_en": "Pokémon Card 151",       "enEquivalent": { "id": "sv3pt5", "name": "151" } },
+    "SV3":  { "name_en": "Ruler of the Black Flame", "enEquivalent": { "id": "sv03",   "name": "Obsidian Flames" } },
+    "SV8A": { "name_en": "Terastal Festival ex",     "enEquivalent": { "id": "sv8pt5", "name": "Prismatic Evolutions" } }
+  },
+  "zh-cn": {},
+  "zh-tw": {},
+  "ko": {}
+}
