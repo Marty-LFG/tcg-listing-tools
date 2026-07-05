@@ -81,13 +81,32 @@ exactly the symbol the user searches by. The language toggle in the builder scop
   OR `enEquivalent.name`, so `M5`, `アビスアイ`, `Abyss Eye`, and `Pitch Black` all resolve M5.
   **Code/symbol search is complete for every set** (id = printed code); **English-name search is
   complete for curated sets** and falls back to native-name search for the long tail.
-- **Card + image:** `GET /api/tcgdex/{lang}/cards/{code}-{localId}`. TCGdex localIds are
-  **zero-padded 3-digit** (`SV3-001`, not `SV3-1`) — the builder tries `001`→`1`→`01`. The card
-  `image` is a **base URL with no extension** (`…/ja/SV/SV3/001`); append `/low.webp` (display) /
-  `/high.webp` (download). **Coverage reality:** JP card data is good for the SV era; the newest JP
-  sets and most **CN card data are sparse/absent** in TCGdex (set *lists* are complete, card data
-  is not) — a miss degrades to manual field entry (comps still work), and a seeded-but-uningested
-  set like `M5` says so explicitly (its English set name is still filled).
+- **Card + image = PriceCharting console (PRIMARY), TCGdex (fallback).** TCGdex is missing the
+  newest JP sets (`M5` Abyss Eye) and almost all CN/KO **card** data, so card lookup + images now
+  come from **PriceCharting** (which we already scrape, browser-headers bypass its Cloudflare block):
+  - Every set maps to a PriceCharting **console** (`pokemon-{japanese|chinese|korean}-{slug}`). The
+    bake fetches the console directory (`GET /category/pokemon-cards` → `listPokemonConsoles`) and
+    attaches a **`pcSlug`** to each set: JP/KO consoles are slugged by ENGLISH set name
+    (`pokemon-japanese-abyss-eye`), CN consoles by the printed CODE (`pokemon-chinese-csv4c`). Every
+    unmatched console is also **added as its own set** so all PriceCharting-covered sets are lookupable
+    (JP ~107, CN ~16; KO is sparse on PriceCharting — ~4).
+  - Card lookup: `GET /api/pc/console?slug=<pcSlug>` → `enumerateConsole` returns the whole set as
+    `[{number, name(ENGLISH), image, url}]` in one cached fetch; the builder matches the typed number
+    → English card name + a **1600px image** (`storage.googleapis.com/images.pricecharting.com/<hash>/1600.jpg`;
+    `/320.jpg` for display) + the graded/raw price ladder via `GET /api/pc/lookup?url=<card url>`.
+  - **Fallback:** sets without a `pcSlug` (older JP, all `zh-tw`) use TCGdex
+    `GET /api/tcgdex/{lang}/cards/{code}-{localId}` (zero-padded id; image base + `/high.webp`). A
+    total miss degrades to manual entry (comps still work).
+  - PriceCharting rows carry English name + number + image but **not rarity/stage/type** — those
+    fields are left for the user. CN sets display the printed code as the set name (no English CN
+    set-name source); JP/KO show the English set name.
+  - **Caching (rate-limit resilience):** PriceCharting scrape results are cached to disk
+    (`data/pc-cache/` — console enumerations, the console directory, and price ladders) on top of the
+    in-memory maps, so a dev-server restart doesn't re-scrape and a **stale copy is served when
+    PriceCharting is blocking** (the 1s-throttle + 5-min 403/429 breaker still gate live fetches).
+    Card images are cached to disk by the `/api/img` proxy (`data/img-cache/`, keyed by URL hash) and
+    the builder routes JP/CN/KO display + download through it — so images are served from our own
+    server after first fetch. Both cache dirs are git-ignored.
 - **English OUTPUT (never native script):** the listing (card name, set, title, description, pitch)
   is always English. Set = `name_en` / `enEquivalent.name` / printed code. Card name = English
   species + the Latin suffix printed on the card (`ex`/`V`/`VMAX`), resolved via

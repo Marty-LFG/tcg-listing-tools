@@ -1,16 +1,28 @@
 import { defineConfig, loadEnv } from 'vite'
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { trackerPlugin } from './lib/tracker.mjs'
 import { inventoryPlugin } from './lib/inventory.mjs'
 import { bulkPlugin } from './lib/bulk.mjs'
 import { repricerPlugin } from './lib/repricer.mjs'
-import { lookup as pcLookup } from './lib/pricecharting.mjs'
+import { lookup as pcLookup, enumerateConsole as pcEnumerate, listPokemonConsoles as pcConsoles } from './lib/pricecharting.mjs'
 import { certLookup, certProviders } from './lib/certlookup.mjs'
 import { analyzeCard } from './lib/grader.mjs'
 import { printConfig, buildJob, sendToPrinter } from './lib/labelprint.mjs'
 
-// Streams any remote image through the dev server so the browser can blob-download
-// it (cross-origin <a download> is blocked otherwise).
+// Streams any remote image through the dev server (so the browser can blob-download it — cross-origin
+// <a download> is blocked otherwise) AND caches it on disk (data/img-cache/) keyed by URL hash. Card
+// images are content-addressed / stable, so cached forever; repeat display + download is then served
+// locally (faster, and resilient if the upstream CDN URL ever changes).
+const IMG_CACHE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'img-cache')
+const IMG_CT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', avif: 'image/avif', gif: 'image/gif' }
+function imgCacheFile(u) {
+  const ext = ((u.match(/\.(png|jpe?g|webp|avif|gif)(?:[?#]|$)/i) || [])[1] || '').toLowerCase()
+  const name = crypto.createHash('sha1').update(u).digest('hex') + (ext ? '.' + ext : '')
+  return { file: path.join(IMG_CACHE_DIR, name), ext }
+}
 const imgProxy = {
   name: 'img-proxy',
   configureServer(server) {
@@ -18,10 +30,22 @@ const imgProxy = {
       try {
         const u = new URL(req.url, 'http://localhost').searchParams.get('u')
         if (!u) { res.statusCode = 400; return res.end('missing u') }
-        const r = await fetch(u)
-        res.setHeader('content-type', r.headers.get('content-type') || 'image/png')
+        const { file, ext } = imgCacheFile(u)
         res.setHeader('access-control-allow-origin', '*')
-        res.end(Buffer.from(await r.arrayBuffer()))
+        res.setHeader('cache-control', 'public, max-age=31536000, immutable')
+        try {                                                    // disk cache hit
+          const buf = fs.readFileSync(file)
+          res.setHeader('content-type', IMG_CT[ext] || 'image/jpeg')
+          res.setHeader('x-img-cache', 'HIT')
+          return res.end(buf)
+        } catch {}
+        const r = await fetch(u)                                 // miss → fetch, cache, serve
+        if (!r.ok) { res.statusCode = r.status; return res.end('upstream ' + r.status) }
+        const buf = Buffer.from(await r.arrayBuffer())
+        try { fs.mkdirSync(IMG_CACHE_DIR, { recursive: true }); fs.writeFileSync(file, buf) } catch {}
+        res.setHeader('content-type', r.headers.get('content-type') || IMG_CT[ext] || 'image/png')
+        res.setHeader('x-img-cache', 'MISS')
+        res.end(buf)
       } catch (e) { res.statusCode = 502; res.end('img fetch failed') }
     })
   },
@@ -218,18 +242,29 @@ function pcProxy(env) {
             return res.end(JSON.stringify({ matched: false, disabled: true }))
           }
           const u = new URL(req.url, 'http://localhost')
+          // Console directory (JP/CN/KO set slugs) + per-set card enumeration (name + number + image).
+          if (/\/consoles(\?|$)/.test(u.pathname)) {
+            return res.end(JSON.stringify(await pcConsoles()))
+          }
+          if (/\/console(\?|$)/.test(u.pathname)) {
+            const slug = (u.searchParams.get('slug') || '').trim()
+            if (!slug) { res.statusCode = 400; return res.end(JSON.stringify({ error: 'slug required' })) }
+            console.log('[api/pc] console', slug)
+            return res.end(JSON.stringify({ slug, cards: await pcEnumerate(slug) }))
+          }
           const name = (u.searchParams.get('name') || '').trim()
           const number = (u.searchParams.get('number') || '').trim()
           const set = (u.searchParams.get('set') || '').trim()
           const cardId = (u.searchParams.get('id') || '').trim()
           const lang = (u.searchParams.get('lang') || '').trim().toLowerCase()
-          if (!name || !number) {
+          const pcUrl = (u.searchParams.get('url') || '').trim()
+          if (!pcUrl && (!name || !number)) {
             res.statusCode = 400
-            return res.end(JSON.stringify({ matched: false, error: 'name and number required' }))
+            return res.end(JSON.stringify({ matched: false, error: 'name and number (or url) required' }))
           }
-          console.log('[api/pc]', name, '#' + number, set ? '(' + set + ')' : '', lang ? '[' + lang + ']' : '')
+          console.log('[api/pc]', pcUrl || (name + ' #' + number), set ? '(' + set + ')' : '', lang ? '[' + lang + ']' : '')
           const result = await pcLookup({
-            name, number, setName: set, cardId, lang,
+            name, number, setName: set, cardId, lang, url: pcUrl,
             token: (env.PRICECHARTING_TOKEN || '').trim(),
           })
           res.end(JSON.stringify(result))

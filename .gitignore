@@ -17,3 +17,7 @@ reports/
 data/ebay-oauth.json
 data/ebay-*.json
 data/exports/
+
+# Generated on-disk caches (not source): PriceCharting scrape results + proxied card images.
+data/pc-cache/
+data/img-cache/

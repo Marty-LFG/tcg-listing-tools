@@ -355,10 +355,11 @@ function markActive(opts){opts.forEach(function(o,i){o.classList.toggle('active'
 // Normalise either record shape (EN slim / intl) to the menu's display fields.
 function setMenuRow(s){
   if(isIntlLang()){
-    var nm=s.name_en||s.name_native||s.code;
+    var nm=s.name_en||s.name_native||s.code||'?';
     var nat=(s.name_native&&s.name_native!==nm)?esc(s.name_native)+' · ':'';
     var eq=(s.enEquivalent&&s.enEquivalent.name)?' · EN: '+esc(s.enEquivalent.name):'';
-    return {rid:s.code,sym:'',name:nm,code:s.code,meta:nat+esc(s.serie||'')+' · '+esc(s.code)+eq};
+    var metaBits=[nat+esc(s.serie||''),s.code?esc(s.code):(s.pcSlug?'PriceCharting':'')].filter(function(x){return x&&x.replace(/·/g,'').trim();});
+    return {rid:s.code||s.pcSlug,sym:'',name:nm,code:s.code||'',meta:metaBits.join(' · ')+eq};
   }
   return {rid:s.id,sym:s.symbol,name:s.name,code:s.ptcgoCode||'',meta:esc(s.series)+' · '+esc(s.id)};
 }
@@ -375,9 +376,10 @@ function renderSetMenu(typed){
 }
 function pickSet(id){
   var list=activeSets();
-  var s=isIntlLang()?list.find(function(x){return x.code===id;}):list.find(function(x){return x.id===id;});
+  var s=isIntlLang()?list.find(function(x){return (x.code||x.pcSlug)===id;}):list.find(function(x){return x.id===id;});
   if(!s)return;selectedSet=s;
-  var label=isIntlLang()?((s.name_en||s.name_native||s.code)+' ('+s.code+')'):(s.name+(s.ptcgoCode?' ('+s.ptcgoCode+')':''));
+  var nm=(s.name_en||s.name_native||s.code||'');
+  var label=isIntlLang()?(nm+(s.code?' ('+s.code+')':'')):(s.name+(s.ptcgoCode?' ('+s.ptcgoCode+')':''));
   document.getElementById('setCode').value=label;closeSetMenu();
 }
 function closeSetMenu(){var m=document.getElementById('setMenu');if(m)m.classList.remove('open');}
@@ -545,13 +547,79 @@ function pcEnrichIntl(el,ex,c,typedNum,dl){
     }).catch(function(){act&&act.fail('PriceCharting blocked');});
   }catch(e){}
 }
+// PriceCharting console = the PRIMARY JP/CN/KO card source: English card names + full-res 1600px
+// images + a graded/raw price ladder, covering sets TCGdex lacks (M5 Abyss Eye, CN, KO). Returns
+// true if it populated the card; false to fall through to TCGdex. GR7: never throws.
+async function tryPcLookup(setObj,num,dl,enSet){
+  const st=document.getElementById('status'), tag=dl.toUpperCase();
+  st.className='status load';st.textContent='Looking up '+setObj.code+' #'+num+' ('+tag+')…';
+  const act=window.TCG?TCG.activity('PriceCharting '+setObj.code+' #'+num+'…'):null;
+  try{
+    const r=await fetch('/api/pc/console?slug='+encodeURIComponent(setObj.pcSlug));
+    const j=r.ok?await r.json():null;
+    const cards=(j&&j.cards)||[];
+    if(!cards.length){act&&act.fail('console unavailable');return false;}
+    const want=String(num).replace(/\/.*$/,'').replace(/^0+(?=\d)/,'').toLowerCase();
+    const card=cards.find(function(c){return String(c.number).replace(/^0+(?=\d)/,'').toLowerCase()===want;});
+    if(!card){
+      // Console loaded fine but this number isn't in it — definitive, don't fall through to TCGdex.
+      act&&act.fail('#'+num+' not in set');
+      set('f_set',enSet);clearCardFields({keepSet:true});
+      st.className='status warn';st.textContent='Card #'+num+' not found in '+enSet+' ('+cards.length+' cards). Check the number.';
+      return true;
+    }
+    var total=setObj.cardCount||'';
+    set('f_name',card.name);
+    set('f_set',enSet);
+    set('f_num',card.number+(total?'/'+total:''));
+    set('f_rarity','');   // PriceCharting rows don't carry rarity — user sets it (or infer from name)
+    set('f_poke',card.name);
+    set('f_stage','');set('f_type','');
+    set('f_finish',/\bmega\b|\bex\b|\bv\b|vmax|vstar|\bgx\b|holo|rainbow|gold|special|shiny|\bsar\b|\bsr\b|\bur\b/i.test(card.name)?'Holo':'Non-holo');
+    set('f_pitch',genPitch(readFields()));
+    _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:card.name,variant:val('f_finish'),price:null};
+    _intlMeta={nativeName:'',nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||''};
+    act&&act.done('PriceCharting '+tag);
+    st.className='status ok';st.textContent='✓ '+card.name+'  #'+card.number+'  ·  '+tag;
+    render();
+    if(window.TCG){
+      var base=card.image||'';
+      var px=function(u){return '/api/img?u='+encodeURIComponent(u);};   // serve+cache via our server
+      var imgs=base?[{label:'Front',display:[px(base+'/320.jpg'),px(base+'/1600.jpg')],download:base+'/1600.jpg',fallback:px(base+'/1600.jpg')}]:[];
+      var _exEl=document.getElementById('extras');
+      var _ex={name:card.name,images:imgs,prices:[],history:null,
+        priceNote:'TCGplayer/Cardmarket don’t price '+tag+' prints — PriceCharting ('+tag+') + the eBay comps below are the native-market reference.'};
+      TCG.renderExtras(_exEl,_ex);
+      if(card.url)pcEnrichByUrl(_exEl,_ex,card.url,tag);   // graded/raw ladder from the exact card page
+    }
+    regenTitle();
+    return true;
+  }catch(e){act&&act.fail('PriceCharting blocked');return false;}
+}
+// Graded/raw price ladder from a card's exact PriceCharting URL (no fuzzy search/matching needed).
+function pcEnrichByUrl(el,ex,cardUrl,tag){
+  try{
+    var act=window.TCG?TCG.activity('PriceCharting prices…'):null;
+    fetch('/api/pc/lookup?url='+encodeURIComponent(cardUrl)).then(function(r){return r.json();}).then(function(pc){
+      if(!pc||!pc.matched){act&&act.fail('no PriceCharting prices');return;}
+      var rows=pcRows(pc);
+      if(!rows.length){act&&act.fail('no PriceCharting prices');return;}
+      ex.prices=(ex.prices||[]).concat(rows);ex.pcLink=pc.url;
+      TCG.renderExtras(el,ex);
+      act&&act.done('PriceCharting '+tag+' prices');
+    }).catch(function(){act&&act.fail('PriceCharting blocked');});
+  }catch(e){}
+}
 async function doLookupIntl(setObj,num,dl){
-  const code=setLookupId(setObj), st=document.getElementById('status');
-  const tag=dl.toUpperCase(), cardLabel=code+'-'+num, enSet=setEnglishName(setObj);
+  const st=document.getElementById('status');
+  const tag=dl.toUpperCase(), enSet=setEnglishName(setObj);
   set('f_set',enSet);   // English set name up-front — stays correct even if the card lookup misses
+  await loadDexMap();   // dex# -> English name (for the TCGdex fallback path)
+  // PRIMARY: PriceCharting console (JP/CN/KO). Falls through to TCGdex on miss.
+  if(setObj.pcSlug){ if(await tryPcLookup(setObj,num,dl,enSet))return; }
+  const code=setLookupId(setObj), cardLabel=code+'-'+num;
   st.className='status load';st.textContent='Looking up '+cardLabel+' ('+tag+')…';
   const act=window.TCG?TCG.activity('Looking up '+cardLabel+'…'):null;
-  await loadDexMap();   // dex# -> English name (for the card name)
   try{
     let c=null;
     var cands=intlNumCandidates(num);
