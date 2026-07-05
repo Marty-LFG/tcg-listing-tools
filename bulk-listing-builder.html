@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bulk Listing Builder — TCG Tools</title>
 <style>
-  :root{--gold:#f0c020;--line:#26305a;--muted:#8b94b8;--text:#e8ecf8;--field:#0e1430;--panel2:#141b3c;--panel:#101638;--ink:#0a0f28;}
+  :root{--gold:#f0c020;--line:#26305a;--muted:#8b94b8;--text:#e8ecf8;--field:#0e1430;--panel2:#141b3c;--panel:#101638;--ink:#0a0f28;
+        --ok:#79d67c;--warn:#e6b34c;--bad:#f06262;}
   *{box-sizing:border-box}
   body{margin:0;background:var(--ink);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
   a{color:var(--gold)}
@@ -23,27 +24,77 @@
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;}
   .seg button{background:var(--panel2);border:0;color:var(--muted);padding:8px 16px;font:inherit;cursor:pointer;}
   .seg button.on{background:var(--gold);color:#1a1a22;font-weight:700;}
-  .status{margin-top:8px;font-size:13px;color:var(--muted);} .status.ok{color:#79d67c;} .status.warn{color:#e6b34c;} .status.err{color:#f06262;}
-  .chip{display:inline-block;border-radius:6px;padding:0 6px;font-size:11px;font-weight:700;}
-  .chip.mkt{background:#173a24;color:#79d67c;} .chip.tier{background:#3a3117;color:#e6b34c;} .chip.pc{background:#17293a;color:#6db3e8;}
-  .chip.needs{background:#3a1717;color:#f06262;} .chip.override{background:#2a173a;color:#c58cf0;}
-  .chip.graded{background:#1c2b5e;color:#f0c020;} .chip.miss{background:#2a2a33;color:#9aa;}
+  .status{margin-top:8px;font-size:13px;color:var(--muted);} .status.ok{color:var(--ok);} .status.warn{color:var(--warn);} .status.err{color:var(--bad);}
+  .chip{display:inline-block;border-radius:6px;padding:0 6px;font-size:11px;font-weight:700;font-family:var(--mono,ui-monospace,Consolas,monospace);}
+  .chip.mkt{background:#173a24;color:var(--ok);} .chip.tier{background:#3a3117;color:var(--warn);} .chip.pc{background:#17293a;color:#6db3e8;}
+  .chip.needs{background:#3a1717;color:var(--bad);} .chip.override{background:#2a173a;color:#c58cf0;}
+  .chip.graded{background:#1c2b5e;color:var(--gold);} .chip.miss{background:#2a2a33;color:#9aa;}
+  .mono{font-family:var(--mono,ui-monospace,Consolas,monospace);}
+
+  /* ---------- pipeline stepper ---------- */
+  .steps{display:flex;gap:10px;align-items:center;margin:0 0 14px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);}
+  .step{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px;white-space:nowrap;}
+  .step .sn{width:21px;height:21px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;
+            font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:11px;flex:0 0 auto;transition:.16s ease;}
+  .step.cur{color:var(--text);} .step.cur .sn{border-color:var(--gold);color:var(--gold);box-shadow:0 0 0 3px rgba(240,192,32,.12);}
+  .step.done{color:var(--text);} .step.done .sn{background:var(--gold);border-color:var(--gold);color:#1a1a22;font-weight:700;}
+  .sline{flex:1;height:1px;background:var(--line);max-width:80px;min-width:14px;}
+
+  /* ---------- filter bar ---------- */
+  .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--field);margin-bottom:10px;}
+  .filterbar .flab{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-right:-2px;}
+  .filterbar input,.filterbar select{width:auto;padding:5px 8px;font-size:12.5px;background:var(--panel2);}
+  .filterbar input#f_q{min-width:170px;}
+  .fchip{border:1px solid var(--line);border-radius:20px;background:transparent;color:var(--muted);padding:3px 11px;font-size:12px;cursor:pointer;font:inherit;transition:.14s ease;}
+  .fchip:hover{border-color:var(--gold);}
+  .fchip.on{border-color:var(--gold);color:var(--gold);background:rgba(240,192,32,.08);}
+  .fchip .n{font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:11px;opacity:.8;}
+  .fcount{margin-left:auto;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:12px;color:var(--muted);white-space:nowrap;}
+  .fcount b{color:var(--gold);font-weight:600;}
+  #f_clear{display:none;padding:4px 11px;font-size:12px;}
+  #f_clear.on{display:inline-block;}
+
   #gridWrap{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:10px;}
   table.grid{width:100%;min-width:760px;border-collapse:collapse;font-size:13px;}
   table.grid th{position:sticky;top:0;background:var(--panel2);text-align:left;padding:7px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);z-index:2;}
   table.grid td{padding:5px 8px;border-top:1px solid var(--line);vertical-align:middle;}
+  table.grid tr.sel td{background:rgba(240,192,32,.045);}
   table.grid td img{width:30px;height:42px;object-fit:contain;border-radius:3px;background:#000;}
-  table.grid input.cell{width:76px;padding:4px 6px;} table.grid input.qty{width:52px;}
+  .noimg{display:grid;place-items:center;width:30px;height:42px;border:1px dashed var(--line);border-radius:3px;color:var(--muted);font-size:9px;opacity:.7;}
+  table.grid input.cell{width:76px;padding:4px 6px;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:12.5px;} table.grid input.qty{width:52px;}
   .title-prev{color:var(--muted);font-size:12px;max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .foot{display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-top:12px;}
-  .foot b{color:var(--gold);} .foot .note{color:var(--muted);font-size:12px;}
+  .foot{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:12px;font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:12.5px;}
+  .foot b{color:var(--gold);} .foot .note{color:var(--muted);font-size:12px;font-family:var(--sans,inherit);}
+  .foot .fw{color:var(--warn);}
   .batchrow{display:flex;gap:10px;align-items:center;padding:9px 4px;border-top:1px solid var(--line);}
   .batchrow:first-child{border-top:0;}
   .hint{color:var(--muted);font-size:12px;margin-top:8px;}
-  .pill{font-size:11px;border:1px solid var(--line);border-radius:20px;padding:1px 9px;color:var(--muted);}
-  .pill.over{color:#f06262;border-color:#f06262;}
+  .pill{font-size:11px;border:1px solid var(--line);border-radius:20px;padding:1px 9px;color:var(--muted);font-family:var(--mono,ui-monospace,Consolas,monospace);}
+  .pill.over{color:var(--bad);border-color:var(--bad);}
   .tag{color:var(--gold);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
-  .btn:focus-visible,.seg button:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  .btn:focus-visible,.seg button:focus-visible,.fchip:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+  /* ---------- modal ---------- */
+  #mroot{position:fixed;inset:0;display:none;place-items:center;z-index:60;}
+  #mroot.on{display:grid;}
+  #mroot .shade{position:absolute;inset:0;background:rgba(4,6,14,.62);backdrop-filter:blur(4px);}
+  .modal{position:relative;width:min(580px,92vw);max-height:84vh;overflow:auto;background:linear-gradient(180deg,var(--panel),var(--ink));
+         border:1px solid var(--line);border-radius:20px;box-shadow:0 12px 34px -14px rgba(0,0,0,.72);padding:20px 22px;animation:mrise .22s ease;}
+  @keyframes mrise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+  .modal h3{font-family:var(--serif,Georgia,serif);font-size:19px;margin:0 0 12px;font-weight:600;letter-spacing:-.012em;}
+  .mfoot{display:flex;justify-content:flex-end;gap:9px;border-top:1px solid var(--line);margin-top:16px;padding-top:14px;}
+  .mstats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:2px 0 12px;}
+  .mstat{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:9px 11px;}
+  .mstat .k{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);}
+  .mstat .v{font-family:var(--mono,ui-monospace,Consolas,monospace);font-size:20px;margin-top:2px;}
+  .mstat.bad .v{color:var(--bad);} .mstat.good .v{color:var(--ok);}
+  .mline{font-size:13px;color:var(--muted);margin:6px 0;}
+  .mline b{color:var(--text);font-family:var(--mono,ui-monospace,Consolas,monospace);font-weight:600;}
+  .mline.ok b{color:var(--ok);} .mline.warn{color:var(--warn);} .mline.warn b{color:var(--warn);}
+  .mnote{border:1px solid rgba(230,179,76,.4);background:rgba(230,179,76,.07);color:var(--warn);border-radius:10px;padding:8px 11px;font-size:12.5px;margin-top:10px;}
+  .mprob{border:1px solid rgba(240,98,98,.35);background:rgba(240,98,98,.06);border-radius:10px;padding:8px 11px;margin-top:10px;font-size:12px;max-height:180px;overflow:auto;}
+  .mprob div{padding:2px 0;} .mprob .sku{font-family:var(--mono,ui-monospace,Consolas,monospace);color:var(--bad);}
+  @media (prefers-reduced-motion:reduce){.modal{animation:none;}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -53,7 +104,7 @@
 <div class="wrap">
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
   <h1>Bulk Listing Builder <span class="tag">Pokémon · Lorcana · Riftbound → eBay AU CSV</span></h1>
-  <p class="sub">Two ways in, one pipeline: enumerate a whole <b>set</b> (commons/uncommons with holo variants) or import a <b>Collectr</b> portfolio export — price the lot, save to inventory, export an eBay File Exchange CSV.</p>
+  <p class="sub">Two ways in, one pipeline: enumerate a whole <b>set</b> (commons/uncommons with holo variants) or import a <b>Collectr</b> portfolio export — filter &amp; select what you actually have, price the lot, save to inventory, export an eBay File Exchange CSV.</p>
 
   <div class="seg" id="viewSeg">
     <button class="on" data-v="build">Build</button>
@@ -62,6 +113,18 @@
 
   <!-- ============================ BUILD VIEW ============================ -->
   <div id="view_build">
+    <div class="steps" id="steps" aria-label="Pipeline progress">
+      <div class="step" id="step1"><span class="sn">1</span><span class="sl">Load rows</span></div>
+      <span class="sline"></span>
+      <div class="step" id="step2"><span class="sn">2</span><span class="sl">Filter &amp; select</span></div>
+      <span class="sline"></span>
+      <div class="step" id="step3"><span class="sn">3</span><span class="sl">Price</span></div>
+      <span class="sline"></span>
+      <div class="step" id="step4"><span class="sn">4</span><span class="sl">Save batch</span></div>
+      <span class="sline"></span>
+      <div class="step" id="step5"><span class="sn">5</span><span class="sl">Export CSV</span></div>
+    </div>
+
     <div class="card">
       <div class="seg" id="srcSeg" style="margin-bottom:12px;">
         <button class="on" data-s="enumerate">Enumerate set</button>
@@ -73,7 +136,7 @@
           <div><label for="e_game">Game</label>
             <select id="e_game"><option value="pokemon">Pokémon</option><option value="lorcana">Disney Lorcana</option><option value="riftbound">Riftbound</option></select></div>
           <div class="grow"><label for="e_set">Set</label><select id="e_set"><option value="">loading sets…</option></select></div>
-          <div><label for="e_rar">Rarities</label>
+          <div><label for="e_rar" title="Applied while fetching — narrower slices can be cut later with the grid filters">Rarities (at fetch)</label>
             <select id="e_rar"><option value="common,uncommon">Commons + Uncommons</option><option value="common">Commons only</option><option value="uncommon">Uncommons only</option><option value="">Everything (incl. rares)</option></select></div>
           <div style="flex:0 0 auto;min-width:auto;"><button class="btn primary" id="e_go">Enumerate</button></div>
         </div>
@@ -102,8 +165,27 @@
     </div>
 
     <div class="card">
+      <div class="filterbar" id="filterbar">
+        <span class="flab">Filter</span>
+        <input id="f_q" type="search" placeholder="Search name / number…" aria-label="Search rows by card name or number">
+        <select id="f_rar" aria-label="Filter by rarity"><option value="">All rarities</option></select>
+        <select id="f_fin" aria-label="Filter by finish"><option value="">All finishes</option></select>
+        <select id="f_price" aria-label="Filter by price source">
+          <option value="">Any price</option>
+          <option value="market">Market-priced</option>
+          <option value="bulk_tier">Tier floor</option>
+          <option value="pricecharting">PriceCharting</option>
+          <option value="override">Manual override</option>
+          <option value="needs_price">Needs price</option>
+        </select>
+        <button class="fchip" id="f_noimg" aria-pressed="false" title="Only rows without a hosted image">no image <span class="n" id="f_noimg_n"></span></button>
+        <button class="fchip" id="f_sel" aria-pressed="false" title="Cycle: all → selected only → unselected only">all rows</button>
+        <button class="btn" id="f_clear">✕ Clear</button>
+        <span class="fcount" id="f_match"></span>
+      </div>
+
       <div class="row" style="align-items:center;margin-bottom:8px;">
-        <div style="flex:0 0 auto;min-width:auto;white-space:nowrap;"><button class="btn" id="selAll">Select all</button> <button class="btn" id="selNone">Select none</button> <button class="btn" id="selMkt" title="Select only rows that have a market/PC value or a price override (replaces the current selection)">Only priceable</button></div>
+        <div style="flex:0 0 auto;min-width:auto;white-space:nowrap;"><button class="btn" id="selAll">Select all</button> <button class="btn" id="selNone">Select none</button> <button class="btn" id="selMkt" title="Within the visible rows, select only those with a market/PriceCharting value or a manual override">Only priceable</button></div>
         <div style="flex:0 0 auto;min-width:auto;white-space:nowrap;"><label style="display:inline" for="qtyAll">Qty for selected&nbsp;</label><input id="qtyAll" style="width:60px;display:inline-block" type="number" min="1" placeholder="1"><button class="btn" id="qtyApply">Set</button></div>
         <div style="flex:1 1 0;min-width:0;"></div>
         <div style="flex:0 0 auto;min-width:auto;white-space:nowrap;">
@@ -114,15 +196,17 @@
       </div>
       <div id="gridWrap">
         <table class="grid"><thead><tr>
-          <th scope="col"><input type="checkbox" id="hdrChk" checked aria-label="Select all rows"></th><th></th><th>Card</th><th>No.</th><th>Rarity</th><th>Variant</th>
+          <th scope="col"><input type="checkbox" id="hdrChk" checked aria-label="Select all visible rows"></th><th></th><th>Card</th><th>No.</th><th>Rarity</th><th>Variant</th>
           <th>Badges</th><th>Market A$</th><th>Price A$</th><th>Qty</th><th>Title preview</th>
         </tr></thead><tbody id="gridBody"><tr><td colspan="11" style="color:var(--muted);padding:22px;">No rows yet — enumerate a set or import a Collectr CSV.</td></tr></tbody></table>
       </div>
       <div class="foot">
         <span id="f_count">0 rows</span>
-        <span>Total list value <b id="f_value">A$0.00</b></span>
-        <span>Est. buyer-protection fees <b id="f_fees">A$0.00</b></span>
-        <span class="note">Fees = eBay AU buyer-protection only (not seller net or insertion fees).</span>
+        <span>Value <b id="f_value">A$0.00</b></span>
+        <span>Fees <b id="f_fees">A$0.00</b></span>
+        <span id="f_img"></span>
+        <span id="f_src"></span>
+        <span class="note">Fees = eBay AU buyer-protection only. Images ride the CSV as PicURL links — eBay fetches them at upload.</span>
       </div>
     </div>
   </div>
@@ -141,6 +225,12 @@
   </div>
 </div>
 
+<!-- ============================ MODAL ============================ -->
+<div id="mroot" role="dialog" aria-modal="true">
+  <div class="shade" id="mshade"></div>
+  <div class="modal" id="mbox"></div>
+</div>
+
 <script src="/extras.js"></script>
 <script type="module">
 import { buildTitle, rowToFields } from '/lib/listing-copy.mjs';
@@ -149,12 +239,26 @@ import { feeAU } from '/lib/fees.mjs';
 const $ = (id) => document.getElementById(id);
 const S = (cls, msg) => { const el = $('status'); el.className = 'status ' + cls; el.textContent = msg; };
 const SB = (cls, msg) => { const el = $('batchStatus'); if (!el) return; el.className = 'status ' + cls; el.textContent = msg; };
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
 // ---------------- state ----------------
 let rows = [];            // canonical rows (ImportRow shape) — the single grid model
+let view = [];            // indices into rows that pass the active filters (what the grid shows)
 let batchId = null;       // set after save (or picking an existing batch)
-let saved = false;
+let saved = false;        // DB batch matches the grid; ANY grid edit clears it (export gate)
+let exported = false;     // current save has been exported
 let source = 'enumerate';
+let editsSinceFilter = 0; // manual edits made while a filter is active — guards filter changes
+const filt = { q: '', rarity: '', finish: '', price: '', noimg: false, sel: '' };  // sel: ''|'sel'|'unsel'
+const filterActive = () => !!(filt.q || filt.rarity || filt.finish || filt.price || filt.noimg || filt.sel);
+
+// Any grid mutation (selection/qty/price): the saved batch no longer matches the grid,
+// and if a filter is active the change guards future filter switches.
+function touch() {
+  if (filterActive()) editsSinceFilter++;
+  saved = false; exported = false;
+  refreshButtons();
+}
 
 // ---------------- view/segment switching ----------------
 $('viewSeg').addEventListener('click', (e) => {
@@ -197,7 +301,7 @@ async function loadBatchPicker() {
   } catch {}
 }
 loadBatchPicker();
-$('b_pick').addEventListener('change', () => { batchId = $('b_pick').value ? +$('b_pick').value : null; saved = !!batchId; refreshButtons(); });
+$('b_pick').addEventListener('change', () => { batchId = $('b_pick').value ? +$('b_pick').value : null; saved = !!batchId; exported = false; refreshButtons(); });
 $('b_name').addEventListener('input', () => { $('b_name').dataset.auto = ''; });   // user typed → stop auto-refilling the name
 
 // ---------------- NDJSON consumption (shared by both sources) ----------------
@@ -215,11 +319,12 @@ async function consumeNdjson(resp, label) {
       const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
       if (!line) continue;
       let obj; try { obj = JSON.parse(line); } catch { continue; }
-      if (obj.row) { obj.row._inc = true; rows.push(obj.row); added++; if (added % 25 === 0) { act && act.update(added + ' rows…'); renderGrid(); } }
+      if (obj.row) { obj.row._inc = true; rows.push(obj.row); added++; if (added % 25 === 0) { act && act.update(added + ' rows…'); refreshView(); renderGrid(); } }
       else if (obj.summary) summary = obj.summary;
     }
   }
-  renderGrid();
+  rebuildFacets();
+  refreshView(); renderGrid(); updateFilterUI();
   act && act.done(added + ' rows');
   return { added, summary };
 }
@@ -230,7 +335,8 @@ $('e_go').addEventListener('click', async () => {
   if (!setId) return S('warn', '⚠ Pick a set first.');
   const setName = $('e_set').selectedOptions[0]?.dataset?.name || '';
   const rar = $('e_rar').value ? $('e_rar').value.split(',') : null;
-  rows = []; saved = false; batchId = $('b_pick').value ? +$('b_pick').value : null;
+  rows = []; saved = false; exported = false; batchId = $('b_pick').value ? +$('b_pick').value : null;
+  resetFilters();
   if (!$('b_name').value || $('b_name').dataset.auto) { $('b_name').value = setName + ' bulk'; $('b_name').dataset.auto = '1'; }
   S('ok', 'Enumerating ' + setName + '…');
   try {
@@ -238,7 +344,7 @@ $('e_go').addEventListener('click', async () => {
       body: JSON.stringify({ game, setId, setName, filters: rar ? { rarities: rar } : undefined }) });
     if (!r.ok) return S('err', 'Enumerate failed (' + r.status + ') — ' + (await r.text()).slice(0, 200));
     const { added, summary } = await consumeNdjson(r, 'Enumerating ' + setName);
-    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows (card × printing)' + (summary && summary.warnings.length ? ' · ' + summary.warnings.length + ' warnings' : '') + '. Now: 💲 Price rows.');
+    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows (card × printing)' + (summary && summary.warnings.length ? ' · ' + summary.warnings.length + ' warnings' : '') + '. Now: filter & select what you have, then 💲 Price rows.');
   } catch (e) { S('err', 'Enumerate failed — is the dev server proxy running? ' + e.message); }
   refreshButtons();
 });
@@ -248,7 +354,8 @@ $('c_file').addEventListener('change', () => { $('c_go').disabled = !$('c_file')
 $('c_go').addEventListener('click', async () => {
   const f = $('c_file').files[0]; if (!f) return;
   const text = await f.text();
-  rows = []; saved = false; batchId = $('b_pick').value ? +$('b_pick').value : null;
+  rows = []; saved = false; exported = false; batchId = $('b_pick').value ? +$('b_pick').value : null;
+  resetFilters();
   S('ok', 'Importing ' + f.name + '…');
   try {
     const r = await fetch('/api/bulk/import/collectr?market_currency=' + $('c_cur').value + '&enrich=' + $('c_enrich').value,
@@ -256,7 +363,7 @@ $('c_go').addEventListener('click', async () => {
     if (!r.ok) return S('err', 'Import failed (' + r.status + ') — ' + (await r.text()).slice(0, 200));
     const { added, summary } = await consumeNdjson(r, 'Importing Collectr CSV');
     if (summary && (!$('b_name').value || $('b_name').dataset.auto)) { $('b_name').value = (summary.portfolios || [])[0] || f.name.replace(/\.csv$/i, ''); $('b_name').dataset.auto = '1'; }
-    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows · ' + (summary ? summary.resolved + ' matched, ' + summary.graded + ' graded, ' + summary.needs_price + ' need a price, ' + summary.unsupported_game + ' unsupported-game' : '') + '. Now: 💲 Price rows.');
+    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows · ' + (summary ? summary.resolved + ' matched, ' + summary.graded + ' graded, ' + summary.needs_price + ' need a price, ' + summary.unsupported_game + ' unsupported-game' : '') + '. Now: filter & select, then 💲 Price rows.');
   } catch (e) { S('err', 'Import failed — ' + e.message); }
   refreshButtons();
 });
@@ -272,6 +379,7 @@ $('priceBtn').addEventListener('click', async () => {
     (j.rows || []).forEach((p, i) => { if (!rows[i]) return; if (rows[i]._manual) return;   // user-typed price wins
       rows[i].price_cents = p.price_cents; rows[i].value_source = p.value_source; rows[i].market_cents = p.market_cents; });
     window._fx = j.fx_usd_aud;
+    saved = false; exported = false;   // prices changed → the saved batch is stale
     act && act.done('priced');
     renderGrid();
     S('ok', '✓ priced (override > live market > tier floor; graded: Collectr > PriceCharting > needs-price). FX ' + (j.fx_usd_aud || 'n/a'));
@@ -301,7 +409,7 @@ $('saveBtn').addEventListener('click', async () => {
     const r = await fetch('/api/inventory/batches', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json();
     if (!r.ok) { act && act.fail(); return S('err', 'Save failed — ' + (j.error || r.status)); }
-    batchId = j.batch_id; saved = true;
+    batchId = j.batch_id; saved = true; exported = false;
     act && act.done('#' + j.batch_id);
     S('ok', '✓ saved batch #' + j.batch_id + ' — ' + j.inserted + ' new, ' + j.updated + ' updated, ' + j.skipped + ' skipped (listed/sold untouched)' + (j.errors.length ? ', ' + j.errors.length + ' errors' : ''));
     loadBatchPicker();
@@ -309,30 +417,189 @@ $('saveBtn').addEventListener('click', async () => {
   refreshButtons();
 });
 
-// ---------------- export ----------------
-$('exportBtn').addEventListener('click', async () => {
-  if (!batchId) return S('warn', '⚠ Save the batch first.');
+// ---------------- export (pre-flight preview modal → CSV download) ----------------
+$('exportBtn').addEventListener('click', () => {
+  if (!batchId || !saved) return S('warn', '⚠ Save the batch first.');
+  openExportPreview(batchId, $('b_shape').value, { gridSelected: rows.filter((r) => r._inc).length, onStatus: S, fromBuild: true });
+});
+
+async function doCsvDownload(id, shape, onStatus) {
   const act = window.TCG ? TCG.activity('Exporting eBay CSV') : null;
   try {
     const r = await fetch('/api/bulk/export/csv', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ batch_id: batchId, shape: $('b_shape').value }) });
+      body: JSON.stringify({ batch_id: id, shape }) });
     if (r.status === 422) {
       const j = await r.json();
       act && act.fail('blocked');
-      return S('err', '⛔ ' + j.error + ' — first: ' + (j.problems || []).slice(0, 3).map((p) => p.sku + ': ' + p.errors[0]).join(' · '));
+      onStatus('err', '⛔ ' + j.error + ' — first: ' + (j.problems || []).slice(0, 3).map((p) => p.sku + ': ' + p.errors[0]).join(' · '));
+      return false;
     }
-    if (!r.ok) { act && act.fail(); return S('err', 'Export failed (' + r.status + ')'); }
+    if (!r.ok) { act && act.fail(); onStatus('err', 'Export failed (' + r.status + ')'); return false; }
     const blob = await r.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'ebay-bulk-batch' + batchId + '.csv';
+    a.download = 'ebay-bulk-batch' + id + '.csv';
     a.click(); URL.revokeObjectURL(a.href);
     act && act.done();
-    S('ok', '✓ CSV exported — upload via eBay Seller Hub → Reports → Upload. Validate with a small sample first!');
-  } catch (e) { act && act.fail(); S('err', 'Export failed — ' + e.message); }
-});
+    onStatus('ok', '✓ CSV exported — upload via eBay Seller Hub → Reports → Upload. Validate with a small sample first!');
+    return true;
+  } catch (e) { act && act.fail(); onStatus('err', 'Export failed — ' + e.message); return false; }
+}
 
-// ---------------- grid (windowed render) ----------------
+// ---------------- modal plumbing ----------------
+let modalOnCancel = null;
+function openModal(html, onCancel) {
+  modalOnCancel = onCancel || null;
+  $('mbox').innerHTML = html;
+  $('mroot').classList.add('on');
+}
+function closeModal(viaCancel) {
+  $('mroot').classList.remove('on');
+  if (viaCancel && modalOnCancel) modalOnCancel();
+  modalOnCancel = null;
+}
+$('mshade').addEventListener('click', () => closeModal(true));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('mroot').classList.contains('on')) closeModal(true); });
+
+// Confirm dialog: filters changed after manual edits.
+function confirmFilterChange(onOk, onCancel) {
+  openModal(`
+    <h3>Change filters?</h3>
+    <div class="mline">You’ve made <b>${editsSinceFilter}</b> manual edit${editsSinceFilter === 1 ? '' : 's'} (selection / qty / price) since this filter was applied.</div>
+    <div class="mline">Your edits are <b style="font-family:inherit">kept</b> — but the visible slice will change, so rows you deselected may scroll out of sight. Review the footer counts before exporting.</div>
+    <div class="mfoot">
+      <button class="btn" id="m_cancel">Keep current filter</button>
+      <button class="btn primary" id="m_ok">Change filter</button>
+    </div>`, onCancel);
+  $('m_cancel').addEventListener('click', () => closeModal(true));
+  $('m_ok').addEventListener('click', () => { closeModal(false); editsSinceFilter = 0; onOk(); });
+}
+function guardFilter(apply, revert) {
+  if (!editsSinceFilter) { apply(); return; }
+  confirmFilterChange(apply, revert);
+}
+
+// Export preview: pre-flight the batch against /api/bulk/export/preview, then download.
+async function openExportPreview(id, shape, { gridSelected, onStatus, fromBuild } = {}) {
+  onStatus = onStatus || SB;
+  openModal(`<h3>Export preview — batch #${id}</h3><div class="hint">Validating listings…</div>`);
+  let j;
+  try {
+    const r = await fetch('/api/bulk/export/preview?batch_id=' + id + '&shape=' + encodeURIComponent(shape));
+    j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('http ' + r.status));
+  } catch (e) {
+    openModal(`<h3>Export preview — batch #${id}</h3>
+      <div class="mline warn">Preview failed — ${esc(e.message)}</div>
+      <div class="mfoot"><button class="btn" id="m_cancel">Close</button></div>`);
+    $('m_cancel').addEventListener('click', () => closeModal(false));
+    return;
+  }
+  const list = j.rows || [];
+  const blocked = list.filter((x) => (x.errors || []).length);
+  const noImg = list.filter((x) => (x.warnings || []).some((w) => /no image/i.test(w))).length;
+  const tier = list.filter((x) => (x.warnings || []).some((w) => /tier-floor/i.test(w))).length;
+  const mismatch = gridSelected != null && gridSelected !== j.total;
+  openModal(`
+    <h3>Export preview — batch #${id}</h3>
+    <div class="mstats">
+      <div class="mstat"><div class="k">Listings</div><div class="v">${j.total}</div></div>
+      <div class="mstat good"><div class="k">Ready</div><div class="v">${j.exportable}</div></div>
+      <div class="mstat${blocked.length ? ' bad' : ''}"><div class="k">Blocked</div><div class="v">${blocked.length}</div></div>
+    </div>
+    <div class="mline${noImg ? ' warn' : ' ok'}">Images: <b>${j.total - noImg}/${j.total}</b> rows carry a hosted image (PicURL) — eBay downloads these automatically at upload.${noImg ? ' Rows without one need a photo added in Seller Hub after upload.' : ''}</div>
+    ${tier ? `<div class="mline warn">Tier-floor priced (no market data): <b>${tier}</b> — conservative owner floors; bump any you know are worth more.</div>` : ''}
+    <div class="mline">Shape: <b>${esc(shape)}</b>${shape === 'multi_variation' ? ' — EXPERIMENTAL on eBay AU; validate with a 3-row sample first' : ''}</div>
+    ${mismatch ? `<div class="mnote">⚠ The saved batch has <b>${j.total}</b> listings but the grid shows <b>${gridSelected}</b> selected. Rows deselected after a save stay in the batch — re-save doesn’t remove them. Everything below is what will actually export.</div>` : ''}
+    ${blocked.length ? `<div class="mprob">${blocked.slice(0, 8).map((p) => `<div><span class="sku">${esc(p.sku || '#' + p.id)}</span> — ${esc((p.errors || []).join('; '))}</div>`).join('')}${blocked.length > 8 ? `<div>… +${blocked.length - 8} more</div>` : ''}</div>` : ''}
+    <div class="mfoot">
+      <button class="btn" id="m_cancel">Cancel</button>
+      <button class="btn primary" id="m_ok" ${blocked.length ? 'disabled title="Fix the blocked rows first — export is hard-gated server-side"' : ''}>⬇ Download CSV (${j.exportable})</button>
+    </div>`);
+  $('m_cancel').addEventListener('click', () => closeModal(false));
+  $('m_ok').addEventListener('click', async () => {
+    closeModal(false);
+    const ok = await doCsvDownload(id, shape, onStatus);
+    if (ok) {
+      if (fromBuild && id === batchId) { exported = true; refreshButtons(); }
+      loadBatchPicker();
+      if (!fromBuild) loadBatches();
+    }
+  });
+}
+
+// ---------------- filters ----------------
+function rowMatches(r) {
+  if (filt.q) { const q = filt.q.toLowerCase(); if (!(((r.name || '') + ' ' + (r.number || '')).toLowerCase().includes(q))) return false; }
+  if (filt.rarity && (r.rarity || '') !== filt.rarity) return false;
+  if (filt.finish && (r.finish || 'Normal') !== filt.finish) return false;
+  if (filt.price === 'needs_price') { if (!(r.price_cents == null || r.value_source === 'needs_price')) return false; }
+  else if (filt.price && r.value_source !== filt.price) return false;
+  if (filt.noimg && r.image) return false;
+  if (filt.sel === 'sel' && !r._inc) return false;
+  if (filt.sel === 'unsel' && r._inc) return false;
+  return true;
+}
+function refreshView() {
+  view = [];
+  for (let i = 0; i < rows.length; i++) if (rowMatches(rows[i])) view.push(i);
+  if (winStart >= view.length) winStart = 0;
+}
+function applyFilters() {
+  refreshView();
+  winStart = 0; $('gridWrap').scrollTop = 0;
+  renderGrid();
+  updateFilterUI();
+  refreshButtons();
+}
+function resetFilters() {
+  filt.q = ''; filt.rarity = ''; filt.finish = ''; filt.price = ''; filt.noimg = false; filt.sel = '';
+  editsSinceFilter = 0;
+  $('f_q').value = ''; $('f_rar').value = ''; $('f_fin').value = ''; $('f_price').value = '';
+  updateFilterUI();
+}
+function rebuildFacets() {
+  const rc = new Map(), fc = new Map();
+  rows.forEach((r) => {
+    if (r.rarity) rc.set(r.rarity, (rc.get(r.rarity) || 0) + 1);
+    const f = r.finish || 'Normal'; fc.set(f, (fc.get(f) || 0) + 1);
+  });
+  const opt = (v, n) => `<option value="${esc(v)}">${esc(v)} (${n})</option>`;
+  $('f_rar').innerHTML = '<option value="">All rarities</option>' + [...rc.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([v, n]) => opt(v, n)).join('');
+  $('f_fin').innerHTML = '<option value="">All finishes</option>' + [...fc.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([v, n]) => opt(v, n)).join('');
+  if (![...rc.keys()].includes(filt.rarity)) filt.rarity = '';
+  if (![...fc.keys()].includes(filt.finish)) filt.finish = '';
+  $('f_rar').value = filt.rarity; $('f_fin').value = filt.finish;
+}
+function updateFilterUI() {
+  const active = filterActive();
+  $('f_clear').classList.toggle('on', active);
+  $('f_match').innerHTML = rows.length ? (active ? `<b>${view.length}</b> of ${rows.length} match` : `${rows.length} rows`) : '';
+  const noImgN = rows.filter((r) => !r.image).length;
+  $('f_noimg_n').textContent = noImgN ? noImgN : '';
+  $('f_noimg').classList.toggle('on', filt.noimg);
+  $('f_noimg').setAttribute('aria-pressed', String(filt.noimg));
+  $('f_sel').classList.toggle('on', !!filt.sel);
+  $('f_sel').textContent = filt.sel === 'sel' ? '✓ selected only' : filt.sel === 'unsel' ? '◻ unselected only' : 'all rows';
+}
+
+let qT = null;
+$('f_q').addEventListener('input', () => {
+  clearTimeout(qT);
+  qT = setTimeout(() => {
+    const v = $('f_q').value.trim();
+    if (v === filt.q) return;
+    guardFilter(() => { filt.q = v; applyFilters(); }, () => { $('f_q').value = filt.q; });
+  }, 160);
+});
+$('f_rar').addEventListener('change', () => guardFilter(() => { filt.rarity = $('f_rar').value; applyFilters(); }, () => { $('f_rar').value = filt.rarity; }));
+$('f_fin').addEventListener('change', () => guardFilter(() => { filt.finish = $('f_fin').value; applyFilters(); }, () => { $('f_fin').value = filt.finish; }));
+$('f_price').addEventListener('change', () => guardFilter(() => { filt.price = $('f_price').value; applyFilters(); }, () => { $('f_price').value = filt.price; }));
+$('f_noimg').addEventListener('click', () => guardFilter(() => { filt.noimg = !filt.noimg; applyFilters(); }, () => {}));
+$('f_sel').addEventListener('click', () => guardFilter(() => { filt.sel = filt.sel === '' ? 'sel' : filt.sel === 'sel' ? 'unsel' : ''; applyFilters(); }, () => {}));
+$('f_clear').addEventListener('click', () => guardFilter(() => { resetFilters(); applyFilters(); }, () => {}));
+
+// ---------------- grid (windowed render over the filtered view) ----------------
 const WINDOW = 60;
 const ROW_PX = 54;   // estimated row height for the windowed-render spacer math (keep both call sites in sync)
 let winStart = 0;
@@ -363,52 +630,68 @@ const A$ = (c) => c == null ? '—' : 'A$' + (c / 100).toFixed(2);
 
 function renderGrid(windowOnly) {
   const tb = $('gridBody');
-  if (!rows.length) { tb.innerHTML = '<tr><td colspan="11" style="color:var(--muted);padding:22px;">No rows yet.</td></tr>'; updateFoot(); return; }
-  const slice = rows.slice(winStart, winStart + WINDOW);
-  const padTop = winStart * ROW_PX, padBot = Math.max(0, (rows.length - winStart - slice.length) * ROW_PX);
+  const emptyRow = (msg) => `<tr><td colspan="11" style="color:var(--muted);padding:22px;">${msg}</td></tr>`;
+  if (!rows.length) { tb.innerHTML = emptyRow('No rows yet.'); syncHdr(); updateFoot(); return; }
+  if (!view.length) { tb.innerHTML = emptyRow('No rows match the current filters — <b>✕ Clear</b> to see everything.'); syncHdr(); updateFoot(); return; }
+  const slice = view.slice(winStart, winStart + WINDOW);
+  const padTop = winStart * ROW_PX, padBot = Math.max(0, (view.length - winStart - slice.length) * ROW_PX);
   tb.innerHTML =
     (padTop ? `<tr style="height:${padTop}px"><td colspan="11"></td></tr>` : '') +
-    slice.map((r, i) => {
-      const gi = winStart + i;
+    slice.map((gi) => {
+      const r = rows[gi];
       let title = '';
       try { title = (r.title_override || buildTitle(r.game || 'pokemon', rowToFields(r))); } catch {}
-      return `<tr data-i="${gi}">
+      return `<tr data-i="${gi}" class="${r._inc ? 'sel' : ''}">
         <td><input type="checkbox" class="inc" ${r._inc ? 'checked' : ''}></td>
-        <td>${r.image ? `<img loading="lazy" alt="" src="${r.image}">` : ''}</td>
+        <td>${r.image ? `<img loading="lazy" alt="" src="${r.image}">` : '<span class="noimg" title="No hosted image — eBay may catalog-match, or add a photo in Seller Hub">no img</span>'}</td>
         <td>${r.name || ''}<div class="title-prev">${r.set_name || ''}</div></td>
-        <td>${r.number || ''}</td><td>${r.rarity || ''}</td><td>${r.variant || ''}</td>
+        <td class="mono">${r.number || ''}</td><td>${r.rarity || ''}</td><td>${r.variant || ''}</td>
         <td>${badge(r)}</td>
-        <td>${A$(r.market_cents)} ${srcChip(r)}</td>
+        <td class="mono">${A$(r.market_cents)} ${srcChip(r)}</td>
         <td><input class="cell price" type="number" step="0.01" min="0" value="${r.price_cents != null ? (r.price_cents / 100).toFixed(2) : ''}"></td>
         <td><input class="cell qty" type="number" min="1" value="${r.quantity || 1}"></td>
         <td title="${title.replace(/"/g, '&quot;')}"><span class="title-prev" style="display:inline-block;vertical-align:middle;">${title}</span> <span class="pill${title.length >= 80 ? ' over' : ''}">${title.length}/80</span></td>
       </tr>`;
     }).join('') +
     (padBot ? `<tr style="height:${padBot}px"><td colspan="11"></td></tr>` : '');
+  syncHdr();
   if (!windowOnly) updateFoot();
+}
+
+function syncHdr() {
+  const el = $('hdrChk');
+  const selN = view.reduce((a, i) => a + (rows[i]._inc ? 1 : 0), 0);
+  el.checked = view.length > 0 && selN === view.length;
+  el.indeterminate = selN > 0 && selN < view.length;
 }
 
 $('gridBody').addEventListener('change', (e) => {
   const tr = e.target.closest('tr[data-i]'); if (!tr) return;
   const r = rows[+tr.dataset.i]; if (!r) return;
-  if (e.target.classList.contains('inc')) r._inc = e.target.checked;
+  if (e.target.classList.contains('inc')) { r._inc = e.target.checked; tr.classList.toggle('sel', r._inc); syncHdr(); }
   else if (e.target.classList.contains('price')) { const v = parseFloat(e.target.value); r.price_cents = isFinite(v) ? Math.round(v * 100) : null; r.value_source = 'override'; r._manual = true; }
   else if (e.target.classList.contains('qty')) r.quantity = Math.max(1, Math.round(+e.target.value || 1));
+  touch();
   updateFoot();
 });
-$('hdrChk').addEventListener('change', (e) => { rows.forEach((r) => r._inc = e.target.checked); renderGrid(); });
-$('selAll').addEventListener('click', () => { rows.forEach((r) => r._inc = true); renderGrid(); });
-$('selNone').addEventListener('click', () => { rows.forEach((r) => r._inc = false); renderGrid(); });
-$('selMkt').addEventListener('click', () => { rows.forEach((r) => r._inc = r.market_cents != null || r.value_source === 'pricecharting' || r.override_aud != null); renderGrid(); });
+$('hdrChk').addEventListener('change', (e) => { view.forEach((i) => rows[i]._inc = e.target.checked); touch(); renderGrid(); });
+$('selAll').addEventListener('click', () => { view.forEach((i) => rows[i]._inc = true); touch(); renderGrid(); });
+$('selNone').addEventListener('click', () => { view.forEach((i) => rows[i]._inc = false); touch(); renderGrid(); });
+$('selMkt').addEventListener('click', () => {
+  view.forEach((i) => { const r = rows[i];
+    r._inc = r.market_cents != null || r.market_usd != null || r.market_aud != null || r.pc_value_usd != null || r.value_source === 'pricecharting' || r.override_aud != null; });
+  touch(); renderGrid();
+});
+$('qtyAll').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('qtyApply').click(); });
 $('qtyApply').addEventListener('click', () => {
   const raw = $('qtyAll').value.trim();
   if (!raw) return S('warn', '⚠ Enter a quantity first.');
   const v = Math.max(1, Math.round(+raw || 1));
-  const sel = rows.filter((r) => r._inc);
-  if (!sel.length) return S('warn', '⚠ No rows selected — Qty applies only to selected rows.');
-  sel.forEach((r) => { r.quantity = v; });
-  renderGrid();
-  S('ok', '✓ Set qty ' + v + ' on ' + sel.length + ' row' + (sel.length === 1 ? '' : 's') + '.');
+  const target = view.filter((i) => rows[i]._inc);
+  if (!target.length) return S('warn', '⚠ No visible rows selected — Qty applies to selected rows in the current view.');
+  target.forEach((i) => { rows[i].quantity = v; });
+  touch(); renderGrid();
+  S('ok', '✓ Set qty ' + v + ' on ' + target.length + (filterActive() ? ' visible' : '') + ' selected row' + (target.length === 1 ? '' : 's') + '.');
 });
 
 let footT = null;
@@ -418,21 +701,57 @@ function updateFoot() {
     const inc = rows.filter((r) => r._inc);
     const cents = inc.reduce((a, r) => a + (r.price_cents || 0) * (r.quantity || 1), 0);
     const fees = inc.reduce((a, r) => a + (r.price_cents ? feeAU(r.price_cents / 100) * (r.quantity || 1) : 0), 0);
-    $('f_count').textContent = inc.length + ' of ' + rows.length + ' rows selected';
+    const units = inc.reduce((a, r) => a + (r.quantity || 1), 0);
+    $('f_count').innerHTML = `<b>${inc.length}</b>/${rows.length} rows · ${units} units` + (filterActive() ? ` · ${view.length} visible` : '');
     $('f_value').textContent = A$(cents);
     $('f_fees').textContent = 'A$' + fees.toFixed(2);
+    const noImg = inc.filter((r) => !r.image).length;
+    $('f_img').innerHTML = noImg ? `<span class="fw">⚠ ${noImg} selected without image</span>` : (inc.length ? 'images ✓' : '');
+    const src = { market: 0, bulk_tier: 0, pricecharting: 0, override: 0, needs: 0 };
+    inc.forEach((r) => { if (r.price_cents == null || r.value_source === 'needs_price') src.needs++; else if (src[r.value_source] != null) src[r.value_source]++; });
+    $('f_src').innerHTML = (src.market + src.bulk_tier + src.pricecharting + src.override) ?
+      [src.market ? `<span class="chip mkt">mkt ${src.market}</span>` : '', src.bulk_tier ? `<span class="chip tier">tier ${src.bulk_tier}</span>` : '',
+       src.pricecharting ? `<span class="chip pc">PC ${src.pricecharting}</span>` : '', src.override ? `<span class="chip override">ovr ${src.override}</span>` : '',
+       src.needs ? `<span class="chip needs">needs ${src.needs}</span>` : ''].filter(Boolean).join(' ') : '';
+    updateFilterUI();
   }, 150);
+}
+
+function setStep(n, state, label) {
+  const el = $('step' + n); if (!el) return;
+  el.classList.toggle('done', state === 'done');
+  el.classList.toggle('cur', state === 'cur');
+  el.querySelector('.sn').textContent = state === 'done' ? '✓' : String(n);
+  if (label) el.querySelector('.sl').textContent = label;
+}
+function refreshSteps() {
+  const has = rows.length > 0;
+  const priced = rows.some((r) => r.price_cents != null);
+  setStep(1, has ? 'done' : 'cur');
+  setStep(2, has ? (priced || saved ? 'done' : 'cur') : '');
+  setStep(3, priced ? 'done' : has ? '' : '');
+  setStep(4, (saved && batchId) ? 'done' : (has && priced) ? 'cur' : '', (batchId && !saved && has) ? 'Re-save changes' : 'Save batch');
+  setStep(5, (exported && saved) ? 'done' : (saved && batchId) ? 'cur' : '');
 }
 function refreshButtons() {
   const has = rows.length;
   $('priceBtn').disabled = !has;
   $('priceBtn').title = has ? 'Price every row from live market data' : 'Enumerate a set or import a CSV first';
   $('saveBtn').disabled = !has;
-  $('saveBtn').title = has ? 'Save this batch to inventory' : 'Enumerate a set or import a CSV first';
+  $('saveBtn').textContent = (batchId && !saved && has) ? '💾 Re-save batch' : '💾 Save batch';
+  $('saveBtn').title = has ? (batchId && !saved ? 'Rows changed since the last save — save again to sync the batch' : 'Save this batch to inventory') : 'Enumerate a set or import a CSV first';
   $('exportBtn').disabled = !batchId || !saved;
-  $('exportBtn').title = !has ? 'Load rows first' : (!saved ? 'Save the batch before you can export' : 'Export the eBay AU File Exchange CSV');
+  $('exportBtn').title = !has ? 'Load rows first' : !saved ? (batchId ? 'Rows changed since the last save — 💾 Re-save before exporting (the CSV reads the saved batch)' : 'Save the batch before you can export') : 'Pre-flight check, then download the eBay AU File Exchange CSV';
+  $('selAll').textContent = filterActive() ? `Select visible (${view.length})` : 'Select all';
+  $('selNone').textContent = filterActive() ? 'Clear visible' : 'Select none';
+  refreshSteps();
 }
 refreshButtons();
+
+// Warn before leaving with unsaved grid work (rows loaded but batch not saved / stale).
+window.addEventListener('beforeunload', (e) => {
+  if (rows.length && !saved) { e.preventDefault(); e.returnValue = ''; }
+});
 
 // ---------------- batches view ----------------
 async function loadBatches() {
@@ -442,11 +761,11 @@ async function loadBatches() {
     const j = await r.json();
     if (!(j.batches || []).length) { el.innerHTML = '<div class="hint">No batches yet.</div>'; return; }
     el.innerHTML = j.batches.map((b) => `
-      <div class="batchrow" data-id="${b.id}">
-        <div style="min-width:46px;color:var(--muted)">#${b.id}</div>
+      <div class="batchrow" data-id="${b.id}" data-shape="${esc(b.listing_shape || 'per_card')}">
+        <div style="min-width:46px;color:var(--muted)" class="mono">#${b.id}</div>
         <div style="flex:2"><b>${b.set_name || b.game || '(unnamed)'}</b><div class="hint">${b.source} · ${b.game || 'mixed'} · shape ${b.listing_shape}</div></div>
-        <div style="flex:1">${b.item_count} items · ${b.unit_count} units</div>
-        <div style="flex:1">${b.listed_count} listed · ${b.sold_count} sold</div>
+        <div style="flex:1" class="mono">${b.item_count} items · ${b.unit_count} units</div>
+        <div style="flex:1" class="mono">${b.listed_count} listed · ${b.sold_count} sold</div>
         <div><span class="pill">${b.status}</span></div>
         <div style="white-space:nowrap">
           <button class="btn act-open">Open in grid</button>
@@ -475,10 +794,11 @@ $('batchList').addEventListener('click', async (e) => {
       finish: /reverse/i.test(it.variant || '') ? 'Reverse Holofoil' : /holo/i.test(it.variant || '') ? 'Holofoil' : /enchanted/i.test(it.variant || '') ? 'Enchanted' : /foil/i.test(it.variant || '') ? 'Foil' : 'Normal',
       _status: it.status,
     }));
-    batchId = id; saved = true;
+    batchId = id; saved = true; exported = j.batch && j.batch.status === 'exported';
     $('b_pick').value = String(id);
+    resetFilters(); rebuildFacets();
     document.querySelector('#viewSeg button[data-v="build"]').click();
-    renderGrid(); refreshButtons();
+    refreshView(); renderGrid(); refreshButtons();
     S('ok', '✓ batch #' + id + ' loaded — ' + rows.length + ' rows (' + rows.filter((r) => !r._inc).length + ' listed/sold deselected).');
   } else if (e.target.classList.contains('act-listed')) {
     if (!confirm('Mark all in-stock items in batch #' + id + ' as listed? This can only be undone from inventory.')) return;
@@ -488,12 +808,7 @@ $('batchList').addEventListener('click', async (e) => {
     await loadBatches();
     SB('ok', '✓ batch #' + id + ' — ' + (j.updated != null ? j.updated + ' item(s)' : 'in-stock items') + ' marked listed.');
   } else if (e.target.classList.contains('act-export')) {
-    const r = await fetch('/api/bulk/export/csv', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ batch_id: id, shape: 'per_card' }) });
-    if (r.status === 422) { const j = await r.json(); SB('err', '⛔ Export blocked — ' + (j.problems || []).map((p) => p.sku + ': ' + p.errors.join(', ')).join(' · ')); return; }
-    if (!r.ok) { SB('err', 'Export failed — ' + r.status); return; }
-    const blob = await r.blob();
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'ebay-bulk-batch' + id + '.csv'; a.click(); URL.revokeObjectURL(a.href);
-    SB('ok', '✓ CSV exported for batch #' + id + '.');
+    openExportPreview(id, rowEl.dataset.shape === 'multi_variation' ? 'multi_variation' : 'per_card', { onStatus: SB });
   }
 });
 </script>

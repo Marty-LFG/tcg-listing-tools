@@ -86,7 +86,19 @@ exactly the symbol the user searches by. The language toggle in the builder scop
   `image` is a **base URL with no extension** (`…/ja/SV/SV3/001`); append `/low.webp` (display) /
   `/high.webp` (download). **Coverage reality:** JP card data is good for the SV era; the newest JP
   sets and most **CN card data are sparse/absent** in TCGdex (set *lists* are complete, card data
-  is not) — a miss degrades to manual field entry (comps still work).
+  is not) — a miss degrades to manual field entry (comps still work), and a seeded-but-uningested
+  set like `M5` says so explicitly (its English set name is still filled).
+- **English OUTPUT (never native script):** the listing (card name, set, title, description, pitch)
+  is always English. Set = `name_en` / `enEquivalent.name` / printed code. Card name = English
+  species + the Latin suffix printed on the card (`ex`/`V`/`VMAX`), resolved via
+  `data/pokemon-dex-en.json` (`scripts/build-pokemon-dex.mjs`, PokéAPI GraphQL, standalone bake) —
+  which maps **both** the card's `dexId` **and** the native species name (the high-value ex/full-art
+  cards OMIT `dexId`, so `リザードンex` → `Charizard ex` via the native `ja`/`ko`/`zh-cn`/`zh-tw`
+  species map). Trainers/Energy with no English source leave the name blank for manual entry.
+  The DESCRIPTION additionally carries native metadata rows for search/provenance — `{Language} name`
+  (native card name), `{Language} set` (native set name), and `English set` (the `enEquivalent`
+  release) — threaded via `_intlMeta` into the mirrored `buildHTML`/`buildDescription` (rendered only
+  when present, so English cards and the bulk tool are unaffected; parity harness stays byte-identical).
 - **Language-aware eBay comps:** `findEbay` appends the language word (`Japanese`/`Chinese`/`Korean`;
   never `English`) + the native printed code to the query and passes `lang`; `TCG.classifyLang(title)`
   (extras.js) then keeps only rows whose title language matches (kana ⇒ JP-certain, hangul ⇒ KO,

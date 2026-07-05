@@ -170,9 +170,10 @@ function set(id,v){document.getElementById(id).value=(v==null?'':v);}
 function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
 
-function readFields(){return {name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
+let _intlMeta=null;   // native JP/CN/KO card+set names for the description (set on an intl lookup, cleared otherwise)
+function readFields(){return Object.assign({name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
   poke:val('f_poke'),stage:val('f_stage'),type:val('f_type'),finish:val('f_finish'),lang:val('f_lang'),
-  cond:val('f_cond'),pitch:val('f_pitch')};}
+  cond:val('f_cond'),pitch:val('f_pitch')}, _intlMeta||{});}   // _intlMeta adds native JP/CN/KO name+set for the description
 function findEbay(){
   const f=readFields(), st=document.getElementById('status');
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
@@ -209,6 +210,11 @@ function buildHTML(f){
   const rows=[['Set',f.set],['Card number',f.num],['Rarity',f.rarity],['Pokémon',f.poke],['Stage',f.stage]];
   if(f.type) rows.push(['Type',f.type]);
   rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
+  // Native metadata (JP/CN/KO): original name + set for searchability, plus the English-equivalent set.
+  const nlab=(f.lang||'').replace(/\s*\(.*$/,'').trim()||'Original';
+  if(f.nativeName) rows.push([nlab+' name',f.nativeName]);
+  if(f.nativeSet) rows.push([nlab+' set',f.nativeSet]);
+  if(f.enSet) rows.push(['English set',f.enSet]);
   let tr=''; rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f8fc;':'';
     tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
   return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
@@ -257,6 +263,49 @@ async function loadIntlSets(){
 function activeSets(){var dl=activeDataLang();if(dl==='en')return PKM_SETS;return (PKM_INTL&&PKM_INTL[dl])||[];}
 // The id used for the card lookup + image path (EN: pokemontcg.io id; intl: TCGdex printed code).
 function setLookupId(s){return s?(s.tcgdexId!==undefined?s.tcgdexId:s.id):'';}
+// The English SET name for the listing output — never the native (Japanese/Chinese/Korean) name.
+function setEnglishName(s){return s?(s.name_en||(s.enEquivalent&&s.enEquivalent.name)||s.code||''):'';}
+
+// national-dex# -> English Pokémon name (data/pokemon-dex-en.json). TCGdex serves JP/CN/KO card
+// names in native script, but every card carries a dexId — so the OUTPUT can always be English.
+// Structure: { dex:{"6":"Charizard"}, ja:{"リザードン":"Charizard"}, ko/zh-cn/zh-tw:{…} }.
+let DEX_EN=null;
+function loadCachedDex(){try{var raw=localStorage.getItem('pkm_dex_en_v2');if(raw){var o=JSON.parse(raw);if(o&&o.dex){DEX_EN=o;return true;}}}catch(e){}return false;}
+async function loadDexMap(){
+  if(DEX_EN)return DEX_EN;
+  loadCachedDex();
+  try{var r=await fetch('/data/pokemon-dex-en.json');if(r.ok){var o=await r.json();if(o&&o.dex){DEX_EN=o;try{localStorage.setItem('pkm_dex_en_v2',JSON.stringify(o));}catch(e){}}}}catch(e){}
+  return DEX_EN||{};
+}
+// Build the ENGLISH card name from a TCGdex card: English species + the Latin suffix already printed
+// on the card (ex / V / VMAX). Two resolution paths — dexId (most cards) then native-species lookup
+// (the high-value ex/full-art cards omit dexId). Empty only for Trainers/Energy with no English source.
+function englishCardName(c){
+  var m=DEX_EN||{}, byDex=m.dex||{};
+  var native=(c&&c.name)||'';
+  var ascii=native.replace(/[^\x00-\x7F]+/g,' ').replace(/[^A-Za-z0-9'’.:\- ]+/g,' ').replace(/\s+/g,' ').trim();
+  // 1) dexId -> English
+  var species=((c&&c.dexId)||[]).map(function(n){return byDex[n];}).filter(Boolean).join(' & ');
+  // 2) native species name -> English (fallback for dexId-less ex/special cards)
+  if(!species){
+    var lm=m[activeDataLang()]||{};
+    var base=native.replace(/[A-Za-z0-9'’.:\-\s]+$/,'');            // strip trailing Latin suffix
+    var parts=base.split(/[&＆]/).map(function(p){return p.trim();}).filter(Boolean);
+    var en=parts.map(function(p){return lm[p];}).filter(Boolean);
+    if(en.length&&en.length===parts.length)species=en.join(' & ');   // all parts must resolve
+  }
+  if(species)return (species+(ascii?' '+ascii:'')).trim();
+  return ascii;   // Trainer/Energy or unmapped — Latin remnants only, may be empty
+}
+// Reset the card-identity fields (used when a lookup fails, so stale data never lingers).
+function clearCardFields(opts){
+  ['f_name','f_num','f_rarity','f_poke','f_stage','f_type','f_pitch'].forEach(function(id){set(id,'');});
+  if(!(opts&&opts.keepSet))set('f_set','');
+  _trk=null;_intlMeta=null;
+  var ex=document.getElementById('extras');if(ex)ex.innerHTML='';
+  var eb=document.getElementById('ebayextras');if(eb)eb.innerHTML='';
+  render();
+}
 function setStatus(m){var e=document.getElementById('setStatus');if(e)e.textContent=m;}
 function slimSet(s){return {id:s.id,name:s.name,series:s.series||'',releaseDate:s.releaseDate||'',ptcgoCode:s.ptcgoCode||'',symbol:(s.images&&s.images.symbol)||''};}
 function loadCachedSets(){try{var raw=localStorage.getItem(SETS_CACHE_KEY);if(raw){var a=JSON.parse(raw);if(Array.isArray(a)&&a.length){PKM_SETS=a;return true;}}}catch(e){}return false;}
@@ -362,7 +411,7 @@ function setLang(name){
   var fl=document.getElementById('f_lang');if(fl)fl.value=name;
   renderLangBtn();
   // Switching language re-scopes the set picker to that language's catalog; drop any picked set.
-  selectedSet=null;
+  selectedSet=null;_intlMeta=null;
   var sc=document.getElementById('setCode');if(sc){sc.value='';sc.placeholder=setPlaceholder();}
   var dl=activeDataLang();
   if(dl!=='en'){loadIntlSets().then(updateSetStatus);}
@@ -429,9 +478,9 @@ async function doLookup(){
   const act=window.TCG?TCG.activity('Looking up '+setId+'-'+num+'\u2026'):null;
   try{
     const r=await fetch(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(setId+'-'+num));
-    if(!r.ok){act&&act.fail('no match');st.className='status warn';st.textContent='No match for '+setId+'-'+num+'. Check the set/number or fill manually.';return;}
+    if(!r.ok){act&&act.fail('no match');set('f_set',_setObj.name||setId);clearCardFields({keepSet:true});st.className='status warn';st.textContent='No match for '+setId+'-'+num+'. Check the set/number or fill manually.';return;}
     const j=await r.json(); const c=j.data||j;
-    if(!c||!c.name){act&&act.fail('no card');st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
+    if(!c||!c.name){act&&act.fail('no card');set('f_set',_setObj.name||setId);clearCardFields({keepSet:true});st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
     set('f_name',c.name);
     set('f_set',(c.set&&c.set.name)||setId);
     set('f_num',(c.number||num)+'/'+((c.set&&(c.set.printedTotal||c.set.total))||''));
@@ -444,6 +493,7 @@ async function doLookup(){
     let price=null; const tp=c.tcgplayer&&c.tcgplayer.prices;
     if(tp){const k=Object.keys(tp)[0]; if(k&&tp[k]) price=tp[k].market||tp[k].mid;}
     _trk={game:'pokemon',identity_key:c.id,name:c.name,variant:val('f_finish'),price:price!=null?{market:+price,currency:'USD'}:null};
+    _intlMeta=null;   // English card — no native metadata
     act&&act.done('pokemontcg.io');
     st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
     render();
@@ -497,9 +547,11 @@ function pcEnrichIntl(el,ex,c,typedNum,dl){
 }
 async function doLookupIntl(setObj,num,dl){
   const code=setLookupId(setObj), st=document.getElementById('status');
-  const tag=dl.toUpperCase(), cardLabel=code+'-'+num;
+  const tag=dl.toUpperCase(), cardLabel=code+'-'+num, enSet=setEnglishName(setObj);
+  set('f_set',enSet);   // English set name up-front — stays correct even if the card lookup misses
   st.className='status load';st.textContent='Looking up '+cardLabel+' ('+tag+')…';
   const act=window.TCG?TCG.activity('Looking up '+cardLabel+'…'):null;
+  await loadDexMap();   // dex# -> English name (for the card name)
   try{
     let c=null;
     var cands=intlNumCandidates(num);
@@ -507,28 +559,41 @@ async function doLookupIntl(setObj,num,dl){
       var rr=await fetch('/api/tcgdex/'+encodeURIComponent(dl)+'/cards/'+encodeURIComponent(code+'-'+cands[i]));
       if(rr.ok){var jj=await rr.json();if(jj&&jj.name){c=jj;break;}}
     }
-    if(!c||!c.name){act&&act.fail('no card');st.className='status warn';st.textContent='No card data for '+cardLabel+' in TCGdex ('+tag+') — fill fields manually (comps still work).';return;}
+    if(!c||!c.name){
+      act&&act.fail('no card');
+      set('f_set',enSet);clearCardFields({keepSet:true});   // wipe any stale card, keep the correct set
+      st.className='status warn';
+      st.textContent=setObj.seeded
+        ?enSet+' is brand-new — TCGdex hasn’t published its card data yet. Set name is filled; enter the card details manually (comps still work).'
+        :'No card data for '+cardLabel+' in TCGdex ('+tag+') — fill fields manually (comps still work).';
+      return;
+    }
+    // OUTPUT IS ENGLISH: species name via dexId + the Latin suffix on the card (ex/V/VMAX). Blank for
+    // the rare Trainer/Energy with no English source (user fills) — never emit native script.
+    var enName=englishCardName(c);
     const total=(c.set&&c.set.cardCount&&(c.set.cardCount.official||c.set.cardCount.total))||setObj.cardCount||'';
-    set('f_name',c.name);
-    set('f_set',setObj.name_en||setObj.name_native||(c.set&&c.set.name)||code);
+    set('f_name',enName);
+    set('f_set',enSet);
     set('f_num',(c.localId||num)+(total?'/'+total:''));
     set('f_rarity',c.rarity||'');
-    set('f_poke',c.name);
+    set('f_poke',enName);
     set('f_stage',c.stage||'');
     set('f_type',(c.types||[]).join(' / '));
     set('f_finish',/holo|shiny|rare|ex|special/i.test(c.rarity||'')?'Holo':'Non-holo');
     set('f_pitch',genPitch(readFields()));
     // Listing-only for JP/CN/KO (identity_key stays blank so tracker/inventory/comps-save are gated,
     // avoiding collisions with the pokemontcg.io id space). See addTrack/addInv.
-    _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:c.name,variant:val('f_finish'),price:null};
+    _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:enName,variant:val('f_finish'),price:null};
+    // Native metadata for the description: original card + set name, plus the English-equivalent set.
+    _intlMeta={nativeName:c.name||'',nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||''};
     act&&act.done('TCGdex '+tag);
-    st.className='status ok';st.textContent='✓ '+c.name+'  ('+(c.rarity||'?')+')  ·  '+tag;
+    st.className='status ok';st.textContent=enName?('✓ '+enName+'  ('+(c.rarity||'?')+')  ·  '+tag):('✓ '+cardLabel+'  ('+tag+') — enter the English card name');
     render();
     if(window.TCG){
       var img=c.image||'';   // base URL, no extension — append quality + ext
       var imgs=img?[{label:'Front',display:[img+'/low.webp',img+'/high.webp'],download:img+'/high.webp',fallback:img+'/high.webp'}]:[];
       var _exEl=document.getElementById('extras');
-      var _ex={name:c.name,images:imgs,prices:[],history:null,
+      var _ex={name:enName||(enSet+' '+cardLabel),images:imgs,prices:[],history:null,
         priceNote:'TCGplayer/Cardmarket don’t price '+tag+' prints — use the eBay comps below as the native-market reference.'};
       TCG.renderExtras(_exEl,_ex);
       if(typeof pcEnrichIntl==='function')pcEnrichIntl(_exEl,_ex,c,num,dl);
@@ -579,7 +644,7 @@ async function addTrack(){
     document.addEventListener('click',function(e){var r=document.querySelector('.setrow');if(r&&!r.contains(e.target)){closeSetMenu();toggleLangMenu(false);}});
     buildLangMenu();renderLangBtn();
   })();
-  loadSets(); loadIntlSets(); render();
+  loadSets(); loadIntlSets(); loadDexMap(); render();
 })();
 </script>
 </body>

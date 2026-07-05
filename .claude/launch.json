@@ -4,8 +4,14 @@
     {
       "name": "tcg-tools",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
-      "port": 5273
+      "runtimeArgs": ["exec", "vite", "--port", "5399"],
+      "port": 5399
+    },
+    {
+      "name": "tcg-tools-alt",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["exec", "vite", "--port", "5402", "--strictPort"],
+      "port": 5402
     }
   ]
 }
