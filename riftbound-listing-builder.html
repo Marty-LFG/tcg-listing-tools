@@ -252,10 +252,19 @@ function runeFill(raw){
   const st=document.getElementById('status'); st.className='status ok'; st.textContent='✓ '+name+'  ('+mapRarity(rawRarity)+')  · rune';
   render();
   if(window.TCG){
-    // Per-set showcase rune art (correct printing) from dotgg's CDN, keyed by {SET}-R##(a);
-    // Riot's gallery only has the Origins rune (r.img) — use it as the fallback if a set has no R-rune.
-    const dg='https://static.dotgg.gg/riftbound/cards/'+curSetCode().toUpperCase()+'-'+pr.num+'.webp';
-    TCG.renderExtras(document.getElementById('extras'),{name,images:[{label:'Front',url:dg,fallback:r.img||''}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});
+    // Runes are reprinted in EVERY set with DIFFERENT art per set. The reprint sets
+    // (SFD/UNL/…) are keyed on dotgg's CDN as {SET}-R##[a]; Origins has no OGN-R## entry
+    // (its runes use the printed NNN[a] number), so there the baked OGN image (r.img) is
+    // the correct one. r.img is OGN's printing — the WRONG art for any reprint set — so it
+    // must be an ERROR-ONLY fallback, never a raced display candidate: renderExtras races
+    // display candidates by load speed, so the (valid) OGN image would routinely beat the
+    // correct per-set art. Keep it out of the display list; attach it via onerror instead.
+    const code=curSetCode().toUpperCase();
+    const dg='https://static.dotgg.gg/riftbound/cards/'+code+'-'+pr.num+'.webp';
+    const primary=code==='OGN'?(r.img||dg):dg;
+    TCG.renderExtras(document.getElementById('extras'),{name,images:[{label:'Front',display:[primary],download:primary}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});
+    const _ie=document.getElementById('tcg-img-0');   // fall back to the canonical OGN rune only if the per-set image 404s (never raced)
+    if(_ie&&r.img&&r.img!==primary){_ie.onerror=function(){_ie.onerror=null;_ie.src=r.img;};}
   }
   _trk={game:'riftbound',identity_key:curSetCode().toUpperCase()+'-'+pr.num,name:name,variant:val('f_finish'),price:null};
   regenTitle(); return true; }
