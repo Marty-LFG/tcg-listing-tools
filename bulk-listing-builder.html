@@ -52,7 +52,7 @@
 <body>
 <div class="wrap">
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
-  <h1>Bulk Listing Builder <span class="tag">Pokémon · Lorcana → eBay AU CSV</span></h1>
+  <h1>Bulk Listing Builder <span class="tag">Pokémon · Lorcana · Riftbound → eBay AU CSV</span></h1>
   <p class="sub">Two ways in, one pipeline: enumerate a whole <b>set</b> (commons/uncommons with holo variants) or import a <b>Collectr</b> portfolio export — price the lot, save to inventory, export an eBay File Exchange CSV.</p>
 
   <div class="seg" id="viewSeg">
@@ -71,7 +71,7 @@
       <div id="src_enumerate">
         <div class="row">
           <div><label for="e_game">Game</label>
-            <select id="e_game"><option value="pokemon">Pokémon</option><option value="lorcana">Disney Lorcana</option></select></div>
+            <select id="e_game"><option value="pokemon">Pokémon</option><option value="lorcana">Disney Lorcana</option><option value="riftbound">Riftbound</option></select></div>
           <div class="grow"><label for="e_set">Set</label><select id="e_set"><option value="">loading sets…</option></select></div>
           <div><label for="e_rar">Rarities</label>
             <select id="e_rar"><option value="common,uncommon">Commons + Uncommons</option><option value="common">Commons only</option><option value="uncommon">Uncommons only</option><option value="">Everything (incl. rares)</option></select></div>
@@ -179,8 +179,9 @@ async function loadSets() {
   try {
     const r = await fetch('/api/bulk/sets?game=' + game);
     const j = await r.json();
+    if ($('e_game').value !== game) return;   // game changed mid-flight (fast local vs slow remote) — don't clobber the newer list
     $('e_set').innerHTML = (j.sets || []).map((s) => `<option value="${s.value}" data-name="${(s.label || '').replace(/"/g, '&quot;')}">${s.label}${s.code ? ' (' + s.code + ')' : ''}</option>`).join('') || '<option value="">no sets available for this game</option>';
-  } catch { $('e_set').innerHTML = '<option value="">sets unavailable — couldn\'t reach the server. You can still add cards manually in the single-card builders.</option>'; }
+  } catch { if ($('e_game').value !== game) return; $('e_set').innerHTML = '<option value="">sets unavailable — couldn\'t reach the server. You can still add cards manually in the single-card builders.</option>'; }
 }
 $('e_game').addEventListener('change', loadSets);
 loadSets();

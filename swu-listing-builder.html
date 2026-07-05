@@ -156,7 +156,9 @@ function genTitle(){
   return TCG.fitTitle(parts,80);
 }
 
-const SETS = {
+// Fallback set list (used offline / if swu-db /sets is unreachable). loadSets() refreshes this
+// from the live API on init so new sets appear without editing this file.
+let SETS = {
   sor:'Spark of Rebellion', shd:'Shadows of the Galaxy', twi:'Twilight of the Republic',
   jtl:'Jump to Lightspeed', lof:'Legends of the Force', sec:'Secrets of Power', law:'A Lawless Time'
 };
@@ -316,12 +318,32 @@ async function addTrack(){
   showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
 }
 
-(function(){
-  const _cb=document.getElementById('c_base'); if(_cb) _cb.value=swuBase;
-  const pills=document.getElementById('pills');
+// Set pills — built from SETS, refreshed live from swu-db so new sets appear without an HTML
+// edit (base constructed sets only; promos/OP sub-sets carry a parentSetId or a tiny card count).
+function buildPills(){
+  const pills=document.getElementById('pills'); if(!pills) return;
+  pills.innerHTML='';
   for(const sid in SETS){const b=document.createElement('button');
     b.className='pill'+(sid===curSet?' on':'');b.dataset.id=sid;
     b.textContent=sid.toUpperCase();b.title=SETS[sid];b.onclick=()=>selectSet(sid);pills.appendChild(b);}
+}
+async function loadSets(){
+  try{
+    const r=await fetch(swuBase.replace(/\/$/,'')+'/sets');
+    if(!r.ok) return;
+    const j=await r.json();
+    const list=(Array.isArray(j)?j:[]).filter(s=>s.setId && !s.parentSetId && (+s.numberCards||0)>=100);
+    if(!list.length) return;
+    const parseD=s=>{const m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s||'');return m?new Date(+m[3]<100?2000+ +m[3]:+m[3],+m[1]-1,+m[2]).getTime():0;};
+    list.sort((a,b)=>parseD(a.releaseDate)-parseD(b.releaseDate)||(a.fullName||'').localeCompare(b.fullName||''));
+    const next={}; list.forEach(s=>{next[String(s.setId).toLowerCase()]=s.fullName||String(s.setId);});
+    SETS=next; if(!SETS[curSet]) curSet=Object.keys(SETS)[0]||curSet; buildPills();
+  }catch(e){}
+}
+(function(){
+  const _cb=document.getElementById('c_base'); if(_cb) _cb.value=swuBase;
+  buildPills();
+  loadSets();   // refresh the set list live from swu-db
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
   ['f_name','f_set','f_num','f_rarity','f_variant','f_type','f_aspect','f_arena','f_traits','f_cost','f_power','f_hp','f_lang','f_cond','f_pitch']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));

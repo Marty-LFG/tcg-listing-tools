@@ -167,9 +167,10 @@ cert number, tries to auto-fill the card identity + grade.
 
 - Card: `GET /cards/{set}/{number}` by **set code + bare collector number** (NOT zero-padded —
   e.g. `1/207` → Elsa, Spirit of Winter). 404 on no match. Single bare card object (no `data` wrapper).
-- Sets: `GET /sets` → `{ results: [{ id, code, name, released_at }] }`. The builder hard-codes the
-  released numbered sets `1`–`12` as clickable pills (the only set selector); promos (`P1`, `D23`, …)
-  are not selectable in the UI yet. Add new numbered sets to the `SETS` object as they release.
+- Sets: `GET /sets` → `{ results: [{ id, code, name, released_at }] }`. `loadSets()` refreshes the
+  set pills LIVE from this on page load (filtered to `released_at <= today`), so numbered sets AND
+  promos (`P1`, `P2`, `P3`, `D23`, `DIS`, `C2`, `cp`) both appear automatically. The hard-coded `SETS`
+  object (numbered `1`–`12` + the known promo codes) is only the offline/`/sets`-unreachable fallback.
 - **Auth:** none (keyless). HTTPS only, ~10 req/s; **prices refresh once daily**.
 - Fields used: `name`, `version`, `collector_number`, `rarity` (`Super_rare` → "Super Rare"),
   `ink`, `type[]`, `classifications[]`, `cost`, `strength`, `willpower`, `lore`,

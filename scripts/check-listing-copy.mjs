@@ -131,6 +131,34 @@ console.log('\n[lorcana builder parity]');
 }
 
 // ---------------------------------------------------------------------------
+// 3b. Riftbound genTitle/genPitch/buildHTML  ⇄  buildTitle/riftboundPitch/buildDescription
+// (genTitle reads readFields()→curSetName(); stub curSetName, extract mapRarity for genPitch.)
+// ---------------------------------------------------------------------------
+console.log('\n[riftbound builder parity]');
+{
+  const fixtures = [
+    { f_name: 'Yasuo, Windchaser', f_num: '162a/298', f_set: 'Origins (OGN)', f_rarity: 'Showcase', f_variant: 'Alternate Art', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Unit', f_domain: 'Fury', f_tags: 'Yasuo', f_e: '4', f_p: '3', f_m: '5' },
+    { f_name: 'Calm Rune', f_num: 'R02a', f_set: 'Unleashed (UNL)', f_rarity: 'Showcase', f_variant: 'Alternate Art', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Rune', f_domain: 'Calm', f_tags: '', f_e: '', f_p: '', f_m: '' },
+    { f_name: 'Against the Odds', f_num: '001/221', f_set: 'Spiritforged (SFD)', f_rarity: 'Common', f_variant: '', f_finish: 'Non-foil', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Spell', f_domain: 'Fury', f_tags: '', f_e: '', f_p: '', f_m: '' },
+    { f_name: 'Draven, Glory Seeker', f_num: '075/298', f_set: 'Origins (OGN)', f_rarity: 'Epic', f_variant: '', f_finish: 'Foil', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Unit', f_domain: 'Fury;Chaos', f_tags: 'Draven', f_e: '5', f_p: '4', f_m: '6' },
+    { f_name: 'Daughter of the Void', f_num: '299*/298', f_set: 'Origins (OGN)', f_rarity: 'Overnumbered', f_variant: 'Overnumbered', f_finish: 'Foil', f_lang: 'Japanese', f_cond: 'Lightly Played', f_type: 'Unit', f_domain: 'Chaos', f_tags: '', f_e: '6', f_p: '5', f_m: '7' },
+  ];
+  for (const fx of fixtures) {
+    const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
+    const ctx = builderContext('riftbound-listing-builder.html',
+      ['function mapRarity(', 'function readFields()', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx,
+      { curSetName: () => setName });
+    const rawRarity = fx.f_variant === 'Alternate Art' ? 'Alternate Art' : fx.f_variant === 'Overnumbered' ? 'Overnumbered' : fx.f_rarity;
+    const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, setName, rarity: fx.f_rarity, variant: fx.f_variant, finish: fx.f_finish, lang: fx.f_lang, cond: fx.f_cond, type: fx.f_type, domain: fx.f_domain, tags: fx.f_tags, e: fx.f_e, p: fx.f_p, m: fx.f_m };
+    check('genTitle ' + fx.f_name.slice(0, 18), LC.buildTitle('riftbound', f), vm.runInContext('genTitle()', ctx));
+    const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ',' + JSON.stringify(rawRarity) + ')', ctx);
+    check('genPitch ' + fx.f_name.slice(0, 18), LC.riftboundPitch(f, rawRarity), pitch);
+    const ff = Object.assign({}, f, { pitch });
+    check('buildHTML ' + fx.f_name.slice(0, 18), LC.buildDescription('riftbound', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 4. Bulk-only additions — edition + graded tokens, and the GR8 inline-style guard.
 // ---------------------------------------------------------------------------
 console.log('\n[bulk additions]');
@@ -150,7 +178,7 @@ console.log('\n[bulk additions]');
 
   // GR8: descriptions are inline-style only — no <style>/<script>/event handlers/class=.
   const guard = /<(style|script)\b|\son\w+=|\sclass=/i;
-  for (const game of ['pokemon', 'lorcana']) {
+  for (const game of ['pokemon', 'lorcana', 'riftbound']) {
     const ff = LC.rowToFields({ game, name: 'X', number: '1/1', set_name: 'S', rarity: 'Common', finish: 'Normal', language: 'EN' });
     assert('GR8 inline-only (' + game + ')', !guard.test(LC.buildDescription(game, ff)));
     assert('GR8 inline-only slab (' + game + ')', !guard.test(LC.buildDescription(game, ff, { slab: true })));

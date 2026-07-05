@@ -1,0 +1,6 @@
+{
+  "_comment": "Daily in-process refresh of BAKED data catalogs (lib/refresh.mjs). Live-proxied games (pokemon/mtg/swu/lorcana/lego/fx) need no refresh. Only riftbound.json goes stale on a set drop; funko is frozen upstream (add 'funko' to bakes to force it). interval_hours drives the timer; the boot pass skips catalogs already fresher than interval_hours.",
+  "enabled": true,
+  "interval_hours": 24,
+  "bakes": ["riftbound"]
+}

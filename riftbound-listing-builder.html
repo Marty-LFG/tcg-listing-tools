@@ -160,6 +160,9 @@ function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.get
 function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_name')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
 function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
 
+// MIRROR (Golden Rules 6/9): genTitle/genPitch/buildHTML below are ported VERBATIM into
+// lib/listing-copy.mjs (titleParts/riftboundPitch/buildDescription, game 'riftbound') for the
+// bulk tool. scripts/check-listing-copy.mjs asserts byte-identical output — change both sides.
 function genTitle(){
   var f=readFields();
   if(!window.TCG)return f.name;
@@ -279,6 +282,7 @@ function curSetName(){
   return RB_DATA[curSet]?RB_DATA[curSet].name:curSet;
 }
 
+// MIRROR: ⇄ lib/listing-copy.mjs riftboundPitch() (byte-identical; see check-listing-copy.mjs).
 function genPitch(f, rawRarity){
   const setName=f.setName, name=f.name, type=(f.type||'card'), dom=f.domain;
   const fin=f.finish==='Foil'?'foil ':'';
@@ -289,6 +293,7 @@ function genPitch(f, rawRarity){
   return `${name} from Riftbound's ${setName} set \u2014 a ${dom?dom+'-domain ':''}${type.toLowerCase()}${fin?', '+f.finish.toLowerCase():''}. ${mapRarity(rawRarity)} rarity.`;
 }
 
+// MIRROR: \u21c4 lib/listing-copy.mjs buildDescription(game 'riftbound') (byte-identical; check-listing-copy.mjs).
 function buildHTML(f){
   const rows=[['Set',f.set],['Card number',f.num],['Rarity',f.rarity+(f.variant?' \u2014 '+f.variant:'')],['Card type',f.type],['Domain',f.domain]];
   if(f.tags) rows.push(['Tags',f.tags]);
