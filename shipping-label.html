@@ -26,6 +26,18 @@
     border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
   textarea:focus,input:focus,select:focus{border-color:var(--gold);}
   textarea{resize:vertical;line-height:1.5;}
+  /* Checkboxes: opt OUT of the generic input box styling above (Safari applies the
+     width/padding to native checkboxes and collapses them to dots) — fixed-size custom control. */
+  input[type=checkbox]{appearance:none;-webkit-appearance:none;width:18px;height:18px;min-width:18px;flex:0 0 auto;
+    padding:0;margin:0 8px 0 0;border:1.5px solid var(--muted);border-radius:5px;background:var(--field);
+    cursor:pointer;position:relative;vertical-align:middle;display:inline-block;}
+  input[type=checkbox]:hover{border-color:var(--gold);}
+  input[type=checkbox]:checked{background:var(--gold);border-color:var(--gold);}
+  input[type=checkbox]:checked::after{content:'';position:absolute;left:5px;top:1.5px;width:4.5px;height:9px;
+    border:solid #0a1626;border-width:0 2.5px 2.5px 0;transform:rotate(43deg);}
+  input[type=checkbox]:disabled{opacity:.4;cursor:not-allowed;}
+  input[type=checkbox]:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  input[type=checkbox]+label{display:inline-block;vertical-align:middle;margin:0;}
   .controls{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;}
   .grp{display:flex;flex-direction:column;gap:7px;}
   .pills{display:flex;gap:6px;flex-wrap:wrap;}
@@ -180,7 +192,7 @@
         <button class="btn solid" id="dlBtn" onclick="downloadAll()">&#11015; Download (1)</button>
         <button class="btn" id="printBtn" onclick="printLabels()" disabled>&#128424; Print (1)</button>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;">
-          <input type="checkbox" id="autoPrint" onchange="toggleAutoPrint()" style="width:auto;" disabled> Auto-print
+          <input type="checkbox" id="autoPrint" onchange="toggleAutoPrint()" style="margin:0;" disabled> Auto-print
         </label>
       </div>
       <div class="status load" id="printhint" style="margin-top:8px;">Checking for printer&hellip;</div>

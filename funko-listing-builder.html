@@ -34,7 +34,16 @@
   .fields textarea{resize:vertical;min-height:60px;line-height:1.45;}
   .flags{display:flex;gap:14px;flex-wrap:wrap;padding:4px 0;}
   .cb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);text-transform:none;letter-spacing:0;margin:0;cursor:pointer;}
-  .cb input{width:auto;}
+  /* Checkboxes: opt OUT of the .fields input box styling (Safari applies the width/padding
+     to native checkboxes and collapses them to dots) — fixed-size custom control instead. */
+  .fields input[type=checkbox],input[type=checkbox]{appearance:none;-webkit-appearance:none;width:18px;height:18px;min-width:18px;
+    flex:0 0 auto;padding:0;margin:0;border:1.5px solid var(--muted);border-radius:5px;background:var(--field);
+    cursor:pointer;position:relative;vertical-align:middle;display:inline-block;}
+  input[type=checkbox]:hover{border-color:var(--gold);}
+  input[type=checkbox]:checked{background:var(--gold);border-color:var(--gold);}
+  input[type=checkbox]:checked::after{content:'';position:absolute;left:5px;top:1.5px;width:4.5px;height:9px;
+    border:solid #062321;border-width:0 2.5px 2.5px 0;transform:rotate(43deg);}
+  input[type=checkbox]:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
   .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
   .btns{display:flex;gap:8px;}
   .btn{padding:8px 14px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);
