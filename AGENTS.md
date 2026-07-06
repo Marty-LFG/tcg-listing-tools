@@ -86,6 +86,7 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    all product types. Condition wording is driven by explicit seller fields and
    defaults to the *safest* option (LEGO `Used – Complete`, Funko `Near-Mint`
    box) so an un-edited listing under-promises — never over-promises (INAD risk).
+   Enforced by `test/invariants/builder-wording.test.mjs` (`pnpm test`).
 
 7. **Every builder must survive its API being down.** Fields are editable; a
    failed lookup shows a warning, never a crash. Keep manual entry working.
@@ -110,8 +111,10 @@ cp .env.example .env        # all keys optional — Riftbound works keyless; Scr
 pnpm dev                    # serves http://localhost:5273 (host:true → also on the LAN)
 ```
 
-- There is **no test runner**. Validate JS edits with `node --check` on the
-  extracted inline script (see §8).
+- **Test suite** (`node:test`, zero deps): `pnpm test` (unit + invariants + data audits,
+  offline, <1s) · `pnpm test:integration` (boots the real dev server on a random port
+  against temp DBs) · `pnpm verify` = both. **Run `pnpm verify` before considering any
+  change done** (see §8). Live upstream smoke: `$env:TEST_LIVE='1'; pnpm test:integration`.
 - The dev server binds to `0.0.0.0:5273` for LAN access; see `README.md` for the
   systemd unit (`tcg-tools.service`), `scripts/WINDOWS_SERVICE.md`, and firewall notes.
 - An in-chat / sandboxed preview **cannot reach `localhost`**, so proxied lookups
@@ -170,6 +173,9 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `.claude/skills/price-analyst/SKILL.md` | Skill for the daily headless analysis (read export → research → flag → auto-add → digest → notify). |
 | `scripts/notify.ps1` | Windows desktop toast (WinRT, `msg.exe` fallback) for signal alerts. |
 | `scripts/run-claude-analysis.cmd` | Task Scheduler entry point for the daily `claude --print` analysis. |
+| `settings.html` | **Settings & Status** page: API-key presence + per-source health (explicit "Test now" probes — never automatic, Scrydex bills per call), baked-data freshness, DB/subsystem state, and edit forms for the four operational configs (tracker/repricer/bulk-pricing/refresh). Linked from `index.html`. |
+| `lib/status.mjs` | Vite plugin behind `settings.html`: `/api/status` (aggregate, key presence as BOOLEANS only — never values) + `/api/status/probe/:source` (allowlisted, 15-min cached) + `/api/settings` (GET all / PUT the four editable configs with per-file validation, atomic write, and collector/refresh timer restarts). |
+| `test/` | The test suite (`node:test`, §8): `unit/` per-lib tests, `invariants/` golden-rule guards + wrapped §14 harnesses, `data/` catalog/config audits, `integration/` real-server API tests (temp DBs), `helpers/` shared extraction/boot utilities. |
 | `README.md` | Human run + hosting instructions. |
 | `docs/DATA_SOURCES.md` | Per-game API endpoints, response schemas, key handling, rate limits. |
 | `vault.css` | Shared **"Vault Ledger"** design layer (§7 / `DESIGN.md`). Linked after each builder/grader/shipping page's inline `<style>` to re-theme the neutral CSS vars + Fraunces/IBM Plex fonts + atmospheric background; each page keeps its own `--gold` accent. |
@@ -201,6 +207,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/inventory` | (plugin) | Graded-card **inventory** API (`lib/inventory.mjs`): `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `POST /items/:id/refresh-value` (PriceCharting graded value), `POST /items/:id/value-manual`, `POST /items/:id/fetch-image` (resolve+cache card image), `GET /items/:id/valuations`, `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote`, `GET /summary`, `GET /export`. See §13. |
 | `/api/print` | (middleware) | **POST-only**: streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `GET` returns `{enabled,dpi,ip,page}` so `shipping-label.html` knows whether to enable its Print button + at what DPI to rasterise. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
 | `/api/repricer` | `repricerPlugin` (`lib/repricer.mjs`) | Store repricer + Telegram. `/config`, `/me`, `/chatid`, `/proposals`, `POST /test-alert`; `/oauth`, `/oauth/start`, `POST /oauth/exchange`, `/oauth/status`, `POST /oauth/test` (eBay user-token consent). Owns `data/repricer.db` + the Telegram long-poll loop. See §15. |
+| `/api/status` | `statusPlugin` (`lib/status.mjs`) | System dashboard for `settings.html`. `GET /` = version + key PRESENCE (booleans only, GR2) + source health (passive: `card_cache` recency, `watchlist.last_error`; plus cached probes) + baked-data freshness + DB/subsystem stats. `POST /probe/:source` = one explicit cheapest-call probe through the existing proxy, cached 15 min — **never auto-probed** (Scrydex bills per request). |
+| `/api/settings` | `statusPlugin` (`lib/status.mjs`) | `GET /` lists all `data/*.config.json` (+editability); `GET/PUT /:name` for `tracker`/`repricer`/`bulk-pricing`/`refresh` only — schema-validated (e.g. repricer `never_decrease` must stay true), atomic tmp+rename write, tracker/refresh writes restart their timers live. `.env` is never readable/writable here. |
 
 **`extras.js` public surface** (`window.TCG`):
 
@@ -295,19 +303,32 @@ part's text so dropping a part never leaves a dangling dash. Reference format
 
 ## 8. Validation
 
-No automated tests. After editing a builder's JS, syntax-check the inline script:
+**`pnpm verify` must pass before any change is considered done** (the BJB rule, adapted).
+It runs the two suites:
 
-```bash
-python3 -c "import re;s=open('pokemon-listing-builder.html').read();\
-m=re.search(r'<script>(?!<)(.*)</script>',s,re.S);open('/tmp/c.js','w').write(m.group(1))"
-node --check /tmp/c.js && echo OK
-```
+- **`pnpm test`** — offline, <1s. `test/unit/` (pure lib modules), `test/invariants/`
+  (the six §14 `scripts/check-*.mjs` harnesses wrapped as tests, GR6 five-builder wording
+  parity, GR8 no-`<style>/<script>` in eBay HTML, GR2 no-hardcoded-secrets scan, and an
+  automated inline-`<script>` `node --check` sweep of every page), `test/data/` (shape
+  audits for the baked catalogs + schema pins for every `data/*.config.json` — e.g.
+  repricer `never_decrease:true` is asserted, BJB config-audit style).
+- **`pnpm test:integration`** — boots the REAL dev server (vite.config.js, all plugins)
+  in-process on an ephemeral port with the SQLite stores redirected via `TCG_TRACKER_DB` /
+  `TCG_REPRICER_DB` (never touches `data/*.db`) and exercises `/api/*`, including the
+  `/api/status` no-secret-leak guard and `/api/settings` write validation.
+- **Opt-in live smoke**: `$env:TEST_LIVE='1'; pnpm test:integration` probes each upstream
+  once through the proxies (keyless sources must answer; keyed sources may be
+  `auth_failed`/`billing` — that's a status, not a failure, GR7).
 
-`node --check extras.js` and `node --check vite.config.js` validate those
-directly. For pure-logic changes (fee math, title fitting, set resolution),
-extract the function into a tiny Node harness with mocked DOM globals and assert
-expected outputs — that's how the title generator and pricing calculator were
-verified.
+Conventions: tests are `test/**/*.test.mjs` on `node:test` (Node 24 built-in, no deps);
+each file runs in its own process, so temp DBs / env overrides never leak. Shared helpers
+live in `test/helpers/` — `extract-inline.mjs` (brace-count + vm extraction of inline
+builder functions), `boot-server.mjs`, `tmp.mjs`. New lib modules get a unit file; new
+golden rules get an invariant test; new config files get a schema pin in
+`test/data/configs.test.mjs`.
+
+Quick one-off syntax check (what the inline-syntax test automates):
+`node --check extras.js` / `node --check vite.config.js`.
 
 ---
 
@@ -517,7 +538,9 @@ either side of any mirror, run `node scripts/check-listing-copy.mjs`** — byte-
 is the gate.
 
 **Validation (§8 style):** `scripts/check-{listing-copy,pricing,collectr,collectr-graded,collectr-ebay,enumerate}.mjs`
-— run all six after touching bulk code. Before uploading any REAL batch: eBay Seller Hub →
+— run all six after touching bulk code. All six are wrapped by
+`test/invariants/check-harnesses.test.mjs`, so `pnpm test` (and therefore `pnpm verify`)
+enforces them — they can no longer be forgotten. Before uploading any REAL batch: eBay Seller Hub →
 Reports → Upload with a **3-row sample first** (the File Exchange multi-variation idiom is
 unverified on this account; Phase 2 Sell-API is gated on `sell.inventory` production approval).
 ---

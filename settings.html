@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings &amp; Status — TCG Listing Tools</title>
+<style>
+  :root{
+    --gold:#a8b6cf; --gold-soft:rgba(168,182,207,.14);
+    --ink:#0b0d12; --panel:#14171f; --panel2:#1b1f2a; --field:#0b0d12; --bg2:#0d0f15;
+    --line:rgba(255,255,255,.075); --line2:rgba(255,255,255,.13);
+    --text:#e9edf6; --muted:#8b93a6; --faint:#5b6373;
+    --green:#43d6a0; --red:#f0666e; --amber:#f0c04a; --blue:#6ab0ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:var(--sans);color:var(--text);background:#0a0b0f;min-height:100vh;}
+  .wrap{max-width:1280px;margin:0 auto;padding:26px 22px 80px;}
+
+  .masthead{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
+  .monogram{width:48px;height:48px;border-radius:12px;border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;
+    font-family:var(--serif);font-size:22px;color:var(--gold);background:linear-gradient(180deg,var(--panel),var(--bg2));flex:0 0 auto;}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;margin:0;}
+  h1 em{color:var(--muted);font-style:italic;font-weight:500;}
+  .subline{font-family:var(--mono);font-size:12px;color:var(--muted);margin:2px 0 26px 62px;}
+  .subline b{color:var(--gold);font-weight:500;}
+  a.back{color:var(--muted);text-decoration:none;font-size:13px;} a.back:hover{color:var(--text);}
+
+  h2{font-family:var(--serif);font-weight:600;font-size:17px;margin:34px 0 12px;display:flex;align-items:center;gap:10px;}
+  h2::after{content:'';flex:1;height:1px;background:var(--line);}
+
+  .grid{display:grid;gap:12px;}
+  .grid.cols3{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));}
+  .grid.cols2{grid-template-columns:repeat(auto-fill,minmax(380px,1fr));}
+
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:16px 18px;animation:rise .35s ease both;}
+  .card h3{margin:0 0 10px;font-family:var(--serif);font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;justify-content:space-between;}
+  .card h3 .h-note{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13px;}
+  .kv .k{color:var(--muted);}
+  .kv .v{font-family:var(--mono);font-size:12.5px;text-align:right;}
+  .kv .v.ok{color:var(--green);} .kv .v.bad{color:var(--red);} .kv .v.warn{color:var(--amber);}
+
+  /* source table */
+  .srcrow{display:grid;grid-template-columns:170px 90px 1fr auto;gap:10px;align-items:center;
+    padding:9px 14px;border:1px solid var(--line);border-radius:11px;background:linear-gradient(180deg,var(--panel),var(--bg2));}
+  .srcrow + .srcrow{margin-top:8px;}
+  .srcname{font-size:13.5px;font-weight:600;}
+  .srcname small{display:block;font-weight:400;color:var(--faint);font-size:11px;}
+  .evidence{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    padding:3px 9px;border-radius:99px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;}
+  .pill.ok{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.08);}
+  .pill.auth_failed,.pill.billing,.pill.down{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.08);}
+  .pill.degraded,.pill.rate_limited,.pill.stale{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.08);}
+  .pill.unknown,.pill.disabled{color:var(--faint);}
+  .pill.keyed{color:var(--blue);border-color:rgba(106,176,255,.35);background:rgba(106,176,255,.07);}
+
+  .btn{font-family:var(--sans);font-size:12.5px;padding:6px 13px;border-radius:9px;border:1px solid var(--line2);
+    background:var(--panel2);color:var(--text);cursor:pointer;transition:all .16s ease;}
+  .btn:hover{transform:translateY(-1px);border-color:var(--gold);}
+  .btn.go{border-color:rgba(67,214,160,.5);color:var(--green);}
+  .btn:disabled{opacity:.45;cursor:default;transform:none;}
+
+  label{display:block;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px;}
+  input,select,textarea{width:100%;font-family:var(--mono);font-size:13px;color:var(--text);background:var(--field);
+    border:1px solid var(--line2);border-radius:9px;padding:8px 10px;}
+  input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  textarea{min-height:180px;resize:vertical;white-space:pre;}
+  .formrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:0 12px;}
+  .checkline{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--text);}
+  .checkline input{width:auto;}
+  .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
+  .savenote{font-family:var(--mono);font-size:11px;color:var(--faint);margin-right:auto;align-self:center;}
+
+  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+  @media (max-width:720px){.srcrow{grid-template-columns:1fr auto;} .srcrow .evidence{grid-column:1/-1;} }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="masthead">
+    <div class="monogram">⚙</div>
+    <div>
+      <h1>Settings &amp; Status <em>· system ledger</em></h1>
+    </div>
+    <div style="margin-left:auto;"><a class="back" href="/">← All tools</a></div>
+  </div>
+  <div class="subline" id="verline">loading…</div>
+
+  <h2>Data sources</h2>
+  <div id="sources">loading…</div>
+
+  <h2>Baked data</h2>
+  <div class="grid cols3" id="baked"></div>
+
+  <h2>Databases &amp; subsystems</h2>
+  <div class="grid cols3" id="subsystems"></div>
+
+  <h2>Settings</h2>
+  <div class="grid cols2" id="settings"></div>
+</div>
+
+<script src="/extras.js"></script>
+<script>
+(function(){
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const el = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; };
+  const fmtAge = (h) => h == null ? '—' : h < 1 ? Math.round(h * 60) + 'm' : h < 48 ? (Math.round(h * 10) / 10) + 'h' : Math.round(h / 24) + 'd';
+  const fmtTs = (t) => t ? String(t).replace('T', ' ').slice(0, 16) : '—';
+
+  // Source display metadata: label, what it powers, which keys gate it (from status.keys).
+  const SOURCES = [
+    { id:'pkm',        label:'pokemontcg.io',   powers:'Pokémon EN cards + prices',    keyed:(k)=>k.pokemon.POKEMONTCG_API_KEY, optional:true },
+    { id:'tcgdex',     label:'TCGdex',          powers:'Pokémon JP/CN/KO sets',        keyed:()=>null },
+    { id:'mtg',        label:'Scryfall',        powers:'Magic cards + prices',         keyed:()=>null },
+    { id:'swu',        label:'swu-db',          powers:'Star Wars: Unlimited',         keyed:()=>null },
+    { id:'lorcana',    label:'Lorcast',         powers:'Disney Lorcana',               keyed:()=>null },
+    { id:'rb',         label:'Scrydex',         powers:'Riftbound live pricing/trend', keyed:(k)=>k.riftbound.SCRYDEX_API_KEY && k.riftbound.SCRYDEX_TEAM_ID, optional:true },
+    { id:'rbs',        label:'riftscribe.gg',   powers:'Riftbound live (keyless)',     keyed:()=>null },
+    { id:'fx',         label:'Frankfurter FX',  powers:'AUD conversion',               keyed:()=>null },
+    { id:'pc',         label:'PriceCharting',   powers:'Graded ladder + pop',          keyed:(k)=>k.pricecharting.PRICECHARTING_TOKEN, optional:true },
+    { id:'ebay',       label:'eBay Browse',     powers:'Comps, Funko search',          keyed:(k)=>k.ebay.EBAY_APP_ID && k.ebay.EBAY_CERT_ID },
+    { id:'psa',        label:'PSA cert API',    powers:'Cert auto-fill',               keyed:(k)=>k.psa.PSA_API_TOKEN, optional:true },
+    { id:'rebrickable',label:'Rebrickable',     powers:'LEGO set lookup',              keyed:(k)=>k.lego.REBRICKABLE_API_KEY },
+    { id:'brickset',   label:'Brickset',        powers:'LEGO RRP / age / dims',        keyed:(k)=>k.lego.BRICKSET_API_KEY },
+    { id:'bricklink',  label:'BrickLink',       powers:'LEGO new/used pricing',        keyed:(k)=>k.lego.BRICKLINK },
+  ];
+
+  let STATUS = null;
+
+  function pill(state, txt){ return '<span class="pill ' + esc(state) + '">' + esc(txt || state) + '</span>'; }
+
+  function renderSources(){
+    const box = $('sources');
+    box.innerHTML = '';
+    const k = STATUS.keys;
+    for (const s of SOURCES){
+      const st = STATUS.sources[s.id] || { state:'unknown' };
+      const keyed = s.keyed(k);
+      const keyPill = keyed == null ? pill('ok','keyless')
+        : keyed ? pill('keyed','key set')
+        : pill(s.optional ? 'unknown' : 'degraded', s.optional ? 'no key (opt)' : 'no key');
+      const evid = (st.detail ? st.detail + ' · ' : '') + (st.evidence ? st.evidence + ' · ' : '') + fmtTs(st.last_evidence_at || st.checked_at);
+      const row = el('<div class="srcrow">' +
+        '<div class="srcname">' + esc(s.label) + '<small>' + esc(s.powers) + '</small></div>' +
+        '<div>' + keyPill + '</div>' +
+        '<div class="evidence">' + pill(st.state) + ' <span title="' + esc(evid) + '">' + esc(evid) + '</span></div>' +
+        '<div><button class="btn" data-src="' + s.id + '">Test now</button></div>' +
+      '</div>');
+      row.querySelector('button').onclick = () => probe(s.id, row);
+      box.appendChild(row);
+    }
+  }
+
+  async function probe(src, row){
+    const btn = row.querySelector('button');
+    btn.disabled = true;
+    const act = window.TCG && TCG.activity ? TCG.activity('Probe ' + src) : null;
+    try {
+      const r = await fetch('/api/status/probe/' + src + '?force=1', { method:'POST' });
+      const j = await r.json();
+      STATUS.sources[src] = { ...j, evidence:'probe', last_evidence_at:j.checked_at };
+      if (act) j.state === 'ok' ? act.done(src + ': ok (' + j.http + ', ' + j.ms + 'ms)') : act.fail(src + ': ' + j.state + (j.http ? ' (' + j.http + ')' : '') + (j.detail ? ' — ' + j.detail : ''));
+      renderSources();
+    } catch (e) {
+      if (act) act.fail(src + ': ' + (e && e.message || e));
+      btn.disabled = false;
+    }
+  }
+
+  function renderBaked(){
+    const d = STATUS.data;
+    const box = $('baked');
+    box.innerHTML = '';
+    const items = [
+      ['riftbound',   'Riftbound catalog',   (x)=>x.count + ' cards · ' + x.sets + ' sets'],
+      ['pokemon_intl','Pokémon intl sets',   (x)=>x.count + ' sets · ' + x.langs + ' langs'],
+      ['funko',       'Funko catalog',       (x)=>x.count + ' pops · frozen 2021'],
+      ['pokemon_dex', 'Pokémon dex names',   (x)=>x.count + ' species'],
+    ];
+    for (const [key,label,fmt] of items){
+      const x = d[key]; if (!x) continue;
+      const state = x.error ? 'down' : x.stale ? 'stale' : 'ok';
+      box.appendChild(el('<div class="card"><h3>' + esc(label) + ' ' + pill(state, x.error ? 'broken' : x.stale ? 'stale' : x.frozen ? 'frozen' : 'fresh') + '</h3>' +
+        '<div class="kv"><span class="k">Contents</span><span class="v">' + esc(x.error || (fmt(x) || x.count)) + '</span></div>' +
+        '<div class="kv"><span class="k">Age</span><span class="v' + (x.stale ? ' warn' : '') + '">' + fmtAge(x.age_h) + '</span></div>' +
+        '<div class="kv"><span class="k">Refresh</span><span class="v">' + (x.managed ? 'daily bake' : x.frozen ? 'frozen upstream' : 'manual') + '</span></div>' +
+        '<div class="kv"><span class="k">File</span><span class="v">' + esc(x.file) + '</span></div></div>'));
+    }
+    const r = d.refresh;
+    box.appendChild(el('<div class="card"><h3>Refresh loop ' + pill(r.enabled ? 'ok' : 'disabled', r.enabled ? 'on' : 'off') + '</h3>' +
+      '<div class="kv"><span class="k">Interval</span><span class="v">' + esc(r.interval_hours) + 'h</span></div>' +
+      '<div class="kv"><span class="k">Bakes</span><span class="v">' + esc((r.bakes || []).join(', ') || '—') + '</span></div></div>'));
+  }
+
+  function renderSubsystems(){
+    const box = $('subsystems');
+    box.innerHTML = '';
+    const dbs = STATUS.dbs, sub = STATUS.subsystems, k = STATUS.keys;
+    const yn = (b, good, bad) => '<span class="v ' + (b ? 'ok' : 'bad') + '">' + (b ? (good || 'yes') : (bad || 'no')) + '</span>';
+    box.appendChild(el('<div class="card"><h3>Price tracker</h3>' +
+      '<div class="kv"><span class="k">Watchlist</span><span class="v">' + dbs.tracker.watchlist + ' cards</span></div>' +
+      '<div class="kv"><span class="k">Snapshots</span><span class="v">' + dbs.tracker.snapshots + '</span></div>' +
+      '<div class="kv"><span class="k">Pending signals</span><span class="v' + (dbs.tracker.signals_pending ? ' warn' : '') + '">' + dbs.tracker.signals_pending + '</span></div>' +
+      '<div class="kv"><span class="k">Last pass</span><span class="v">' + fmtTs(dbs.tracker.last_pass_at) + '</span></div>' +
+      '<div class="kv"><span class="k">DB size</span><span class="v">' + (dbs.tracker.size_mb ?? '—') + ' MB</span></div></div>'));
+    box.appendChild(el('<div class="card"><h3>Inventory</h3>' +
+      '<div class="kv"><span class="k">Items</span><span class="v">' + dbs.inventory.items + '</span></div>' +
+      '<div class="kv"><span class="k">Open submissions</span><span class="v">' + dbs.inventory.submissions_open + '</span></div></div>'));
+    box.appendChild(el('<div class="card"><h3>Repricer</h3>' +
+      '<div class="kv"><span class="k">Listings</span><span class="v">' + dbs.repricer.listings + '</span></div>' +
+      '<div class="kv"><span class="k">Open proposals</span><span class="v">' + dbs.repricer.proposals_open + '</span></div>' +
+      '<div class="kv"><span class="k">Telegram</span>' + yn(sub.telegram.enabled && sub.telegram.chat_configured, 'connected', sub.telegram.enabled ? 'no chat id' : 'off') + '</div>' +
+      '<div class="kv"><span class="k">eBay user token</span>' + yn(sub.ebay_oauth.connected, sub.ebay_oauth.token_source || 'connected', 'not connected') + '</div></div>'));
+    box.appendChild(el('<div class="card"><h3>Label printer</h3>' +
+      '<div class="kv"><span class="k">Configured</span>' + yn(sub.printer.enabled) + '</div>' +
+      (sub.printer.enabled ? '<div class="kv"><span class="k">Address</span><span class="v">' + esc(sub.printer.ip) + ':' + esc(sub.printer.port) + '</span></div>' +
+      '<div class="kv"><span class="k">Language / DPI</span><span class="v">' + esc(sub.printer.lang) + ' · ' + esc(sub.printer.dpi) + '</span></div>' : '') + '</div>'));
+    box.appendChild(el('<div class="card"><h3>AI grader</h3>' +
+      '<div class="kv"><span class="k">Anthropic key</span>' + yn(k.grader.ANTHROPIC_API_KEY) + '</div>' +
+      '<div class="kv"><span class="k">OpenAI key</span>' + yn(k.grader.OPENAI_API_KEY) + '</div>' +
+      '<div class="kv"><span class="k">Provider</span><span class="v">' + esc(k.grader.provider || 'none — centering only') + '</span></div></div>'));
+    box.appendChild(el('<div class="card"><h3>Collector</h3>' +
+      '<div class="kv"><span class="k">Cadence</span><span class="v">' + esc(sub.collector.cadence_hours ?? '—') + 'h</span></div>' +
+      '<div class="kv"><span class="k">Probe cache</span><span class="v">' + esc(STATUS.probe_ttl_min) + ' min</span></div></div>'));
+  }
+
+  // ---- settings forms ----
+  const FORMS = {
+    tracker: {
+      title: 'Price tracker', note: 'cadence restarts the collector',
+      fields: [
+        ['cadence_hours', 'Cadence (hours)', 'number'],
+        ['thresholds.opportunity_drop_pct', 'Opportunity drop %', 'number'],
+        ['thresholds.downtrend_drop_pct', 'Downtrend drop %', 'number'],
+        ['thresholds.momentum_rise_pct', 'Momentum rise %', 'number'],
+        ['thresholds.min_price_aud', 'Min price (A$)', 'number'],
+      ],
+    },
+    repricer: {
+      title: 'Repricer guardrails', note: 'never_decrease is locked on',
+      checks: [['scan_enabled', 'Scanning enabled'], ['telegram.digest_enabled', 'Telegram digest'], ['telegram.poll_enabled', 'Telegram poll loop']],
+      fields: [
+        ['cadence_hours', 'Cadence (hours)', 'number'],
+        ['guardrails.min_uplift_pct', 'Min uplift %', 'number'],
+        ['guardrails.min_uplift_aud', 'Min uplift (A$)', 'number'],
+        ['guardrails.min_comparable', 'Min comparables', 'number'],
+        ['guardrails.max_increase_pct_per_run', 'Max increase %/run', 'number'],
+        ['guardrails.proposal_ttl_hours', 'Proposal TTL (h)', 'number'],
+      ],
+    },
+    refresh: {
+      title: 'Data refresh', note: 'restart applied immediately',
+      checks: [['enabled', 'Daily refresh enabled']],
+      fields: [['interval_hours', 'Interval (hours)', 'number']],
+      custom: 'bakes',
+    },
+    'bulk-pricing': {
+      title: 'Bulk pricing', note: 'tiers edited as JSON',
+      fields: [['min_price_aud', 'Min price (A$)', 'number'], ['market_threshold_aud.default', 'Market threshold (A$)', 'number']],
+      json: 'tiers',
+    },
+  };
+
+  const getPath = (o, p) => p.split('.').reduce((x, k) => (x == null ? x : x[k]), o);
+  const setPath = (o, p, v) => { const ks = p.split('.'); let x = o; for (const k of ks.slice(0, -1)) x = x[k] = x[k] || {}; x[ks.at(-1)] = v; };
+
+  function renderSettings(files){
+    const box = $('settings');
+    box.innerHTML = '';
+    for (const [name, spec] of Object.entries(FORMS)){
+      const f = files[name];
+      if (!f || !f.content) continue;
+      const c = JSON.parse(JSON.stringify(f.content));
+      const card = el('<div class="card"><h3>' + esc(spec.title) + ' <span class="h-note">' + esc(f.file) + '</span></h3></div>');
+      const inputs = {};
+      for (const [path, label] of (spec.checks || [])){
+        const row = el('<div class="checkline"><input type="checkbox"> ' + esc(label) + '</div>');
+        const cb = row.querySelector('input');
+        cb.checked = !!getPath(c, path);
+        inputs[path] = () => cb.checked;
+        card.appendChild(row);
+      }
+      const grid = el('<div class="formrow"></div>');
+      for (const [path, label] of (spec.fields || [])){
+        const cell = el('<div><label>' + esc(label) + '</label></div>');
+        const inp = document.createElement('input');
+        inp.type = 'number'; inp.step = 'any'; inp.value = getPath(c, path) ?? '';
+        inputs[path] = () => inp.value === '' ? null : +inp.value;
+        cell.appendChild(inp);
+        grid.appendChild(cell);
+      }
+      card.appendChild(grid);
+      let bakesBox = null, jsonBox = null;
+      if (spec.custom === 'bakes'){
+        bakesBox = el('<div></div>');
+        for (const b of ['riftbound', 'pokemon-intl', 'funko']){
+          const row = el('<div class="checkline"><input type="checkbox"> bake: ' + esc(b) + '</div>');
+          row.querySelector('input').checked = (c.bakes || []).includes(b);
+          row.querySelector('input').dataset.bake = b;
+          bakesBox.appendChild(row);
+        }
+        card.appendChild(bakesBox);
+      }
+      if (spec.json){
+        const cell = el('<div><label>' + esc(spec.json) + ' (JSON)</label></div>');
+        jsonBox = document.createElement('textarea');
+        jsonBox.value = JSON.stringify(c[spec.json], null, 2);
+        cell.appendChild(jsonBox);
+        card.appendChild(cell);
+      }
+      const actions = el('<div class="actions"><span class="savenote"></span><button class="btn go">Save</button></div>');
+      const note = actions.querySelector('.savenote');
+      actions.querySelector('button').onclick = async () => {
+        const body = JSON.parse(JSON.stringify(f.content));   // start from what's on disk → unknown keys survive
+        for (const [path, get] of Object.entries(inputs)) setPath(body, path, get());
+        if (bakesBox) body.bakes = [...bakesBox.querySelectorAll('input:checked')].map((x) => x.dataset.bake);
+        if (jsonBox){
+          try { body[spec.json] = JSON.parse(jsonBox.value); }
+          catch (e) { note.textContent = 'bad JSON: ' + e.message; note.style.color = 'var(--red)'; return; }
+        }
+        const act = window.TCG && TCG.activity ? TCG.activity('Save ' + name) : null;
+        const r = await fetch('/api/settings/' + name, { method:'PUT', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+        const j = await r.json();
+        if (r.ok){
+          f.content = j.content;
+          note.textContent = j.applied || 'saved'; note.style.color = 'var(--green)';
+          if (act) act.done(name + ' saved — ' + (j.applied || 'ok'));
+        } else {
+          note.textContent = j.error || ('HTTP ' + r.status); note.style.color = 'var(--red)';
+          if (act) act.fail(name + ': ' + (j.error || r.status));
+        }
+      };
+      card.appendChild(actions);
+      box.appendChild(card);
+    }
+    // read-only registry cards
+    for (const name of ['collectr', 'grading', 'grading-companies']){
+      const f = files[name];
+      if (!f) continue;
+      box.appendChild(el('<div class="card"><h3>' + esc(name) + ' <span class="h-note">' + esc(f.file) + ' · read-only</span></h3>' +
+        '<div class="kv"><span class="k">Edit</span><span class="v">on disk (owner)</span></div>' +
+        (name === 'grading-companies' && f.content ? '<div class="kv"><span class="k">Companies</span><span class="v">' + f.content.companies.length + '</span></div>' : '') +
+        (name === 'grading' && f.content ? '<div class="kv"><span class="k">Tolerance set</span><span class="v">' + Object.keys(f.content.companies).join(' ') + '</span></div>' : '') +
+        '</div>'));
+    }
+  }
+
+  async function load(){
+    try {
+      const [st, se] = await Promise.all([
+        fetch('/api/status').then((r) => r.json()),
+        fetch('/api/settings').then((r) => r.json()),
+      ]);
+      STATUS = st;
+      const v = st.version;
+      $('verline').innerHTML = 'v<b>' + esc(v.pkg) + '</b>' + (v.commit ? ' · <b>' + esc(v.commit) + '</b>' : '') +
+        ' · node <b>' + esc(v.node) + '</b> · up <b>' + Math.round(v.uptime_s / 60) + 'm</b> · probes cached <b>' + esc(st.probe_ttl_min) + 'm</b>';
+      renderSources();
+      renderBaked();
+      renderSubsystems();
+      renderSettings(se.files);
+    } catch (e) {
+      $('verline').textContent = 'status API unreachable — is the dev server running? (' + (e && e.message || e) + ')';
+    }
+  }
+  load();
+})();
+</script>
+</body>
+</html>

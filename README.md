@@ -17,9 +17,23 @@ pnpm dev
 Vite opens the landing page. Pick a builder or a tool.
 
 The landing page links to seven listing **builders** — Pokémon, Magic, Star Wars:
-Unlimited, Riftbound, Disney Lorcana, LEGO, Funko Pop! — plus four **tools**:
+Unlimited, Riftbound, Disney Lorcana, LEGO, Funko Pop! — plus five **tools**:
 Graded Card Inventory (`inventory.html`), Price Tracker (`tracker.html`),
-Card Pre-Grader (`card-grader.html`), and Shipping Label Maker (`shipping-label.html`).
+Card Pre-Grader (`card-grader.html`), Shipping Label Maker (`shipping-label.html`),
+and **Settings & Status** (`settings.html`) — one page showing which API keys are set,
+per-source health (with on-demand probes), baked-data freshness, and DB/subsystem state,
+plus edit forms for the tracker/repricer/pricing/refresh configs.
+
+### Tests
+
+```bash
+pnpm test               # unit + invariant + data-audit suites (offline, <1s)
+pnpm test:integration   # boots the real dev server against temp DBs
+pnpm verify             # both — run before shipping any change
+```
+
+Live upstream smoke (opt-in, makes one request per source): `TEST_LIVE=1 pnpm test:integration`
+(PowerShell: `$env:TEST_LIVE='1'; pnpm test:integration`).
 
 ## How it works
 
