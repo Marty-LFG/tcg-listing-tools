@@ -145,8 +145,7 @@ function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.val
 function genTitle(){
   var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),fin=val('f_finish'),lang=val('f_lang'),cond=val('f_cond');
   if(!window.TCG)return name;
-  var RAB={'special illustration rare':'SIR','illustration rare':'IR','ultra rare':'UR','hyper rare':'HR','double rare':'RR','secret rare':'Secret','rare secret':'Secret','amazing rare':'AR','radiant rare':'Radiant','rare rainbow':'Rainbow'};
-  var rl=(rar||'').toLowerCase();var rarShort=RAB[rl]||rar;
+  var rarShort=rarShortOf(rar);
   var finTok='',finAbbr='';if(/reverse/i.test(fin)){finTok='Reverse Holo';finAbbr='RH';}else if(/holo/i.test(fin)){finTok='Holo';finAbbr='Holo';}
   var parts=[
     {text:'Pokemon',prio:45},
@@ -169,6 +168,13 @@ function val(id){return document.getElementById(id).value.trim();}
 function set(id,v){document.getElementById(id).value=(v==null?'':v);}
 function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
+// Rarity abbreviations — shared by the title token (genTitle) and the details row (rarDisplay). Covers
+// the international names TCGdex/pokemontcg.io return plus the JP-era terms a user may type manually.
+// MIRROR: keep in sync with PKM_RAB in lib/listing-copy.mjs.
+var PKM_RAB={'special illustration rare':'SIR','illustration rare':'IR','ultra rare':'UR','hyper rare':'HR','double rare':'RR','secret rare':'Secret','rare secret':'Secret','amazing rare':'AR','radiant rare':'Radiant','rare rainbow':'Rainbow','art rare':'AR','special art rare':'SAR'};
+function rarShortOf(r){return PKM_RAB[(''+(r||'')).toLowerCase()]||r;}
+// "Illustration Rare (IR)" — full name + abbreviation when one exists (details table).
+function rarDisplay(r){if(!r)return '';var rl=(''+r).toLowerCase(),ab=PKM_RAB[rl];return ab&&ab.toLowerCase()!==rl?r+' ('+ab+')':r;}
 
 let _intlMeta=null;   // native JP/CN/KO card+set names for the description (set on an intl lookup, cleared otherwise)
 function readFields(){return Object.assign({name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
@@ -204,25 +210,36 @@ function findEbay(){
 function genPitch(f){
   const chase=/(illustration|special|hyper|secret|ultra|rainbow|gold|alt)/i.test(f.rarity);
   if(chase) return `${f.name} — a sought-after ${f.rarity} from the Pokémon TCG ${f.set} set. A standout chase card for collectors.`;
-  return `${f.name} from the Pokémon TCG ${f.set} set${f.stage?', '+f.stage:''}. ${f.rarity||''} rarity.`;
+  return `${f.name} from the Pokémon TCG ${f.set} set${f.stage?', '+f.stage:''}.${f.rarity?' '+f.rarity+' rarity.':''}`;
 }
 function buildHTML(f){
-  const rows=[['Set',f.set],['Card number',f.num],['Rarity',f.rarity],['Pokémon',f.poke],['Stage',f.stage]];
-  if(f.type) rows.push(['Type',f.type]);
-  rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
-  // Native metadata (JP/CN/KO): original name + set for searchability, plus the English-equivalent set.
+  // Card-details rows — conditional rows self-skip when empty (English + generic prints degrade cleanly).
   const nlab=(f.lang||'').replace(/\s*\(.*$/,'').trim()||'Original';
-  if(f.nativeName) rows.push([nlab+' name',f.nativeName]);
-  if(f.nativeSet) rows.push([nlab+' set',f.nativeSet]);
+  const rows=[['Card Name',f.name]];
+  if(f.nativeName) rows.push([nlab+' name',f.nativeName+(f.romaji?' '+f.romaji:'')]);
+  rows.push(['Set',f.set+(f.nativeSet?' ('+f.nativeSet+')':'')]);
+  if(f.setSymbol) rows.push(['Set Symbol',f.setSymbol]);
+  rows.push(['Card number',f.num]);
+  rows.push(['Rarity',rarDisplay(f.rarity)]);
+  rows.push(['Pokémon',f.poke]);
+  rows.push(['Stage',f.stage]);
+  if(f.type) rows.push(['Type',f.type]);
+  if(f.hp) rows.push(['HP',f.hp]);
+  if(f.illustrator) rows.push(['Illustrator',f.illustrator]);
+  if(f.regMark) rows.push(['Regulation mark',f.regMark]);
+  rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
+  if(f.releaseYear) rows.push(['Released',f.releaseYear]);
   if(f.enSet) rows.push(['English set',f.enSet]);
   let tr=''; rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f8fc;':'';
     tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
+  const imgHtml=f.img?`<div style="text-align:center;padding:16px 24px 0;"><img src="${esc(f.img)}" alt="${esc(f.name)} ${esc(f.num)} ${esc(f.set)} Pok&eacute;mon TCG ${esc(f.lang)} card" style="max-width:320px;width:100%;height:auto;border-radius:8px;" /></div>`:'';
   return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
   <div style="background:#1c2b5e;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #f0c020;">
     <div style="color:#f0c020;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Pok&eacute;mon TCG</div>
     <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}</div>
-    <div style="color:#9aa6cf;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+    <div style="color:#9aa6cf;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(rarDisplay(f.rarity))}${f.nativeName?' &middot; '+esc(f.nativeName):''}</div>
   </div>
+  ${imgHtml}
   <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
   <div style="padding:0 24px;">
     <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1c2b5e;font-weight:700;border-bottom:2px solid #e9edf6;padding-bottom:6px;margin-bottom:4px;">Card details</div>
@@ -270,12 +287,36 @@ function setEnglishName(s){return s?(s.name_en||(s.enEquivalent&&s.enEquivalent.
 // names in native script, but every card carries a dexId — so the OUTPUT can always be English.
 // Structure: { dex:{"6":"Charizard"}, ja:{"リザードン":"Charizard"}, ko/zh-cn/zh-tw:{…} }.
 let DEX_EN=null;
-function loadCachedDex(){try{var raw=localStorage.getItem('pkm_dex_en_v2');if(raw){var o=JSON.parse(raw);if(o&&o.dex){DEX_EN=o;return true;}}}catch(e){}return false;}
+function loadCachedDex(){try{var raw=localStorage.getItem('pkm_dex_en_v3');if(raw){var o=JSON.parse(raw);if(o&&o.dex){DEX_EN=o;return true;}}}catch(e){}return false;}
 async function loadDexMap(){
   if(DEX_EN)return DEX_EN;
   loadCachedDex();
-  try{var r=await fetch('/data/pokemon-dex-en.json');if(r.ok){var o=await r.json();if(o&&o.dex){DEX_EN=o;try{localStorage.setItem('pkm_dex_en_v2',JSON.stringify(o));}catch(e){}}}}catch(e){}
+  try{var r=await fetch('/data/pokemon-dex-en.json');if(r.ok){var o=await r.json();if(o&&o.dex){DEX_EN=o;try{localStorage.setItem('pkm_dex_en_v3',JSON.stringify(o));}catch(e){}}}}catch(e){}
   return DEX_EN||{};
+}
+// English species name -> {kana, romaji} for the native-name detail row. Works even for sets TCGdex
+// lacks (e.g. brand-new M5): the PriceCharting path gives an English name, and we resolve JP script +
+// romaji from the baked dex. Strips card affixes (Mega / ex / V / VMAX…) to find the species. GR7: blanks
+// (never throws) for Trainers/Energy/unmapped.
+let _EN2JA=null;
+function en2ja(){if(_EN2JA)return _EN2JA;_EN2JA={};var ja=(DEX_EN&&DEX_EN.ja)||{};for(var k in ja){var v=ja[k];if(v){var lv=(''+v).toLowerCase();if(!_EN2JA[lv])_EN2JA[lv]=k;}}return _EN2JA;}
+function speciesKey(name){var s=(''+(name||'')).trim();s=s.replace(/^(mega|m)\s+/i,'');s=s.replace(/\s+(ex|gx|v|vmax|vstar|v-?union|break|prime|star|lv\.?x)\b.*$/i,'');return s.trim().toLowerCase();}
+function nativeInfo(enName){
+  var ja=en2ja(),rm=(DEX_EN&&DEX_EN.romaji)||{};
+  var exact=(''+(enName||'')).trim().toLowerCase(),key=speciesKey(enName);
+  return {kana:ja[exact]||ja[key]||'',romaji:rm[exact]||rm[key]||''};
+}
+// One TCGdex card fetch (native name + rarity/stage/hp/illustrator/regMark), trying the id candidates
+// TCGdex uses (zero-padded first). Returns the card JSON or null. GR7: never throws.
+async function fetchTcgdexCard(setObj,num,dl){
+  var code=setLookupId(setObj);if(!code)return null;
+  try{var cands=intlNumCandidates(num);
+    for(var i=0;i<cands.length;i++){
+      var rr=await fetch('/api/tcgdex/'+encodeURIComponent(dl)+'/cards/'+encodeURIComponent(code+'-'+cands[i]));
+      if(rr.ok){var jj=await rr.json();if(jj&&jj.name)return jj;}
+    }
+  }catch(e){}
+  return null;
 }
 // Build the ENGLISH card name from a TCGdex card: English species + the Latin suffix already printed
 // on the card (ex / V / VMAX). Two resolution paths — dexId (most cards) then native-species lookup
@@ -495,7 +536,12 @@ async function doLookup(){
     let price=null; const tp=c.tcgplayer&&c.tcgplayer.prices;
     if(tp){const k=Object.keys(tp)[0]; if(k&&tp[k]) price=tp[k].market||tp[k].mid;}
     _trk={game:'pokemon',identity_key:c.id,name:c.name,variant:val('f_finish'),price:price!=null?{market:+price,currency:'USD'}:null};
-    _intlMeta=null;   // English card — no native metadata
+    // No native (JP/CN/KO) metadata for English cards, but still surface the SEO extras pokemontcg.io carries.
+    _intlMeta={nativeName:'',romaji:'',nativeSet:'',enSet:'',
+      setSymbol:(_setObj&&_setObj.ptcgoCode)||'',
+      illustrator:c.artist||'',hp:(c.hp!=null?String(c.hp):''),regMark:c.regulationMark||'',
+      releaseYear:((c.set&&c.set.releaseDate)||'').slice(0,4),
+      img:(c.images&&(c.images.large||c.images.small))||''};
     act&&act.done('pokemontcg.io');
     st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
     render();
@@ -574,15 +620,24 @@ async function tryPcLookup(setObj,num,dl,enSet){
     set('f_name',card.name);
     set('f_set',enSet);
     set('f_num',card.number+(total?'/'+total:''));
-    set('f_rarity','');   // PriceCharting rows don't carry rarity — user sets it (or infer from name)
     set('f_poke',card.name);
-    set('f_stage','');set('f_type','');
+    // PriceCharting rows carry no rarity/stage/type/native-name — enrich from TCGdex when it has the set
+    // (skipped for brand-new sets like M5 that TCGdex hasn't published yet). Native name + romaji still
+    // resolve from the baked dex off the English name. GR7: a TCGdex miss never blocks the PC result.
+    var tc=await fetchTcgdexCard(setObj,card.number,dl), ni=nativeInfo(card.name);
+    set('f_rarity',(tc&&tc.rarity)||'');
+    set('f_stage',(tc&&tc.stage)||'');
+    set('f_type',(tc&&(tc.types||[]).join(' / '))||'');
     set('f_finish',/\bmega\b|\bex\b|\bv\b|vmax|vstar|\bgx\b|holo|rainbow|gold|special|shiny|\bsar\b|\bsr\b|\bur\b/i.test(card.name)?'Holo':'Non-holo');
+    _intlMeta={nativeName:(tc&&tc.name)||ni.kana||'',romaji:ni.romaji||'',
+      nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||'',
+      setSymbol:setObj.code||'',illustrator:(tc&&tc.illustrator)||'',hp:(tc&&tc.hp!=null?String(tc.hp):''),
+      regMark:(tc&&tc.regulationMark)||'',releaseYear:(setObj.releaseDate||'').slice(0,4),
+      img:card.image?card.image+'/1600.jpg':''};
     set('f_pitch',genPitch(readFields()));
     _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:card.name,variant:val('f_finish'),price:null};
-    _intlMeta={nativeName:'',nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||''};
-    act&&(stale?act.fail('PriceCharting cached (stale)'):act.done('PriceCharting '+tag));
-    st.className=stale?'status warn':'status ok';st.textContent=(stale?'⚠ ':'✓ ')+card.name+'  #'+card.number+'  ·  '+tag+(stale?'  · CACHED (may be out of date)':'');
+    act&&(stale?act.fail('PriceCharting cached (stale)'):act.done('PriceCharting '+tag+(tc?' + TCGdex':'')));
+    st.className=stale?'status warn':'status ok';st.textContent=(stale?'⚠ ':'✓ ')+card.name+'  #'+card.number+'  ·  '+tag+(tc&&tc.rarity?'  ('+tc.rarity+')':'')+(stale?'  · CACHED (may be out of date)':'');
     render();
     if(window.TCG){
       var base=card.image||'';
@@ -627,12 +682,7 @@ async function doLookupIntl(setObj,num,dl){
   st.className='status load';st.textContent='Looking up '+cardLabel+' ('+tag+')…';
   const act=window.TCG?TCG.activity('Looking up '+cardLabel+'…'):null;
   try{
-    let c=null;
-    var cands=intlNumCandidates(num);
-    for(var i=0;i<cands.length;i++){
-      var rr=await fetch('/api/tcgdex/'+encodeURIComponent(dl)+'/cards/'+encodeURIComponent(code+'-'+cands[i]));
-      if(rr.ok){var jj=await rr.json();if(jj&&jj.name){c=jj;break;}}
-    }
+    let c=await fetchTcgdexCard(setObj,num,dl);
     if(!c||!c.name){
       act&&act.fail('no card');
       set('f_set',enSet);clearCardFields({keepSet:true});   // wipe any stale card, keep the correct set
@@ -658,8 +708,14 @@ async function doLookupIntl(setObj,num,dl){
     // Listing-only for JP/CN/KO (identity_key stays blank so tracker/inventory/comps-save are gated,
     // avoiding collisions with the pokemontcg.io id space). See addTrack/addInv.
     _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:enName,variant:val('f_finish'),price:null};
-    // Native metadata for the description: original card + set name, plus the English-equivalent set.
-    _intlMeta={nativeName:c.name||'',nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||''};
+    // Native metadata for the description: original card + set name, romaji, the English-equivalent set,
+    // plus SEO extras TCGdex carries (illustrator / HP / regulation mark).
+    var ni=nativeInfo(enName);
+    _intlMeta={nativeName:c.name||ni.kana||'',romaji:ni.romaji||'',
+      nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||'',
+      setSymbol:setObj.code||'',illustrator:c.illustrator||'',hp:(c.hp!=null?String(c.hp):''),
+      regMark:c.regulationMark||'',releaseYear:(setObj.releaseDate||'').slice(0,4),
+      img:c.image?c.image+'/high.webp':''};
     act&&act.done('TCGdex '+tag);
     st.className='status ok';st.textContent=enName?('✓ '+enName+'  ('+(c.rarity||'?')+')  ·  '+tag):('✓ '+cardLabel+'  ('+tag+') — enter the English card name');
     render();

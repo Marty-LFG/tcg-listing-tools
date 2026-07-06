@@ -10,7 +10,8 @@
 // this is a rare standalone bake (NOT in the daily refresh).
 //
 // CLI: `node scripts/build-pokemon-dex.mjs` -> data/pokemon-dex-en.json
-//   { dex:{ "6":"Charizard", … }, ja:{ "リザードン":"Charizard", … }, ko:{…}, "zh-cn":{…}, "zh-tw":{…} }
+//   { dex:{ "6":"Charizard", … }, ja:{ "リザードン":"Charizard", … }, ko:{…}, "zh-cn":{…}, "zh-tw":{…},
+//     romaji:{ "charizard":"Lizardon", … } }   // English-name(lowercased) -> PokéAPI ja-roma romanization
 
 import { writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -22,6 +23,10 @@ const MAX_DEX = 1025
 const CHUNK = 200
 // PokéAPI language code -> our output bucket. ja-Hrkt = katakana (what TCGdex JP cards print).
 const LANGS = { en: 'en', 'ja-Hrkt': 'ja', ko: 'ko', 'zh-Hans': 'zh-cn', 'zh-Hant': 'zh-tw' }
+// Romaji (e.g. トリデプス -> "Torideps") is the "ja-roma" name — only the REST species endpoint carries it
+// (the GraphQL mirror exposes an older "roomaji" variant with different spellings), so it's a separate pass.
+const REST_SPECIES = 'https://pokeapi.co/api/v2/pokemon-species/'
+const ROMAJI_CONCURRENCY = 8
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // eBay-friendly ASCII: drop combining accents (Flabébé -> Flabebe); keep symbols like ♀/♂.
@@ -39,8 +44,34 @@ async function gql(ids) {
   return rows
 }
 
+// Best-effort "ja-roma" romaji per species from the REST endpoint (the GraphQL mirror lacks it).
+// Failures are tolerated — romaji is enrichment, so a partial/empty result never fails the bake.
+async function fetchRomaji(id) {
+  try {
+    const r = await fetch(REST_SPECIES + id + '/')
+    if (!r.ok) return null
+    const j = await r.json()
+    const hit = (j.names || []).find((n) => n.language && n.language.name === 'ja-roma')
+    return (hit && hit.name) || null
+  } catch { return null }
+}
+
+// Resolve romaji for every dex id with bounded concurrency; writes into map.romaji keyed by English name.
+async function fillRomaji(map) {
+  const ids = Object.keys(map.dex)
+  let i = 0
+  async function worker() {
+    while (i < ids.length) {
+      const id = ids[i++]
+      const romaji = await fetchRomaji(id)
+      if (romaji) map.romaji[map.dex[id].toLowerCase()] = romaji
+    }
+  }
+  await Promise.all(Array.from({ length: ROMAJI_CONCURRENCY }, worker))
+}
+
 export async function buildPokemonDex({ out = OUT } = {}) {
-  const map = { dex: {}, ja: {}, ko: {}, 'zh-cn': {}, 'zh-tw': {} }
+  const map = { dex: {}, ja: {}, ko: {}, 'zh-cn': {}, 'zh-tw': {}, romaji: {} }
   let seen = 0
   for (let start = 1; start <= MAX_DEX; start += CHUNK) {
     const ids = []
@@ -62,14 +93,16 @@ export async function buildPokemonDex({ out = OUT } = {}) {
   }
   if (seen < 900) throw new Error('only resolved ' + seen + ' species — response truncated?')
 
+  await fillRomaji(map)   // English name -> "ja-roma" romanization (best-effort REST pass)
+
   mkdirSync(dirname(out), { recursive: true })
   const tmp = out + '.tmp'
   writeFileSync(tmp, JSON.stringify(map))
   renameSync(tmp, out)
-  return { species: seen, ja: Object.keys(map.ja).length, ko: Object.keys(map.ko).length, out }
+  return { species: seen, ja: Object.keys(map.ja).length, romaji: Object.keys(map.romaji).length, ko: Object.keys(map.ko).length, out }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const r = await buildPokemonDex()
-  console.log('pokemon-dex baked: ' + r.species + ' species (ja ' + r.ja + ', ko ' + r.ko + ') -> ' + r.out)
+  console.log('pokemon-dex baked: ' + r.species + ' species (ja ' + r.ja + ', romaji ' + r.romaji + ', ko ' + r.ko + ') -> ' + r.out)
 }

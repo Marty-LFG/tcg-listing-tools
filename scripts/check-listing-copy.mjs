@@ -94,12 +94,16 @@ console.log('\n[pokemon builder parity]');
 {
   const fixtures = [
     { f_name: 'Charizard', f_num: '4/102', f_set: 'Base Set', f_rarity: 'Holo Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_poke: 'Charizard', f_stage: 'Stage 2', f_type: 'Fire' },
-    { f_name: 'Magikarp', f_num: '203/193', f_set: 'Paldea Evolved', f_rarity: 'Illustration Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'Near Mint', f_poke: 'Magikarp', f_stage: 'Basic', f_type: 'Water' },
+    // English with the pokemontcg.io SEO extras (illustrator / HP / set symbol / release year / image).
+    { f_name: 'Magikarp', f_num: '203/193', f_set: 'Paldea Evolved', f_rarity: 'Illustration Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'Near Mint', f_poke: 'Magikarp', f_stage: 'Basic', f_type: 'Water', f_setSymbol: 'PAL', f_illustrator: 'Saya Tsuruta', f_hp: '30', f_regMark: 'G', f_releaseYear: '2023', f_img: 'https://images.pokemontcg.io/sv2/203_hires.png' },
     { f_name: 'Pikachu with an Exceptionally Long Descriptive Name Variant', f_num: '058/165', f_set: 'Scarlet & Violet 151 Expansion', f_rarity: 'Special Illustration Rare', f_finish: 'Reverse Holo', f_lang: 'Japanese', f_cond: 'Lightly Played', f_poke: 'Pikachu', f_stage: 'Basic', f_type: 'Lightning' },
+    // Japanese card with the full native-metadata overlay (native name + romaji / kanji set / set symbol / English set / image).
+    { f_name: 'Bastiodon', f_num: '91/98', f_set: 'Abyss Eye', f_rarity: 'Illustration Rare', f_finish: 'Non-holo', f_lang: 'Japanese', f_cond: 'Ungraded, Near Mint', f_poke: 'Bastiodon', f_stage: 'Stage 2', f_type: 'Metal', f_nativeName: 'トリデプス', f_romaji: 'Torideps', f_nativeSet: 'アビスアイ', f_enSet: 'Pitch Black', f_setSymbol: 'M5', f_illustrator: 'PLANETA Mochizuki', f_hp: '150', f_regMark: 'M', f_releaseYear: '2026', f_img: 'https://storage.googleapis.com/images.pricecharting.com/abc/1600.jpg' },
   ];
   for (const fx of fixtures) {
-    const ctx = builderContext('pokemon-listing-builder.html', ['function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
-    const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, finish: fx.f_finish, lang: fx.f_lang, cond: fx.f_cond, poke: fx.f_poke, stage: fx.f_stage, type: fx.f_type };
+    const ctx = builderContext('pokemon-listing-builder.html', ['var PKM_RAB=', 'function rarShortOf(', 'function rarDisplay(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
+    const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, finish: fx.f_finish, lang: fx.f_lang, cond: fx.f_cond, poke: fx.f_poke, stage: fx.f_stage, type: fx.f_type,
+      nativeName: fx.f_nativeName, romaji: fx.f_romaji, nativeSet: fx.f_nativeSet, enSet: fx.f_enSet, setSymbol: fx.f_setSymbol, illustrator: fx.f_illustrator, hp: fx.f_hp, regMark: fx.f_regMark, releaseYear: fx.f_releaseYear, img: fx.f_img };
     check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('pokemon', f), vm.runInContext('genTitle()', ctx));
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 20), LC.pokemonPitch(f), pitch);
