@@ -559,6 +559,8 @@ async function tryPcLookup(setObj,num,dl,enSet){
     const j=r.ok?await r.json():null;
     const cards=(j&&j.cards)||[];
     if(!cards.length){act&&act.fail('console unavailable');return false;}
+    var stale=!!(j&&j.stale);
+    var staleMsg=stale?('Showing CACHED '+tag+' card data'+(j.cachedAt?' ('+staleAge(j.cachedAt)+')':'')+' — PriceCharting is unreachable, so it may be out of date.'):'';
     const want=String(num).replace(/\/.*$/,'').replace(/^0+(?=\d)/,'').toLowerCase();
     const card=cards.find(function(c){return String(c.number).replace(/^0+(?=\d)/,'').toLowerCase()===want;});
     if(!card){
@@ -579,15 +581,15 @@ async function tryPcLookup(setObj,num,dl,enSet){
     set('f_pitch',genPitch(readFields()));
     _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:card.name,variant:val('f_finish'),price:null};
     _intlMeta={nativeName:'',nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||''};
-    act&&act.done('PriceCharting '+tag);
-    st.className='status ok';st.textContent='✓ '+card.name+'  #'+card.number+'  ·  '+tag;
+    act&&(stale?act.fail('PriceCharting cached (stale)'):act.done('PriceCharting '+tag));
+    st.className=stale?'status warn':'status ok';st.textContent=(stale?'⚠ ':'✓ ')+card.name+'  #'+card.number+'  ·  '+tag+(stale?'  · CACHED (may be out of date)':'');
     render();
     if(window.TCG){
       var base=card.image||'';
       var px=function(u){return '/api/img?u='+encodeURIComponent(u);};   // serve+cache via our server
       var imgs=base?[{label:'Front',display:[px(base+'/320.jpg'),px(base+'/1600.jpg')],download:base+'/1600.jpg',fallback:px(base+'/1600.jpg')}]:[];
       var _exEl=document.getElementById('extras');
-      var _ex={name:card.name,images:imgs,prices:[],history:null,
+      var _ex={name:card.name,images:imgs,prices:[],history:null,stale:staleMsg,
         priceNote:'TCGplayer/Cardmarket don’t price '+tag+' prints — PriceCharting ('+tag+') + the eBay comps below are the native-market reference.'};
       TCG.renderExtras(_exEl,_ex);
       if(card.url)pcEnrichByUrl(_exEl,_ex,card.url,tag);   // graded/raw ladder from the exact card page
@@ -596,6 +598,8 @@ async function tryPcLookup(setObj,num,dl,enSet){
     return true;
   }catch(e){act&&act.fail('PriceCharting blocked');return false;}
 }
+// Human-readable age of a cached-at timestamp, for the stale-data message.
+function staleAge(ts){if(!ts)return '';var d=Date.now()-ts,h=Math.floor(d/3600000);if(h<1)return 'moments ago';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 // Graded/raw price ladder from a card's exact PriceCharting URL (no fuzzy search/matching needed).
 function pcEnrichByUrl(el,ex,cardUrl,tag){
   try{
@@ -605,8 +609,10 @@ function pcEnrichByUrl(el,ex,cardUrl,tag){
       var rows=pcRows(pc);
       if(!rows.length){act&&act.fail('no PriceCharting prices');return;}
       ex.prices=(ex.prices||[]).concat(rows);ex.pcLink=pc.url;
+      // If the card data was fresh but the PRICES are a stale cache, surface that too.
+      if(pc.stale&&!ex.stale)ex.stale='Showing CACHED '+tag+' prices — PriceCharting is unreachable, so they may be out of date.';
       TCG.renderExtras(el,ex);
-      act&&act.done('PriceCharting '+tag+' prices');
+      act&&(pc.stale?act.fail('PriceCharting prices cached (stale)'):act.done('PriceCharting '+tag+' prices'));
     }).catch(function(){act&&act.fail('PriceCharting blocked');});
   }catch(e){}
 }

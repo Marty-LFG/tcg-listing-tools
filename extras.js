@@ -244,6 +244,10 @@
     const head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;margin-bottom:10px;';
     let html = '';
 
+    // Stale-data banner — shown whenever the panel is populated from a past-TTL cached copy
+    // (the live source was unreachable). data.stale is the human-readable message.
+    if (data.stale) html += `<div style="border:1px solid var(--gold,#c8aa6e);background:rgba(200,170,110,.12);border-radius:10px;padding:9px 13px;margin-bottom:12px;color:var(--gold,#c8aa6e);font-size:12.5px;font-weight:600;">&#9888; ${esc(data.stale)}</div>`;
+
     if (hasImg) {
       html += `<div style="${box}margin-bottom:14px;"><div style="${head}">Card image</div><div style="display:flex;gap:14px;flex-wrap:wrap;">`;
       imgs.forEach(function (p, idx) {

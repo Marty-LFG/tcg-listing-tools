@@ -100,13 +100,21 @@ exactly the symbol the user searches by. The language toggle in the builder scop
   - PriceCharting rows carry English name + number + image but **not rarity/stage/type** — those
     fields are left for the user. CN sets display the printed code as the set name (no English CN
     set-name source); JP/KO show the English set name.
-  - **Caching (rate-limit resilience):** PriceCharting scrape results are cached to disk
-    (`data/pc-cache/` — console enumerations, the console directory, and price ladders) on top of the
-    in-memory maps, so a dev-server restart doesn't re-scrape and a **stale copy is served when
-    PriceCharting is blocking** (the 1s-throttle + 5-min 403/429 breaker still gate live fetches).
-    Card images are cached to disk by the `/api/img` proxy (`data/img-cache/`, keyed by URL hash) and
-    the builder routes JP/CN/KO display + download through it — so images are served from our own
-    server after first fetch. Both cache dirs are git-ignored.
+  - **Caching (TTL'd, rate-limit resilient):** every cache has a time-to-live so changes are picked
+    up automatically. PriceCharting scrape results persist to disk (`data/pc-cache/`) *and* memory:
+    price ladders **12h** (PriceCharting updates ~daily), console card lists **12h**, the console
+    directory **24h**. Past-TTL triggers a refresh *attempt* — but if PriceCharting is **blocking**,
+    the **stale copy is served** rather than failing (the 1s-throttle + 5-min 403/429 breaker still
+    gate live fetches). Card images cache to disk via the `/api/img` proxy (`data/img-cache/`, keyed
+    by URL hash, **30d** TTL — images are near-immutable, and a changed image normally gets a new
+    hash-URL picked up by the 12h console refresh); the builder routes JP/CN/KO display + download
+    through it, so images serve from our own server after first fetch. Both cache dirs are git-ignored.
+  - **Two safety guarantees:** (1) a cached entry is **only overwritten when a fresh fetch returns
+    valid data** — a failed/empty/blocked refresh (or a non-`image/*` response) never clobbers the
+    good copy; (2) whenever a **past-TTL cached (stale) copy is served** because the live source was
+    unreachable, the builder shows it explicitly — an amber `⚠ CACHED (may be out of date)` status +
+    a banner in the card panel (`renderExtras` `data.stale`), for both card data and prices. Fresh
+    (within-TTL) data shows no banner.
 - **English OUTPUT (never native script):** the listing (card name, set, title, description, pitch)
   is always English. Set = `name_en` / `enEquivalent.name` / printed code. Card name = English
   species + the Latin suffix printed on the card (`ex`/`V`/`VMAX`), resolved via
