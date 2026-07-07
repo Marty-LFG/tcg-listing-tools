@@ -119,6 +119,8 @@
   .curbar label{color:var(--gold);}
   .curbar #m_currate,.curbar #s_currate,.curbar #p_currate,#m_currate,#s_currate,#p_currate{margin:0;color:var(--muted);}
   .cursym{color:var(--gold);font-weight:700;}
+  .pinrow{display:flex;align-items:center;gap:7px;margin-top:6px;font-size:11px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0;cursor:pointer;}
+  .pinrow input{width:auto;margin:0;}
   #slabPreview{background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;justify-content:center;}
   /* realistic graded-slab render (Collectr-style): glossy holder + branded label + card window */
   .slab{position:relative;border-radius:9% / 6%;background:linear-gradient(158deg,#fdfeff 0%,#eef1f6 45%,#dde3ec 100%);border:1px solid #b7c0ce;box-shadow:0 3px 9px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.85);overflow:hidden;font-family:Arial,Helvetica,sans-serif;user-select:none;flex:0 0 auto;}
@@ -131,6 +133,31 @@
   .slab .slab-win{position:relative;background:linear-gradient(#cfd6e1,#b6bfce);overflow:hidden;box-shadow:inset 0 2px 6px rgba(0,0,0,.3);}
   .slab .slab-win img{width:100%;height:100%;object-fit:cover;display:block;}
   .slab .slab-win.noimg::after{content:"no image";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8a93a3;font-size:9px;font-family:var(--mono);letter-spacing:.05em;}
+  /* view toggle + grid */
+  .viewtog{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;}
+  .vbtn{background:transparent;border:none;color:var(--muted);padding:7px 12px;cursor:pointer;font-size:15px;line-height:1;transition:.15s;}
+  .vbtn:hover{color:var(--text);}
+  .vbtn.on{background:var(--gold-soft);color:var(--gold);}
+  .grid-view{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;}
+  .gtile{position:relative;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 14px 13px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;transition:.18s ease;animation:rise .45s both;}
+  .gtile:hover{border-color:var(--line2);transform:translateY(-2px);}
+  .gtile .g-slab{margin-bottom:13px;}
+  .gtile .g-body{width:100%;text-align:center;min-width:0;}
+  .gtile .g-name{font-weight:700;font-size:13.5px;color:var(--text);line-height:1.25;margin-bottom:3px;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
+  .gtile .g-set{font-size:11px;color:var(--muted);font-family:var(--mono);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .gtile .g-price{font-family:var(--mono);font-weight:800;font-size:16px;color:var(--text);margin-top:9px;}
+  .gtile .g-native{font-size:10.5px;color:var(--muted);font-family:var(--mono);}
+  .gtile .g-pl{margin-top:5px;font-size:11px;}
+  .gtile .g-pllbl{color:var(--muted);font-size:10px;}
+  .gtile .g-acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-top:11px;padding-top:11px;border-top:1px solid var(--line);width:100%;}
+  .gtile .g-acts .btn{padding:6px 8px;font-size:12px;}
+  .gtile .compbox{width:100%;}
+  /* hover-reveal actions for a cleaner showcase (kept in layout so there's no jump; touch devices
+     have no hover so they stay visible; focus-within keeps them keyboard-accessible) */
+  @media (hover:hover){
+    .gtile .g-acts{opacity:0;transition:opacity .16s ease;}
+    .gtile:hover .g-acts,.gtile:focus-within .g-acts{opacity:1;}
+  }
   /* motion + scrollbar */
   @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
   @keyframes fade{from{opacity:0;}to{opacity:1;}}
@@ -166,6 +193,18 @@
       <select id="f_company" onchange="load()"><option value="">All companies</option></select>
       <select id="f_status" onchange="load()"><option value="">All status</option><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select>
       <input id="f_q" placeholder="search name / SKU / cert" style="width:190px;" oninput="debouncedLoad()">
+      <select id="f_sort" onchange="renderStock()" title="Sort" style="margin-left:auto;">
+        <option value="added">Newest first</option>
+        <option value="name">Name A–Z</option>
+        <option value="value_desc">Value: high → low</option>
+        <option value="value_asc">Value: low → high</option>
+        <option value="grade_desc">Grade: high → low</option>
+        <option value="pl_desc">Gain/loss: high → low</option>
+      </select>
+      <div class="viewtog" role="group" aria-label="View">
+        <button id="viewList" class="vbtn on" onclick="setView('list')" title="List view" aria-label="List view">☰</button>
+        <button id="viewGrid" class="vbtn" onclick="setView('grid')" title="Grid view" aria-label="Grid view">▦</button>
+      </div>
     </div>
     <div id="stock"></div>
   </div>
@@ -200,7 +239,8 @@
       <div class="fld"><label>Grade</label><input id="m_grade" type="number" step="0.5" placeholder="10" oninput="updateSlabPreview()"></div>
       <div class="fld"><label>Grade label</label><input id="m_gradelabel" placeholder="Gem Mint 10"></div>
       <div class="fld"><label>Slab preview</label><div id="slabPreview" style="display:flex;align-items:center;min-height:64px;"></div></div>
-      <div class="fld full"><label>Image URL (optional — auto-filled from PSA / lookups; or paste one)</label><input id="m_image" oninput="updateSlabPreview()" placeholder="https://…card image"></div>
+      <div class="fld full"><label>Image URL (optional — auto-filled from PSA / lookups; or paste one)</label><input id="m_image" oninput="onImageInput()" placeholder="https://…card image">
+        <label class="pinrow"><input type="checkbox" id="m_imglock"> 🔒 Pin this image — never auto-replace it (use for sets we can’t look up, e.g. Chinese promos)</label></div>
       <div class="fld"><label>Graded date</label><input id="m_graded" type="date"></div>
       <div class="fld full" id="subgradeRow" style="display:none;"><label>Subgrades (optional)</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -371,6 +411,9 @@ function slabHtml(o){
   return s;
 }
 function updateSlabPreview(){var el=document.getElementById('slabPreview');if(!el)return;var co=val('m_company'),img=val('m_image')||null;if(!co&&!img){el.innerHTML='<span style="color:var(--muted);font-size:12px;">raw / ungraded</span>';return;}el.innerHTML=slabHtml({company:co||'RAW',grade:numv('m_grade'),gradeLabel:val('m_gradelabel'),image:img,width:96});}
+// User typed/pasted an image URL -> auto-pin it (a hand-entered image should never be auto-replaced).
+// Programmatic setV() from lookups doesn't fire this, so auto-resolved images stay un-pinned.
+function onImageInput(){var lk=document.getElementById('m_imglock');if(lk&&val('m_image'))lk.checked=true;updateSlabPreview();}
 
 // value of an item converted to AUD dollars (null if unknown / FX down for a non-AUD value)
 function valueAud(it){
@@ -430,12 +473,68 @@ function itemRow(it){
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
       +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
       +'<button class="btn sm blue" title="eBay graded comps" onclick="comps('+it.id+')">eBay</button>'
-      +'<button class="btn sm ghost" title="'+(it.image_url?'Re-fetch card image':'Fetch card image')+'" onclick="fetchImage('+it.id+',this)">🖼</button>'
+      +imgBtn(it)
       +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
       +'<button class="btn sm danger" onclick="removeItem('+it.id+')">✕</button>'
     +'</div>'
   +'</div></div>';
 }
+// Collectr-style grid tile: big slab + name/set + value + P/L + compact actions.
+function gridCard(it){
+  const v=valueAud(it);
+  const vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?'<div class="g-native">'+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</div>':'';
+  const pl=it.status==='sold'?realized(it):unrealized(it);
+  const plLbl=it.status==='sold'?'realized':'unrealized';
+  const setLine=[it.set_name?esc(it.set_name):'',it.number?('#'+esc(it.number)):'',(it.language&&it.language!=='EN')?esc(it.language):''].filter(Boolean).join(' · ');
+  const slab=slabHtml({company:it.grading_company||'RAW',grade:it.grade,gradeLabel:it.grade_label,image:it.image_url,width:150});
+  return '<div class="gtile">'
+    +'<div class="g-slab" title="'+esc(it.grading_company?(it.grading_company+(it.grade!=null?' '+it.grade:'')):'raw')+'">'+slab+'</div>'
+    +'<div class="g-body">'
+      +'<div class="g-name" title="'+esc(it.name)+'">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
+      +(setLine?'<div class="g-set">'+setLine+'</div>':'')
+      +'<div class="g-set">'+esc(it.sku)+(it.variant?' · '+esc(it.variant):'')+'</div>'
+      +'<div class="g-price">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+'</div>'+vnative
+      +'<div class="g-pl">'+plBadge(pl)+' <span class="g-pllbl">'+plLbl+'</span></div>'
+      +'<div class="status" id="cs'+it.id+'"></div>'
+      +'<div class="g-acts">'
+        +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
+        +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
+        +imgBtn(it)
+        +'<button class="btn sm danger" onclick="removeItem('+it.id+')">✕</button>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+}
+// Client-side sort of the loaded items (value = AUD-converted; nulls sink to the bottom).
+function sortItems(items){
+  const key=(document.getElementById('f_sort')||{}).value||'added';
+  const vof=it=>{const a=valueAud(it);return a!=null?a:(it.value_cents!=null?it.value_cents/100:null);};
+  const plof=it=>it.status==='sold'?realized(it):unrealized(it);
+  const arr=items.slice();
+  const numDesc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return y-x;};
+  const numAsc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return x-y;};
+  switch(key){
+    case 'name': arr.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))); break;
+    case 'value_desc': arr.sort(numDesc(vof)); break;
+    case 'value_asc': arr.sort(numAsc(vof)); break;
+    case 'grade_desc': arr.sort(numDesc(it=>it.grade)); break;
+    case 'pl_desc': arr.sort(numDesc(plof)); break;
+    default: break;   // 'added' — keep server order (created_at DESC)
+  }
+  return arr;
+}
+// Render #stock in the active view + sort. Used by load() and the view/sort controls (no refetch).
+function renderStock(){
+  const el=document.getElementById('stock');if(!el)return;
+  if(!CURRENT||!CURRENT.length){el.className='';el.innerHTML='<div class="empty">No cards yet. Click “＋ Add card”, or use “Add to inventory” from a listing builder or the pre-grader.</div>';return;}
+  const items=sortItems(CURRENT);
+  if(VIEW==='grid'){el.className='grid-view';el.innerHTML=items.map(gridCard).join('');}
+  else{el.className='';el.innerHTML=items.map(itemRow).join('');}
+}
+function setView(v){VIEW=v;try{localStorage.setItem('bk_view',v);}catch(e){}
+  var l=document.getElementById('viewList'),g=document.getElementById('viewGrid');
+  if(l)l.classList.toggle('on',v==='list');if(g)g.classList.toggle('on',v==='grid');
+  renderStock();}
 function subRow(sub){
   const overdue=sub.expected_return_at&&sub.status!=='graded'&&sub.expected_return_at< new Date().toISOString().slice(0,10);
   const eta=sub.expected_return_at?('<span class="pill '+(overdue?'overdue':'')+'">ETA '+esc(sub.expected_return_at)+'</span>'):'';
@@ -456,6 +555,7 @@ function subRow(sub){
 }
 
 let CURRENT=[], SUBS=[];
+let VIEW=(function(){try{return localStorage.getItem('bk_view')||'list';}catch(e){return 'list';}})();
 // Populate the location combobox from existing item locations (most-used first). Called by load()
 // so a newly-typed location shows up in the list after the next save. Fire-and-forget.
 async function loadLocations(){
@@ -472,7 +572,7 @@ async function load(){
     CURRENT=itemsR.items; SUBS=subsR.submissions;
     renderSummary(summary);
     document.getElementById('banner').innerHTML = GRADING? '' : '<div class="banner warn">Could not load grading.config.json — company/tier lists use defaults.</div>';
-    document.getElementById('stock').innerHTML = CURRENT.length? CURRENT.map(itemRow).join('') : '<div class="empty">No cards yet. Click “＋ Add card”, or use “Add to inventory” from a listing builder or the pre-grader.</div>';
+    renderStock();
     document.getElementById('subcount').textContent=SUBS.length;
     const active=SUBS.filter(s=>!s.promoted_item_id), done=SUBS.filter(s=>s.promoted_item_id);
     document.getElementById('subs').innerHTML = SUBS.length? (active.map(subRow).join('')+(done.length?'<div class="group-h">Promoted</div>'+done.map(subRow).join(''):'')) : '<div class="empty">No submissions. Track cards you send off to PSA/BGS/etc. here.</div>';
@@ -489,7 +589,7 @@ function toggleSubgrades(){var el=document.getElementById('subgradeRow');if(!el)
 function openItem(){editItemId=null;document.getElementById('itemTitle').textContent='Add graded card';
   ['m_certno','m_name','m_set','m_number','m_variant','m_grade','m_gradelabel','m_graded','m_location','m_cost','m_fees','m_acqdate','m_vendor','m_target','m_value','m_notes','m_saleprice','m_salefees','m_saledate','m_image','m_sg_cent','m_sg_corn','m_sg_edge','m_sg_surf'].forEach(i=>setV(i,''));
   setV('m_lang','EN');setV('m_qty','1');document.getElementById('m_game').value='pokemon';document.getElementById('m_company').value='';document.getElementById('m_status').value='in_stock';
-  document.getElementById('m_certstatus').textContent='';document.getElementById('m_link').checked=false;document.getElementById('linkRow').style.display='block';toggleSale();
+  document.getElementById('m_certstatus').textContent='';document.getElementById('m_link').checked=false;document.getElementById('m_imglock').checked=false;document.getElementById('linkRow').style.display='block';toggleSale();
   (function(){var cc=document.getElementById('m_certco');if(cc)cc.value='PSA';updateCertHint();updateSlabPreview();toggleSubgrades();})();
   resetCur('m');document.getElementById('itemOverlay').classList.add('on');}
 function editItem(id){
@@ -499,7 +599,7 @@ function editItem(id){
   document.getElementById('m_game').value=it.game;document.getElementById('m_company').value=it.grading_company||'';setV('m_grade',it.grade);setV('m_gradelabel',it.grade_label);setV('m_graded',it.graded_date);
   setV('m_qty',it.quantity||1);setV('m_location',it.location);document.getElementById('m_status').value=it.status;
   setV('m_cost',it.cost_cents!=null?it.cost_cents/100:'');setV('m_fees',it.acq_fees_cents!=null?it.acq_fees_cents/100:'');setV('m_acqdate',it.acquired_at);setV('m_vendor',it.source_vendor);
-  setV('m_target',it.target_price_cents!=null?it.target_price_cents/100:'');setV('m_value','');resetCur('m');setV('m_notes',it.notes);setV('m_image',it.image_url);
+  setV('m_target',it.target_price_cents!=null?it.target_price_cents/100:'');setV('m_value','');resetCur('m');setV('m_notes',it.notes);setV('m_image',it.image_url);document.getElementById('m_imglock').checked=!!it.image_manual;
   (function(){var sg={};try{sg=it.subgrades?JSON.parse(it.subgrades):{};}catch(e){}setV('m_sg_cent',sg.centering!=null?sg.centering:'');setV('m_sg_corn',sg.corners!=null?sg.corners:'');setV('m_sg_edge',sg.edges!=null?sg.edges:'');setV('m_sg_surf',sg.surface!=null?sg.surface:'');})();
   setV('m_saleprice',it.sale_price_cents!=null?it.sale_price_cents/100:'');setV('m_salefees',it.sale_fees_cents!=null?it.sale_fees_cents/100:'');setV('m_saledate',it.sold_at);
   document.getElementById('m_certstatus').textContent='';document.getElementById('linkRow').style.display='none';toggleSale();
@@ -539,10 +639,12 @@ async function certLookup(){
     if(r&&r.matched&&r.identity){
       setV('m_name',r.identity.name);setV('m_set',r.identity.set_name);setV('m_number',r.identity.number);setV('m_variant',r.identity.variant);setV('m_lang',r.identity.language||'EN');
       if(r.grade!=null)setV('m_grade',r.grade);if(r.grade_label)setV('m_gradelabel',r.grade_label);
-      setV('m_image','');   // this lookup refills everything from the cert — drop any prior auto-resolved art
+      setV('m_image','');document.getElementById('m_imglock').checked=false;   // this lookup refills from the cert — drop any prior art + pin
       if(r.image_url){setV('m_image',r.image_url);updateSlabPreview();}
       else{updateSlabPreview();previewCardImage();}   // no PSA photo — resolve the card art for the preview
-      s.className='status ok';s.textContent='✓ '+esc(r.identity.name||'found — fields filled');
+      s.className='status ok';
+      var vlink=(r.verifyUrl)?(' · <a href="'+esc(r.verifyUrl)+'" target="_blank" rel="noopener">'+esc(co)+' page ↗</a>'):'';   // deep-link to this cert's page
+      s.innerHTML='✓ '+esc(r.identity.name||'found — fields filled')+vlink;
     }else{
       const link=(r&&r.verifyUrl)?(' <a href="'+esc(r.verifyUrl)+'" target="_blank" rel="noopener">Verify on '+esc(co)+' ↗</a>'):'';
       s.className='status warn';
@@ -562,6 +664,7 @@ async function saveItem(btn){
   const mv=dc('m_value');if(mv!=null){body.value_cents=mv;body.value_currency=cur;body.value_source='manual';body.value_manual=1;}   // value keeps its native currency (converted for display via FX)
   if(body.status==='sold'){body.sale_price_cents=dcAud('m_saleprice',cur);body.sale_fees_cents=dcAud('m_salefees',cur);body.sold_at=val('m_saledate')||null;}
   const iu=val('m_image');if(iu)body.image_url=iu;
+  body.image_manual=(iu&&document.getElementById('m_imglock').checked)?1:0;   // pinned = never auto-replace
   var sg={};var _sc=numv('m_sg_cent');if(_sc!=null)sg.centering=_sc;var _co=numv('m_sg_corn');if(_co!=null)sg.corners=_co;var _ed=numv('m_sg_edge');if(_ed!=null)sg.edges=_ed;var _su=numv('m_sg_surf');if(_su!=null)sg.surface=_su;
   body.subgrades=Object.keys(sg).length?sg:null;
   btn.disabled=true;
@@ -591,7 +694,9 @@ function comps(id){
   } else { st.textContent='eBay comps unavailable.'; }
 }
 
-async function fetchImage(id,btn){if(btn)btn.disabled=true;try{const r=await api('/items/'+id+'/fetch-image',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});if(!r.updated){if(btn){btn.textContent='none';setTimeout(function(){btn.textContent='🖼';btn.disabled=false;},1200);}return;}}catch(e){}load();}
+async function fetchImage(id,btn){if(btn)btn.disabled=true;try{const r=await api('/items/'+id+'/fetch-image',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});if(!r.updated){if(btn){var g=btn.textContent;btn.textContent=r.locked?'🔒':'none';setTimeout(function(){btn.textContent=g;btn.disabled=false;},1300);}return;}}catch(e){}load();}
+// Image button — shows a lock on pinned items (auto-resolve won't touch them; edit the card to change).
+function imgBtn(it){return '<button class="btn sm ghost" title="'+(it.image_manual?'Image pinned — won’t auto-replace (edit card to change)':(it.image_url?'Re-fetch card image':'Fetch card image'))+'" onclick="fetchImage('+it.id+',this)">'+(it.image_manual?'🔒':'🖼')+'</button>';}
 
 // ---- submission modal ----
 function fillTiers(){const co=val('s_company');const tiers=(GRADING&&GRADING.fees&&GRADING.fees[co])?GRADING.fees[co]:[];
@@ -647,6 +752,8 @@ async function removeItem(id){if(!confirm('Delete this inventory item? (cannot b
   try{const reg=await fetch('/data/grading-companies.json').then(r=>r.json());if(reg&&reg.companies&&reg.companies.length){COS=reg.companies;COMPANIES=COS.map(c=>c.code);}}catch(e){}
   fillCompanySelect('f_company','All companies');fillCompanySelect('m_company','— raw / none —');fillCompanySelect('s_company','');fillCompanySelect('m_certco',null);
   updateCertHint();fillTiers();
+  var vl=document.getElementById('viewList'),vg=document.getElementById('viewGrid');   // sync toggle to saved view
+  if(vl)vl.classList.toggle('on',VIEW==='list');if(vg)vg.classList.toggle('on',VIEW==='grid');
   if(window.TCG&&TCG.loadFx)await TCG.loadFx();
   load();
 })();
