@@ -26,7 +26,9 @@ describe('certLookup dispatch', () => {
     assert.equal(r.verifyUrl, null);
   });
   it('PSA without a token → matched:false (provider short-circuit, no fetch)', async () => {
-    const r = await certLookup('psa', '12345678', {});
+    // PSA_CERT_SCRAPE:false keeps this offline — otherwise the no-token path falls back to the
+    // public cert-page scrape (a real curl fetch), which unit tests must not perform.
+    const r = await certLookup('psa', '12345678', { PSA_CERT_SCRAPE: 'false' });
     assert.equal(r.matched, false);
     assert.equal(r.company, 'PSA');
     assert.ok(r.verifyUrl && r.verifyUrl.includes('12345678'), 'verifyUrl carries the cert');

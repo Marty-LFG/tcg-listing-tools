@@ -115,6 +115,10 @@
   .certrow{display:flex;gap:10px;align-items:flex-end;background:rgba(212,176,114,.05);border:1px solid rgba(212,176,114,.24);border-radius:12px;padding:12px 14px;margin-bottom:16px;}
   .certrow .fld{flex:1;}
   .hint{font-size:11px;color:var(--faint);margin-top:3px;font-family:var(--mono);}
+  .curbar{background:var(--gold-soft);border:1px solid rgba(212,176,114,.24);border-radius:10px;padding:9px 12px;}
+  .curbar label{color:var(--gold);}
+  .curbar #m_currate,.curbar #s_currate,.curbar #p_currate,#m_currate,#s_currate,#p_currate{margin:0;color:var(--muted);}
+  .cursym{color:var(--gold);font-weight:700;}
   #slabPreview{background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;justify-content:center;}
   /* motion + scrollbar */
   @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
@@ -198,17 +202,21 @@
       <div class="fld"><label>Quantity</label><input id="m_qty" type="number" value="1" min="1"></div>
       <div class="fld"><label>Location</label><input id="m_location" placeholder="Box A / shelf 2"></div>
       <div class="fld"><label>Status</label><select id="m_status" onchange="toggleSale()"><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select></div>
-      <div class="fld"><label>Cost paid (A$)</label><input id="m_cost" type="number" step="0.01" placeholder="0.00"></div>
-      <div class="fld"><label>Acquisition / grading fees (A$)</label><input id="m_fees" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="fld full curbar"><label>Money entered in</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <select id="m_cur" onchange="applyCur('m')" style="max-width:110px;"><option>AUD</option><option>USD</option></select>
+          <span class="hint" id="m_currate"></span>
+        </div></div>
+      <div class="fld"><label>Cost paid (<span class="cursym">A$</span>)</label><input id="m_cost" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="fld"><label>Acquisition / grading fees (<span class="cursym">A$</span>)</label><input id="m_fees" type="number" step="0.01" placeholder="0.00"></div>
       <div class="fld"><label>Acquired date</label><input id="m_acqdate" type="date"></div>
       <div class="fld"><label>Source / vendor</label><input id="m_vendor"></div>
-      <div class="fld"><label>Target sell price (A$)</label><input id="m_target" type="number" step="0.01"></div>
-      <div class="fld"><label>Manual value</label><input id="m_value" type="number" step="0.01" placeholder="optional"></div>
-      <div class="fld"><label>Value currency</label><select id="m_valcur"><option>AUD</option><option>USD</option></select></div>
+      <div class="fld"><label>Target sell price (<span class="cursym">A$</span>)</label><input id="m_target" type="number" step="0.01"></div>
+      <div class="fld"><label>Manual value (<span class="cursym">A$</span>)</label><input id="m_value" type="number" step="0.01" placeholder="optional"></div>
       <div class="fld full" id="saleFields" style="display:none;">
         <div class="grid">
-          <div class="fld"><label>Sale price (A$)</label><input id="m_saleprice" type="number" step="0.01"></div>
-          <div class="fld"><label>Sale fees (A$)</label><input id="m_salefees" type="number" step="0.01"></div>
+          <div class="fld"><label>Sale price (<span class="cursym">A$</span>)</label><input id="m_saleprice" type="number" step="0.01"></div>
+          <div class="fld"><label>Sale fees (<span class="cursym">A$</span>)</label><input id="m_salefees" type="number" step="0.01"></div>
           <div class="fld"><label>Sold date</label><input id="m_saledate" type="date"></div>
         </div>
       </div>
@@ -235,8 +243,13 @@
       <div class="fld"><label>Language</label><input id="s_lang" value="EN"></div>
       <div class="fld"><label>Grading company *</label><select id="s_company" onchange="fillTiers()"></select></div>
       <div class="fld"><label>Tier</label><select id="s_tier"></select></div>
-      <div class="fld"><label>Declared value (A$)</label><input id="s_declared" type="number" step="0.01"></div>
-      <div class="fld"><label>Grading cost (A$)</label><input id="s_cost" type="number" step="0.01"></div>
+      <div class="fld full curbar"><label>Money entered in</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <select id="s_cur" onchange="applyCur('s')" style="max-width:110px;"><option>AUD</option><option>USD</option></select>
+          <span class="hint" id="s_currate"></span>
+        </div></div>
+      <div class="fld"><label>Declared value (<span class="cursym">A$</span>)</label><input id="s_declared" type="number" step="0.01"></div>
+      <div class="fld"><label>Grading cost (<span class="cursym">A$</span>)</label><input id="s_cost" type="number" step="0.01"></div>
       <div class="fld"><label>Submitted date</label><input id="s_submitted" type="date"></div>
       <div class="fld"><label>Status</label><select id="s_status"><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="received">Received back</option><option value="graded">Graded</option></select></div>
       <div class="fld full"><label>Tracking #</label><input id="s_tracking"></div>
@@ -259,7 +272,12 @@
       <div class="fld"><label>Final grade</label><input id="p_grade" type="number" step="0.5"></div>
       <div class="fld"><label>Grade label</label><input id="p_gradelabel"></div>
       <div class="fld"><label>Cert #</label><input id="p_cert"></div>
-      <div class="fld"><label>Purchase cost (A$)</label><input id="p_cost" type="number" step="0.01"></div>
+      <div class="fld full curbar"><label>Money entered in</label>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <select id="p_cur" onchange="applyCur('p')" style="max-width:110px;"><option>AUD</option><option>USD</option></select>
+          <span class="hint" id="p_currate"></span>
+        </div></div>
+      <div class="fld"><label>Purchase cost (<span class="cursym">A$</span>)</label><input id="p_cost" type="number" step="0.01"></div>
       <div class="fld"><label>Location</label><input id="p_location"></div>
     </div>
     <div class="hint">The grading cost from the submission is carried over as a cost-basis fee automatically.</div>
@@ -285,8 +303,32 @@ function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&
 function val(id){return document.getElementById(id).value.trim();}
 function setV(id,v){const el=document.getElementById(id);if(el)el.value=(v==null?'':v);}
 function numv(id){const v=val(id);return v===''?null:(parseFloat(v));}
-function dc(id){const v=val(id);return v===''?null:Math.round(parseFloat(v)*100);}     // dollars input -> cents
+function dc(id){const v=val(id);return v===''?null:Math.round(parseFloat(v)*100);}     // dollars input -> cents (as-typed, no FX)
 function aud(d){return d==null?'—':'A$'+(Math.round(d*100)/100).toFixed(2);}
+
+// ---- money input currency (toggle + auto-convert) --------------------------
+// Cost-basis money is stored as AUD cents (the app's base). Each modal has a small AUD/USD
+// toggle: switching it converts the amounts already typed, and on save USD amounts are
+// normalised to AUD at the live rate (TCG.loadFx). Value keeps its own currency (below).
+const MONEY_FIELDS={m:['m_cost','m_fees','m_target','m_value','m_saleprice','m_salefees'],s:['s_declared','s_cost'],p:['p_cost']};
+function usdRate(){return (window.TCG&&TCG.toAUD)?TCG.toAUD(1,'USD'):null;}   // AUD per 1 USD (null if FX down)
+function convCur(a,from,to){if(a==null||from===to)return a;const R=usdRate();if(R==null)return null;const usd=from==='USD'?a:a/R;return to==='USD'?usd:usd*R;}
+function curSym(c){return c==='USD'?'US$':'A$';}
+function modalCur(scope){const s=document.getElementById(scope+'_cur');return (s&&s.value)||'AUD';}
+// dollars typed in `cur` -> AUD cents for storage (null if blank / FX unavailable for a USD entry).
+function dcAud(id,cur){const v=val(id);if(v==='')return null;const d=parseFloat(v);if(!isFinite(d))return null;if(cur==='USD'){const a=convCur(d,'USD','AUD');if(a==null)return null;return Math.round(a*100);}return Math.round(d*100);}
+function relabelCur(scope,cur){
+  (MONEY_FIELDS[scope]||[]).forEach(function(id){var el=document.getElementById(id);if(!el)return;var f=el.closest('.fld'),s=f&&f.querySelector('.cursym');if(s)s.textContent=curSym(cur);});
+  var note=document.getElementById(scope+'_currate');if(note){var R=usdRate();note.textContent=cur==='USD'?('→ saved in AUD @ 1 US$ = A$'+(R!=null?R.toFixed(4):'?')):'stored in AUD';}
+}
+function resetCur(scope){var sel=document.getElementById(scope+'_cur');if(!sel)return;sel.value='AUD';sel.dataset.cur='AUD';relabelCur(scope,'AUD');}
+function applyCur(scope){
+  var sel=document.getElementById(scope+'_cur');if(!sel)return;
+  var to=sel.value, from=sel.dataset.cur||'AUD';
+  if(to==='USD'&&usdRate()==null){alert('FX rate unavailable (is the FX proxy up?) — keeping amounts in AUD.');sel.value='AUD';return;}
+  if(to!==from)(MONEY_FIELDS[scope]||[]).forEach(function(id){var el=document.getElementById(id);if(!el||el.value.trim()==='')return;var n=parseFloat(el.value);if(!isFinite(n))return;var c=convCur(n,from,to);if(c!=null)el.value=(Math.round(c*100)/100).toFixed(2);});
+  sel.dataset.cur=to;relabelCur(scope,to);
+}
 function centsAud(c){return c==null?'—':aud(c/100);}
 
 // Mini "slab" badge SVG in the grading company's brand colours (Collectr-style).
@@ -359,7 +401,7 @@ function itemRow(it){
     +slab
     +'<div style="min-width:180px;flex:1;">'
       +'<div class="nm">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
-      +'<div class="key">'+esc(GAME_NAMES[it.game]||it.game)+(it.number?' · #'+esc(it.number):'')+(it.variant?' · '+esc(it.variant):'')+(it.cert_number?' · cert '+esc(it.cert_number):'')+'</div>'
+      +'<div class="key">'+esc(GAME_NAMES[it.game]||it.game)+(it.set_name?' · '+esc(it.set_name):'')+(it.number?' · #'+esc(it.number):'')+(it.language&&it.language!=='EN'?' · '+esc(it.language):'')+(it.variant?' · '+esc(it.variant):'')+(it.cert_number?' · cert '+esc(it.cert_number):'')+'</div>'
       +'<div class="sku">'+esc(it.sku)+(it.location?' · 📍 '+esc(it.location):'')+'</div>'
       +sgTxt
       +(it.notes?'<div class="note">'+esc(it.notes)+'</div>':'')
@@ -374,7 +416,7 @@ function itemRow(it){
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
       +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
       +'<button class="btn sm blue" title="eBay graded comps" onclick="comps('+it.id+')">eBay</button>'
-      +(!it.image_url?'<button class="btn sm ghost" title="Fetch card image" onclick="fetchImage('+it.id+',this)">🖼</button>':'')
+      +'<button class="btn sm ghost" title="'+(it.image_url?'Re-fetch card image':'Fetch card image')+'" onclick="fetchImage('+it.id+',this)">🖼</button>'
       +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
       +'<button class="btn sm danger" onclick="removeItem('+it.id+')">✕</button>'
     +'</div>'
@@ -429,7 +471,7 @@ function openItem(){editItemId=null;document.getElementById('itemTitle').textCon
   setV('m_lang','EN');setV('m_qty','1');document.getElementById('m_game').value='pokemon';document.getElementById('m_company').value='';document.getElementById('m_status').value='in_stock';
   document.getElementById('m_certstatus').textContent='';document.getElementById('m_link').checked=false;document.getElementById('linkRow').style.display='block';toggleSale();
   (function(){var cc=document.getElementById('m_certco');if(cc)cc.value='PSA';updateCertHint();updateSlabPreview();toggleSubgrades();})();
-  document.getElementById('itemOverlay').classList.add('on');}
+  resetCur('m');document.getElementById('itemOverlay').classList.add('on');}
 function editItem(id){
   const it=CURRENT.find(x=>x.id===id);if(!it)return;editItemId=id;
   document.getElementById('itemTitle').textContent='Edit — '+it.sku;
@@ -437,13 +479,24 @@ function editItem(id){
   document.getElementById('m_game').value=it.game;document.getElementById('m_company').value=it.grading_company||'';setV('m_grade',it.grade);setV('m_gradelabel',it.grade_label);setV('m_graded',it.graded_date);
   setV('m_qty',it.quantity||1);setV('m_location',it.location);document.getElementById('m_status').value=it.status;
   setV('m_cost',it.cost_cents!=null?it.cost_cents/100:'');setV('m_fees',it.acq_fees_cents!=null?it.acq_fees_cents/100:'');setV('m_acqdate',it.acquired_at);setV('m_vendor',it.source_vendor);
-  setV('m_target',it.target_price_cents!=null?it.target_price_cents/100:'');setV('m_value','');document.getElementById('m_valcur').value=it.value_currency||'AUD';setV('m_notes',it.notes);setV('m_image',it.image_url);
+  setV('m_target',it.target_price_cents!=null?it.target_price_cents/100:'');setV('m_value','');resetCur('m');setV('m_notes',it.notes);setV('m_image',it.image_url);
   (function(){var sg={};try{sg=it.subgrades?JSON.parse(it.subgrades):{};}catch(e){}setV('m_sg_cent',sg.centering!=null?sg.centering:'');setV('m_sg_corn',sg.corners!=null?sg.corners:'');setV('m_sg_edge',sg.edges!=null?sg.edges:'');setV('m_sg_surf',sg.surface!=null?sg.surface:'');})();
   setV('m_saleprice',it.sale_price_cents!=null?it.sale_price_cents/100:'');setV('m_salefees',it.sale_fees_cents!=null?it.sale_fees_cents/100:'');setV('m_saledate',it.sold_at);
   document.getElementById('m_certstatus').textContent='';document.getElementById('linkRow').style.display='none';toggleSale();
   (function(){var cc=document.getElementById('m_certco');if(cc)cc.value=it.grading_company||'PSA';updateCertHint();updateSlabPreview();toggleSubgrades();})();
   document.getElementById('itemOverlay').classList.add('on');}
 function closeItem(){document.getElementById('itemOverlay').classList.remove('on');}
+// Truthful lookup-failure message. PSA fails for very different reasons (rate limit, bad token,
+// unknown cert) — don't blame the cert/token when it was really a 429 daily-quota hit.
+function certFailMsg(co,r){
+  if(co!=='PSA')return esc(co)+' has no auto-fill API — open the official page to confirm, then fill the fields manually.';
+  const st=r&&r.status, reason=r&&r.reason;
+  if(st===429){const d=(r&&r.detail)?(' <span style="color:var(--faint);">('+esc(r.detail)+')</span>'):'';return 'PSA API daily quota reached — auto-fill is rate-limited. Use the verify link to confirm the card, then fill the fields manually (or retry later).'+d;}
+  if(st===401||st===403)return 'PSA rejected the API token — check PSA_API_TOKEN in .env.';
+  if(reason==='no_token_or_cert')return 'Set PSA_API_TOKEN in .env to enable PSA auto-fill — or fill the fields manually.';
+  if(st)return 'PSA lookup failed (HTTP '+esc(st)+') — verify on PSA, then fill the fields manually.';
+  return 'No PSA match — check the cert number, or fill the fields manually.';
+}
 async function certLookup(){
   const co=(document.getElementById('m_certco')||{}).value||'PSA';
   const cert=val('m_certno');const s=document.getElementById('m_certstatus');
@@ -460,19 +513,21 @@ async function certLookup(){
     }else{
       const link=(r&&r.verifyUrl)?(' <a href="'+esc(r.verifyUrl)+'" target="_blank" rel="noopener">Verify on '+esc(co)+' ↗</a>'):'';
       s.className='status warn';
-      s.innerHTML=(co==='PSA'?'No PSA match — check the cert, or set PSA_API_TOKEN in .env.':(esc(co)+' has no auto-fill API — open the official page to confirm, then fill the fields manually.'))+link;
+      s.innerHTML=certFailMsg(co,r)+link;
     }
   }catch(e){s.className='status err';s.textContent='Lookup failed — fill manually.';}
 }
 async function saveItem(btn){
   if(!val('m_name')){alert('Name is required.');return;}
+  const cur=modalCur('m');
+  if(cur==='USD'&&usdRate()==null){alert('FX rate unavailable — switch the currency to AUD (or retry once the FX proxy is up).');return;}
   const body={game:val('m_game'),name:val('m_name'),set_name:val('m_set')||null,number:val('m_number')||null,variant:val('m_variant')||null,language:val('m_lang')||'EN',
     grading_company:val('m_company')||null,grade:numv('m_grade'),grade_label:val('m_gradelabel')||null,cert_number:val('m_certno')||null,graded_date:val('m_graded')||null,
     quantity:parseInt(val('m_qty')||'1',10)||1,location:val('m_location')||null,status:val('m_status')||'in_stock',
-    cost_cents:dc('m_cost'),acq_fees_cents:dc('m_fees'),acquired_at:val('m_acqdate')||null,source_vendor:val('m_vendor')||null,
-    target_price_cents:dc('m_target'),notes:val('m_notes')||null};
-  const mv=dc('m_value');if(mv!=null){body.value_cents=mv;body.value_currency=val('m_valcur')||'AUD';body.value_source='manual';body.value_manual=1;}
-  if(body.status==='sold'){body.sale_price_cents=dc('m_saleprice');body.sale_fees_cents=dc('m_salefees');body.sold_at=val('m_saledate')||null;}
+    cost_cents:dcAud('m_cost',cur),acq_fees_cents:dcAud('m_fees',cur),acquired_at:val('m_acqdate')||null,source_vendor:val('m_vendor')||null,
+    target_price_cents:dcAud('m_target',cur),notes:val('m_notes')||null};
+  const mv=dc('m_value');if(mv!=null){body.value_cents=mv;body.value_currency=cur;body.value_source='manual';body.value_manual=1;}   // value keeps its native currency (converted for display via FX)
+  if(body.status==='sold'){body.sale_price_cents=dcAud('m_saleprice',cur);body.sale_fees_cents=dcAud('m_salefees',cur);body.sold_at=val('m_saledate')||null;}
   const iu=val('m_image');if(iu)body.image_url=iu;
   var sg={};var _sc=numv('m_sg_cent');if(_sc!=null)sg.centering=_sc;var _co=numv('m_sg_corn');if(_co!=null)sg.corners=_co;var _ed=numv('m_sg_edge');if(_ed!=null)sg.edges=_ed;var _su=numv('m_sg_surf');if(_su!=null)sg.surface=_su;
   body.subgrades=Object.keys(sg).length?sg:null;
@@ -511,18 +566,20 @@ function fillTiers(){const co=val('s_company');const tiers=(GRADING&&GRADING.fee
 function openSub(){editSubId=null;document.getElementById('subTitle').textContent='New grading submission';
   ['s_name','s_set','s_number','s_variant','s_declared','s_cost','s_submitted','s_tracking','s_notes'].forEach(i=>setV(i,''));
   setV('s_lang','EN');document.getElementById('s_game').value='pokemon';document.getElementById('s_company').value=COMPANIES[0];document.getElementById('s_status').value='draft';fillTiers();
-  document.getElementById('subOverlay').classList.add('on');}
+  resetCur('s');document.getElementById('subOverlay').classList.add('on');}
 function editSub(id){const sub=SUBS.find(x=>x.id===id);if(!sub)return;editSubId=id;document.getElementById('subTitle').textContent='Edit submission';
   setV('s_name',sub.name);setV('s_set',sub.set_name);setV('s_number',sub.number);setV('s_variant',sub.variant);setV('s_lang',sub.language||'EN');
   document.getElementById('s_game').value=sub.game;document.getElementById('s_company').value=sub.grading_company;fillTiers();document.getElementById('s_tier').value=sub.tier||'';
   setV('s_declared',sub.declared_value_cents!=null?sub.declared_value_cents/100:'');setV('s_cost',sub.grading_cost_cents!=null?sub.grading_cost_cents/100:'');
   setV('s_submitted',sub.submitted_at);document.getElementById('s_status').value=sub.status;setV('s_tracking',sub.tracking);setV('s_notes',sub.notes);
-  document.getElementById('subOverlay').classList.add('on');}
+  resetCur('s');document.getElementById('subOverlay').classList.add('on');}
 function closeSub(){document.getElementById('subOverlay').classList.remove('on');}
 async function saveSub(btn){
   if(!val('s_name')){alert('Name is required.');return;}
+  const cur=modalCur('s');
+  if(cur==='USD'&&usdRate()==null){alert('FX rate unavailable — switch the currency to AUD (or retry once the FX proxy is up).');return;}
   const body={game:val('s_game'),name:val('s_name'),set_name:val('s_set')||null,number:val('s_number')||null,variant:val('s_variant')||null,language:val('s_lang')||'EN',
-    grading_company:val('s_company'),tier:val('s_tier')||null,declared_value_cents:dc('s_declared'),grading_cost_cents:dc('s_cost'),
+    grading_company:val('s_company'),tier:val('s_tier')||null,declared_value_cents:dcAud('s_declared',cur),grading_cost_cents:dcAud('s_cost',cur),
     submitted_at:val('s_submitted')||null,status:val('s_status')||'draft',tracking:val('s_tracking')||null,notes:val('s_notes')||null};
   btn.disabled=true;
   try{
@@ -537,10 +594,13 @@ async function removeSub(id){if(!confirm('Delete this submission?'))return;try{a
 function openPromote(id){const sub=SUBS.find(x=>x.id===id);if(!sub)return;promoteSub=sub;
   document.getElementById('promoteWho').textContent=sub.name+' — '+(GAME_NAMES[sub.game]||sub.game)+' → '+sub.grading_company;
   setV('p_grade',sub.result_grade);setV('p_gradelabel',sub.result_grade_label);setV('p_cert',sub.cert_number);setV('p_cost','');setV('p_location','');
-  document.getElementById('promoteOverlay').classList.add('on');}
+  resetCur('p');document.getElementById('promoteOverlay').classList.add('on');}
 function closePromote(){document.getElementById('promoteOverlay').classList.remove('on');}
-async function doPromote(btn){if(!promoteSub)return;btn.disabled=true;
-  const body={result_grade:numv('p_grade'),result_grade_label:val('p_gradelabel')||null,cert_number:val('p_cert')||null,cost_cents:dc('p_cost'),location:val('p_location')||null};
+async function doPromote(btn){if(!promoteSub)return;
+  const cur=modalCur('p');
+  if(cur==='USD'&&usdRate()==null){alert('FX rate unavailable — switch the currency to AUD (or retry once the FX proxy is up).');return;}
+  btn.disabled=true;
+  const body={result_grade:numv('p_grade'),result_grade_label:val('p_gradelabel')||null,cert_number:val('p_cert')||null,cost_cents:dcAud('p_cost',cur),location:val('p_location')||null};
   try{await api('/submissions/'+promoteSub.id+'/promote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});}catch(e){alert('Promote failed.');}
   btn.disabled=false;closePromote();load();
 }
