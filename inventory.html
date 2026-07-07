@@ -119,7 +119,18 @@
   .curbar label{color:var(--gold);}
   .curbar #m_currate,.curbar #s_currate,.curbar #p_currate,#m_currate,#s_currate,#p_currate{margin:0;color:var(--muted);}
   .cursym{color:var(--gold);font-weight:700;}
-  #slabPreview{background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px;justify-content:center;}
+  #slabPreview{background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;justify-content:center;}
+  /* realistic graded-slab render (Collectr-style): glossy holder + branded label + card window */
+  .slab{position:relative;border-radius:9% / 6%;background:linear-gradient(158deg,#fdfeff 0%,#eef1f6 45%,#dde3ec 100%);border:1px solid #b7c0ce;box-shadow:0 3px 9px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.85);overflow:hidden;font-family:Arial,Helvetica,sans-serif;user-select:none;flex:0 0 auto;}
+  .slab::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;background:linear-gradient(118deg,rgba(255,255,255,.5) 0%,rgba(255,255,255,0) 20%,rgba(255,255,255,0) 62%,rgba(255,255,255,.22) 100%);}
+  .slab .slab-label{position:relative;z-index:1;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:3px;}
+  .slab .slab-label .co{font-weight:800;letter-spacing:.02em;line-height:1;color:var(--slab-accent,#cf2e2e);}
+  .slab .slab-label .gl{font-weight:600;color:#5c6472;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .slab .slab-label .gr{font-weight:900;color:#14171e;line-height:.82;flex:0 0 auto;}
+  .slab .slab-accent-bar{height:2px;background:var(--slab-accent,#cf2e2e);position:relative;z-index:1;}
+  .slab .slab-win{position:relative;background:linear-gradient(#cfd6e1,#b6bfce);overflow:hidden;box-shadow:inset 0 2px 6px rgba(0,0,0,.3);}
+  .slab .slab-win img{width:100%;height:100%;object-fit:cover;display:block;}
+  .slab .slab-win.noimg::after{content:"no image";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8a93a3;font-size:9px;font-family:var(--mono);letter-spacing:.05em;}
   /* motion + scrollbar */
   @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
   @keyframes fade{from{opacity:0;}to{opacity:1;}}
@@ -200,7 +211,7 @@
         </div>
       </div>
       <div class="fld"><label>Quantity</label><input id="m_qty" type="number" value="1" min="1"></div>
-      <div class="fld"><label>Location</label><input id="m_location" placeholder="Box A / shelf 2"></div>
+      <div class="fld"><label>Location</label><input id="m_location" list="locList" autocomplete="off" placeholder="Box A / shelf 2 — pick or type new"></div>
       <div class="fld"><label>Status</label><select id="m_status" onchange="toggleSale()"><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select></div>
       <div class="fld full curbar"><label>Money entered in</label>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -278,7 +289,7 @@
           <span class="hint" id="p_currate"></span>
         </div></div>
       <div class="fld"><label>Purchase cost (<span class="cursym">A$</span>)</label><input id="p_cost" type="number" step="0.01"></div>
-      <div class="fld"><label>Location</label><input id="p_location"></div>
+      <div class="fld"><label>Location</label><input id="p_location" list="locList" autocomplete="off" placeholder="pick or type new"></div>
     </div>
     <div class="hint">The grading cost from the submission is carried over as a cost-basis fee automatically.</div>
     <div class="modal-actions">
@@ -287,6 +298,9 @@
     </div>
   </div>
 </div>
+
+<!-- shared location autocomplete (populated from existing item locations) -->
+<datalist id="locList"></datalist>
 
 <script src="/extras.js"></script>
 <script>
@@ -331,32 +345,32 @@ function applyCur(scope){
 }
 function centsAud(c){return c==null?'—':aud(c/100);}
 
-// Mini "slab" badge SVG in the grading company's brand colours (Collectr-style).
-function slabTheme(code){return ((COS.find(function(c){return c.code===code;})||{}).theme)||{bg:'#3a3f4b',fg:'#e8ecf4',accent:'#5a6273'};}
-function slabBadge(company,grade,w,imageUrl){
-  w=w||46; var h=Math.round(w*1.36);
-  var t=slabTheme(company), code=company||'RAW';
-  var g=(grade==null||grade==='')?'':(''+grade);
-  if(imageUrl){
-    var bandH=Math.round(h*0.30);
-    return '<div style="width:'+w+'px;height:'+h+'px;border-radius:'+(w*0.12).toFixed(1)+'px;background:#eef1f6;border:1px solid #c2cad6;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.4);display:flex;flex-direction:column;">'
-      +'<div style="height:'+bandH+'px;background:'+t.bg+';color:'+t.fg+';display:flex;align-items:center;justify-content:center;gap:3px;font-family:Arial,Helvetica,sans-serif;font-weight:800;font-size:'+Math.max(7,Math.round(w*0.16))+'px;line-height:1;">'+esc(code)+(g?' <b style="font-size:'+Math.round(w*0.2)+'px;">'+esc(g)+'</b>':'')+'</div>'
-      +'<div style="flex:1;background:#dbe1ea;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="'+esc(imageUrl)+'" alt="" loading="lazy" style="width:100%;height:100%;object-fit:contain;" onerror="this.parentNode.style.display=\'none\'"></div>'
-    +'</div>';
-  }
-  var band=Math.round(h*0.42), p=2, winY=band+p+2;
-  var codeSize=Math.max(6,Math.round(w*(code.length>4?0.155:0.2)));
-  var s='<svg viewBox="0 0 '+w+' '+h+'" width="'+w+'" height="'+h+'" xmlns="http://www.w3.org/2000/svg" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));">';
-  s+='<rect x="0.7" y="0.7" width="'+(w-1.4)+'" height="'+(h-1.4)+'" rx="'+(w*0.12).toFixed(1)+'" fill="#eef1f6" stroke="#c2cad6" stroke-width="1"/>';
-  s+='<rect x="'+(p+1)+'" y="'+(p+1)+'" width="'+(w-2*p-2)+'" height="'+band+'" rx="'+(w*0.07).toFixed(1)+'" fill="'+t.bg+'"/>';
-  s+='<text x="'+(w/2)+'" y="'+(p+band*0.4)+'" text-anchor="middle" dominant-baseline="central" font-family="Arial,Helvetica,sans-serif" font-weight="800" font-size="'+codeSize+'" fill="'+t.fg+'">'+esc(code)+'</text>';
-  if(g)s+='<text x="'+(w/2)+'" y="'+(p+band*0.78)+'" text-anchor="middle" dominant-baseline="central" font-family="Arial,Helvetica,sans-serif" font-weight="900" font-size="'+Math.round(w*0.3)+'" fill="'+t.fg+'">'+esc(g)+'</text>';
-  s+='<rect x="'+(p+2)+'" y="'+winY+'" width="'+(w-2*p-4)+'" height="'+(h-winY-p-1)+'" rx="2" fill="#dbe1ea"/>';
-  s+='<rect x="'+(p+4)+'" y="'+(winY+2)+'" width="'+(w-2*p-8)+'" height="'+(h-winY-p-5)+'" rx="1.5" fill="'+(t.accent||'#bcc6d4')+'" opacity="0.30"/>';
-  s+='</svg>';
+// Realistic graded-slab render — glossy holder + branded label + card window (see .slab CSS).
+// Per-company accent (PSA red, BGS navy, CGC blue …); label splits "GEM MT 10" into desc + grade.
+var SLAB_ACCENT={PSA:'#cf2e2e',BGS:'#1b3a6b',CGC:'#123e8c',SGC:'#2a2f3a',TAG:'#0f7d5b',ARK:'#6d28d9',PCG:'#b8860b',RAW:'#5a6273'};
+function slabAccent(code){return SLAB_ACCENT[code]||SLAB_ACCENT.RAW;}
+// slabHtml({company, grade, gradeLabel, image, width})
+function slabHtml(o){
+  var w=o.width||62, co=o.company||'RAW', img=o.image||null;
+  var accent=slabAccent(co);
+  var lbl=o.gradeLabel||'', desc=lbl, g=(o.grade==null||o.grade==='')?'':(''+o.grade);
+  var m=lbl.match(/^(.*?)(\d+(?:\.\d+)?)\s*$/); if(m){desc=m[1].trim().replace(/[-\s]+$/,''); if(!g)g=m[2];}
+  var labelH=Math.round(w*0.34), winH=Math.round(w*1.30), pad=Math.max(2,Math.round(w*0.06));
+  var coF=Math.max(6,Math.round(w*0.135)), glF=Math.max(5,Math.round(w*0.098)), grF=Math.max(11,Math.round(w*0.36));
+  var s='<div class="slab" style="width:'+w+'px;--slab-accent:'+accent+';">';
+  s+='<div class="slab-label" style="height:'+labelH+'px;padding:0 '+pad+'px;">';
+  s+='<span style="display:flex;flex-direction:column;gap:1px;min-width:0;">';
+  s+='<span class="co" style="font-size:'+coF+'px;">'+esc(co==='RAW'?'RAW':co)+'</span>';
+  if(desc)s+='<span class="gl" style="font-size:'+glF+'px;max-width:'+Math.round(w*0.62)+'px;">'+esc(desc)+'</span>';
+  s+='</span>';
+  if(g)s+='<span class="gr" style="font-size:'+grF+'px;">'+esc(g)+'</span>';
+  s+='</div><div class="slab-accent-bar"></div>';
+  s+='<div class="slab-win'+(img?'':' noimg')+'" style="height:'+winH+'px;">';
+  if(img)s+='<img src="'+esc(img)+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentNode.classList.add(\'noimg\');">';
+  s+='</div></div>';
   return s;
 }
-function updateSlabPreview(){var el=document.getElementById('slabPreview');if(!el)return;var co=val('m_company'),img=val('m_image')||null;if(!co&&!img){el.innerHTML='<span style="color:var(--muted);font-size:12px;">raw / ungraded</span>';return;}el.innerHTML=slabBadge(co||'RAW',numv('m_grade'),54,img);}
+function updateSlabPreview(){var el=document.getElementById('slabPreview');if(!el)return;var co=val('m_company'),img=val('m_image')||null;if(!co&&!img){el.innerHTML='<span style="color:var(--muted);font-size:12px;">raw / ungraded</span>';return;}el.innerHTML=slabHtml({company:co||'RAW',grade:numv('m_grade'),gradeLabel:val('m_gradelabel'),image:img,width:96});}
 
 // value of an item converted to AUD dollars (null if unknown / FX down for a non-AUD value)
 function valueAud(it){
@@ -392,7 +406,7 @@ function sparkHtml(it){
   return '<div class="spark">'+(window.TCG?TCG.lineGraph(s):'')+'</div>';
 }
 function itemRow(it){
-  const slab=it.grading_company?('<div style="flex:0 0 auto;" title="'+esc(it.grading_company+(it.grade!=null?' '+it.grade:''))+'">'+slabBadge(it.grading_company,it.grade,46,it.image_url)+'</div>'):'';
+  const slab=it.grading_company?('<div style="flex:0 0 auto;" title="'+esc(it.grading_company+(it.grade!=null?' '+it.grade:''))+'">'+slabHtml({company:it.grading_company,grade:it.grade,gradeLabel:it.grade_label,image:it.image_url,width:62})+'</div>'):'';
   const sgTxt=(function(){try{if(!it.subgrades)return '';var o=JSON.parse(it.subgrades);var pr=[];if(o.centering!=null)pr.push('Ctr '+o.centering);if(o.corners!=null)pr.push('C '+o.corners);if(o.edges!=null)pr.push('E '+o.edges);if(o.surface!=null)pr.push('S '+o.surface);return pr.length?'<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">'+pr.join(' · ')+'</div>':'';}catch(e){return '';}})();
   const v=valueAud(it), vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?' <small style="color:var(--muted);font-weight:600;">· '+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</small>':'';
   const pl=it.status==='sold'?realized(it):unrealized(it);
@@ -442,8 +456,14 @@ function subRow(sub){
 }
 
 let CURRENT=[], SUBS=[];
+// Populate the location combobox from existing item locations (most-used first). Called by load()
+// so a newly-typed location shows up in the list after the next save. Fire-and-forget.
+async function loadLocations(){
+  try{const r=await api('/locations');const dl=document.getElementById('locList');if(dl)dl.innerHTML=(r.locations||[]).map(function(l){return '<option value="'+esc(l)+'"></option>';}).join('');}catch(e){}
+}
 async function load(){
   document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
+  loadLocations();
   const params=new URLSearchParams();
   ['game','company','status'].forEach(k=>{const v=document.getElementById('f_'+k).value;if(v)params.set(k,v);});
   const qv=document.getElementById('f_q').value.trim();if(qv)params.set('q',qv);
@@ -497,6 +517,17 @@ function certFailMsg(co,r){
   if(st)return 'PSA lookup failed (HTTP '+esc(st)+') — verify on PSA, then fill the fields manually.';
   return 'No PSA match — check the cert number, or fill the fields manually.';
 }
+// After a lookup with no slab photo (PSA scrape returns none), resolve the CARD art from the
+// filled fields for the slab preview — same resolver the save path uses, so preview == stored.
+async function previewCardImage(){
+  if(val('m_image'))return;                       // user/lookup already supplied one
+  const g=val('m_game'),name=val('m_name');if(!g||!name)return;
+  try{
+    const qs=new URLSearchParams({game:g,name:name,number:val('m_number'),set_name:val('m_set'),language:val('m_lang')||'EN'});
+    const r=await fetch('/api/inventory/resolve-image?'+qs.toString()).then(x=>x.json());
+    if(r&&r.image_url&&!val('m_image')){setV('m_image',r.image_url);updateSlabPreview();}
+  }catch(e){}
+}
 async function certLookup(){
   const co=(document.getElementById('m_certco')||{}).value||'PSA';
   const cert=val('m_certno');const s=document.getElementById('m_certstatus');
@@ -508,7 +539,9 @@ async function certLookup(){
     if(r&&r.matched&&r.identity){
       setV('m_name',r.identity.name);setV('m_set',r.identity.set_name);setV('m_number',r.identity.number);setV('m_variant',r.identity.variant);setV('m_lang',r.identity.language||'EN');
       if(r.grade!=null)setV('m_grade',r.grade);if(r.grade_label)setV('m_gradelabel',r.grade_label);
-      if(r.image_url)setV('m_image',r.image_url);updateSlabPreview();
+      setV('m_image','');   // this lookup refills everything from the cert — drop any prior auto-resolved art
+      if(r.image_url){setV('m_image',r.image_url);updateSlabPreview();}
+      else{updateSlabPreview();previewCardImage();}   // no PSA photo — resolve the card art for the preview
       s.className='status ok';s.textContent='✓ '+esc(r.identity.name||'found — fields filled');
     }else{
       const link=(r&&r.verifyUrl)?(' <a href="'+esc(r.verifyUrl)+'" target="_blank" rel="noopener">Verify on '+esc(co)+' ↗</a>'):'';
