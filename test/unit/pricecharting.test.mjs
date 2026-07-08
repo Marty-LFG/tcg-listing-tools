@@ -3,7 +3,7 @@
 // live-canary for structure drift is the status page's PC probe, not these tests.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMoneyCents, parseFullPrices, parseCardPage, pickBestMatch } from '../../lib/pricecharting.mjs';
+import { parseMoneyCents, parseFullPrices, parseCardPage, pickBestMatch, parseSealedProduct, parseSealedConsole } from '../../lib/pricecharting.mjs';
 
 describe('parseMoneyCents', () => {
   it('dollar strings → integer cents (GR3)', () => {
@@ -70,5 +70,52 @@ describe('pickBestMatch', () => {
   });
   it('wrong number → null (never a cross-card match)', () => {
     assert.equal(pickBestMatch(results, { name: 'Charizard', number: '999', setName: 'Base Set' }), null);
+  });
+});
+
+// ---- sealed products (booster boxes / ETBs / bundles …) --------------------
+const SEALED_PAGE = `
+<h1>Full Price Guide: Scarlet &amp; Violet 151 Booster Box (Pokemon Scarlet &amp; Violet 151)</h1>
+<div id="full-prices"><table>
+<tr><td>New</td><td class="price js-price">$399.00</td></tr>
+<tr><td>Loose</td><td class="price js-price">$350.00</td></tr>
+<tr><td>Box only</td><td class="price js-price">-</td></tr>
+</table></div>`;
+
+describe('parseSealedProduct', () => {
+  it('reads the sealed (New) + loose rungs and product/console names', () => {
+    const p = parseSealedProduct(SEALED_PAGE);
+    assert.equal(p.productName, 'Scarlet & Violet 151 Booster Box');
+    assert.equal(p.consoleName, 'Pokemon Scarlet & Violet 151');
+    assert.equal(p.prices.sealed, 39900);   // 'New'
+    assert.equal(p.prices.loose, 35000);
+    assert.equal(p.prices.cib, null);       // no CIB/Complete rung on the page — not fabricated (GR4)
+  });
+  it('missing table → empty prices, never a throw (GR7)', () => {
+    const p = parseSealedProduct('<html></html>');
+    assert.deepEqual(p.prices, { sealed: null, loose: null, cib: null });
+  });
+});
+
+// A console page lists both singles (with "#<n>") and sealed products (no "#"). The card path
+// (parseConsole) drops the sealed rows; parseSealedConsole KEEPS them and drops the singles.
+const CONSOLE = `
+<table id="games_table">
+<tr id="product-111" data-product><td class="title"><a href="https://www.pricecharting.com/game/pokemon-151/charizard-ex-199">Charizard ex #199</a></td></tr>
+<tr id="product-222" data-product><td class="title"><a href="https://www.pricecharting.com/game/pokemon-151/booster-box">Scarlet & Violet 151 Booster Box</a></td></tr>
+<tr id="product-333" data-product><td class="title"><a href="https://www.pricecharting.com/game/pokemon-151/etb">151 Elite Trainer Box</a></td></tr>
+</table>`;
+
+describe('parseSealedConsole', () => {
+  it('keeps the #-less sealed rows and drops the numbered singles', () => {
+    const rows = parseSealedConsole(CONSOLE);
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].name, 'Scarlet & Violet 151 Booster Box');
+    assert.ok(rows[0].url.includes('/game/'));
+    assert.equal(rows[1].name, '151 Elite Trainer Box');
+  });
+  it('no table → empty array, never a throw (GR7)', () => {
+    assert.deepEqual(parseSealedConsole('<html></html>'), []);
+    assert.deepEqual(parseSealedConsole(null), []);
   });
 });

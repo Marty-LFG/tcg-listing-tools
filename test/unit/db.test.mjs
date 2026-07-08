@@ -10,7 +10,8 @@ import { tmpFile } from '../helpers/tmp.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
 
 const TABLES = ['watchlist', 'price_snapshots', 'signals', 'card_cache', 'grading_submissions',
-  'inventory_items', 'inventory_valuations', 'sku_counter', 'bulk_batches', 'channel_exports'];
+  'inventory_items', 'inventory_valuations', 'sku_counter', 'bulk_batches', 'channel_exports',
+  'sealed_items', 'sealed_valuations', 'sealed_barcodes', 'sealed_batches'];
 
 const dbPath = tmpFile('tracker-test.db');
 const db = openDb(dbPath);
@@ -50,5 +51,21 @@ describe('basic write/read', () => {
     db.prepare(`INSERT INTO watchlist (game, identity_key, name) VALUES ('pokemon','sv4-25','Test Card')`).run();
     const row = db.prepare(`SELECT * FROM watchlist WHERE identity_key='sv4-25'`).get();
     assert.equal(row.name, 'Test Card');
+  });
+  it('sealed_items insert round-trips (money in cents, product_type/upc set)', () => {
+    db.prepare(`INSERT INTO sealed_items (sku, game, product_type, name, set_name, upc, cost_cents, value_cents)
+      VALUES ('BK-SLD-PKM-000001','pokemon','booster_box','151 Booster Box','Scarlet & Violet 151','820136488510',35000,39900)`).run();
+    const row = db.prepare(`SELECT * FROM sealed_items WHERE sku='BK-SLD-PKM-000001'`).get();
+    assert.equal(row.product_type, 'booster_box');
+    assert.equal(row.upc, '820136488510');
+    assert.equal(row.cost_cents, 35000);
+    assert.equal(row.status, 'in_stock');       // column default
+    assert.equal(row.condition, 'sealed');       // column default
+  });
+  it('sealed_barcodes upserts by upc (the local cache primary key)', () => {
+    db.prepare(`INSERT INTO sealed_barcodes (upc, name, product_type, source, confidence) VALUES ('820136488510','151 Booster Box','booster_box','manual','manual')`).run();
+    const row = db.prepare(`SELECT * FROM sealed_barcodes WHERE upc='820136488510'`).get();
+    assert.equal(row.name, '151 Booster Box');
+    assert.equal(row.hit_count, 1);              // column default
   });
 });
