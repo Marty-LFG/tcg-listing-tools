@@ -120,9 +120,13 @@
   .cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px;}
   .cardtile{position:relative;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--ink);transition:.15s;}
   .cardtile.own{border-color:rgba(67,214,160,.5);box-shadow:0 0 0 1px rgba(67,214,160,.25);}
-  .cardtile .imgwrap{aspect-ratio:63/88;background:linear-gradient(160deg,#171b24,#0d0f15);display:flex;align-items:center;justify-content:center;}
-  .cardtile img{width:100%;height:100%;object-fit:contain;display:block;}
-  .cardtile .ph{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:center;padding:8px;}
+  .cardtile .imgwrap{position:relative;aspect-ratio:63/88;background:linear-gradient(160deg,#171b24,#0d0f15);display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  .cardtile img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .28s ease;}
+  .cardtile img.rdy{opacity:1;}
+  .cardspin{position:absolute;width:20px;height:20px;border:2px solid rgba(255,255,255,.1);border-top-color:var(--gold);border-radius:50%;animation:rot .7s linear infinite;display:none;}
+  .imgwrap.loading .cardspin{display:block;}
+  .cardtile .ph{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:center;padding:8px;display:none;}
+  .imgwrap.noimg .ph,.imgwrap.imgerr .ph{display:block;}
   .cardtile .cap{padding:6px 8px 8px;}
   .cardtile .cnum{font-family:var(--mono);font-size:9.5px;color:var(--faint);}
   .cardtile .cnm{font-size:11px;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;}
@@ -595,8 +599,17 @@ function enPrice(c){
   return null;
 }
 function cardTile(img,num,name,rarity,price,owned){
+  // Each image loads independently (lazy). Show a spinner in its tile until it paints, then fade it
+  // in — so cards appear as soon as their own image is ready, never waiting on the whole grid.
+  var iw=img
+    ?'<div class="imgwrap loading"><span class="cardspin"></span>'
+      +'<img src="'+esc(img)+'" alt="" decoding="async" fetchpriority="low" '
+      +'onload="this.parentNode.classList.remove(\'loading\');this.classList.add(\'rdy\')" '
+      +'onerror="this.parentNode.classList.remove(\'loading\');this.parentNode.classList.add(\'imgerr\');this.remove()">'
+      +'<span class="ph">'+esc(name||'—')+'</span></div>'
+    :'<div class="imgwrap noimg"><span class="ph">'+esc(name||'—')+'</span></div>';
   return '<div class="cardtile'+(owned?' own':'')+'">'+(owned?'<span class="ownflag">'+esc((owned.grading_company||'OWNED')+(owned.grade!=null?' '+owned.grade:''))+'</span>':'')+
-    '<div class="imgwrap">'+(img?'<img src="'+esc(img)+'" loading="lazy" alt="">':'<span class="ph">'+esc(name||'—')+'</span>')+'</div>'+
+    iw+
     '<div class="cap"><div class="cnum">#'+esc(num||'?')+(rarity?' · '+esc(rarity):'')+'</div>'+
     '<div class="cnm" title="'+esc(name)+'">'+esc(name||'')+'</div>'+
     (price?'<div class="cpr">'+esc(price)+'</div>':'')+'</div></div>';
