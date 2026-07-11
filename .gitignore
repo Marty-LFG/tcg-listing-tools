@@ -21,3 +21,13 @@ data/exports/
 # Generated on-disk caches (not source): PriceCharting scrape results + proxied card images.
 data/pc-cache/
 data/img-cache/
+
+# Baked data catalogs (build artifacts, NOT source): regenerated in place on a timer by
+# lib/refresh.mjs from the tracked seeds + live upstreams (TCGdex / Riot). Tracking them made
+# every deploy collide with the server's own rebuild. Seeds stay tracked as the source of truth
+# (data/pokemon-intl-seed.json); regenerate the bakes with
+#   node scripts/build-pokemon-intl-sets.mjs   &&   node scripts/build-riftbound-data.mjs
+# (or just let the 60s boot refresh repopulate them). funko_pop.json / pokemon-dex-en.json stay
+# tracked — their upstreams are frozen / built by hand, so they don't churn.
+data/pokemon-intl-sets.json
+data/riftbound.json
