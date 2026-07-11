@@ -144,6 +144,7 @@
   @keyframes rot{to{transform:rotate(360deg);}}
   .dw-cardhead{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:2px 0 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:9px;}
   .dw-cardhead>span{white-space:nowrap;}
+  .dw-meta{font-style:normal;color:var(--faint);font-weight:500;letter-spacing:.04em;}
   .dw-sortlbl{display:flex;align-items:center;gap:7px;font-size:9px;color:var(--faint);letter-spacing:.1em;flex:none;}
   .dw-cardhead select{font-family:var(--mono);font-size:11px;letter-spacing:0;text-transform:none;color:var(--text);background:var(--ink);border:1px solid var(--line2);border-radius:7px;padding:5px 9px;cursor:pointer;outline:none;transition:.14s;}
   .dw-cardhead select:hover{border-color:var(--gold);}
@@ -541,12 +542,12 @@ function sortCards(cards,mode){
   return a;
 }
 // Render the card header (count + sort picker) and grid; re-sorts in place without re-fetching.
-function paintCards(head,grid,cards){
+function paintCards(head,grid,cards,meta){
   const hasPrice=cards.some((c)=>c.priceVal!=null);
   const hasRarity=cards.some((c)=>c.rarity);
   const opts=CARD_SORTS.filter((o)=>(o[0].indexOf('price')<0||hasPrice)&&(o[0]!=='rarity'||hasRarity));
   if(!opts.some((o)=>o[0]===_cardSort))_cardSort='num';
-  head.innerHTML='<span>Cards · '+cards.length+'</span>'+
+  head.innerHTML='<span>Cards · '+cards.length+(meta?' <em class="dw-meta">· '+esc(meta)+'</em>':'')+'</span>'+
     '<label class="dw-sortlbl">sort <select id="dwSort">'+
     opts.map((o)=>'<option value="'+o[0]+'"'+(o[0]===_cardSort?' selected':'')+'>'+esc(o[1])+'</option>').join('')+
     '</select></label>';
@@ -554,37 +555,27 @@ function paintCards(head,grid,cards){
   draw();
   const sel=head.querySelector('#dwSort');if(sel)sel.addEventListener('change',()=>{_cardSort=sel.value;draw();});
 }
+// Cards come from the server's cached, source-aware endpoint (EN=pokemontcg.io, indexed=TCGdex,
+// seeded/pcOnly=PriceCharting), normalized + persisted so a set always has SOMETHING — even offline.
 async function loadCards(set,wrap){
   const grid=wrap.querySelector('#cardgrid');const head=wrap.querySelector('#dwch');
   const note=(html,label)=>{grid.innerHTML=html;head.textContent='Cards'+(label?' · '+label:'');};
   const ownNums=ownedNumbers(set);
-  // No card DB covers this set yet (seeded ahead of TCGdex, or PriceCharting-only) — expected, not an error.
-  if(set.lang!=='en' && set.source!=='indexed'){
-    return note(noteHTML(set.source==='pricecharting'
-      ? 'Known only from PriceCharting so far — TCGdex hasn’t ingested a card list. Open it in the builder for a card-by-card lookup with prices.'
-      : 'This set is seeded ahead of TCGdex, so there’s no card list to show yet. Open it in the builder to look cards up (it’ll appear here once TCGdex ingests it).',set),
-      set.source==='pricecharting'?'via builder':'seeded · no card list yet');
-  }
   try{
-    let cards;
-    if(set.lang==='en'){
-      const j=await jget('/api/pkm/cards?q=set.id:'+encodeURIComponent(set.rid)+'&pageSize=250');
-      const raw=(j.data||[]);
-      if(!raw.length)return note(noteHTML('No cards returned for this set yet — open it in the builder.',set),'0');
-      cards=raw.map((c)=>{const numRaw=String(c.number||'');return {
-        numN:parseCardNum(numRaw),numRaw:numRaw.replace(/^0+(?=\d)/,'')||numRaw,name:c.name||'',rarity:c.rarity||'',
-        priceVal:enPriceVal(c),price:enPrice(c),img:c.images&&(c.images.small||c.images.large),
-        owned:ownNums.get(numRaw.replace(/^0+/,''))};});
-    }else{
-      const id=set.tcgdexId||set.code;
-      const j=await jget('/api/tcgdex/'+encodeURIComponent(set.lang)+'/sets/'+encodeURIComponent(id));
-      const raw=(j&&j.cards)||[];
-      if(!raw.length)return note(noteHTML('TCGdex lists this set but returned no cards yet — open it in the builder.',set),'0');
-      cards=raw.map((c)=>{const numRaw=String(c.localId||c.id||'');return {
-        numN:parseCardNum(numRaw),numRaw,name:c.name||'',rarity:'',priceVal:null,price:null,
-        img:c.image?c.image+'/low.webp':'',owned:null};});
+    const qs=new URLSearchParams({lang:set.lang,set:set.rid});
+    if(set.lang!=='en'){qs.set('src',set.source);if(set.tcgdexId)qs.set('tcgdexId',set.tcgdexId);if(set.pcSlug)qs.set('pcSlug',set.pcSlug);}
+    const j=await jget('/api/catalog/cards?'+qs.toString());
+    const raw=(j&&j.cards)||[];
+    if(!raw.length){
+      const seededNoSrc=set.lang!=='en'&&set.source!=='indexed';
+      return note(noteHTML(seededNoSrc
+        ? 'This set is seeded ahead of the card sources — no card list yet. Open it in the builder (it’ll appear here once TCGdex or PriceCharting publishes it).'
+        : 'No cards returned for this set yet — open it in the builder.',set),
+        set.source==='seeded'?'seeded · no card list yet':'via builder');
     }
-    paintCards(head,grid,cards);
+    const cards=raw.map((c)=>({numN:parseCardNum(c.numRaw),numRaw:c.numRaw,name:c.name||'',rarity:c.rarity||'',
+      priceVal:c.priceVal,price:c.price,img:c.img||'',owned:ownNums.get(String(c.numRaw).replace(/^0+/,''))}));
+    paintCards(head,grid,cards,j.stale?'cached copy':(j.source==='pricecharting'?'via PriceCharting':(j.source==='tcgdex'?'via TCGdex':'')));
   }catch(e){
     note(noteHTML('Cards aren’t available from the data source right now — open it in the builder to look them up.',set),'via builder');
   }
