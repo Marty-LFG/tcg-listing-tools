@@ -2,7 +2,7 @@
 // The endpoint behaviour (incl. the no-secret-leak guard) lives in the integration suite.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { keyPresence, versionInfo, SETTINGS, PROBES } from '../../lib/status.mjs';
+import { keyPresence, versionInfo, SETTINGS, PROBES, diagTokenCheck } from '../../lib/status.mjs';
 
 describe('keyPresence', () => {
   const env = {
@@ -84,6 +84,27 @@ describe('SETTINGS validators', () => {
     for (const name of ['collectr', 'grading', 'grading-companies']) {
       assert.equal(SETTINGS[name].editable, false);
     }
+  });
+});
+
+describe('diagTokenCheck (logs + triggers gate)', () => {
+  it('DISABLED when DIAG_TOKEN is unset — 503, even with a token supplied', () => {
+    const r = diagTokenCheck({}, 'anything');
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 503);
+  });
+  it('401 when enabled but no token provided', () => {
+    const r = diagTokenCheck({ DIAG_TOKEN: 'sekret-value-123456' }, '');
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 401);
+  });
+  it('403 on a wrong token (incl. length mismatch — no throw)', () => {
+    const env = { DIAG_TOKEN: 'sekret-value-123456' };
+    assert.equal(diagTokenCheck(env, 'nope').code, 403);
+    assert.equal(diagTokenCheck(env, 'sekret-value-123457').code, 403);
+  });
+  it('ok on an exact match', () => {
+    assert.equal(diagTokenCheck({ DIAG_TOKEN: 'sekret-value-123456' }, 'sekret-value-123456').ok, true);
   });
 });
 
