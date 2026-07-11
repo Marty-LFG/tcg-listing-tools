@@ -507,29 +507,35 @@ async function loadCards(set,wrap){
   const grid=wrap.querySelector('#cardgrid');const head=wrap.querySelector('.dw-sechead');
   const done=(html,label)=>{grid.innerHTML=html;head.innerHTML='Cards'+(label?' · '+label:'');};
   const ownNums=ownedNumbers(set);
+  // No card DB covers this set yet: seeded ahead of TCGdex, or PriceCharting-only. This is expected,
+  // NOT an error — a card-level source just hasn't ingested it. Fall back to the builder.
+  if(set.lang!=='en' && set.source!=='indexed'){
+    return done(noteHTML(set.source==='pricecharting'
+      ? 'Known only from PriceCharting so far — TCGdex hasn’t ingested a card list. Open it in the builder for a card-by-card lookup with prices.'
+      : 'This set is seeded ahead of TCGdex, so there’s no card list to show yet. Open it in the builder to look cards up (it’ll appear here once TCGdex ingests it).',set),
+      set.source==='pricecharting'?'via builder':'seeded · no card list yet');
+  }
   try{
     if(set.lang==='en'){
       const j=await jget('/api/pkm/cards?q=set.id:'+encodeURIComponent(set.rid)+'&pageSize=250&orderBy=number');
       const cards=(j.data||[]);
-      if(!cards.length)return done(noteHTML('No cards returned for this set yet.',set),'0');
-      done(cards.map((c)=>{
+      if(!cards.length)return done(noteHTML('No cards returned for this set yet — open it in the builder.',set),'0');
+      return done(cards.map((c)=>{
         const pr=enPrice(c);const num=String(c.number||'').replace(/^0+/,'');
         const owned=ownNums.get(num);
         return cardTile(c.images&&(c.images.small||c.images.large),num||c.number,c.name,c.rarity,pr,owned);
       }).join(''),cards.length+' cards');
-    }else if(set.tcgdexId||set.code){
-      // TCGdex intl set → cards[] (only for sets TCGdex has ingested).
-      const id=set.tcgdexId||set.code;
-      const j=await jget('/api/tcgdex/'+encodeURIComponent(set.lang)+'/sets/'+encodeURIComponent(id));
-      const cards=(j&&j.cards)||[];
-      if(!cards.length)return done(noteHTML('TCGdex has this set indexed but returned no card list — open it in the builder for a card-by-card lookup.',set),'0');
-      done(cards.map((c)=>cardTile(c.image?c.image+'/low.webp':'',c.localId||c.id,c.name,'',null,null)).join(''),cards.length+' cards');
-    }else{
-      done(noteHTML(set.source==='pricecharting'
-        ?'This set is known only from PriceCharting (no card-level index yet). Open it in the builder — the PriceCharting-backed lookup resolves individual cards and prices.'
-        :'No card-level index available for this set yet. Open it in the builder to look cards up.',set),'no index');
     }
-  }catch(e){done(noteHTML('Card lookup failed ('+esc(e.message)+'). The set is still indexed — try the builder.',set),'error');}
+    // intl + TCGdex-indexed → the set carries a card list.
+    const id=set.tcgdexId||set.code;
+    const j=await jget('/api/tcgdex/'+encodeURIComponent(set.lang)+'/sets/'+encodeURIComponent(id));
+    const cards=(j&&j.cards)||[];
+    if(!cards.length)return done(noteHTML('TCGdex lists this set but returned no cards yet — open it in the builder.',set),'0');
+    return done(cards.map((c)=>cardTile(c.image?c.image+'/low.webp':'',c.localId||c.id,c.name,'',null,null)).join(''),cards.length+' cards');
+  }catch(e){
+    // TCGdex/pokemontcg.io hiccup or a set the source dropped — degrade to the builder, not an error banner.
+    done(noteHTML('Cards aren’t available from the data source right now — open it in the builder to look them up.',set),'via builder');
+  }
 }
 function noteHTML(msg,set){
   return '<div class="dw-note" style="grid-column:1/-1">'+esc(msg)+
