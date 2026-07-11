@@ -775,6 +775,23 @@ async function addTrack(){
     buildLangMenu();renderLangBtn();
   })();
   loadSets(); loadIntlSets(); loadDexMap(); render();
+  // Deep-link from catalog.html: ?lang=<dataLang>&set=<code|id|name> → switch language + prefill/resolve the set.
+  (function(){try{
+    var u=new URL(location.href),L=u.searchParams.get('lang'),S=u.searchParams.get('set');
+    if(!L&&!S)return;
+    if(L){var row=LANGS.find(function(x){return x[2]===L;});if(row)setLang(row[1]);}
+    if(S){var tries=0;(function apply(){
+      var list=activeSets();
+      if((!list||!list.length)&&tries++<40){return setTimeout(apply,150);}
+      var sc=document.getElementById('setCode');if(!sc)return;
+      var found=resolveSet(S);
+      if(found){selectedSet=found;
+        var nm=(found.name_en||found.name_native||found.name||found.code||'');
+        sc.value=isIntlLang()?(nm+(found.code?' ('+found.code+')':'')):((found.name||'')+(found.ptcgoCode?' ('+found.ptcgoCode+')':''));
+        var n=document.getElementById('num');if(n)n.focus();
+      }else{sc.value=S;renderSetMenu(S);}
+    })();}
+  }catch(e){}})();
 })();
 </script>
 </body>

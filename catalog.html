@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catalog · Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#171b24;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);
+    --green:#43d6a0;--amber:#f0c04a;--red:#f0666e;--blue:#6ab0ff;--teal:#3fdccb;--violet:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:34px 24px 90px;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:46px 46px;-webkit-mask-image:radial-gradient(circle at 50% 8%,#000,transparent 78%);mask-image:radial-gradient(circle at 50% 8%,#000,transparent 78%);}
+  .wrap{max-width:1200px;width:100%;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;}
+  ::selection{background:var(--gold-soft);}
+
+  /* ---- masthead ---- */
+  .top{display:flex;align-items:center;gap:15px;margin-bottom:22px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin:0;line-height:1.05;}
+  .sub{color:var(--muted);font-size:12.5px;margin:5px 0 0;font-family:var(--mono);}
+  .back{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:7px 12px;transition:.15s;white-space:nowrap;}
+  .back:hover{border-color:var(--line2);color:var(--text);}
+
+  /* ---- collection strip ---- */
+  .collstrip{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
+  .stat{position:relative;flex:1;min-width:150px;border:1px solid var(--line);border-radius:14px;padding:13px 16px 14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);overflow:hidden;}
+  .stat::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--green),transparent 72%);opacity:.5;}
+  .stat.gold::before{background:linear-gradient(90deg,var(--gold),transparent 72%);}
+  .stat.violet::before{background:linear-gradient(90deg,var(--violet),transparent 72%);}
+  .stat .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .stat .v{font-family:var(--mono);font-size:24px;font-weight:600;color:#fff;margin-top:6px;line-height:1;letter-spacing:-.02em;}
+  .stat .v small{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:0;}
+
+  /* ---- controls ---- */
+  .controls{display:flex;flex-direction:column;gap:12px;margin-bottom:18px;position:sticky;top:0;z-index:5;padding:12px 0 10px;
+    background:linear-gradient(180deg,#0a0b0f 68%,rgba(10,11,15,0));}
+  .langtabs{display:flex;gap:6px;flex-wrap:wrap;}
+  .langtab{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.03em;color:var(--muted);border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 15px;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:7px;}
+  .langtab:hover{border-color:var(--line2);color:var(--text);}
+  .langtab.on{color:var(--ink);background:var(--gold);border-color:var(--gold);box-shadow:0 6px 18px -8px rgba(212,176,114,.6);}
+  .langtab .n{font-size:10px;opacity:.7;}
+  .langtab.on .n{opacity:.85;}
+  .searchrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .searchbox{flex:1;min-width:240px;display:flex;align-items:center;gap:9px;background:var(--ink);border:1px solid var(--line2);border-radius:11px;padding:0 14px;transition:.15s;}
+  .searchbox:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .searchbox svg{width:16px;height:16px;fill:none;stroke:var(--muted);stroke-width:2;flex:none;}
+  .searchbox input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:15px;font-family:var(--mono);padding:12px 0;letter-spacing:-.01em;}
+  .searchbox input::placeholder{color:var(--faint);}
+  .clearx{cursor:pointer;color:var(--faint);font-size:18px;line-height:1;padding:2px 4px;display:none;}
+  .clearx:hover{color:var(--text);}
+  .filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .chip{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--muted);border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 11px;cursor:pointer;transition:.14s;display:inline-flex;align-items:center;gap:6px;}
+  .chip:hover{border-color:var(--line2);color:var(--text);}
+  .chip.on{color:#fff;border-color:var(--line2);background:var(--panel2);}
+  .chip .dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+  .chip.own.on{color:var(--ink);background:var(--green);border-color:var(--green);}
+  .countline{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin-left:auto;white-space:nowrap;}
+
+  /* ---- sets grid ---- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
+  .setcard{position:relative;text-align:left;border:1px solid var(--line);border-radius:15px;padding:15px 16px 14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);cursor:pointer;transition:.16s ease;overflow:hidden;font-family:var(--sans);color:var(--text);display:flex;flex-direction:column;gap:9px;min-height:118px;}
+  .setcard::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--acc,var(--gold)),transparent 70%);opacity:0;transition:.16s;}
+  .setcard:hover{border-color:var(--line2);transform:translateY(-2px);}
+  .setcard:hover::before{opacity:.65;}
+  .setcard.owned{border-color:rgba(67,214,160,.3);}
+  .sc-head{display:flex;align-items:flex-start;gap:11px;}
+  .sc-sym{width:40px;height:40px;flex:none;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:6px;}
+  .sc-sym img{max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));}
+  .sc-sym .mono{font-family:var(--serif);font-weight:600;font-size:15px;color:var(--acc,var(--gold));opacity:.9;}
+  .sc-title{min-width:0;flex:1;}
+  .sc-name{font-size:14.5px;font-weight:600;color:#fff;letter-spacing:-.01em;line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+  .sc-native{font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sc-code{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--acc,var(--gold));background:rgba(212,176,114,.1);border:1px solid rgba(212,176,114,.22);padding:1px 6px;border-radius:5px;flex:none;letter-spacing:.02em;}
+  .sc-meta{font-family:var(--mono);font-size:10.5px;color:var(--faint);display:flex;gap:7px;flex-wrap:wrap;margin-top:auto;}
+  .sc-meta b{color:var(--muted);font-weight:500;}
+  .badges{display:flex;gap:5px;flex-wrap:wrap;}
+  .badge{font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid;display:inline-flex;align-items:center;gap:4px;}
+  .badge .d{width:5px;height:5px;border-radius:50%;}
+  .b-live{color:var(--green);border-color:rgba(67,214,160,.32);background:rgba(67,214,160,.08);}
+  .b-indexed{color:var(--blue);border-color:rgba(106,176,255,.32);background:rgba(106,176,255,.08);}
+  .b-seeded{color:var(--gold);border-color:rgba(212,176,114,.32);background:rgba(212,176,114,.08);}
+  .b-pc{color:var(--teal);border-color:rgba(63,220,203,.3);background:rgba(63,220,203,.08);}
+  .b-warn{color:var(--red);border-color:rgba(240,102,110,.35);background:rgba(240,102,110,.08);}
+  .b-own{color:var(--ink);background:var(--green);border-color:var(--green);}
+
+  .empty{text-align:center;padding:70px 20px;color:var(--faint);font-family:var(--mono);font-size:13px;}
+  .skel{border:1px solid var(--line);border-radius:15px;min-height:118px;background:linear-gradient(100deg,var(--panel) 30%,var(--panel2) 50%,var(--panel) 70%);background-size:220% 100%;animation:sh 1.4s ease-in-out infinite;}
+  @keyframes sh{0%{background-position:180% 0;}100%{background-position:-40% 0;}}
+
+  /* ---- drawer ---- */
+  .scrim{position:fixed;inset:0;background:rgba(4,5,8,.62);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:.22s;z-index:40;}
+  .scrim.open{opacity:1;pointer-events:auto;}
+  .drawer{position:fixed;top:0;right:0;height:100vh;width:min(720px,94vw);background:linear-gradient(180deg,#0e1017,#0a0b10);border-left:1px solid var(--line2);box-shadow:-30px 0 70px -30px rgba(0,0,0,.85);transform:translateX(104%);transition:transform .26s cubic-bezier(.4,0,.2,1);z-index:41;display:flex;flex-direction:column;}
+  .drawer.open{transform:translateX(0);}
+  .dw-head{padding:22px 24px 18px;border-bottom:1px solid var(--line);position:relative;}
+  .dw-head::before{content:"";position:absolute;left:0;top:0;height:2px;width:160px;background:linear-gradient(90deg,var(--acc,var(--gold)),transparent);}
+  .dw-close{position:absolute;top:18px;right:20px;width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:16px;cursor:pointer;transition:.15s;}
+  .dw-close:hover{border-color:var(--line2);color:#fff;}
+  .dw-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc,var(--gold));font-weight:600;}
+  .dw-title{font-family:var(--serif);font-size:23px;font-weight:600;color:#fff;margin:6px 0 3px;letter-spacing:-.01em;padding-right:40px;}
+  .dw-native{color:var(--muted);font-size:13px;font-family:var(--mono);}
+  .dw-sub{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:11px;}
+  .dw-jump{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--ink);background:var(--gold);border:none;border-radius:9px;padding:9px 15px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px;box-shadow:0 6px 18px -8px rgba(212,176,114,.6);}
+  .dw-jump:hover{filter:brightness(1.06);transform:translateY(-1px);}
+  .dw-body{flex:1;overflow-y:auto;padding:18px 24px 40px;}
+  .dw-note{font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.6;border:1px dashed var(--line2);border-radius:11px;padding:14px 16px;background:rgba(255,255,255,.015);}
+  .cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px;}
+  .cardtile{position:relative;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--ink);transition:.15s;}
+  .cardtile.own{border-color:rgba(67,214,160,.5);box-shadow:0 0 0 1px rgba(67,214,160,.25);}
+  .cardtile .imgwrap{aspect-ratio:63/88;background:linear-gradient(160deg,#171b24,#0d0f15);display:flex;align-items:center;justify-content:center;}
+  .cardtile img{width:100%;height:100%;object-fit:contain;display:block;}
+  .cardtile .ph{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:center;padding:8px;}
+  .cardtile .cap{padding:6px 8px 8px;}
+  .cardtile .cnum{font-family:var(--mono);font-size:9.5px;color:var(--faint);}
+  .cardtile .cnm{font-size:11px;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;}
+  .cardtile .cpr{font-family:var(--mono);font-size:10.5px;color:var(--green);font-weight:600;margin-top:3px;}
+  .ownflag{position:absolute;top:6px;right:6px;background:var(--green);color:var(--ink);font-family:var(--mono);font-size:8.5px;font-weight:700;padding:2px 5px;border-radius:5px;letter-spacing:.03em;box-shadow:0 2px 6px rgba(0,0,0,.4);}
+  .dw-owned{margin-bottom:20px;}
+  .dw-sechead{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:2px 0 11px;display:flex;align-items:center;gap:8px;}
+  .dw-sechead::after{content:"";flex:1;height:1px;background:var(--line);}
+  .ownrow{display:flex;align-items:center;gap:11px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:var(--panel);margin-bottom:8px;}
+  .ownrow .oi{width:34px;height:46px;flex:none;border-radius:6px;object-fit:contain;background:var(--ink);}
+  .ownrow .on{font-size:12.5px;color:#fff;font-weight:500;}
+  .ownrow .om{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .ownrow .og{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--gold);border:1px solid rgba(212,176,114,.25);border-radius:6px;padding:3px 8px;white-space:nowrap;}
+  .spin{display:inline-block;width:15px;height:15px;border:2px solid var(--line2);border-top-color:var(--gold);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-3px;}
+  @keyframes rot{to{transform:rotate(360deg);}}
+
+  /* ---- edit mode ---- */
+  .chip.edit.on{color:var(--ink);background:var(--violet);border-color:var(--violet);}
+  .chip.newset{color:var(--violet);border-color:rgba(217,164,255,.4);background:rgba(217,164,255,.08);font-weight:600;}
+  .chip.newset:hover{border-color:var(--violet);}
+  .editbanner{border:1px solid rgba(217,164,255,.3);background:rgba(217,164,255,.06);border-radius:12px;padding:11px 15px;margin-bottom:16px;font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.55;}
+  .editbanner b{color:var(--violet);font-weight:600;}
+  body.editing .setcard{border-style:dashed;}
+  body.editing .setcard:hover::before{background:linear-gradient(90deg,var(--violet),transparent 70%);opacity:.7;}
+  .editform{border:1px solid rgba(217,164,255,.28);background:linear-gradient(180deg,rgba(217,164,255,.05),transparent);border-radius:13px;padding:16px 17px 15px;margin-bottom:22px;}
+  .ef-head{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);font-weight:600;margin-bottom:13px;display:flex;align-items:center;gap:9px;}
+  .ef-head .ef-lang{color:var(--muted);border:1px solid var(--line2);border-radius:5px;padding:1px 7px;letter-spacing:.04em;}
+  .ef-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+  .ef-grid label{display:flex;flex-direction:column;gap:5px;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .ef-grid label.wide{grid-column:1/-1;}
+  .ef-grid input{background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:13px;padding:9px 11px;outline:none;transition:.14s;letter-spacing:0;text-transform:none;}
+  .ef-grid input:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(217,164,255,.14);}
+  .ef-grid input[readonly]{color:var(--muted);background:rgba(255,255,255,.02);cursor:not-allowed;}
+  .ef-actions{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  .ef-actions .dw-jump{background:var(--violet);box-shadow:0 6px 18px -8px rgba(217,164,255,.6);}
+  .ef-del{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--red);background:transparent;border:1px solid rgba(240,102,110,.35);border-radius:9px;padding:9px 14px;cursor:pointer;transition:.14s;}
+  .ef-del:hover{background:rgba(240,102,110,.1);border-color:var(--red);}
+  .ef-status{font-family:var(--mono);font-size:11.5px;}
+  .ef-status.ok{color:var(--green);} .ef-status.err{color:var(--red);} .ef-status.wait{color:var(--amber);}
+  .ef-note{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:11px;line-height:1.55;}
+  .ennote{border:1px dashed var(--line2);border-radius:11px;padding:13px 15px;margin-bottom:20px;font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.55;}
+  .flash{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);background:#171b24;border:1px solid var(--line2);border-radius:11px;padding:12px 20px;font-family:var(--mono);font-size:12.5px;color:var(--text);box-shadow:0 18px 40px -18px rgba(0,0,0,.85);opacity:0;pointer-events:none;transition:.22s;z-index:60;max-width:88vw;}
+  .flash.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .flash.ok{border-color:rgba(67,214,160,.4);} .flash.err{border-color:rgba(240,102,110,.45);}
+
+  @media(max-width:560px){
+    body{padding:22px 14px 80px;}
+    .ef-grid{grid-template-columns:1fr;}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px;}
+    h1{font-size:22px;}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Catalog</h1>
+        <p class="sub">Browse everything indexed — and see what you own.</p>
+      </div>
+      <a class="back" href="/index.html">← All tools</a>
+    </div>
+
+    <div class="collstrip" id="collstrip">
+      <div class="stat"><div class="k">Graded — Pokémon</div><div class="v" id="st_graded">—</div></div>
+      <div class="stat violet"><div class="k">Sealed — Pokémon</div><div class="v" id="st_sealed">—</div></div>
+      <div class="stat gold"><div class="k">Sets you hold</div><div class="v" id="st_sets">—</div></div>
+      <div class="stat"><div class="k">Sets indexed</div><div class="v" id="st_total">—</div></div>
+    </div>
+
+    <div class="controls">
+      <div class="langtabs" id="langtabs"></div>
+      <div class="searchrow">
+        <div class="searchbox">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input id="search" type="text" placeholder="Search name, code (M5), or English equivalent (Pitch Black)…" autocomplete="off" spellcheck="false">
+          <span class="clearx" id="clearx">×</span>
+        </div>
+      </div>
+      <div class="filters" id="filters">
+        <span class="chip src on" data-src="all">All sources</span>
+        <span class="chip src" data-src="live"><span class="dot" style="background:var(--green)"></span>Live</span>
+        <span class="chip src" data-src="indexed"><span class="dot" style="background:var(--blue)"></span>Indexed</span>
+        <span class="chip src" data-src="seeded"><span class="dot" style="background:var(--gold)"></span>Seeded</span>
+        <span class="chip src" data-src="pricecharting"><span class="dot" style="background:var(--teal)"></span>PriceCharting</span>
+        <span class="chip own" id="ownToggle">◆ Owned only</span>
+        <span class="chip edit" id="editToggle">✎ Edit overlay</span>
+        <button class="chip newset" id="newSetBtn" style="display:none">＋ New set</button>
+        <span class="countline" id="countline"></span>
+      </div>
+    </div>
+
+    <div class="editbanner" id="editbanner" style="display:none"></div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="dw-head" id="dwHead"></div>
+    <div class="dw-body" id="dwBody"></div>
+  </aside>
+
+<script type="module">
+/* ===========================================================================
+   catalog.html — unified Pokémon catalog for the TCG Listing Tools suite.
+   Reads the SAME live/baked sources the builders use, so it's a true window
+   into what's indexed (not a mockup): EN sets live from pokemontcg.io via
+   /api/pkm, JP/CN/KO from the baked /data/pokemon-intl-sets.json, card-level
+   drill-in from /api/pkm (EN) or /api/tcgdex (intl), and owned stock overlaid
+   from /api/inventory (graded) + /api/sealed. Vanilla JS, matches the app.
+   =========================================================================== */
+
+// [code, label, dataLang] — mirrors pokemon-listing-builder.html LANGS.
+const LANGS=[['EN','English','en'],['JP','Japanese','ja'],['CN','Chinese · Simp.','zh-cn'],['TW','Chinese · Trad.','zh-tw'],['KO','Korean','ko']];
+const LANG_ACC={en:'#f0c04a',ja:'#f0666e','zh-cn':'#f0c04a','zh-tw':'#43d6a0',ko:'#6ab0ff'};
+
+const state={lang:'en',q:'',src:'all',ownedOnly:false,intlAge:'',edit:false};
+let _openRid=null;
+let PKM_INTL=null, EN_SETS=null;
+const enCache={}; // cached normalized EN set list
+let OWNED={graded:[],sealed:[],byNorm:new Map()};
+
+const $=(id)=>document.getElementById(id);
+const norm=(s)=>String(s||'').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'');
+const esc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtDate=(d)=>{if(!d)return '';const s=String(d).replace(/\//g,'-');return s.slice(0,10);};
+
+async function jget(url){const r=await fetch(url);if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}
+
+/* ---- owned stock ------------------------------------------------------- */
+async function loadOwned(){
+  try{
+    const [inv,seal]=await Promise.all([
+      jget('/api/inventory/items?game=pokemon').catch(()=>({items:[]})),
+      jget('/api/sealed/items?game=pokemon').catch(()=>({items:[]})),
+    ]);
+    OWNED.graded=(inv.items||[]);
+    OWNED.sealed=(seal.items||[]);
+    const m=new Map();
+    const add=(k,rec)=>{if(!k)return;const a=m.get(k)||{graded:[],sealed:[]};a[rec.kind].push(rec.it);m.set(k,a);};
+    for(const it of OWNED.graded)add(norm(it.set_name),{kind:'graded',it});
+    for(const it of OWNED.sealed)add(norm(it.set_name),{kind:'sealed',it});
+    OWNED.byNorm=m;
+  }catch(e){/* owned overlay is best-effort */}
+  renderCollStrip();
+}
+// Owned items matching a normalized set (tries several name variants).
+function ownedForSet(set){
+  const keys=[set.nameEn,set.name,set.nameNative,set.enEquivalent&&set.enEquivalent.name].map(norm).filter(Boolean);
+  const seen=new Set(),g=[],s=[];
+  for(const k of keys){const a=OWNED.byNorm.get(k);if(!a)continue;
+    for(const it of a.graded){if(!seen.has('g'+it.id)){seen.add('g'+it.id);g.push(it);}}
+    for(const it of a.sealed){if(!seen.has('s'+it.id)){seen.add('s'+it.id);s.push(it);}}}
+  return {graded:g,sealed:s};
+}
+function renderCollStrip(){
+  $('st_graded').innerHTML=OWNED.graded.length+' <small>cards</small>';
+  $('st_sealed').innerHTML=OWNED.sealed.length+' <small>items</small>';
+  const heldNorms=new Set([...OWNED.byNorm.keys()].filter((k)=>k));
+  $('st_sets').innerHTML=heldNorms.size+' <small>matched</small>';
+}
+
+/* ---- set sources ------------------------------------------------------- */
+function enToSet(s){
+  return {lang:'en',rid:s.id,code:s.ptcgoCode||'',name:s.name,nameEn:s.name,nameNative:'',
+    serie:s.series||'',releaseDate:s.releaseDate||'',cardCount:s.total!=null?s.total:(s.printedTotal||null),
+    symbol:(s.images&&s.images.symbol)||'',source:'live',enEquivalent:null,pcSlug:'',noCode:false,builderSet:s.id};
+}
+function intlToSet(r,lang){
+  const source=r.seeded?'seeded':(r.pcOnly?'pricecharting':'indexed');
+  return {lang,rid:r.code||r.pcSlug||'',code:r.code||'',name:r.name_en||r.name_native||r.code||'?',
+    nameEn:r.name_en||'',nameNative:r.name_native||'',serie:r.serie||'',releaseDate:r.releaseDate||'',
+    cardCount:r.cardCount!=null?r.cardCount:null,symbol:r.symbol?(/\.(png|webp|jpg)$/i.test(r.symbol)?r.symbol:r.symbol+'.png'):'',
+    source,enEquivalent:r.enEquivalent||null,pcSlug:r.pcSlug||'',tcgdexId:r.tcgdexId||'',noCode:!r.code,
+    builderSet:r.code||r.name_en||''};
+}
+async function setsForLang(lang){
+  if(lang==='en'){
+    if(EN_SETS)return EN_SETS;
+    const j=await jget('/api/pkm/sets?pageSize=500');
+    EN_SETS=(j.data||[]).map(enToSet).sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||''));
+    return EN_SETS;
+  }
+  if(!PKM_INTL){
+    const r=await fetch('/data/pokemon-intl-sets.json',{cache:'no-store'});
+    const lm=r.headers.get('last-modified');
+    if(lm){const days=(Date.now()-new Date(lm).getTime())/864e5;state.intlAge=days<1?'today':(Math.round(days)+'d ago');}
+    PKM_INTL=await r.json();
+  }
+  return (PKM_INTL[lang]||[]).map((r)=>intlToSet(r,lang))
+    .sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||'')||(a.name||'').localeCompare(b.name||''));
+}
+
+/* ---- filtering + render ------------------------------------------------ */
+function matchQuery(set,t){
+  if(!t)return true;
+  return [set.code,set.name,set.nameEn,set.nameNative,set.enEquivalent&&set.enEquivalent.name]
+    .some((v)=>String(v||'').toLowerCase().includes(t));
+}
+const SRC_BADGE={live:['b-live','Live','pokemontcg.io'],indexed:['b-indexed','Indexed','TCGdex'],
+  seeded:['b-seeded','Seeded','manual overlay'],pricecharting:['b-pc','PriceChart','PriceCharting only']};
+
+async function renderGrid(){
+  const grid=$('grid');
+  grid.innerHTML=Array.from({length:8}).map(()=>'<div class="skel"></div>').join('');
+  let sets;
+  try{sets=await setsForLang(state.lang);}
+  catch(e){grid.innerHTML='<div class="empty">Couldn’t load '+esc(state.lang.toUpperCase())+' sets — is the dev server running?<br><span style="color:var(--faint)">'+esc(e.message)+'</span></div>';return;}
+  const t=state.q.trim().toLowerCase();
+  const acc=LANG_ACC[state.lang]||'var(--gold)';
+  let shown=0,ownedTotal=0;
+  const rows=[];
+  for(const set of sets){
+    if(state.src!=='all'&&set.source!==state.src)continue;
+    if(!matchQuery(set,t))continue;
+    const own=ownedForSet(set);const ownN=own.graded.length+own.sealed.length;
+    if(state.ownedOnly&&!ownN)continue;
+    if(ownN)ownedTotal++;
+    set._own=own;
+    rows.push(setCardHTML(set,acc,ownN));
+    shown++;
+  }
+  $('countline').textContent=shown+' set'+(shown===1?'':'s')+(t?' · filtered':'')+
+    (state.lang!=='en'&&state.intlAge?' · index baked '+state.intlAge:'')+(ownedTotal?' · '+ownedTotal+' owned':'');
+  $('st_total').innerHTML=sets.length+' <small>'+state.lang.toUpperCase()+'</small>';
+  const eb=$('editbanner');
+  if(state.edit){eb.style.display='block';eb.innerHTML=state.lang==='en'
+    ?'<b>Edit mode</b> — English sets are live from pokemontcg.io and aren’t editable. Switch to <b>JP / CN / KO</b> to enrich or add overlay sets.'
+    :'<b>Edit mode</b> — click any set to enrich its overlay, or <b>＋ New set</b> to inject one TCGdex hasn’t ingested yet. Saving rewrites the seed overlay and rebuilds the index.';}
+  else eb.style.display='none';
+  grid.innerHTML=rows.length?rows.join(''):'<div class="empty">No sets match “'+esc(state.q)+'”.</div>';
+  // wire clicks (store the resolved set on the node via index)
+  window.__SETS=sets;
+  grid.querySelectorAll('.setcard').forEach((el)=>el.addEventListener('click',()=>openDrawer(el.dataset.rid)));
+}
+function setCardHTML(set,acc,ownN){
+  const sb=SRC_BADGE[set.source]||SRC_BADGE.indexed;
+  const sym=set.symbol
+    ?'<img src="'+esc(set.symbol)+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'<span class=&quot;mono&quot;>'+esc((set.code||set.name||'?').slice(0,3))+'</span>\'">'
+    :'<span class="mono">'+esc((set.code||set.name||'?').slice(0,3))+'</span>';
+  const native=set.nameNative&&set.nameNative!==set.name?'<div class="sc-native">'+esc(set.nameNative)+'</div>':'';
+  const eqName=set.enEquivalent&&set.enEquivalent.name;
+  const eq=eqName?'<span title="English equivalent">≈ '+esc(eqName)+'</span>':'';
+  const meta=[set.serie?'<b>'+esc(set.serie.replace('ポケモンカードゲーム ',''))+'</b>':'',fmtDate(set.releaseDate),set.cardCount!=null?set.cardCount+' cards':'',eq].filter(Boolean).join(' · ');
+  const badges=['<span class="badge '+sb[0]+'" title="'+esc(sb[2])+'"><span class="d" style="background:currentColor"></span>'+sb[1]+'</span>',
+    set.noCode?'<span class="badge b-warn" title="No printed set code — search by name only">no code</span>':'',
+    ownN?'<span class="badge b-own">◆ '+ownN+' owned</span>':''].filter(Boolean).join('');
+  return '<button class="setcard'+(ownN?' owned':'')+'" data-rid="'+esc(set.rid)+'" style="--acc:'+acc+'">'+
+    '<div class="sc-head"><div class="sc-sym">'+sym+'</div><div class="sc-title">'+
+    '<div class="sc-name">'+esc(set.name)+'</div>'+native+'</div>'+
+    (set.code?'<span class="sc-code">'+esc(set.code)+'</span>':'')+'</div>'+
+    '<div class="sc-meta">'+meta+'</div>'+
+    '<div class="badges">'+badges+'</div></button>';
+}
+
+/* ---- drawer / card drill-in ------------------------------------------- */
+function findSet(rid){return (window.__SETS||[]).find((s)=>String(s.rid)===String(rid));}
+function builderHref(set){return '/pokemon-listing-builder.html?lang='+encodeURIComponent(set.lang)+'&set='+encodeURIComponent(set.builderSet||set.code||set.name);}
+
+function openDrawer(rid){const set=findSet(rid);if(!set)return;_openRid=rid;renderDrawer(set,false);}
+function openNewEditor(){
+  if(state.lang==='en'){flash('English sets are live from pokemontcg.io — switch to JP / CN / KO to add an overlay set','err');return;}
+  _openRid=null;
+  renderDrawer({lang:state.lang,rid:'__new',code:'',name:'New overlay set',nameEn:'',nameNative:'',serie:'ポケモンカードゲーム MEGA',releaseDate:'',cardCount:null,source:'seeded',enEquivalent:{id:'',name:''},builderSet:''},true);
+}
+function renderDrawer(set,isNew){
+  const acc=LANG_ACC[set.lang]||'var(--gold)';
+  const sb=SRC_BADGE[set.source]||SRC_BADGE.indexed;
+  const eqName=set.enEquivalent&&set.enEquivalent.name;
+  const langLabel=(LANGS.find((l)=>l[2]===set.lang)||['',''])[1];
+  $('dwHead').style.setProperty('--acc',acc);
+  $('dwHead').innerHTML=
+    '<button class="dw-close" id="dwClose">×</button>'+
+    '<div class="dw-eyebrow">'+(isNew?'New overlay · '+esc(langLabel):esc(langLabel)+' · '+esc(sb[2]))+'</div>'+
+    '<div class="dw-title">'+esc(set.name||'New set')+'</div>'+
+    (!isNew&&set.nameNative&&set.nameNative!==set.name?'<div class="dw-native">'+esc(set.nameNative)+(eqName?'  ·  ≈ '+esc(eqName)+' (EN)':'')+'</div>':
+      (!isNew&&eqName?'<div class="dw-native">≈ '+esc(eqName)+' (EN)</div>':''))+
+    '<div class="dw-sub">'+
+      (set.code?'<span class="sc-code">'+esc(set.code)+'</span>':'')+
+      (isNew?'':'<span class="badge '+sb[0]+'"><span class="d" style="background:currentColor"></span>'+sb[1]+'</span>')+
+      (!isNew&&set.cardCount!=null?'<span class="sc-meta" style="margin:0">'+set.cardCount+' cards</span>':'')+
+      (!isNew&&set.releaseDate?'<span class="sc-meta" style="margin:0">'+fmtDate(set.releaseDate)+'</span>':'')+
+      (isNew?'':'<button class="dw-jump" id="dwJump">Open in builder →</button>')+
+    '</div>';
+  $('dwClose').onclick=closeDrawer;
+  const jb=$('dwJump');if(jb)jb.onclick=()=>{location.href=builderHref(set);};
+  const body=$('dwBody');body.innerHTML='';
+  if(state.edit){
+    if(set.lang==='en'){const n=document.createElement('div');n.className='ennote';n.textContent='English sets are live from pokemontcg.io — they aren’t part of the editable overlay. Switch to JP / CN / KO to edit or add sets.';body.appendChild(n);}
+    else{const ef=document.createElement('div');ef.innerHTML=editFormHTML(set,isNew);body.appendChild(ef);wireEditForm(set,isNew);}
+  }
+  if(!isNew){
+    const own=set._own||ownedForSet(set);
+    if(own.graded.length||own.sealed.length)body.appendChild(ownedBlock(own));
+    const cardsWrap=document.createElement('div');
+    cardsWrap.innerHTML='<div class="dw-sechead">Cards <span class="spin"></span></div><div class="cardgrid" id="cardgrid"></div>';
+    body.appendChild(cardsWrap);
+    loadCards(set,cardsWrap);
+  }
+  $('scrim').classList.add('open');$('drawer').classList.add('open');$('drawer').setAttribute('aria-hidden','false');
+}
+function editFormHTML(set,isNew){
+  const eq=set.enEquivalent||{id:'',name:''};
+  const f=(id,lbl,val,ph,ro,wide)=>'<label class="'+(wide?'wide':'')+'">'+lbl+'<input id="'+id+'" value="'+esc(val||'')+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+(ro?' readonly':'')+'></label>';
+  return '<div class="editform">'+
+    '<div class="ef-head">✎ Overlay entry<span class="ef-lang">'+esc((LANGS.find((l)=>l[2]===set.lang)||['',''])[1])+'</span></div>'+
+    '<div class="ef-grid">'+
+      f('ef_code',isNew?'Set code':'Set code (locked)',set.code,'e.g. M2A',!isNew,false)+
+      f('ef_name_en','English name',set.nameEn,'e.g. Mega Dream ex',false,false)+
+      f('ef_name_native','Native name',set.nameNative,'e.g. MEGAドリームex',false,false)+
+      f('ef_serie','Series',set.serie,'ポケモンカードゲーム MEGA',false,false)+
+      '<label>Release date<input id="ef_release" type="date" value="'+esc(fmtDate(set.releaseDate))+'"></label>'+
+      f('ef_eq_id','EN-equivalent id',eq.id,'e.g. me2pt5',false,false)+
+      f('ef_eq_name','EN-equivalent name',eq.name,'e.g. Ascended Heroes',false,true)+
+    '</div>'+
+    '<div class="ef-actions">'+
+      '<button class="dw-jump" id="ef_save">'+(isNew?'Add & rebuild':'Save & rebuild')+'</button>'+
+      (!isNew&&set.source==='seeded'?'<button class="ef-del" id="ef_del">Remove overlay</button>':'')+
+      '<span class="ef-status" id="ef_status"></span>'+
+    '</div>'+
+    '<div class="ef-note">Writes <b>data/pokemon-intl-seed.json</b> and rebuilds the index (a few seconds). Enrich a TCGdex set, or inject one it hasn’t ingested yet. Leave EN-equivalent id blank if unknown.</div>'+
+  '</div>';
+}
+function wireEditForm(set,isNew){
+  const st=(msg,cls)=>{const e=$('ef_status');if(e){e.textContent=msg;e.className='ef-status '+(cls||'');}};
+  $('ef_save').onclick=async()=>{
+    const g=(id)=>{const e=$(id);return e?e.value.trim():'';};
+    const code=(isNew?g('ef_code'):set.code).toUpperCase();
+    if(!code){st('Enter a set code','err');return;}
+    const entry={name_en:g('ef_name_en'),name_native:g('ef_name_native'),serie:g('ef_serie'),releaseDate:g('ef_release'),enEquivalent:{id:g('ef_eq_id'),name:g('ef_eq_name')}};
+    st('Saving & rebuilding…','wait');
+    try{
+      const r=await fetch('/api/catalog/seed',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lang:set.lang,code,entry})});
+      const j=await r.json();
+      if(!r.ok||j.error){st(j.error||('HTTP '+r.status),'err');return;}
+      st('Saved'+(j.rebuilt?' · rebuilt':(j.rebuild_error?' (rebuild failed)':'')),'ok');
+      flash('Saved '+code+(j.rebuilt?' · index rebuilt':''),'ok');
+      await reloadIntl();
+      const s=(window.__SETS||[]).find((x)=>String(x.code).toUpperCase()===code);
+      if(s){_openRid=s.rid;renderDrawer(s,false);}else closeDrawer();
+    }catch(e){st(String(e.message||e),'err');}
+  };
+  const del=$('ef_del');
+  if(del)del.onclick=async()=>{
+    if(!confirm('Remove the overlay entry for '+set.code+'? This rebuilds the index.'))return;
+    st('Removing & rebuilding…','wait');
+    try{
+      const r=await fetch('/api/catalog/seed',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({lang:set.lang,code:set.code})});
+      const j=await r.json();
+      if(!r.ok||j.error){st(j.error||('HTTP '+r.status),'err');return;}
+      flash('Removed '+set.code+' from overlay','ok');
+      await reloadIntl();closeDrawer();
+    }catch(e){st(String(e.message||e),'err');}
+  };
+}
+async function reloadIntl(){PKM_INTL=null;state.intlAge='';await renderGrid();}
+let _flashT;
+function flash(msg,cls){let el=$('flash');if(!el){el=document.createElement('div');el.id='flash';el.className='flash';document.body.appendChild(el);}el.textContent=msg;el.className='flash '+(cls||'')+' show';clearTimeout(_flashT);_flashT=setTimeout(()=>{el.className='flash '+(cls||'');},3200);}
+function ownedBlock(own){
+  const wrap=document.createElement('div');wrap.className='dw-owned';
+  const rows=[];
+  for(const it of own.graded)rows.push(
+    '<div class="ownrow">'+(it.image_url?'<img class="oi" src="'+esc(it.image_url)+'" loading="lazy" alt="">':'<span class="oi"></span>')+
+    '<div><div class="on">'+esc(it.name||'Card')+(it.number?' · #'+esc(it.number):'')+'</div>'+
+    '<div class="om">'+esc(it.set_name||'')+(it.sku?' · '+esc(it.sku):'')+'</div></div>'+
+    '<span class="og">'+esc((it.grading_company||'')+(it.grade!=null?' '+it.grade:''))+'</span></div>');
+  for(const it of own.sealed)rows.push(
+    '<div class="ownrow">'+(it.image_url?'<img class="oi" src="'+esc(it.image_url)+'" loading="lazy" alt="">':'<span class="oi"></span>')+
+    '<div><div class="on">'+esc(it.name||'Sealed')+'</div>'+
+    '<div class="om">'+esc(it.product_type||'sealed')+(it.set_name?' · '+esc(it.set_name):'')+'</div></div>'+
+    '<span class="og">SEALED</span></div>');
+  wrap.innerHTML='<div class="dw-sechead">In your collection · '+rows.length+'</div>'+rows.join('');
+  return wrap;
+}
+function closeDrawer(){$('scrim').classList.remove('open');$('drawer').classList.remove('open');$('drawer').setAttribute('aria-hidden','true');_openRid=null;}
+
+// EN owned graded matched by number (for the ✓ flag on card tiles).
+function ownedNumbers(set){const m=new Map();for(const it of (set._own?set._own.graded:[]))if(it.number)m.set(String(it.number).replace(/^0+/,''),it);return m;}
+
+async function loadCards(set,wrap){
+  const grid=wrap.querySelector('#cardgrid');const head=wrap.querySelector('.dw-sechead');
+  const done=(html,label)=>{grid.innerHTML=html;head.innerHTML='Cards'+(label?' · '+label:'');};
+  const ownNums=ownedNumbers(set);
+  try{
+    if(set.lang==='en'){
+      const j=await jget('/api/pkm/cards?q=set.id:'+encodeURIComponent(set.rid)+'&pageSize=250&orderBy=number');
+      const cards=(j.data||[]);
+      if(!cards.length)return done(noteHTML('No cards returned for this set yet.',set),'0');
+      done(cards.map((c)=>{
+        const pr=enPrice(c);const num=String(c.number||'').replace(/^0+/,'');
+        const owned=ownNums.get(num);
+        return cardTile(c.images&&(c.images.small||c.images.large),num||c.number,c.name,c.rarity,pr,owned);
+      }).join(''),cards.length+' cards');
+    }else if(set.tcgdexId||set.code){
+      // TCGdex intl set → cards[] (only for sets TCGdex has ingested).
+      const id=set.tcgdexId||set.code;
+      const j=await jget('/api/tcgdex/'+encodeURIComponent(set.lang)+'/sets/'+encodeURIComponent(id));
+      const cards=(j&&j.cards)||[];
+      if(!cards.length)return done(noteHTML('TCGdex has this set indexed but returned no card list — open it in the builder for a card-by-card lookup.',set),'0');
+      done(cards.map((c)=>cardTile(c.image?c.image+'/low.webp':'',c.localId||c.id,c.name,'',null,null)).join(''),cards.length+' cards');
+    }else{
+      done(noteHTML(set.source==='pricecharting'
+        ?'This set is known only from PriceCharting (no card-level index yet). Open it in the builder — the PriceCharting-backed lookup resolves individual cards and prices.'
+        :'No card-level index available for this set yet. Open it in the builder to look cards up.',set),'no index');
+    }
+  }catch(e){done(noteHTML('Card lookup failed ('+esc(e.message)+'). The set is still indexed — try the builder.',set),'error');}
+}
+function noteHTML(msg,set){
+  return '<div class="dw-note" style="grid-column:1/-1">'+esc(msg)+
+    '<br><br><button class="dw-jump" onclick="location.href=\''+builderHref(set)+'\'">Open in builder →</button></div>';
+}
+function enPrice(c){
+  const tp=c.tcgplayer&&c.tcgplayer.prices;if(tp){for(const k of ['holofoil','reverseHolofoil','normal','1stEditionHolofoil','unlimitedHolofoil']){if(tp[k]&&tp[k].market!=null)return 'US$'+tp[k].market.toFixed(2);}}
+  const cm=c.cardmarket&&c.cardmarket.prices;if(cm&&cm.averageSellPrice!=null)return '€'+cm.averageSellPrice.toFixed(2);
+  return null;
+}
+function cardTile(img,num,name,rarity,price,owned){
+  return '<div class="cardtile'+(owned?' own':'')+'">'+(owned?'<span class="ownflag">'+esc((owned.grading_company||'OWNED')+(owned.grade!=null?' '+owned.grade:''))+'</span>':'')+
+    '<div class="imgwrap">'+(img?'<img src="'+esc(img)+'" loading="lazy" alt="">':'<span class="ph">'+esc(name||'—')+'</span>')+'</div>'+
+    '<div class="cap"><div class="cnum">#'+esc(num||'?')+(rarity?' · '+esc(rarity):'')+'</div>'+
+    '<div class="cnm" title="'+esc(name)+'">'+esc(name||'')+'</div>'+
+    (price?'<div class="cpr">'+esc(price)+'</div>':'')+'</div></div>';
+}
+
+/* ---- controls wiring --------------------------------------------------- */
+function buildLangTabs(){
+  $('langtabs').innerHTML=LANGS.map((l)=>'<button class="langtab'+(l[2]===state.lang?' on':'')+'" data-lang="'+l[2]+'">'+l[0]+'<span class="n">'+esc(l[1].split(' ')[0])+'</span></button>').join('');
+  $('langtabs').querySelectorAll('.langtab').forEach((el)=>el.addEventListener('click',()=>{
+    state.lang=el.dataset.lang;buildLangTabs();renderGrid();}));
+}
+let _t;
+$('search').addEventListener('input',(e)=>{state.q=e.target.value;$('clearx').style.display=state.q?'block':'none';clearTimeout(_t);_t=setTimeout(renderGrid,140);});
+$('clearx').addEventListener('click',()=>{state.q='';$('search').value='';$('clearx').style.display='none';renderGrid();});
+$('filters').querySelectorAll('.chip.src').forEach((el)=>el.addEventListener('click',()=>{
+  state.src=el.dataset.src;$('filters').querySelectorAll('.chip.src').forEach((c)=>c.classList.toggle('on',c===el));renderGrid();}));
+$('ownToggle').addEventListener('click',()=>{state.ownedOnly=!state.ownedOnly;$('ownToggle').classList.toggle('on',state.ownedOnly);renderGrid();});
+$('editToggle').addEventListener('click',()=>{
+  state.edit=!state.edit;
+  $('editToggle').classList.toggle('on',state.edit);
+  $('newSetBtn').style.display=state.edit?'inline-flex':'none';
+  document.body.classList.toggle('editing',state.edit);
+  renderGrid();
+  if(_openRid)openDrawer(_openRid);
+});
+$('newSetBtn').addEventListener('click',openNewEditor);
+$('scrim').addEventListener('click',closeDrawer);
+document.addEventListener('keydown',(e)=>{if(e.key==='Escape')closeDrawer();});
+
+/* ---- boot -------------------------------------------------------------- */
+buildLangTabs();
+renderGrid();
+loadOwned().then(renderGrid);
+</script>
+</body>
+</html>
