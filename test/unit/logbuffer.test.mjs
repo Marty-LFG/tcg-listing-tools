@@ -8,12 +8,15 @@ import { getLogs, _setRedactions, _push, _reset } from '../../lib/logbuffer.mjs'
 beforeEach(() => _reset());
 
 describe('secret scrubbing (GR2 — nothing secret leaves the box)', () => {
+  // Deliberately SHORT fake values: scrub matches by env-value (any length ≥6), not shape,
+  // so these exercise it fully while staying under the no-secrets invariant's 25-char
+  // "looks like a real key" threshold (test/invariants/no-secrets.test.mjs).
   const env = {
-    SCRYDEX_API_KEY: 'scrydex-secret-abcdef123456',
-    SCRYDEX_TEAM_ID: 'team-id-secret-778899',    // credential header value — must be scrubbed
-    TELEGRAM_BOT_TOKEN: '1234567890:AAExampleBotTokenValue',
-    EBAY_APP_ID: 'MyApp-PRD-11112222-abcd',
-    LABEL_PRINTER_IP: '192.168.4.220',   // NOT secret by name → must stay visible
+    SCRYDEX_API_KEY: 'fake-scrydex-k-1',
+    SCRYDEX_TEAM_ID: 'fake-team-id-2',      // credential header value — must be scrubbed
+    TELEGRAM_BOT_TOKEN: 'fake-bot-tok-3',
+    EBAY_APP_ID: 'fake-app-id-4',
+    LABEL_PRINTER_IP: '192.168.4.220',      // NOT secret by name → must stay visible
   };
   it('strips every .env secret VALUE from a captured line', () => {
     _setRedactions(env);
