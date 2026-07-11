@@ -104,6 +104,9 @@
   <h2>Baked data</h2>
   <div class="grid cols3" id="baked"></div>
 
+  <h2>Background jobs</h2>
+  <div class="grid cols2" id="jobs"></div>
+
   <h2>Databases &amp; subsystems</h2>
   <div class="grid cols3" id="subsystems"></div>
 
@@ -200,10 +203,41 @@
         '<div class="kv"><span class="k">Refresh</span><span class="v">' + (x.managed ? 'daily bake' : x.frozen ? 'frozen upstream' : 'manual') + '</span></div>' +
         '<div class="kv"><span class="k">File</span><span class="v">' + esc(x.file) + '</span></div></div>'));
     }
-    const r = d.refresh;
-    box.appendChild(el('<div class="card"><h3>Refresh loop ' + pill(r.enabled ? 'ok' : 'disabled', r.enabled ? 'on' : 'off') + '</h3>' +
-      '<div class="kv"><span class="k">Interval</span><span class="v">' + esc(r.interval_hours) + 'h</span></div>' +
-      '<div class="kv"><span class="k">Bakes</span><span class="v">' + esc((r.bakes || []).join(', ') || '—') + '</span></div></div>'));
+  }
+
+  // Background jobs: the two in-process loops (price collector + baked-data refresh).
+  // `running` is the load-bearing signal — a Vite restart used to silently kill these
+  // (they'd show `stopped` in red here); last-run detail + next-run come from /api/status jobs.*.
+  function renderJobs(){
+    const box = $('jobs');
+    box.innerHTML = '';
+    const j = STATUS.jobs || {};
+    const sub = STATUS.subsystems || {};
+    const runPill = (on) => on ? pill('ok', 'running') : pill('down', 'stopped');
+    const tsCell = (ts, ok) => ts ? '<span class="v ' + (ok ? 'ok' : 'bad') + '">' + fmtTs(ts) + (ok ? '' : ' · failed') + '</span>' : '<span class="v">never</span>';
+
+    const c = j.collector || {};
+    const lp = c.last_pass;
+    const errs = lp && lp.errors ? Object.entries(lp.errors).map(([k, n]) => n + '× ' + k).join(', ') : '';
+    box.appendChild(el('<div class="card"><h3>Collector loop ' + runPill(c.running) + '</h3>' +
+      '<div class="kv"><span class="k">Cadence</span><span class="v">' + esc(sub.collector ? (sub.collector.cadence_hours ?? '—') : '—') + 'h</span></div>' +
+      '<div class="kv"><span class="k">Last pass</span>' + tsCell(lp && lp.finished_at, lp && lp.ok) + '</div>' +
+      (lp && lp.checked != null ? '<div class="kv"><span class="k">Snapshotted</span><span class="v">' + esc(lp.snapshots + ' / ' + lp.checked + ' cards') + '</span></div>' : '') +
+      (errs ? '<div class="kv"><span class="k">Errors</span><span class="v warn">' + esc(errs) + '</span></div>' : '') +
+      '<div class="kv"><span class="k">Next run</span><span class="v">' + fmtTs(c.next_run_at) + '</span></div>' +
+      '<div class="kv"><span class="k">Probe cache</span><span class="v">' + esc(STATUS.probe_ttl_min) + ' min</span></div></div>'));
+
+    const r = j.refresh || {};
+    const dr = (STATUS.data && STATUS.data.refresh) || {};
+    const lr = r.last_run;
+    const headPill = !dr.enabled ? pill('disabled', 'off') : runPill(r.running);
+    const res = lr && lr.results ? lr.results.map((x) => x.name + (x.skipped ? ' (fresh)' : x.ok ? ' ✓' : ' ✗')).join(', ') : '';
+    box.appendChild(el('<div class="card"><h3>Data refresh loop ' + headPill + '</h3>' +
+      '<div class="kv"><span class="k">Interval</span><span class="v">' + esc(dr.interval_hours ?? '—') + 'h</span></div>' +
+      '<div class="kv"><span class="k">Bakes</span><span class="v">' + esc((dr.bakes || []).join(', ') || '—') + '</span></div>' +
+      '<div class="kv"><span class="k">Last run</span>' + tsCell(lr && lr.finished_at, lr && lr.ok) + '</div>' +
+      (res ? '<div class="kv"><span class="k">Result</span><span class="v">' + esc(res) + '</span></div>' : '') +
+      '<div class="kv"><span class="k">Next run</span><span class="v">' + fmtTs(r.next_run_at) + '</span></div></div>'));
   }
 
   function renderSubsystems(){
@@ -233,9 +267,6 @@
       '<div class="kv"><span class="k">Anthropic key</span>' + yn(k.grader.ANTHROPIC_API_KEY) + '</div>' +
       '<div class="kv"><span class="k">OpenAI key</span>' + yn(k.grader.OPENAI_API_KEY) + '</div>' +
       '<div class="kv"><span class="k">Provider</span><span class="v">' + esc(k.grader.provider || 'none — centering only') + '</span></div></div>'));
-    box.appendChild(el('<div class="card"><h3>Collector</h3>' +
-      '<div class="kv"><span class="k">Cadence</span><span class="v">' + esc(sub.collector.cadence_hours ?? '—') + 'h</span></div>' +
-      '<div class="kv"><span class="k">Probe cache</span><span class="v">' + esc(STATUS.probe_ttl_min) + ' min</span></div></div>'));
   }
 
   // ---- settings forms ----
@@ -371,6 +402,7 @@
         ' · node <b>' + esc(v.node) + '</b> · up <b>' + Math.round(v.uptime_s / 60) + 'm</b> · probes cached <b>' + esc(st.probe_ttl_min) + 'm</b>';
       renderSources();
       renderBaked();
+      renderJobs();
       renderSubsystems();
       renderSettings(se.files);
     } catch (e) {
