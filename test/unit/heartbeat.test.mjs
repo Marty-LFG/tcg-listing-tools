@@ -40,9 +40,13 @@ describe('heartbeat liveness canary', () => {
     assert.equal(hb.ok, true);
     assert.deepEqual(getHeartbeat(), hb);   // getHeartbeat returns the last beat
   });
-  it('startHeartbeat arms a timer; stopHeartbeat clears it', () => {
+  it('startHeartbeat beats immediately (no 15m wait) + arms a timer; stopHeartbeat clears it', () => {
+    startCollector({ db: {}, base: 'http://127.0.0.1:0', cadenceHours: 24 });
+    startDataRefresh();
     startHeartbeat({ intervalMin: 15 });
-    assert.ok(globalThis.__tcgHeartbeatTimer);
+    assert.ok(globalThis.__tcgHeartbeatTimer, 'timer armed');
+    assert.ok(getHeartbeat(), 'initial beat populates jobs.heartbeat immediately');
+    assert.equal(getHeartbeat().ok, true);
     stopHeartbeat();
     assert.equal(globalThis.__tcgHeartbeatTimer ?? null, null);
   });
