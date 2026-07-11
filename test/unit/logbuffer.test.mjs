@@ -3,7 +3,7 @@
 // monkeypatches the real console. The no-secret-leak guarantee (GR2) is the load-bearing test.
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { getLogs, _setRedactions, _push, _reset } from '../../lib/logbuffer.mjs';
+import { getLogs, scrubSecrets, _setRedactions, _push, _reset } from '../../lib/logbuffer.mjs';
 
 beforeEach(() => _reset());
 
@@ -39,6 +39,31 @@ describe('secret scrubbing (GR2 — nothing secret leaves the box)', () => {
     const msg = getLogs()[0].msg;
     assert.ok(!/eyJhbGciOi/.test(msg), 'leaked bearer token');
     assert.match(msg, /Bearer \*\*\*/);
+  });
+});
+
+describe('scrubSecrets (exported for open-endpoint callers — status.mjs probe detail / last_error)', () => {
+  it('redacts .env secret values and runtime bearer tokens; passes null through', () => {
+    _setRedactions({ SCRYDEX_API_KEY: 'fake-scrydex-secret-1' });
+    assert.equal(scrubSecrets('upstream said key=fake-scrydex-secret-1 bad'), 'upstream said key=*** bad');
+    assert.match(scrubSecrets('Authorization: Bearer abc123def456ghi789'), /Bearer \*\*\*/);
+    assert.equal(scrubSecrets(null), null);
+    assert.equal(scrubSecrets('scrydex_inactive'), 'scrydex_inactive');  // an error code is not a secret
+  });
+});
+
+describe('globalThis-backed buffer survives module re-import (the Vite-restart fix)', () => {
+  it('a writer in one module instance and a reader in another share the ring buffer', async () => {
+    // Cache-busting query strings give two DISTINCT module instances that still share globalThis —
+    // the exact writer(old)/reader(new) split Vite creates on an in-process restart. If _buf were
+    // module-scoped again, the reader instance would see nothing and this would fail.
+    const writer = await import('../../lib/logbuffer.mjs?inst=w');
+    const reader = await import('../../lib/logbuffer.mjs?inst=r');
+    writer._reset();
+    writer._push('warn', 'cross-instance-line');
+    assert.notEqual(writer, reader, 'expected two distinct module instances');
+    assert.ok(reader.getLogs({ tail: 10 }).some((e) => e.msg === 'cross-instance-line'),
+      'reader instance must see the writer instance line via the shared globalThis buffer');
   });
 });
 
