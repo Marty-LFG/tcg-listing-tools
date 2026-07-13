@@ -74,6 +74,17 @@ describe('refresh.config.json', () => {
   });
 });
 
+describe('backup.config.json', () => {
+  const c = cfg('backup.config.json');
+  it('enabled boolean, positive interval, bounded rotation, secrets OFF by default', () => {
+    assert.equal(typeof c.enabled, 'boolean');
+    assert.ok(c.interval_hours >= 1);
+    assert.ok(Number.isInteger(c.keep) && c.keep >= 1 && c.keep <= 365, `keep=${c.keep}`);
+    assert.equal(typeof c.include_secrets, 'boolean');
+    assert.equal(c.include_secrets, false, 'include_secrets must default false — no silent .env duplication');
+  });
+});
+
 describe('collectr.config.json', () => {
   it('market currency is a real currency code', () => {
     assert.match(cfg('collectr.config.json').market_currency, /^[A-Z]{3}$/);

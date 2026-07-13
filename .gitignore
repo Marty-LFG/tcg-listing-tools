@@ -22,6 +22,11 @@ data/exports/
 data/pc-cache/
 data/img-cache/
 
+# Rotated SQLite snapshots written by lib/backup.mjs (VACUUM INTO tracker.db/repricer.db + a
+# config bundle). Local disaster-recovery copies, not source — and they may contain data/.env if
+# include_secrets is enabled, so they must NEVER be committed.
+data/backups/
+
 # Baked data catalogs (build artifacts, NOT source): regenerated in place on a timer by
 # lib/refresh.mjs from the tracked seeds + live upstreams (TCGdex / Riot). Tracking them made
 # every deploy collide with the server's own rebuild. Seeds stay tracked as the source of truth

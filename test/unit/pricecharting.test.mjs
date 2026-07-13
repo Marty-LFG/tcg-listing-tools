@@ -54,16 +54,32 @@ describe('pickBestMatch', () => {
     { productName: 'Charizard #4', consoleName: 'Pokemon Base Set 2' },
     { productName: 'Dark Charizard #4', consoleName: 'Pokemon Team Rocket' },
   ];
-  it('number + name + set match → high confidence', () => {
-    const m = pickBestMatch(results, { name: 'Charizard', number: '4', setName: 'Base Set' });
-    assert.equal(m.match, results[0]);
+  it('AMBIGUOUS same-number reprint (Base Set vs Base Set 2) → null, never a wrong-set guess (GR4)', () => {
+    // setMatch is loose by design, so 'Base Set' resolves BOTH consoles → no UNIQUE set-match.
+    // Returning withSet[0] here would surface the wrong reprint's price at high confidence (the
+    // Base Set vs Base Set 2 Charizard #4 prices differ hugely), so it must refuse to guess.
+    assert.equal(pickBestMatch(results, { name: 'Charizard', number: '4', setName: 'Base Set' }), null);
+  });
+  it('UNIQUE set match → high confidence', () => {
+    const one = [
+      { productName: 'Charizard #4', consoleName: 'Pokemon Base Set' },
+      { productName: 'Dark Charizard #4', consoleName: 'Pokemon Team Rocket' },
+    ];
+    const m = pickBestMatch(one, { name: 'Charizard', number: '4', setName: 'Base Set' });
+    assert.equal(m.match, one[0]);
     assert.equal(m.confidence, 'high');
   });
   it('set filter selects the right console when names overlap', () => {
-    // 'Charizard' name-matches 'Dark Charizard' too (loose by design); the set resolves it.
+    // 'Charizard' name-matches 'Dark Charizard' too (loose by design); the set uniquely resolves it.
     const m = pickBestMatch(results, { name: 'Dark Charizard', number: '4', setName: 'Team Rocket' });
     assert.equal(m.match, results[2]);
     assert.equal(m.confidence, 'high');
+  });
+  it('single name+number candidate, no set match → medium (uniqueness ≈ confidence)', () => {
+    const one = [{ productName: 'Pikachu #58', consoleName: 'Pokemon Jungle' }];
+    const m = pickBestMatch(one, { name: 'Pikachu', number: '58', setName: 'Some Unknown Set' });
+    assert.equal(m.match, one[0]);
+    assert.equal(m.confidence, 'medium');
   });
   it('multiple candidates, none resolving the set → null (refuses to guess)', () => {
     assert.equal(pickBestMatch(results, { name: 'Charizard', number: '4', setName: 'Vivid Voltage' }), null);

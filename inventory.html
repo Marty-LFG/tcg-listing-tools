@@ -423,10 +423,14 @@ function valueAud(it){
   const a=(window.TCG&&TCG.toAUD)?TCG.toAUD(d,cur):null;
   return a==null?null:a;
 }
-function costAud(it){return ((it.cost_cents||0)+(it.acq_fees_cents||0))/100;}
-function unrealized(it){const v=valueAud(it);if(v==null)return null;return v-costAud(it);}
+// Inventory money is PER UNIT with `quantity` the multiplier (a raw bulk lot is one row, e.g. qty=50);
+// costAud/unrealized/realized return WHOLE-LOT figures so a bulk card reconciles with the /summary
+// tiles (which also scale by qty). Graded slabs + manual adds are qty 1, so this is a no-op for them.
+function qtyOf(it){return Math.max(1, it.quantity||1);}
+function costAud(it){return (((it.cost_cents||0)+(it.acq_fees_cents||0))/100)*qtyOf(it);}
+function unrealized(it){const v=valueAud(it);if(v==null)return null;return v*qtyOf(it)-costAud(it);}
 function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
-  return (it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100;}
+  return ((it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100)*qtyOf(it);}
 function plBadge(d){if(d==null)return '<span class="badge flat">—</span>';
   const cls=d>0.005?'up':d<-0.005?'down':'flat';const s=d>0?'+':'';return '<span class="badge '+cls+'">'+s+aud(d)+'</span>';}
 
@@ -451,13 +455,14 @@ function sparkHtml(it){
 function itemRow(it){
   const slab=it.grading_company?('<div style="flex:0 0 auto;" title="'+esc(it.grading_company+(it.grade!=null?' '+it.grade:''))+'">'+slabHtml({company:it.grading_company,grade:it.grade,gradeLabel:it.grade_label,image:it.image_url,width:62})+'</div>'):'';
   const sgTxt=(function(){try{if(!it.subgrades)return '';var o=JSON.parse(it.subgrades);var pr=[];if(o.centering!=null)pr.push('Ctr '+o.centering);if(o.corners!=null)pr.push('C '+o.corners);if(o.edges!=null)pr.push('E '+o.edges);if(o.surface!=null)pr.push('S '+o.surface);return pr.length?'<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">'+pr.join(' · ')+'</div>':'';}catch(e){return '';}})();
-  const v=valueAud(it), vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?' <small style="color:var(--muted);font-weight:600;">· '+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</small>':'';
+  const q=qtyOf(it), v=valueAud(it), vlot=(v==null?null:v*q);
+  const vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?' <small style="color:var(--muted);font-weight:600;">· '+esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2)+'</small>':'';
   const pl=it.status==='sold'?realized(it):unrealized(it);
   const plLbl=it.status==='sold'?'realized':'unrealized';
   return '<div class="card"><div class="row">'
     +slab
     +'<div style="min-width:180px;flex:1;">'
-      +'<div class="nm">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
+      +'<div class="nm">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+(q>1?' <span class="pill" style="color:var(--muted);border-color:var(--line2);">×'+q+'</span>':'')+'</div>'
       +'<div class="key">'+esc(GAME_NAMES[it.game]||it.game)+(it.set_name?' · '+esc(it.set_name):'')+(it.number?' · #'+esc(it.number):'')+(it.language&&it.language!=='EN'?' · '+esc(it.language):'')+(it.variant?' · '+esc(it.variant):'')+(it.cert_number?' · cert '+esc(it.cert_number):'')+'</div>'
       +'<div class="sku">'+esc(it.sku)+(it.location?' · 📍 '+esc(it.location):'')+'</div>'
       +sgTxt
@@ -466,8 +471,8 @@ function itemRow(it){
     +'</div>'
     +sparkHtml(it)
     +'<div style="text-align:right;min-width:150px;">'
-      +'<div class="money">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+vnative+'</div>'
-      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+'</div>'
+      +'<div class="money">'+(vlot!=null?aud(vlot):(it.value_cents!=null?esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2):'—'))+vnative+'</div>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+centsAud(((it.cost_cents||0)+(it.acq_fees_cents||0))*q)+(q>1?' <span style="color:var(--faint);">('+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+' ea)</span>':'')+'</div>'
       +'<div style="margin-top:5px;">'+plBadge(pl)+' <span style="font-size:10px;color:var(--muted);">'+plLbl+'</span></div>'
     +'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
@@ -481,8 +486,8 @@ function itemRow(it){
 }
 // Collectr-style grid tile: big slab + name/set + value + P/L + compact actions.
 function gridCard(it){
-  const v=valueAud(it);
-  const vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?'<div class="g-native">'+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</div>':'';
+  const q=qtyOf(it), v=valueAud(it), vlot=(v==null?null:v*q);
+  const vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?'<div class="g-native">'+esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2)+'</div>':'';
   const pl=it.status==='sold'?realized(it):unrealized(it);
   const plLbl=it.status==='sold'?'realized':'unrealized';
   const setLine=[it.set_name?esc(it.set_name):'',it.number?('#'+esc(it.number)):'',(it.language&&it.language!=='EN')?esc(it.language):''].filter(Boolean).join(' · ');
@@ -490,10 +495,10 @@ function gridCard(it){
   return '<div class="gtile">'
     +'<div class="g-slab" title="'+esc(it.grading_company?(it.grading_company+(it.grade!=null?' '+it.grade:'')):'raw')+'">'+slab+'</div>'
     +'<div class="g-body">'
-      +'<div class="g-name" title="'+esc(it.name)+'">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
+      +'<div class="g-name" title="'+esc(it.name)+'">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+(q>1?' <span class="pill" style="color:var(--muted);border-color:var(--line2);">×'+q+'</span>':'')+'</div>'
       +(setLine?'<div class="g-set">'+setLine+'</div>':'')
       +'<div class="g-set">'+esc(it.sku)+(it.variant?' · '+esc(it.variant):'')+'</div>'
-      +'<div class="g-price">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+'</div>'+vnative
+      +'<div class="g-price">'+(vlot!=null?aud(vlot):(it.value_cents!=null?esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2):'—'))+'</div>'+vnative
       +'<div class="g-pl">'+plBadge(pl)+' <span class="g-pllbl">'+plLbl+'</span></div>'
       +'<div class="status" id="cs'+it.id+'"></div>'
       +'<div class="g-acts">'
@@ -508,7 +513,7 @@ function gridCard(it){
 // Client-side sort of the loaded items (value = AUD-converted; nulls sink to the bottom).
 function sortItems(items){
   const key=(document.getElementById('f_sort')||{}).value||'added';
-  const vof=it=>{const a=valueAud(it);return a!=null?a:(it.value_cents!=null?it.value_cents/100:null);};
+  const vof=it=>{const a=valueAud(it),q=qtyOf(it);return a!=null?a*q:(it.value_cents!=null?(it.value_cents/100)*q:null);};
   const plof=it=>it.status==='sold'?realized(it):unrealized(it);
   const arr=items.slice();
   const numDesc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return y-x;};

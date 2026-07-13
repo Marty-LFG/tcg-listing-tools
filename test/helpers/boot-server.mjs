@@ -27,6 +27,7 @@ export async function bootServer() {
   const dataDir = tmpDir('tcg-int-');
   process.env.TCG_TRACKER_DB = path.join(dataDir, 'tracker.db');
   process.env.TCG_REPRICER_DB = path.join(dataDir, 'repricer.db');
+  process.env.TCG_BACKUP_DIR = path.join(dataDir, 'backups');   // the backup job must never touch real data/backups
   process.env.TELEGRAM_BOT_TOKEN = '';        // never start the Telegram poller from tests
   process.env.TELEGRAM_CHAT_ID = '';
 
