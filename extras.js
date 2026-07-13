@@ -3,16 +3,34 @@
    Uses each tool's own CSS vars (--gold/--line/--muted/--text/--field/--panel2) so it themes itself. */
 (function () {
   const TCG = (window.TCG = window.TCG || {});
-  let RATES = null, RATE_DATE = '';
+  let RATES = null, RATE_DATE = '', RATE_STALE = false, RATE_CACHED_AT = 0;
+  const FX_LS_KEY = 'tcg.fx.lastgood';
 
   TCG.loadFx = async function () {
-    if (RATES) return RATES;
+    // A live (non-stale) rate is memoised for the session. If we're only holding a STALE cached rate,
+    // keep attempting the network each call so a recovered /api/fx upgrades us back to live.
+    if (RATES && !RATE_STALE) return RATES;
     try {
       const r = await fetch('/api/fx/latest?from=USD&to=AUD,EUR,GBP,JPY');
-      if (r.ok) { const j = await r.json(); RATES = Object.assign({ USD: 1 }, j.rates || {}); RATE_DATE = j.date || ''; }
+      if (r.ok) {
+        const j = await r.json();
+        RATES = Object.assign({ USD: 1 }, j.rates || {}); RATE_DATE = j.date || ''; RATE_STALE = false; RATE_CACHED_AT = Date.now();
+        try { localStorage.setItem(FX_LS_KEY, JSON.stringify({ rates: RATES, date: RATE_DATE, at: RATE_CACHED_AT })); } catch (e) {}
+        return RATES;
+      }
     } catch (e) {}
+    // Network failed. Rather than let every A$ figure vanish (GR7), fall back to the last-good rate
+    // saved in localStorage — flagged STALE so the UI can show it's a cached, possibly-old rate.
+    if (!RATES) {
+      try {
+        const c = JSON.parse(localStorage.getItem(FX_LS_KEY) || 'null');
+        if (c && c.rates) { RATES = c.rates; RATE_DATE = c.date || ''; RATE_STALE = true; RATE_CACHED_AT = c.at || 0; }
+      } catch (e) {}
+    }
     return RATES;
   };
+  // Provenance for the UI: is the current rate live or a stale cached fallback, and how old?
+  TCG.fxInfo = function () { return { date: RATE_DATE, stale: RATE_STALE, haveRate: !!RATES, cachedAt: RATE_CACHED_AT }; };
   function conv(amount, from, to) {
     if (!RATES) return null;
     const usd = from === 'USD' ? amount : amount / (RATES[from] || 1);

@@ -201,6 +201,75 @@ describe('inventory / sealed write bug-fixes (#3/#6/#7/#8/#9)', () => {
   });
 });
 
+describe('/api/bulk (GET-safe, offline)', () => {
+  it('GET /config → pricing + pinned eBay categories', async () => {
+    const { status, json } = await get('/api/bulk/config');
+    assert.equal(status, 200);
+    assert.ok(json.pricing && typeof json.pricing === 'object');
+    assert.ok(json.ebay && typeof json.ebay === 'object');
+  });
+  it('GET /sets?game=notagame → 400 before any network', async () => {
+    const { status, json } = await get('/api/bulk/sets?game=notagame');
+    assert.equal(status, 400);
+    assert.match(json.error, /game must be one of/);
+  });
+  it('GET /export/preview with no items → 404', async () => {
+    const { status, json } = await get('/api/bulk/export/preview');
+    assert.equal(status, 404);
+    assert.match(json.error, /no items/);
+  });
+  it('unknown route → 404', async () => {
+    assert.equal((await get('/api/bulk/nope')).status, 404);
+  });
+});
+
+describe('/api/catalog (GET-safe, offline)', () => {
+  it('GET /seed → editable seed overlay', async () => {
+    const { status, json } = await get('/api/catalog/seed');
+    assert.equal(status, 200);
+    assert.equal(typeof json.seed, 'object');
+    assert.equal(json.path, 'data/pokemon-intl-seed.json');
+  });
+  it('GET /cards with no params → 400', async () => {
+    const { status, json } = await get('/api/catalog/cards');
+    assert.equal(status, 400);
+    assert.match(json.error, /lang and set required/);
+  });
+  it('unknown route → 404', async () => {
+    assert.equal((await get('/api/catalog/nope')).status, 404);
+  });
+});
+
+describe('/api/sealed (GET-safe, offline)', () => {
+  it('GET /product-types → enum + per-game subsets', async () => {
+    const { status, json } = await get('/api/sealed/product-types');
+    assert.equal(status, 200);
+    assert.ok(Array.isArray(json.types) && json.types.includes('booster_box'));
+    assert.ok(json.by_game.pokemon.includes('elite_trainer_box'));
+  });
+  it('GET /summary → quantity-aware totals shape', async () => {
+    const { status, json } = await get('/api/sealed/summary');
+    assert.equal(status, 200);
+    assert.equal(typeof json.counts.total, 'number');
+    assert.equal(typeof json.units, 'number');
+    assert.equal(typeof json.totalCostCents, 'number');
+    for (const k of ['valueByCurrency', 'byGame', 'byType']) assert.ok(json[k] && typeof json[k] === 'object', k);
+  });
+  it('GET /locations → array', async () => {
+    const { status, json } = await get('/api/sealed/locations');
+    assert.equal(status, 200);
+    assert.ok(Array.isArray(json.locations));
+  });
+  it('GET /export → items + batches bundle', async () => {
+    const { status, json } = await get('/api/sealed/export');
+    assert.equal(status, 200);
+    assert.ok(Array.isArray(json.items) && Array.isArray(json.batches) && json.generated_at);
+  });
+  it('unknown route → 404', async () => {
+    assert.equal((await get('/api/sealed/nope')).status, 404);
+  });
+});
+
 describe('static pages served', () => {
   for (const page of ['/', '/tracker.html', '/inventory.html', '/shipping-label.html']) {
     it(`GET ${page}`, async () => {

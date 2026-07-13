@@ -237,6 +237,8 @@
     <div class="dw-body" id="dwBody"></div>
   </aside>
 
+<!-- shared TCG.* helpers (FX conversion for AUD-first card prices) — classic script, runs before the module below -->
+<script src="/extras.js"></script>
 <script type="module">
 /* ===========================================================================
    catalog.html — unified Pokémon catalog for the TCG Listing Tools suite.
@@ -530,7 +532,8 @@ function sortCards(cards,mode){
     if(xi&&yi)return String(x.numRaw).localeCompare(String(y.numRaw),undefined,{numeric:true});
     if(xi)return 1;if(yi)return -1;                                   // non-numeric always last
     return (dir*(x.numN-y.numN))||String(x.numRaw).localeCompare(String(y.numRaw),undefined,{numeric:true});};
-  const cmpPrice=(x,y,dir)=>{const xv=x.priceVal,yv=y.priceVal;       // dir 1 = desc, -1 = asc; nulls last
+  const cmpPrice=(x,y,dir)=>{                                          // dir 1 = desc, -1 = asc; nulls last
+    const xv=x.priceAud!=null?x.priceAud:x.priceVal, yv=y.priceAud!=null?y.priceAud:y.priceVal;   // AUD-equiv so mixed USD/EUR sort right
     if(xv==null&&yv==null)return cmpNum(x,y,1);if(xv==null)return 1;if(yv==null)return -1;
     return (dir*(yv-xv))||cmpNum(x,y,1);};
   if(mode==='num-desc')a.sort((x,y)=>cmpNum(x,y,-1));
@@ -551,7 +554,7 @@ function paintCards(head,grid,cards,meta){
     '<label class="dw-sortlbl">sort <select id="dwSort">'+
     opts.map((o)=>'<option value="'+o[0]+'"'+(o[0]===_cardSort?' selected':'')+'>'+esc(o[1])+'</option>').join('')+
     '</select></label>';
-  const draw=()=>{grid.innerHTML=sortCards(cards,_cardSort).map((c)=>cardTile(c.img,c.numRaw,c.name,c.rarity,c.price,c.owned)).join('');};
+  const draw=()=>{grid.innerHTML=sortCards(cards,_cardSort).map((c)=>cardTile(c)).join('');};
   draw();
   const sel=head.querySelector('#dwSort');if(sel)sel.addEventListener('change',()=>{_cardSort=sel.value;draw();});
 }
@@ -561,6 +564,7 @@ async function loadCards(set,wrap){
   const grid=wrap.querySelector('#cardgrid');const head=wrap.querySelector('#dwch');
   const note=(html,label)=>{grid.innerHTML=html;head.textContent='Cards'+(label?' · '+label:'');};
   const ownNums=ownedNumbers(set);
+  if(window.TCG&&TCG.loadFx){try{await TCG.loadFx();}catch(e){}}   // AUD conversion for card prices (cached/last-good on failure)
   try{
     const qs=new URLSearchParams({lang:set.lang,set:set.rid});
     if(set.lang!=='en'){qs.set('src',set.source);if(set.tcgdexId)qs.set('tcgdexId',set.tcgdexId);if(set.pcSlug)qs.set('pcSlug',set.pcSlug);}
@@ -573,9 +577,13 @@ async function loadCards(set,wrap){
         : 'No cards returned for this set yet — open it in the builder.',set),
         set.source==='seeded'?'seeded · no card list yet':'via builder');
     }
+    const toAud=(v,cur)=>(window.TCG&&v!=null&&cur&&TCG.toAUD)?TCG.toAUD(v,cur):null;
     const cards=raw.map((c)=>({numN:parseCardNum(c.numRaw),numRaw:c.numRaw,name:c.name||'',rarity:c.rarity||'',
-      priceVal:c.priceVal,price:c.price,img:c.img||'',owned:ownNums.get(String(c.numRaw).replace(/^0+/,''))}));
-    paintCards(head,grid,cards,j.stale?'cached copy':(j.source==='pricecharting'?'via PriceCharting':(j.source==='tcgdex'?'via TCGdex':'')));
+      priceVal:c.priceVal,priceCur:c.priceCur,price:c.price,priceAud:toAud(c.priceVal,c.priceCur),
+      img:c.img||'',owned:ownNums.get(String(c.numRaw).replace(/^0+/,''))}));
+    const fx=(window.TCG&&TCG.fxInfo)?TCG.fxInfo():null;
+    const fxNote=(fx&&fx.stale)?' · FX cached'+(fx.date?' '+fx.date:''):'';
+    paintCards(head,grid,cards,(j.stale?'cached copy':(j.source==='pricecharting'?'via PriceCharting':(j.source==='tcgdex'?'via TCGdex':'')))+fxNote);
   }catch(e){
     note(noteHTML('Cards aren’t available from the data source right now — open it in the builder to look them up.',set),'via builder');
   }
@@ -589,7 +597,8 @@ function enPrice(c){
   const cm=c.cardmarket&&c.cardmarket.prices;if(cm&&cm.averageSellPrice!=null)return '€'+cm.averageSellPrice.toFixed(2);
   return null;
 }
-function cardTile(img,num,name,rarity,price,owned){
+function cardTile(c){
+  var img=c.img,num=c.numRaw,name=c.name,rarity=c.rarity,owned=c.owned;
   // Each image loads independently (lazy). Show a spinner in its tile until it paints, then fade it
   // in — so cards appear as soon as their own image is ready, never waiting on the whole grid.
   var iw=img
@@ -599,11 +608,20 @@ function cardTile(img,num,name,rarity,price,owned){
       +'onerror="this.parentNode.classList.remove(\'loading\');this.parentNode.classList.add(\'imgerr\');this.remove()">'
       +'<span class="ph">'+esc(name||'—')+'</span></div>'
     :'<div class="imgwrap noimg"><span class="ph">'+esc(name||'—')+'</span></div>';
+  // AUD-first (the store's currency): bold A$ primary + the native figure as a muted secondary for
+  // provenance. Falls back to the native label alone when FX is unavailable AND uncached (GR7).
+  var pr='';
+  if(c.priceAud!=null){
+    pr='<div class="cpr">A$'+(Math.round(c.priceAud*100)/100).toFixed(2)
+      +((c.priceCur&&c.priceCur!=='AUD'&&c.price)?' <span style="color:var(--faint);font-weight:400">· '+esc(c.price)+'</span>':'')+'</div>';
+  }else if(c.price){
+    pr='<div class="cpr">'+esc(c.price)+'</div>';
+  }
   return '<div class="cardtile'+(owned?' own':'')+'">'+(owned?'<span class="ownflag">'+esc((owned.grading_company||'OWNED')+(owned.grade!=null?' '+owned.grade:''))+'</span>':'')+
     iw+
     '<div class="cap"><div class="cnum">#'+esc(num||'?')+(rarity?' · '+esc(rarity):'')+'</div>'+
     '<div class="cnm" title="'+esc(name)+'">'+esc(name||'')+'</div>'+
-    (price?'<div class="cpr">'+esc(price)+'</div>':'')+'</div></div>';
+    pr+'</div></div>';
 }
 
 /* ---- controls wiring --------------------------------------------------- */

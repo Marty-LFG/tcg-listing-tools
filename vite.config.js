@@ -14,6 +14,9 @@ import { lookup as pcLookup, enumerateConsole as pcEnumerate, listPokemonConsole
 import { certLookup, certProviders } from './lib/certlookup.mjs'
 import { analyzeCard } from './lib/grader.mjs'
 import { printConfig, buildJob, sendToPrinter } from './lib/labelprint.mjs'
+import { bricklinkAuthHeader } from './lib/bricklink.mjs'
+import { ebayToken, ebayInsightsToken } from './lib/ebay-token.mjs'
+import { readJsonBody } from './lib/req-body.mjs'
 
 // Streams any remote image through the dev server (so the browser can blob-download it — cross-origin
 // <a download> is blocked otherwise) AND caches it on disk (data/img-cache/) keyed by URL hash. Card
@@ -67,36 +70,10 @@ const imgProxy = {
   },
 }
 
-// ---- BrickLink: OAuth 1.0a request signing ---------------------------------
-// BrickLink authenticates EVERY request with a per-request HMAC-SHA1 signature
-// (consumer key/secret + token/secret). A static header can't express that, so
-// this is a signing middleware rather than a plain proxy entry. The dev server's
-// outbound IP must also be registered in the BrickLink API console.
-function pctEncode(s) {
-  return encodeURIComponent(String(s)).replace(/[!*'()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())
-}
-function bricklinkAuthHeader(method, urlObj, cred) {
-  const oauth = {
-    oauth_consumer_key: cred.consumerKey,
-    oauth_token: cred.token,
-    oauth_signature_method: 'HMAC-SHA1',
-    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
-    oauth_nonce: crypto.randomBytes(16).toString('hex'),
-    oauth_version: '1.0',
-  }
-  const params = []
-  for (const [k, v] of urlObj.searchParams) params.push([k, v])
-  for (const k in oauth) params.push([k, oauth[k]])
-  const baseParams = params
-    .map(([k, v]) => [pctEncode(k), pctEncode(v)])
-    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
-    .map(([k, v]) => k + '=' + v).join('&')
-  const baseUrl = urlObj.origin + urlObj.pathname
-  const base = method.toUpperCase() + '&' + pctEncode(baseUrl) + '&' + pctEncode(baseParams)
-  const signingKey = pctEncode(cred.consumerSecret) + '&' + pctEncode(cred.tokenSecret)
-  oauth.oauth_signature = crypto.createHmac('sha1', signingKey).update(base).digest('base64')
-  return 'OAuth ' + Object.keys(oauth).map(k => pctEncode(k) + '="' + pctEncode(oauth[k]) + '"').join(', ')
-}
+// BrickLink OAuth 1.0a request signing lives in lib/bricklink.mjs (pctEncode / oauthBaseString /
+// bricklinkAuthHeader). The bricklinkProxy middleware below stays here — it wires server.middlewares
+// and is dev-server-only (GR1). Per-request HMAC-SHA1 signing is why this is a middleware, not a
+// static-header proxy entry; the dev server's outbound IP must be registered in the BrickLink console.
 function bricklinkProxy(env) {
   return {
     name: 'bricklink-proxy',
@@ -128,71 +105,11 @@ function bricklinkProxy(env) {
   }
 }
 
-// ---- eBay: OAuth2 client-credentials app token (cached) --------------------
-// Mints + caches an application token and injects it as a Bearer header, plus the
-// AU marketplace header. Fronts the Browse API (Funko pricing) and Taxonomy API
-// (item specifics). Token TTL ~2h; refreshed ~60s early.
-let ebayTok = { value: '', exp: 0 }
-async function ebayToken(env) {
-  if (ebayTok.value && Date.now() < ebayTok.exp) return ebayTok.value
-  // .trim() defends against a trailing space/newline pasted into .env — a stray
-  // char in the Basic header is silently rejected by eBay as invalid_client.
-  const appId = (env.EBAY_APP_ID || '').trim()
-  const certId = (env.EBAY_CERT_ID || '').trim()
-  // #1 cause of a token-mint failure: SANDBOX keys used against the PRODUCTION
-  // endpoint (or vice-versa). eBay encodes the environment in the key strings
-  // (PRD- = production, SBX- = sandbox); this proxy only ever calls production.
-  if (/SBX-/.test(appId) || /SBX-/.test(certId)) {
-    throw new Error('these look like SANDBOX keys (contain "SBX-") but the proxy calls the PRODUCTION eBay API. ' +
-      'Create a *Production* keyset at developer.ebay.com → Application Keys and use the PRD- App ID + Cert ID.')
-  }
-  const basic = Buffer.from(appId + ':' + certId).toString('base64')
-  const r = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
-    method: 'POST',
-    headers: { Authorization: 'Basic ' + basic, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'grant_type=client_credentials&scope=' + encodeURIComponent('https://api.ebay.com/oauth/api_scope'),
-  })
-  const text = await r.text()
-  if (!r.ok) {
-    // eBay returns JSON like {"error":"invalid_client","error_description":"client authentication failed"}.
-    let detail = text.slice(0, 300)
-    try { const e = JSON.parse(text); detail = [e.error, e.error_description].filter(Boolean).join(': ') || detail } catch {}
-    const hint = (r.status === 400 || r.status === 401)
-      ? ' — verify EBAY_APP_ID is the App ID (Client ID) and EBAY_CERT_ID the Cert ID (Client Secret) from your *Production* keyset, with no extra spaces.'
-      : ''
-    throw new Error('eBay OAuth token mint failed (HTTP ' + r.status + '): ' + detail + hint)
-  }
-  let j
-  try { j = JSON.parse(text) } catch { throw new Error('eBay OAuth token response was not JSON: ' + text.slice(0, 200)) }
-  ebayTok = { value: j.access_token, exp: Date.now() + Math.max(0, (j.expires_in || 7200) - 60) * 1000 }
-  return ebayTok.value
-}
-// Separate, isolated token for the Marketplace Insights API (true SOLD prices). It needs
-// the `buy.marketplace.insights` scope, which eBay grants only to apps approved for that
-// limited-release API. We mint it on its own so a denial (invalid_scope) can NEVER break the
-// basic Browse/Taxonomy token above. If the app isn't approved, this throws and the proxy
-// returns a soft 403 the client treats as "sold unavailable -> fall back to asking".
-let ebayInsTok = { value: '', exp: 0 }
-async function ebayInsightsToken(env) {
-  if (ebayInsTok.value && Date.now() < ebayInsTok.exp) return ebayInsTok.value
-  const appId = (env.EBAY_APP_ID || '').trim(), certId = (env.EBAY_CERT_ID || '').trim()
-  const basic = Buffer.from(appId + ':' + certId).toString('base64')
-  const r = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
-    method: 'POST',
-    headers: { Authorization: 'Basic ' + basic, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'grant_type=client_credentials&scope=' + encodeURIComponent('https://api.ebay.com/oauth/api_scope/buy.marketplace.insights'),
-  })
-  const text = await r.text()
-  if (!r.ok) {
-    let detail = text.slice(0, 200)
-    try { const e = JSON.parse(text); detail = [e.error, e.error_description].filter(Boolean).join(': ') || detail } catch {}
-    throw new Error('Marketplace Insights scope not granted (' + r.status + '): ' + detail +
-      ' — apply for the eBay Buy Marketplace Insights API to enable true sold prices.')
-  }
-  const j = JSON.parse(text)
-  ebayInsTok = { value: j.access_token, exp: Date.now() + Math.max(0, (j.expires_in || 7200) - 60) * 1000 }
-  return ebayInsTok.value
-}
+// eBay OAuth2 client-credentials APP-token minting (Browse/Taxonomy + the isolated Marketplace
+// Insights scope), with the module-level caches, TTL/early-refresh, SBX guard and error mapping,
+// lives in lib/ebay-token.mjs (ebayToken / ebayInsightsToken). The ebayProxy middleware below stays
+// here (server.middlewares, dev-server-only, GR1) and imports those. Do not confuse this app token
+// with the USER token in lib/ebay-oauth.mjs (repricer).
 function ebayProxy(env) {
   return {
     name: 'ebay-proxy',
@@ -328,22 +245,7 @@ function certProxy(env) {
 // defects from lib/grader.mjs. The browser measures centering itself; this only scores the
 // pillars a camera can't measure geometrically. Provider chosen by GRADER_PROVIDER/keys. A missing
 // key or provider error returns ok:false (never 500) so the tool degrades to centering-only.
-function readJsonBody(req, limitBytes) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    let size = 0
-    req.on('data', (c) => {
-      size += c.length
-      if (size > limitBytes) { reject(new Error('payload too large (> ' + Math.round(limitBytes / 1e6) + 'MB)')); req.destroy() }
-      else chunks.push(c)
-    })
-    req.on('end', () => {
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')) }
-      catch (e) { reject(new Error('invalid JSON body')) }
-    })
-    req.on('error', reject)
-  })
-}
+// readJsonBody (shared by graderProxy + printProxy) moved to lib/req-body.mjs.
 function graderProxy(env) {
   return {
     name: 'grader-proxy',
