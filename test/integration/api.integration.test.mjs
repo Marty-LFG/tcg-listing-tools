@@ -16,6 +16,12 @@ const get = async (p) => {
   let json = null; try { json = JSON.parse(text); } catch { /* html/plain */ }
   return { status: r.status, json, text };
 };
+const post = async (p, body) => {
+  const r = await fetch(srv.base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const text = await r.text();
+  let json = null; try { json = JSON.parse(text); } catch { /* html/plain */ }
+  return { status: r.status, json, text };
+};
 
 describe('server boots with isolated stores', () => {
   it('created the temp DBs, not the real ones', () => {
@@ -146,6 +152,52 @@ describe('/api/settings', () => {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}',
     });
     assert.equal(r.status, 403);
+  });
+});
+
+describe('inventory / sealed write bug-fixes (#3/#6/#7/#8/#9)', () => {
+  it('#6 accepts JSON booleans for INTEGER-bool columns instead of 500ing', async () => {
+    // image_url is supplied so the create skips the (network) image resolve — offline + deterministic.
+    const r = await post('/api/inventory/items', { game: 'pokemon', name: 'Bool Test', image_url: 'x', image_manual: true, value_manual: true });
+    assert.equal(r.status, 201, r.text);
+    assert.ok(r.json.sku, 'created with a SKU');
+  });
+
+  it('#7 value-manual on a missing id → 404 (not a 500)', async () => {
+    const r = await post('/api/inventory/items/999999/value-manual', { value_cents: 500 });
+    assert.equal(r.status, 404);
+  });
+
+  it('#8 a failed insert rolls back the SKU counter — no gap', async () => {
+    const a = await post('/api/inventory/items', { game: 'mtg', name: 'Seq A', image_url: 'x' });
+    assert.equal(a.status, 201, a.text);
+    // object-valued `notes` is unbindable in node:sqlite → insertRow throws → ROLLBACK → 500.
+    const bad = await post('/api/inventory/items', { game: 'mtg', name: 'Seq Bad', image_url: 'x', notes: { unbindable: true } });
+    assert.equal(bad.status, 500, 'the bad insert fails');
+    const c = await post('/api/inventory/items', { game: 'mtg', name: 'Seq C', image_url: 'x' });
+    assert.equal(c.status, 201, c.text);
+    const na = +a.json.sku.split('-').pop(), nc = +c.json.sku.split('-').pop();
+    assert.equal(nc, na + 1, `SKUs must be consecutive (no gap): got ${a.json.sku} then ${c.json.sku}`);
+  });
+
+  it('#9 sealed invalid/cross-game product_type is normalised to "other"', async () => {
+    const r = await post('/api/sealed/items', { game: 'pokemon', name: 'PTBugTest', product_type: 'not_a_real_type' });
+    assert.equal(r.status, 201, r.text);
+    const got = await get('/api/sealed/items?q=PTBugTest');
+    assert.equal(got.json.items[0].product_type, 'other');
+  });
+
+  it('#3 raw re-import across batches recounts the SOURCE batch, not just the target', async () => {
+    const card = { game: 'pokemon', identity_key: 'bugtest-3', name: 'Recount Card', variant: 'Base', quantity: 1 };
+    const a = await post('/api/inventory/batches', { batch: { game: 'pokemon', set_name: 'Recount A' }, rows: [card] });
+    assert.equal(a.status, 201, a.text);
+    const b = await post('/api/inventory/batches', { batch: { game: 'pokemon', set_name: 'Recount B' }, rows: [card] });
+    assert.equal(b.status, 201, b.text);
+    const batches = (await get('/api/inventory/batches')).json.batches;
+    const A = batches.find((x) => x.id === a.json.batch_id);
+    const B = batches.find((x) => x.id === b.json.batch_id);
+    assert.equal(A.item_count, 0, 'source batch A no longer counts the moved card');
+    assert.equal(B.item_count, 1, 'target batch B counts it');
   });
 });
 
