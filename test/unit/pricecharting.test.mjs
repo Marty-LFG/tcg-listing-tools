@@ -3,7 +3,7 @@
 // live-canary for structure drift is the status page's PC probe, not these tests.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMoneyCents, parseFullPrices, parseCardPage, pickBestMatch, parseSealedProduct, parseSealedConsole } from '../../lib/pricecharting.mjs';
+import { parseMoneyCents, parseFullPrices, parseCardPage, pickBestMatch, parseSealedProduct, parseSealedConsole, parseConsole, walkConsolePages } from '../../lib/pricecharting.mjs';
 
 describe('parseMoneyCents', () => {
   it('dollar strings → integer cents (GR3)', () => {
@@ -133,5 +133,73 @@ describe('parseSealedConsole', () => {
   it('no table → empty array, never a throw (GR7)', () => {
     assert.deepEqual(parseSealedConsole('<html></html>'), []);
     assert.deepEqual(parseSealedConsole(null), []);
+  });
+});
+
+// PriceCharting console pages server-render only the first ~150 product rows and hide the rest behind
+// a ?cursor=<row-offset> param. walkConsolePages walks that pagination; a single fetch used to drop
+// every card past the first page (M2A Mega Dream ex, 487 rows, showed only ~#1-56 — the overnumbered
+// secret rares like Team Rocket's Mimikyu #205 vanished). Fake pages let the REAL parseConsole read them.
+describe('walkConsolePages (cursor pagination — no dropped cards past page 1)', () => {
+  const rowHtml = (n) => `<tr id="product-${1000 + n}" data-product><td class="title"><a href="https://www.pricecharting.com/game/set/card-${n}">Card #${n}</a></td></tr>`;
+  const pageHtml = (nums) => `<table id="games_table">\n${nums.map(rowHtml).join('\n')}\n</table>`;
+  // A fake console of `total` rows numbered 1..total, served `pageSize` rows per cursor (a row offset).
+  const fakeConsole = (total, pageSize) => {
+    let calls = 0;
+    const fetchHtml = async (cursor) => {
+      calls++;
+      const nums = [];
+      for (let i = cursor; i < Math.min(cursor + pageSize, total); i++) nums.push(i + 1);
+      return pageHtml(nums);
+    };
+    return { fetchHtml, calls: () => calls };
+  };
+  const numbers = (cards) => cards.map((c) => Number(c.number));
+
+  it('collects EVERY page for a big set (M2A = 487 rows > 150) — the tail #205 SAR is present', async () => {
+    const { fetchHtml, calls } = fakeConsole(487, 150);
+    const cards = await walkConsolePages(fetchHtml, parseConsole);
+    assert.equal(cards.length, 487, 'no cards dropped past the first 150-row page');
+    const nums = numbers(cards);
+    assert.ok(nums.includes(1), 'head card present');
+    assert.ok(nums.includes(205), "the overnumbered Team Rocket's Mimikyu #205 is present (the bug)");
+    assert.ok(nums.includes(487), 'the final tail card is present');
+    assert.equal(calls(), 4, '150+150+150+37 → four fetches, last page short');
+  });
+
+  it('stops on a short final page', async () => {
+    const { fetchHtml, calls } = fakeConsole(180, 150);
+    const cards = await walkConsolePages(fetchHtml, parseConsole);
+    assert.equal(cards.length, 180);
+    assert.equal(calls(), 2, '150 then a short 30-row page');
+  });
+
+  it('a set that fits under one page collects all rows (one trailing empty fetch confirms the end)', async () => {
+    const { fetchHtml, calls } = fakeConsole(118, 150);      // M5-sized — under the cap, never truncated
+    const cards = await walkConsolePages(fetchHtml, parseConsole);
+    assert.equal(cards.length, 118);
+    assert.equal(calls(), 2, 'page-0 looks full-height (118==firstPageRows) so an empty page-1 confirms the end');
+  });
+
+  it('a non-advancing cursor (server ignores ?cursor) stops WITHOUT duplicating rows', async () => {
+    let calls = 0;
+    const fetchHtml = async () => { calls++; return pageHtml(Array.from({ length: 150 }, (_, i) => i + 1)); };
+    const cards = await walkConsolePages(fetchHtml, parseConsole);
+    assert.equal(cards.length, 150, 'the repeated page is detected by its first-row id and not re-added');
+    assert.equal(calls, 2, 'one probe past the first page, then break');
+  });
+
+  it('respects the page cap (no runaway loop)', async () => {
+    const { fetchHtml, calls } = fakeConsole(10000, 150);
+    const cards = await walkConsolePages(fetchHtml, parseConsole, 3);
+    assert.equal(calls(), 3);
+    assert.equal(cards.length, 450);
+  });
+
+  it('empty first page → one fetch, empty result, never a throw (GR7)', async () => {
+    let calls = 0;
+    const cards = await walkConsolePages(async () => { calls++; return '<html></html>'; }, parseConsole);
+    assert.equal(cards.length, 0);
+    assert.equal(calls, 1);
   });
 });
