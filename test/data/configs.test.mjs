@@ -65,8 +65,8 @@ describe('bulk-pricing.config.json', () => {
   });
 });
 
-describe('refresh.config.json', () => {
-  const c = cfg('refresh.config.json');
+describe('refresh.config.example.json', () => {
+  const c = cfg('refresh.config.example.json');   // refresh.config.json is gitignored (server-owned); validate the tracked template
   it('interval + known bakes only', () => {
     assert.equal(typeof c.enabled, 'boolean');
     assert.ok(c.interval_hours >= 1);
