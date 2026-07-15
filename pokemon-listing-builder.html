@@ -674,16 +674,19 @@ async function tryPcLookup(setObj,num,dl,enSet){
     set('f_set',enSet);
     set('f_num',card.number+(total?'/'+total:''));
     set('f_poke',card.name);
-    // PriceCharting rows carry no rarity/stage/type/native-name — enrich from TCGdex when it has the set
-    // (skipped for brand-new sets like M5 that TCGdex hasn't published yet). Native name + romaji still
-    // resolve from the baked dex off the English name. GR7: a TCGdex miss never blocks the PC result.
-    var tc=await fetchTcgdexCard(setObj,card.number,dl), ni=nativeInfo(card.name);
+    // PriceCharting rows carry no rarity/stage/type — enrich from TCGdex when it has the set (skipped
+    // for brand-new sets TCGdex hasn't published yet). For JP/CN/KO we ALSO surface the native card
+    // name + romaji as description provenance. But an EARLY EN set's card IS English — so suppress ALL
+    // native metadata (do NOT back-translate the English name into kana; that was wrongly showing e.g.
+    // タイプ：ヌル on English cards). GR7: a TCGdex miss never blocks the PC result.
+    var isEn=dl==='en';
+    var tc=await fetchTcgdexCard(setObj,card.number,dl), ni=isEn?{kana:'',romaji:''}:nativeInfo(card.name);
     set('f_rarity',(tc&&tc.rarity)||'');
     set('f_stage',(tc&&tc.stage)||'');
     set('f_type',(tc&&(tc.types||[]).join(' / '))||'');
     set('f_finish',/\bmega\b|\bex\b|\bv\b|vmax|vstar|\bgx\b|holo|rainbow|gold|special|shiny|\bsar\b|\bsr\b|\bur\b/i.test(card.name)?'Holo':'Non-holo');
-    _intlMeta={nativeName:(tc&&tc.name)||ni.kana||'',romaji:ni.romaji||'',
-      nativeSet:setObj.name_native||'',enSet:(setObj.enEquivalent&&setObj.enEquivalent.name)||'',
+    _intlMeta={nativeName:isEn?'':((tc&&tc.name)||ni.kana||''),romaji:isEn?'':(ni.romaji||''),
+      nativeSet:isEn?'':(setObj.name_native||''),enSet:isEn?'':((setObj.enEquivalent&&setObj.enEquivalent.name)||''),
       setSymbol:setObj.code||'',illustrator:(tc&&tc.illustrator)||'',hp:(tc&&tc.hp!=null?String(tc.hp):''),
       regMark:(tc&&tc.regulationMark)||'',releaseYear:(setObj.releaseDate||'').slice(0,4),
       img:card.image?card.image+'/1600.jpg':''};
