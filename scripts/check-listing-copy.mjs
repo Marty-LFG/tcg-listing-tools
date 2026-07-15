@@ -102,11 +102,14 @@ console.log('\n[pokemon builder parity]');
     // Graded free-text condition — buildHTML/buildDescription infer a slab and swap to the slab-specific
     // condition/postage wording (no explicit opts.slab passed, exactly like the single builder).
     { f_name: 'Charizard', f_num: '4/102', f_set: 'Base Set', f_rarity: 'Holo Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'PSA 10', f_poke: 'Charizard', f_stage: 'Stage 2', f_type: 'Fire', f_img: 'https://images.pokemontcg.io/base1/4_hires.png' },
+    // Graded slab with cert number + subgrades — both surface as detail rows when present.
+    { f_name: 'Charizard', f_num: '4/102', f_set: 'Base Set', f_rarity: 'Holo Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'BGS 9.5', f_poke: 'Charizard', f_stage: 'Stage 2', f_type: 'Fire', f_cert: '0012345678', f_subgrades: 'Centering 9.5 · Corners 9 · Edges 9.5 · Surface 10' },
   ];
   for (const fx of fixtures) {
     const ctx = builderContext('pokemon-listing-builder.html', ['var PKM_RAB=', 'function rarShortOf(', 'function rarDisplay(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
     const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, finish: fx.f_finish, lang: fx.f_lang, cond: fx.f_cond, poke: fx.f_poke, stage: fx.f_stage, type: fx.f_type,
-      nativeName: fx.f_nativeName, romaji: fx.f_romaji, nativeSet: fx.f_nativeSet, enSet: fx.f_enSet, setSymbol: fx.f_setSymbol, illustrator: fx.f_illustrator, hp: fx.f_hp, regMark: fx.f_regMark, releaseYear: fx.f_releaseYear, img: fx.f_img };
+      nativeName: fx.f_nativeName, romaji: fx.f_romaji, nativeSet: fx.f_nativeSet, enSet: fx.f_enSet, setSymbol: fx.f_setSymbol, illustrator: fx.f_illustrator, hp: fx.f_hp, regMark: fx.f_regMark, releaseYear: fx.f_releaseYear, img: fx.f_img,
+      cert: fx.f_cert, subgrades: fx.f_subgrades };
     check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('pokemon', f), vm.runInContext('genTitle()', ctx));
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 20), LC.pokemonPitch(f), pitch);
@@ -178,6 +181,13 @@ console.log('\n[bulk additions]');
   assert('graded token in title (PSA 10 GEM MINT)', gt.includes('PSA 10 GEM MINT'), gt);
   check('gradeTitleToken BGS black label', LC.gradeTitleToken('BGS', 10, 'BGS 10.0 Black Label'), 'BGS 10 BLACK LABEL');
   check('gradeTitleToken TAG pristine', LC.gradeTitleToken('TAG', 10, 'TAG 10.0 Pristine'), 'TAG 10 PRISTINE');
+  // Graded inventory row → description surfaces cert number + formatted subgrades (inventory JSON shape).
+  const gg = LC.rowToFields({ game: 'pokemon', name: 'Charizard', number: '4/102', set_name: 'Base Set', rarity: 'Holo Rare', finish: 'Holofoil', language: 'EN', graded: true, grading_company: 'BGS', grade: 9.5, grade_label: 'BGS 9.5', cert_number: '0012345678', subgrades: '{"centering":9.5,"corners":9,"edges":9.5,"surface":10}' });
+  const gd = LC.buildDescription('pokemon', gg, { slab: true });
+  assert('graded desc: cert number row', gd.includes('Cert number') && gd.includes('0012345678'));
+  assert('graded desc: formatted subgrades row', gd.includes('Subgrades') && gd.includes('Centering 9.5') && gd.includes('Surface 10'));
+  check('formatSubgrades passthrough (display string)', LC.formatSubgrades('Centering 9.5 · Corners 9'), 'Centering 9.5 · Corners 9');
+  check('formatSubgrades empty', LC.formatSubgrades(null), '');
   check('variantToken 1stEd holo', LC.variantToken('1st Edition', 'Holofoil'), '1st Edition Holo');
   check('variantToken unlimited', LC.variantToken('Unlimited', 'Holofoil'), 'Holo');
   check('variantToken reverse', LC.variantToken(null, 'Reverse Holofoil'), 'Reverse Holo');

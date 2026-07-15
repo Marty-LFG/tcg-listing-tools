@@ -116,6 +116,8 @@
             <option>Ungraded, Damaged</option>
           </datalist>
         </div>
+        <div><label>Cert # <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">graded slabs</span></label><input id="f_cert" autocomplete="off" placeholder="e.g. 12345678"></div>
+        <div><label>Subgrades <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">if on the slab</span></label><input id="f_subgrades" autocomplete="off" placeholder="e.g. Centering 9.5 · Corners 9 · Edges 9.5 · Surface 10"></div>
         <div class="f-full"><label>Image URL <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">— auto-filled from lookup, paste to override</span></label><input id="f_img" autocomplete="off" placeholder="https://… card image (fills on lookup; override here if needed)"></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
@@ -188,7 +190,7 @@ function rarDisplay(r){if(!r)return '';var rl=(''+r).toLowerCase(),ab=PKM_RAB[rl
 let _intlMeta=null;   // native JP/CN/KO card+set names for the description (set on an intl lookup, cleared otherwise)
 function readFields(){var f=Object.assign({name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
   poke:val('f_poke'),stage:val('f_stage'),type:val('f_type'),finish:val('f_finish'),lang:val('f_lang'),
-  cond:val('f_cond'),pitch:val('f_pitch')}, _intlMeta||{});   // _intlMeta adds native JP/CN/KO name+set for the description
+  cond:val('f_cond'),cert:val('f_cert'),subgrades:val('f_subgrades'),pitch:val('f_pitch')}, _intlMeta||{});   // _intlMeta adds native JP/CN/KO name+set for the description
   f.img=val('f_img');   // the Image URL field is the source of truth — lookups pre-fill it (below), user can override
   return f;}
 function findEbay(){
@@ -241,6 +243,8 @@ function buildHTML(f){
   rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
   if(f.releaseYear) rows.push(['Released',f.releaseYear]);
   if(f.enSet) rows.push(['English set',f.enSet]);
+  if(f.cert) rows.push(['Cert number',f.cert]);
+  if(f.subgrades) rows.push(['Subgrades',f.subgrades]);
   let tr=''; rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f8fc;':'';
     tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
   const imgHtml=f.img?`<div style="text-align:center;padding:16px 24px 0;"><img src="${esc(f.img)}" alt="${esc(f.name)} ${esc(f.num)} ${esc(f.set)} Pok&eacute;mon TCG ${esc(f.lang)} card" style="max-width:320px;width:100%;height:auto;border-radius:8px;" /></div>`:'';
@@ -558,6 +562,7 @@ async function doLookup(){
   const dl=activeDataLang();
   if(!_setObj){st.className='status warn';st.textContent='Pick a set — try a name or the printed code'+(dl==='en'?' (e.g. PAR).':' (e.g. M5).');return;}
   if(!num){st.className='status warn';st.textContent='Enter a card number.';return;}
+  set('f_cert','');set('f_subgrades','');   // cert #/subgrades are card-specific — reset for the new lookup
   if(dl!=='en')return doLookupIntl(_setObj,num,dl);
   // Early/pre-release EN set: pokemontcg.io hasn't cataloged it, but PriceCharting's English console has.
   // Route to the same PriceCharting path JP uses (dl stays 'en' → English name/set/eBay; identity_key
@@ -806,7 +811,7 @@ async function addTrack(){
 (function(){
   document.getElementById('c_base').value=base;
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
-  ['f_name','f_set','f_num','f_rarity','f_poke','f_stage','f_type','f_finish','f_lang','f_cond','f_img','f_pitch']
+  ['f_name','f_set','f_num','f_rarity','f_poke','f_stage','f_type','f_finish','f_lang','f_cond','f_cert','f_subgrades','f_img','f_pitch']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));
   (function(){var _sc=document.getElementById('setCode');
     _sc.addEventListener('input',function(){selectedSet=null;renderSetMenu(_sc.value);});
