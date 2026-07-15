@@ -1,0 +1,13 @@
+{
+  "note": "Curated MANUAL overlay of early/pre-release EN Pokémon sets. Unioned with auto-discovery (JP enEquivalent name x PriceCharting EN console) by scripts/build-pokemon-en-early.mjs -> data/pokemon-en-early.json. Use this for sets with no JP mapping, a name mismatch, or to pin a code/date. Manual entries win on name collision. A set is auto-dropped once pokemontcg.io lists it. pcSlug optional — the bake derives it from the name when omitted.",
+  "sets": [
+    {
+      "code": "ME05",
+      "name": "Pitch Black",
+      "series": "Mega Evolution",
+      "releaseDate": "2026-07-17",
+      "pcSlug": "pokemon-pitch-black",
+      "jpEquivalent": "M5"
+    }
+  ]
+}

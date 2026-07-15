@@ -95,6 +95,7 @@
   .b-pc{color:var(--teal);border-color:rgba(63,220,203,.3);background:rgba(63,220,203,.08);}
   .b-warn{color:var(--red);border-color:rgba(240,102,110,.35);background:rgba(240,102,110,.08);}
   .b-own{color:var(--ink);background:var(--green);border-color:var(--green);}
+  .b-early{color:#eba13a;border-color:rgba(235,161,58,.38);background:rgba(235,161,58,.10);}
 
   .empty{text-align:center;padding:70px 20px;color:var(--faint);font-family:var(--mono);font-size:13px;}
   .skel{border:1px solid var(--line);border-radius:15px;min-height:118px;background:linear-gradient(100deg,var(--panel) 30%,var(--panel2) 50%,var(--panel) 70%);background-size:220% 100%;animation:sh 1.4s ease-in-out infinite;}
@@ -220,6 +221,7 @@
         <span class="chip src" data-src="indexed"><span class="dot" style="background:var(--blue)"></span>Indexed</span>
         <span class="chip src" data-src="seeded"><span class="dot" style="background:var(--gold)"></span>Seeded</span>
         <span class="chip src" data-src="pricecharting"><span class="dot" style="background:var(--teal)"></span>PriceCharting</span>
+        <span class="chip src" data-src="early"><span class="dot" style="background:#eba13a"></span>Pre-release</span>
         <span class="chip own" id="ownToggle">◆ Owned only</span>
         <span class="chip edit" id="editToggle">✎ Edit overlay</span>
         <button class="chip newset" id="newSetBtn" style="display:none">＋ New set</button>
@@ -314,11 +316,28 @@ function intlToSet(r,lang){
     source,enEquivalent:r.enEquivalent||null,pcSlug:r.pcSlug||'',tcgdexId:r.tcgdexId||'',noCode:!r.code,
     builderSet:r.code||r.name_en||''};
 }
+// Early/pre-release EN set (data/pokemon-en-early.json) — PriceCharting has the English console
+// weeks before pokemontcg.io catalogs it. Cards resolve via pcSlug (server falls back to the PC
+// console). Dropped automatically once pokemontcg.io lists it (see the graduation filter below).
+function earlyEnToSet(e){
+  return {lang:'en',rid:e.code||e.pcSlug||'',code:e.code||'',name:e.name||e.code||'?',
+    nameEn:e.name||'',nameNative:'',serie:e.series||'',releaseDate:e.releaseDate||'',
+    cardCount:null,symbol:'',source:'early',enEquivalent:null,pcSlug:e.pcSlug||'',tcgdexId:'',
+    noCode:!e.code,builderSet:e.code||e.name||'',jpEquivalent:e.jpEquivalent||'',early:true};
+}
 async function setsForLang(lang){
   if(lang==='en'){
     if(EN_SETS)return EN_SETS;
-    const j=await jget('/api/pkm/sets?pageSize=500');
-    EN_SETS=(j.data||[]).map(enToSet).sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||''));
+    const [j,early]=await Promise.all([
+      jget('/api/pkm/sets?pageSize=500'),
+      fetch('/data/pokemon-en-early.json',{cache:'no-store'}).then((r)=>r.ok?r.json():{sets:[]}).catch(()=>({sets:[]})),
+    ]);
+    const live=(j.data||[]).map(enToSet);
+    // Belt-and-suspenders graduation: hide an early stub the instant pokemontcg.io lists it (name match),
+    // even before the nightly bake drops it — the live authoritative set always wins.
+    const liveNorms=new Set(live.map((s)=>norm(s.name)));
+    const earlySets=((early&&early.sets)||[]).filter((e)=>!liveNorms.has(norm(e.name))).map(earlyEnToSet);
+    EN_SETS=[...earlySets,...live].sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||''));
     return EN_SETS;
   }
   if(!PKM_INTL){
@@ -338,7 +357,8 @@ function matchQuery(set,t){
     .some((v)=>String(v||'').toLowerCase().includes(t));
 }
 const SRC_BADGE={live:['b-live','Live','pokemontcg.io'],indexed:['b-indexed','Indexed','TCGdex'],
-  seeded:['b-seeded','Seeded','manual overlay'],pricecharting:['b-pc','PriceChart','PriceCharting only']};
+  seeded:['b-seeded','Seeded','manual overlay'],pricecharting:['b-pc','PriceChart','PriceCharting only'],
+  early:['b-early','Pre-release','PriceCharting — pre-release, ahead of pokemontcg.io (names/numbers provisional; rarity/type TBD)']};
 
 async function renderGrid(){
   const grid=$('grid');
@@ -567,7 +587,8 @@ async function loadCards(set,wrap){
   if(window.TCG&&TCG.loadFx){try{await TCG.loadFx();}catch(e){}}   // AUD conversion for card prices (cached/last-good on failure)
   try{
     const qs=new URLSearchParams({lang:set.lang,set:set.rid});
-    if(set.lang!=='en'){qs.set('src',set.source);if(set.tcgdexId)qs.set('tcgdexId',set.tcgdexId);if(set.pcSlug)qs.set('pcSlug',set.pcSlug);}
+    if(set.pcSlug)qs.set('pcSlug',set.pcSlug);   // EN early sets pass it too — server falls back to the PC console
+    if(set.lang!=='en'){qs.set('src',set.source);if(set.tcgdexId)qs.set('tcgdexId',set.tcgdexId);}
     const j=await jget('/api/catalog/cards?'+qs.toString());
     const raw=(j&&j.cards)||[];
     if(!raw.length){
@@ -583,7 +604,8 @@ async function loadCards(set,wrap){
       img:c.img||'',owned:ownNums.get(String(c.numRaw).replace(/^0+/,''))}));
     const fx=(window.TCG&&TCG.fxInfo)?TCG.fxInfo():null;
     const fxNote=(fx&&fx.stale)?' · FX cached'+(fx.date?' '+fx.date:''):'';
-    paintCards(head,grid,cards,(j.stale?'cached copy':(j.source==='pricecharting'?'via PriceCharting':(j.source==='tcgdex'?'via TCGdex':'')))+fxNote);
+    const srcLabel=j.stale?'cached copy':(j.source==='pricecharting-early'?'via PriceCharting · pre-release':(j.source==='pricecharting'?'via PriceCharting':(j.source==='tcgdex'?'via TCGdex':'')));
+    paintCards(head,grid,cards,srcLabel+fxNote);
   }catch(e){
     note(noteHTML('Cards aren’t available from the data source right now — open it in the builder to look them up.',set),'via builder');
   }

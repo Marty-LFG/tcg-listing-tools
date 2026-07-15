@@ -2,5 +2,5 @@
   "_comment": "Daily in-process refresh of BAKED data catalogs (lib/refresh.mjs). Live-proxied games (mtg/swu/lorcana/lego/fx + English pokemon) need no refresh. riftbound.json and pokemon-intl-sets.json (JP/CN/KO Pokemon set index from TCGdex) go stale on a set drop; funko is frozen upstream (add 'funko' to bakes to force it). interval_hours drives the timer; the boot pass skips catalogs already fresher than interval_hours.",
   "enabled": true,
   "interval_hours": 24,
-  "bakes": ["riftbound", "pokemon-intl"]
+  "bakes": ["riftbound", "pokemon-intl", "pokemon-en-early"]
 }

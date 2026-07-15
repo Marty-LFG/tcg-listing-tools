@@ -1,0 +1,15 @@
+{
+  "generatedAt": "2026-07-15",
+  "sets": [
+    {
+      "code": "ME05",
+      "name": "Pitch Black",
+      "series": "Mega Evolution",
+      "releaseDate": "2026-07-17",
+      "pcSlug": "pokemon-pitch-black",
+      "jpEquivalent": "M5",
+      "source": "manual",
+      "manual": true
+    }
+  ]
+}

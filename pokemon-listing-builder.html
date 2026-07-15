@@ -276,8 +276,34 @@ async function loadIntlSets(){
   }catch(e){}
   return PKM_INTL||{};
 }
-// The set list for the ACTIVE language: EN → pokemontcg.io PKM_SETS; else the baked intl catalog.
-function activeSets(){var dl=activeDataLang();if(dl==='en')return PKM_SETS;return (PKM_INTL&&PKM_INTL[dl])||[];}
+// Early/pre-release EN sets (data/pokemon-en-early.json) — PriceCharting lists a set's English console
+// weeks before pokemontcg.io catalogs it. DUAL-shaped so the EN picker (keys on id/name/ptcgoCode) finds
+// them AND the card lookup routes through the PriceCharting console path (pcSlug), exactly like JP. A set
+// is dropped the moment pokemontcg.io lists it (graduation, filtered live in activeSets below).
+let EARLY_EN=[];
+const EARLY_EN_CACHE_KEY='pkm_en_early_v1';
+function earlyEnMap(e){return {id:e.code||e.pcSlug||'',name:e.name||'',ptcgoCode:e.code||'',series:e.series||'',
+  symbol:'',releaseDate:e.releaseDate||'',code:e.code||'',name_en:e.name||'',name_native:'',serie:e.series||'',
+  pcSlug:e.pcSlug||'',enEquivalent:null,cardCount:null,early:true};}
+function loadCachedEarlyEn(){try{var raw=localStorage.getItem(EARLY_EN_CACHE_KEY);if(raw){var a=JSON.parse(raw);if(Array.isArray(a)){EARLY_EN=a;return true;}}}catch(e){}return false;}
+async function loadEarlyEn(){
+  loadCachedEarlyEn();
+  try{var r=await fetch('/data/pokemon-en-early.json',{cache:'no-store'});
+    if(r.ok){var o=await r.json();EARLY_EN=((o&&o.sets)||[]).filter(function(e){return e&&e.pcSlug;}).map(earlyEnMap);
+      try{localStorage.setItem(EARLY_EN_CACHE_KEY,JSON.stringify(EARLY_EN));}catch(e){}}
+  }catch(e){}
+  return EARLY_EN;
+}
+// The set list for the ACTIVE language: EN → early pre-release sets + pokemontcg.io PKM_SETS; else the
+// baked intl catalog. An early set whose name pokemontcg.io now carries is hidden (graduated to live).
+function activeSets(){var dl=activeDataLang();
+  if(dl==='en'){
+    if(!EARLY_EN.length)return PKM_SETS;
+    var live={};PKM_SETS.forEach(function(s){live[(s.name||'').toLowerCase()]=1;});
+    return EARLY_EN.filter(function(e){return !live[(e.name||'').toLowerCase()];}).concat(PKM_SETS);
+  }
+  return (PKM_INTL&&PKM_INTL[dl])||[];
+}
 // The id used for the card lookup + image path (EN: pokemontcg.io id; intl: TCGdex printed code).
 function setLookupId(s){return s?(s.tcgdexId!==undefined?s.tcgdexId:s.id):'';}
 // The English SET name for the listing output — never the native (Japanese/Chinese/Korean) name.
@@ -402,7 +428,7 @@ function setMenuRow(s){
     var metaBits=[nat+esc(s.serie||''),s.code?esc(s.code):(s.pcSlug?'PriceCharting':'')].filter(function(x){return x&&x.replace(/·/g,'').trim();});
     return {rid:s.code||s.pcSlug,sym:'',name:nm,code:s.code||'',meta:metaBits.join(' · ')+eq};
   }
-  return {rid:s.id,sym:s.symbol,name:s.name,code:s.ptcgoCode||'',meta:esc(s.series)+' · '+esc(s.id)};
+  return {rid:s.id,sym:s.symbol,name:s.name,code:s.ptcgoCode||'',meta:(s.early?'Pre-release · ':'')+esc(s.series)+' · '+esc(s.id)};
 }
 function renderSetMenu(typed){
   var menu=document.getElementById('setMenu');if(!menu)return;var list=filterSets(typed);_setActive=-1;
@@ -516,6 +542,10 @@ async function doLookup(){
   if(!_setObj){st.className='status warn';st.textContent='Pick a set — try a name or the printed code'+(dl==='en'?' (e.g. PAR).':' (e.g. M5).');return;}
   if(!num){st.className='status warn';st.textContent='Enter a card number.';return;}
   if(dl!=='en')return doLookupIntl(_setObj,num,dl);
+  // Early/pre-release EN set: pokemontcg.io hasn't cataloged it, but PriceCharting's English console has.
+  // Route to the same PriceCharting path JP uses (dl stays 'en' → English name/set/eBay; identity_key
+  // blank so tracker/inventory stay gated until it graduates to pokemontcg.io).
+  if(_setObj.pcSlug)return doLookupIntl(_setObj,num,'en');
   const setId=_setObj.id;
   st.className='status load';st.textContent='Looking up '+setId+'-'+num+'\u2026';
   const act=window.TCG?TCG.activity('Looking up '+setId+'-'+num+'\u2026'):null;
@@ -774,17 +804,18 @@ async function addTrack(){
     document.addEventListener('click',function(e){var r=document.querySelector('.setrow');if(r&&!r.contains(e.target)){closeSetMenu();toggleLangMenu(false);}});
     buildLangMenu();renderLangBtn();
   })();
-  loadSets(); loadIntlSets(); loadDexMap(); render();
+  loadSets(); loadIntlSets(); loadEarlyEn(); loadDexMap(); render();
   // Deep-link from catalog.html: ?lang=<dataLang>&set=<code|id|name> → switch language + prefill/resolve the set.
   (function(){try{
     var u=new URL(location.href),L=u.searchParams.get('lang'),S=u.searchParams.get('set');
     if(!L&&!S)return;
     if(L){var row=LANGS.find(function(x){return x[2]===L;});if(row)setLang(row[1]);}
     if(S){var tries=0;(function apply(){
-      var list=activeSets();
-      if((!list||!list.length)&&tries++<40){return setTimeout(apply,150);}
-      var sc=document.getElementById('setCode');if(!sc)return;
+      // Retry until the set resolves (covers the async load of PKM_SETS / the intl catalog / the early-EN
+      // list), up to ~6s, then fall back to pre-filling the raw text + menu.
       var found=resolveSet(S);
+      if(!found&&tries++<40){return setTimeout(apply,150);}
+      var sc=document.getElementById('setCode');if(!sc)return;
       if(found){selectedSet=found;
         var nm=(found.name_en||found.name_native||found.name||found.code||'');
         sc.value=isIntlLang()?(nm+(found.code?' ('+found.code+')':'')):((found.name||'')+(found.ptcgoCode?' ('+found.ptcgoCode+')':''));

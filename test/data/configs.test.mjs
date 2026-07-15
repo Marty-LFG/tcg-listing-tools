@@ -70,7 +70,7 @@ describe('refresh.config.json', () => {
   it('interval + known bakes only', () => {
     assert.equal(typeof c.enabled, 'boolean');
     assert.ok(c.interval_hours >= 1);
-    for (const b of c.bakes) assert.ok(['riftbound', 'pokemon-intl', 'funko'].includes(b), `unknown bake ${b}`);
+    for (const b of c.bakes) assert.ok(['riftbound', 'pokemon-intl', 'pokemon-en-early', 'funko'].includes(b), `unknown bake ${b}`);
   });
 });
 
