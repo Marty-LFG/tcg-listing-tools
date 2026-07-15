@@ -99,6 +99,9 @@ console.log('\n[pokemon builder parity]');
     { f_name: 'Pikachu with an Exceptionally Long Descriptive Name Variant', f_num: '058/165', f_set: 'Scarlet & Violet 151 Expansion', f_rarity: 'Special Illustration Rare', f_finish: 'Reverse Holo', f_lang: 'Japanese', f_cond: 'Lightly Played', f_poke: 'Pikachu', f_stage: 'Basic', f_type: 'Lightning' },
     // Japanese card with the full native-metadata overlay (native name + romaji / kanji set / set symbol / English set / image).
     { f_name: 'Bastiodon', f_num: '91/98', f_set: 'Abyss Eye', f_rarity: 'Illustration Rare', f_finish: 'Non-holo', f_lang: 'Japanese', f_cond: 'Ungraded, Near Mint', f_poke: 'Bastiodon', f_stage: 'Stage 2', f_type: 'Metal', f_nativeName: 'トリデプス', f_romaji: 'Torideps', f_nativeSet: 'アビスアイ', f_enSet: 'Pitch Black', f_setSymbol: 'M5', f_illustrator: 'PLANETA Mochizuki', f_hp: '150', f_regMark: 'M', f_releaseYear: '2026', f_img: 'https://storage.googleapis.com/images.pricecharting.com/abc/1600.jpg' },
+    // Graded free-text condition — buildHTML/buildDescription infer a slab and swap to the slab-specific
+    // condition/postage wording (no explicit opts.slab passed, exactly like the single builder).
+    { f_name: 'Charizard', f_num: '4/102', f_set: 'Base Set', f_rarity: 'Holo Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'PSA 10', f_poke: 'Charizard', f_stage: 'Stage 2', f_type: 'Fire', f_img: 'https://images.pokemontcg.io/base1/4_hires.png' },
   ];
   for (const fx of fixtures) {
     const ctx = builderContext('pokemon-listing-builder.html', ['var PKM_RAB=', 'function rarShortOf(', 'function rarDisplay(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);

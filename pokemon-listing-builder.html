@@ -107,7 +107,16 @@
         <div><label>Type</label><input id="f_type"></div>
         <div><label>Finish</label><select id="f_finish"><option>Holo</option><option>Reverse Holo</option><option>Non-holo</option></select></div>
         <div><label>Language</label><input id="f_lang" value="English"></div>
-        <div class="f-full"><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
+        <div class="f-full"><label>Condition</label><input id="f_cond" list="condList" value="Ungraded, Near Mint" autocomplete="off" placeholder="pick a grade or type your own — e.g. Ungraded, Near Mint or PSA 10">
+          <datalist id="condList">
+            <option>Ungraded, Near Mint</option>
+            <option>Ungraded, Lightly Played</option>
+            <option>Ungraded, Moderately Played</option>
+            <option>Ungraded, Heavily Played</option>
+            <option>Ungraded, Damaged</option>
+          </datalist>
+        </div>
+        <div class="f-full"><label>Image URL <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">— auto-filled from lookup, paste to override</span></label><input id="f_img" autocomplete="off" placeholder="https://… card image (fills on lookup; override here if needed)"></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
       <div class="hint">Set list loads from the API on start. Finish (Holo / Reverse / Non-holo) can't be inferred reliably, so check it against the card. No proxy? Type fields manually — preview still builds.</div>
@@ -177,9 +186,11 @@ function rarShortOf(r){return PKM_RAB[(''+(r||'')).toLowerCase()]||r;}
 function rarDisplay(r){if(!r)return '';var rl=(''+r).toLowerCase(),ab=PKM_RAB[rl];return ab&&ab.toLowerCase()!==rl?r+' ('+ab+')':r;}
 
 let _intlMeta=null;   // native JP/CN/KO card+set names for the description (set on an intl lookup, cleared otherwise)
-function readFields(){return Object.assign({name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
+function readFields(){var f=Object.assign({name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
   poke:val('f_poke'),stage:val('f_stage'),type:val('f_type'),finish:val('f_finish'),lang:val('f_lang'),
-  cond:val('f_cond'),pitch:val('f_pitch')}, _intlMeta||{});}   // _intlMeta adds native JP/CN/KO name+set for the description
+  cond:val('f_cond'),pitch:val('f_pitch')}, _intlMeta||{});   // _intlMeta adds native JP/CN/KO name+set for the description
+  f.img=val('f_img');   // the Image URL field is the source of truth — lookups pre-fill it (below), user can override
+  return f;}
 function findEbay(){
   const f=readFields(), st=document.getElementById('status');
   if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
@@ -233,6 +244,12 @@ function buildHTML(f){
   let tr=''; rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f8fc;':'';
     tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
   const imgHtml=f.img?`<div style="text-align:center;padding:16px 24px 0;"><img src="${esc(f.img)}" alt="${esc(f.name)} ${esc(f.num)} ${esc(f.set)} Pok&eacute;mon TCG ${esc(f.lang)} card" style="max-width:320px;width:100%;height:auto;border-radius:8px;" /></div>`:'';
+  // Graded slab? The penny-sleeve/toploader lines are physically wrong for an encapsulated slab, so
+  // a graded condition (PSA 10 / BGS 9.5 / …) swaps to slab-specific wording. MIRROR: isSlabCondition
+  // + SLAB_/CARD_ wording in lib/listing-copy.mjs (buildDescription) — keep both sides identical.
+  const slab=/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||'');
+  const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated — see photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
+  const postageLine=esc(slab?'Ships securely inside a rigid mailer, with FREE postage within Australia.':'Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.');
   return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
   <div style="background:#1c2b5e;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #f0c020;">
     <div style="color:#f0c020;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Pok&eacute;mon TCG</div>
@@ -248,12 +265,12 @@ function buildHTML(f){
   <div style="padding:18px 24px 4px;">
     <div style="background:#f6f8fc;border-left:4px solid #f0c020;border-radius:0 8px 8px 0;padding:14px 16px;">
       <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1c2b5e;font-weight:700;margin-bottom:4px;">Condition</div>
-      <p style="margin:0;">${esc(f.cond)}. Pulled straight to sleeve and stored in a toploader.</p>
+      <p style="margin:0;">${condLine}</p>
     </div>
   </div>
   <div style="padding:18px 24px 4px;">
     <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1c2b5e;font-weight:700;border-bottom:2px solid #e9edf6;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
-    <p style="margin:0;">Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.</p>
+    <p style="margin:0;">${postageLine}</p>
   </div>
   <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
 </div>`;
@@ -366,7 +383,7 @@ function englishCardName(c){
 }
 // Reset the card-identity fields (used when a lookup fails, so stale data never lingers).
 function clearCardFields(opts){
-  ['f_name','f_num','f_rarity','f_poke','f_stage','f_type','f_pitch'].forEach(function(id){set(id,'');});
+  ['f_name','f_num','f_rarity','f_poke','f_stage','f_type','f_img','f_pitch'].forEach(function(id){set(id,'');});
   if(!(opts&&opts.keepSet))set('f_set','');
   _trk=null;_intlMeta=null;
   var ex=document.getElementById('extras');if(ex)ex.innerHTML='';
@@ -572,6 +589,7 @@ async function doLookup(){
       illustrator:c.artist||'',hp:(c.hp!=null?String(c.hp):''),regMark:c.regulationMark||'',
       releaseYear:((c.set&&c.set.releaseDate)||'').slice(0,4),
       img:(c.images&&(c.images.large||c.images.small))||''};
+    set('f_img',_intlMeta.img||'');   // expose the fetched image so it can be overridden
     act&&act.done('pokemontcg.io');
     st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
     render();
@@ -664,6 +682,7 @@ async function tryPcLookup(setObj,num,dl,enSet){
       setSymbol:setObj.code||'',illustrator:(tc&&tc.illustrator)||'',hp:(tc&&tc.hp!=null?String(tc.hp):''),
       regMark:(tc&&tc.regulationMark)||'',releaseYear:(setObj.releaseDate||'').slice(0,4),
       img:card.image?card.image+'/1600.jpg':''};
+    set('f_img',_intlMeta.img||'');   // expose the fetched image so it can be overridden
     set('f_pitch',genPitch(readFields()));
     _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:card.name,variant:val('f_finish'),price:null};
     act&&(stale?act.fail('PriceCharting cached (stale)'):act.done('PriceCharting '+tag+(tc?' + TCGdex':'')));
@@ -746,6 +765,7 @@ async function doLookupIntl(setObj,num,dl){
       setSymbol:setObj.code||'',illustrator:c.illustrator||'',hp:(c.hp!=null?String(c.hp):''),
       regMark:c.regulationMark||'',releaseYear:(setObj.releaseDate||'').slice(0,4),
       img:c.image?c.image+'/high.webp':''};
+    set('f_img',_intlMeta.img||'');   // expose the fetched image so it can be overridden
     act&&act.done('TCGdex '+tag);
     st.className='status ok';st.textContent=enName?('✓ '+enName+'  ('+(c.rarity||'?')+')  ·  '+tag):('✓ '+cardLabel+'  ('+tag+') — enter the English card name');
     render();
@@ -786,7 +806,7 @@ async function addTrack(){
 (function(){
   document.getElementById('c_base').value=base;
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
-  ['f_name','f_set','f_num','f_rarity','f_poke','f_stage','f_type','f_finish','f_lang','f_cond','f_pitch']
+  ['f_name','f_set','f_num','f_rarity','f_poke','f_stage','f_type','f_finish','f_lang','f_cond','f_img','f_pitch']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));
   (function(){var _sc=document.getElementById('setCode');
     _sc.addEventListener('input',function(){selectedSet=null;renderSetMenu(_sc.value);});
