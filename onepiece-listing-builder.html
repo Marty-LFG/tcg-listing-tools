@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>One Piece Card Game eBay Listing Builder</title>
+<style>
+  :root{
+    --ink:#0b0d12; --panel:#12151d; --panel2:#171b25; --line:#262c3b;
+    --muted:#8a8f9c; --text:#eef1f7; --gold:#e23b3b; --gold-dim:#7d1f1f;
+    --field:#0d1017;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  .lookup{display:flex;gap:10px;margin-bottom:6px;}
+  .lookup select{flex:0 0 auto;max-width:230px;font-size:14px;padding:12px 12px;background:var(--field);border:1px solid var(--line);border-radius:10px;color:var(--text);outline:none;}
+  .lookup input{flex:1;font-size:22px;font-weight:700;padding:12px 14px;background:var(--field);
+    border:1px solid var(--line);border-radius:10px;color:var(--text);outline:none;}
+  .lookup input:focus,.lookup select:focus{border-color:var(--gold);}
+  .lookup button{padding:0 18px;border:1px solid var(--gold);background:var(--gold);color:#fff;
+    border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;}
+  .status{font-size:12.5px;min-height:18px;margin:4px 0 14px;}
+  .status.ok{color:#36d399;} .status.warn{color:#ffd166;} .status.err{color:#f06262;} .status.load{color:var(--muted);}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;}
+  .f-full{grid-column:1/3;}
+  .fields input,.fields select,.fields textarea{width:100%;padding:8px 10px;background:var(--field);
+    border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;font-family:inherit;}
+  .fields input:focus,.fields select:focus,.fields textarea:focus{border-color:var(--gold);}
+  .fields textarea{resize:vertical;min-height:64px;line-height:1.45;}
+  .stat4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;}
+  .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .btns{display:flex;gap:8px;}
+  .btn{padding:8px 14px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);
+    border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;transition:.15s;}
+  .btn:hover{background:var(--gold);color:#fff;}
+  .btn.solid{background:var(--gold);color:#fff;border-color:var(--gold);}
+  iframe{width:100%;height:560px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);
+    color:#fff;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">One Piece Card Game</div>
+  <h1>eBay Listing Builder</h1>
+  <p class="sub">Pick a set, type a card number, get a ready-to-paste eBay description. Live card data &amp; TCGplayer market price via the OPTCG API.</p>
+
+  <div class="grid">
+    <div class="card">
+      <details style="margin-bottom:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);">
+        <summary style="cursor:pointer;padding:11px 14px;font-weight:600;font-size:13px;list-style:none;">API connection (proxy)</summary>
+        <div style="padding:0 14px 14px;">
+          <label>Base URL</label>
+          <input id="c_base" style="width:100%;padding:8px 10px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;" oninput="saveBase()">
+          <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">optcgapi.com blocks direct browser calls (no CORS). Run <b>pnpm dev</b> and leave this as <code>/api/op</code> — the proxy fetches server-side.</div>
+        </div>
+      </details>
+      <label>Set</label>
+      <div class="lookup">
+        <select id="setpick" onchange="onSetChange()"></select>
+        <input id="num" placeholder="e.g. 1  or  OP01-001" autocomplete="off">
+        <button onclick="doLookup()">Look up</button>
+      </div>
+      <div class="status load" id="status">Pick a set, enter a card number (or a full code like OP01-001), hit Look up.</div>
+
+      <div class="fields">
+        <div class="f-full"><label>Card name</label><input id="f_name"></div>
+        <div><label>Set (display)</label><input id="f_set"></div>
+        <div><label>Card code</label><input id="f_num"></div>
+        <div><label>Rarity</label><input id="f_rarity" placeholder="C / UC / R / SR / SEC / L"></div>
+        <div><label>Art / variant</label><select id="f_variant" onchange="onVariant()"><option>Base Art</option></select></div>
+        <div><label>Card type</label><input id="f_type" placeholder="Leader / Character / Event / Stage"></div>
+        <div><label>Colour</label><input id="f_color"></div>
+        <div><label>Attribute</label><input id="f_attr" placeholder="Slash / Strike / Ranged …"></div>
+        <div><label>Type(s) / traits</label><input id="f_traits"></div>
+        <div class="f-full"><label>Cost / Power / Counter / Life (blank to hide)</label>
+          <div class="stat4"><input id="f_cost" placeholder="Cost"><input id="f_power" placeholder="Power"><input id="f_counter" placeholder="Counter"><input id="f_life" placeholder="Life"></div></div>
+        <div><label>Language</label><input id="f_lang" value="English"></div>
+        <div><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
+        <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
+      </div>
+      <div class="hint"><b>Auto-fill needs the proxy running</b> (optcgapi blocks direct browser calls). No proxy? Type fields manually — the preview always builds. Tip: type a <b>full card code</b> (e.g. <code>OP16-001</code>, <code>EB01-005</code>, <code>OP14-050</code>) in the number box to look up any card directly — needed for reprint/crossover sets. <b>Alternate/parallel art</b> is worth far more than base — set the Art dropdown to match what you're selling.</div>
+    </div>
+
+    <div class="card">
+      <div style="margin-bottom:14px;">
+        <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;"><span>eBay title</span><span id="titlecount" style="font-size:11px;color:var(--muted);font-weight:400;">0/80</span></label>
+        <div style="display:flex;gap:8px;">
+          <input id="f_title" oninput="updateTitleCount()" placeholder="look up a card — title builds here" style="flex:1;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;">
+          <button class="btn" onclick="regenTitle()" title="Rebuild from fields">&#8635;</button>
+          <button class="btn solid" onclick="copyTitle()">Copy</button>
+        </div>
+      </div>
+      <div class="previewhead">
+        <label style="margin:0;">Live preview</label>
+        <div class="btns">
+          <button class="btn" onclick="copyText()">Copy plain text</button>
+          <button class="btn solid" onclick="copyHTML()">Copy HTML</button>
+        </div>
+      </div>
+      <iframe id="preview"></iframe>
+      <div id="extras" style="margin-top:16px;"></div>
+      <div style="margin-top:14px;"><button class="btn" onclick="findEbay()" title="Delivered prices (item + shipping) on eBay AU, AU & worldwide.">&#128178; eBay comps (delivered AUD)</button> <button class="btn" onclick="addTrack()" title="Cache this card's price and track its trend over time">&#128202; Track price</button> <button class="btn" onclick="addInv()" title="Add this card to Binders Keepers inventory">&#128203; Add to inventory</button></div>
+      <div id="ebayextras" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">Copied!</div>
+
+<script src="/extras.js"></script>
+<script>
+var _lastAutoTitle='';
+function updateTitleCount(){var el=document.getElementById('f_title'),c=document.getElementById('titlecount');if(!el||!c)return;var n=el.value.length;c.textContent=n+'/80';c.style.color=n>80?'#f06262':'var(--muted)';}
+function regenTitle(){if(!window.TCG)return;var t=genTitle();var el=document.getElementById('f_title');if(el){el.value=t;_lastAutoTitle=t;updateTitleCount();}}
+function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.TCG)return;if(!val('f_name')){updateTitleCount();return;}if(el.value===''||el.value===_lastAutoTitle){var t=genTitle();el.value=t;_lastAutoTitle=t;}updateTitleCount();}
+function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
+
+function val(id){return document.getElementById(id).value.trim();}
+function set(id,v){document.getElementById(id).value=(v==null?'':v);}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// Art-variant label. The API tags an alt in TWO ways: a trailing "(Alternate Art)"/"(Parallel)"/… in
+// card_name, and a "_pN" in the image filename. Newer sets (OP-16+) also append a random hash to the
+// image (OP16-001_p1_ra2rQjc.jpg), so match "_pN" up to a "_" OR "." — and prefer the card_name tag.
+function opVariantLabel(c){
+  var name=String((c&&c.card_name)||'');
+  var parens=name.match(/\(([^)]+)\)/g)||[];
+  var last=parens.length?parens[parens.length-1].replace(/[()]/g,'').trim():'';   // last "(...)": variant, not the "(001)" number
+  if(last && !/^\d+$/.test(last)) return last;                                      // "Alternate Art" / "Parallel" / "Manga" …
+  var m=String((c&&c.card_image)||'').match(/_p(\d+)(?:[._])/i);
+  if(m) return m[1]==='1' ? 'Alternate Art' : 'Alternate Art '+m[1];
+  return 'Base Art';
+}
+function isChaseVariant(v){return /alt|parallel|manga|special|box topper|\bsp\b/i.test(v||'');}
+
+function genTitle(){
+  var name=val('f_name'),code=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),variant=val('f_variant'),lang=val('f_lang'),cond=val('f_cond');
+  if(!window.TCG)return name;
+  var setCode=((setn||'').match(/\(([^)]+)\)/)||[])[1]||'';
+  var v=isChaseVariant(variant)?variant:'';
+  var rl=(rar||'').toUpperCase();
+  var rarTok=(rl==='SR'||rl==='SEC'||rl==='L'||rl==='SP')?rl:'';
+  var parts=[
+    {text:name,prio:100},
+    {text:code,prio:86},
+    {text:'- One Piece Card Game '+(setn||''),abbr:'- One Piece'+(setCode?' ('+setCode+')':''),prio:70},
+    {text:v?v.toUpperCase():'',prio:82},
+    {text:rarTok,prio:58},
+    {text:TCG.langCode(lang),prio:30},
+    {text:TCG.condCode(cond),prio:62}
+  ];
+  return TCG.fitTitle(parts,80);
+}
+
+// Fallback set list (used offline / if allSets is unreachable). loadSets() ALWAYS refreshes it live on
+// load, so a newly-released set (e.g. OP-17) appears automatically once optcgapi catalogs it — no edit
+// here needed. Keyed by set_id ("OP-01"), value = display name. Only the "clean" main + EB boosters are
+// baked (their cards share one code prefix so set+number works); reprint compilations (PRB-xx, the
+// OP14-EB04/OP15-EB04 crossovers) keep original card codes → use the full-code input for those.
+let SETS = {
+  'OP-01':'Romance Dawn','OP-02':'Paramount War','OP-03':'Pillars of Strength','OP-04':'Kingdoms of Intrigue',
+  'OP-05':'Awakening of the New Era','OP-06':'Wings of the Captain','OP-07':'500 Years in the Future',
+  'OP-08':'Two Legends','OP-09':'Emperors in the New World','OP-10':'Royal Blood','OP-11':'A Fist of Divine Speed',
+  'OP-12':'Legacy of the Master','OP-13':'Carrying On His Will','OP-16':'The Time of Battle',
+  'EB-01':'Extra Booster: Memorial Collection','EB-02':'Extra Booster: Anime 25th Collection',
+  'EB-03':'Extra Booster: One Piece Heroines Edition'
+};
+let curSet='OP-01', lastHTML='';
+let _opVariants=[];      // the fetched art-variant array for the current card
+let opBase='/api/op';
+try{const _b=localStorage.getItem('op_base'); if(_b) opBase=_b;}catch(e){}
+function saveBase(){opBase=document.getElementById('c_base').value.trim();try{localStorage.setItem('op_base',opBase);}catch(e){}}
+
+function readFields(){
+  return {name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),variant:val('f_variant'),
+    type:val('f_type'),color:val('f_color'),attr:val('f_attr'),traits:val('f_traits'),
+    cost:val('f_cost'),power:val('f_power'),counter:val('f_counter'),life:val('f_life'),
+    lang:val('f_lang'),cond:val('f_cond'),pitch:val('f_pitch')};
+}
+
+function genPitch(f){
+  var name=f.name,type=(f.type||'card').toLowerCase(),setName=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'');
+  var chase=isChaseVariant(f.variant)||/^(SR|SEC|L)$/i.test(f.rarity||'');
+  var vWord=isChaseVariant(f.variant)?(f.variant+' '):'';
+  if(chase)
+    return `The ${vWord}${name} ${type} from the One Piece Card Game — ${setName}. A ${f.color?f.color+' ':''}standout prized by collectors and players alike.`;
+  return `${name} — a ${f.color?f.color+' ':''}${type} from the One Piece Card Game's ${setName} set.${f.rarity?' '+f.rarity+' rarity.':''}`;
+}
+
+function buildHTML(f){
+  const rows=[['Set',f.set],['Card code',f.num],
+    ['Rarity',f.rarity+(isChaseVariant(f.variant)?' — '+f.variant:'')],
+    ['Card type',f.type],['Colour',f.color]];
+  if(f.attr) rows.push(['Attribute',f.attr]);
+  if(f.traits) rows.push(['Type(s)',f.traits]);
+  const stats=[f.cost!==''?'Cost '+f.cost:'',f.power!==''?'Power '+f.power:'',f.counter!==''?'Counter '+f.counter:'',f.life!==''?'Life '+f.life:''].filter(Boolean);
+  if(stats.length) rows.push(['Stats',stats.join(' · ')]);
+  rows.push(['Art / variant',f.variant]); rows.push(['Language',f.lang]);
+  let tr='';
+  rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f7f9;':'';
+    tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
+  const vSpan=isChaseVariant(f.variant)?` <span style="color:#f0b6b6;font-weight:600;">(${esc(f.variant)})</span>`:'';
+  return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
+  <div style="background:#0b0d12;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #e23b3b;">
+    <div style="color:#e23b3b;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">One Piece Card Game</div>
+    <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${vSpan}</div>
+    <div style="color:#8a8f9c;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+  </div>
+  <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
+  <div style="padding:0 24px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#0b0d12;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:4px;">Card details</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>${tr}</tbody></table>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="background:#f6f7f9;border-left:4px solid #1c1f26;border-radius:0 8px 8px 0;padding:14px 16px;">
+      <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#0b0d12;font-weight:700;margin-bottom:4px;">Condition</div>
+      <p style="margin:0;">${esc(f.cond)}. Pulled straight to sleeve and stored in a toploader.</p>
+    </div>
+  </div>
+  <div style="padding:18px 24px 4px;">
+    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#0b0d12;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
+    <p style="margin:0;">Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.</p>
+  </div>
+  <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
+</div>`;
+}
+
+function render(){
+  const f=readFields(); lastHTML=buildHTML(f);
+  document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';
+  if(typeof syncTitle==="function")syncTitle();
+}
+
+// Current selected art variant object (matches the f_variant dropdown label).
+function currentVariant(){
+  const lbl=val('f_variant');
+  return _opVariants.find(c=>opVariantLabel(c)===lbl) || _opVariants[0] || null;
+}
+function priceOf(c){return (c&&c.market_price!=null)?{market:+c.market_price,low:c.inventory_price!=null?+c.inventory_price:null,currency:'USD'}:null;}
+function renderExtrasFor(c){
+  if(!window.TCG||!c)return;
+  TCG.renderExtras(document.getElementById('extras'),{name:c.card_name,
+    images:[{label:'Front',url:c.card_image}],
+    prices:[{source:'optcgapi',measure:'market',group:'market',amount:c.market_price,currency:'USD'},
+            {source:'optcgapi',measure:'inventory (asking)',group:'asking',amount:c.inventory_price,currency:'USD'}],history:null});
+}
+
+async function doLookup(){
+  const raw=val('num');
+  const st=document.getElementById('status');
+  if(!raw){st.className='status warn';st.textContent='Enter a card number (or a full code like OP01-001).';return;}
+  let code;
+  if(/[a-z]/i.test(raw)||raw.includes('-')){ code=raw.toUpperCase().replace(/\s+/g,''); }
+  else { const prefix=curSet.replace(/-/g,''); code=prefix+'-'+raw.replace(/\D/g,'').padStart(3,'0'); }
+  st.className='status load'; st.textContent='Looking up '+code+' …';
+  const act=window.TCG?TCG.activity('Looking up '+code+'…'):null;
+  try{
+    const res=await fetch(opBase.replace(/\/$/,'')+'/sets/card/'+encodeURIComponent(code)+'/');
+    if(!res.ok){ act&&act.fail('no match'); st.className='status warn';
+      st.textContent='No match for '+code+'. Check the set + number, or fill fields manually — preview still works.'; return; }
+    const arr=await res.json();
+    if(!Array.isArray(arr)||!arr.length){ act&&act.fail('empty'); st.className='status warn'; st.textContent='No data for '+code+'.'; return; }
+    _opVariants=arr;
+    const c=arr[0];
+    // populate the art-variant dropdown
+    const vsel=document.getElementById('f_variant');
+    vsel.innerHTML=arr.map(x=>{const l=opVariantLabel(x);return '<option value="'+esc(l)+'">'+esc(l)+'</option>';}).join('');
+    // fill fields from the base variant
+    set('f_name',c.card_name||'');
+    set('f_set',(c.set_name||SETS[curSet]||'')+' ('+(c.set_id||curSet)+')');
+    set('f_num',c.card_set_id||code);
+    set('f_rarity',c.rarity||'');
+    set('f_type',c.card_type||'');
+    set('f_color',c.card_color||'');
+    set('f_attr',c.attribute||'');
+    set('f_traits',c.sub_types||'');
+    set('f_cost',c.card_cost!=null?c.card_cost:'');
+    set('f_power',c.card_power!=null?c.card_power:'');
+    set('f_counter',c.counter_amount!=null?c.counter_amount:'');
+    set('f_life',c.life!=null?c.life:'');
+    set('f_pitch',genPitch(readFields()));
+    updateTrk(c);
+    renderExtrasFor(c);
+    act&&act.done('optcgapi');
+    st.className='status ok'; st.textContent='✓ '+(c.card_name||code)+'  ('+(c.rarity||'?')+')'+(c.market_price!=null?'  ·  ~US$'+c.market_price+' market':'')+(arr.length>1?'  ·  '+arr.length+' arts':'');
+    render(); regenTitle();
+  }catch(e){
+    act&&act.fail('lookup blocked');
+    st.className='status err';
+    st.textContent='Lookup blocked (no network / proxy down). Type fields manually — the preview still builds.';
+  }
+}
+
+function onVariant(){
+  const c=currentVariant(); if(!c){render();return;}
+  set('f_num',c.card_set_id||val('f_num'));
+  if(c.rarity)set('f_rarity',c.rarity);
+  updateTrk(c); renderExtrasFor(c); render(); regenTitle();
+}
+
+function onSetChange(){curSet=document.getElementById('setpick').value; if(val('num'))doLookup();}
+
+let _trk=null;
+function updateTrk(c){
+  _trk={game:'onepiece',identity_key:(c.card_set_id||val('f_num')||'').toUpperCase(),name:c.card_name||val('f_name'),
+    variant:isChaseVariant(val('f_variant'))?val('f_variant'):'',price:priceOf(c)};
+}
+
+function findEbay(){
+  const f=readFields(), st=document.getElementById('status');
+  if(!f.name){st.className='status warn';st.textContent='Look up or enter a card first.';return;}
+  const nm=(f.name||'').replace(/\s*\([^)]*\)\s*/g,' ').replace(/\s+/g,' ').trim();   // drop the "(001)" disambiguator
+  const q=('One Piece Card Game '+nm+(f.num?' '+f.num:'')).trim();
+  return TCG.ebayComps({query:q, container:document.getElementById('ebayextras'), status:st,
+    analyze:true, ref:(_trk&&_trk.price)||null, refLabel:'optcgapi',
+    card:_trk?{game:_trk.game,identity_key:_trk.identity_key,name:_trk.name,variant:_trk.variant}:null,
+    precision:true, numberMatch:null, filterKey:'raw',
+    filterOptions:[
+      {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
+      {key:'rawAll', label:'Raw · incl. auctions', filter:'conditionIds:{4000}'},
+      {key:'graded', label:'Graded', filter:'conditionIds:{2750}'},
+      {key:'all',    label:'All listings', filter:''}
+    ]});
+}
+
+function copyHTML(){copy(lastHTML,'HTML copied!');}
+function copyText(){const t=document.createElement('div');t.innerHTML=lastHTML;
+  copy(t.innerText.replace(/\n{3,}/g,'\n\n').trim(),'Plain text copied!');}
+function copy(text,msg){const done=()=>showToast(msg);
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fb(text,done));}else fb(text,done);}
+function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
+let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
+async function addInv(){
+  if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
+  if(!(window.TCG&&TCG.addToInventory)){showToast('Inventory unavailable');return;}
+  const body=Object.assign({},_trk,{set_name:val('f_set')||null,number:val('f_num')||null,status:'in_stock'});
+  delete body.price;
+  const r=await TCG.addToInventory(body);
+  showToast(r?('Added to inventory ✓ '+(r.sku||'')):'Add failed');
+}
+async function addTrack(){
+  if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
+  const r=await TCG.addToTracker(_trk);
+  showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
+}
+
+function buildSetOptions(){
+  const sel=document.getElementById('setpick'); if(!sel) return;
+  sel.innerHTML='';
+  for(const sid in SETS){const o=document.createElement('option');o.value=sid;o.textContent=sid+' — '+SETS[sid];if(sid===curSet)o.selected=true;sel.appendChild(o);}
+}
+async function loadSets(){
+  try{
+    const r=await fetch(opBase.replace(/\/$/,'')+'/allSets/');
+    if(!r.ok) return;
+    const j=await r.json();
+    if(!Array.isArray(j)||!j.length) return;
+    const next={}; j.forEach(s=>{if(s.set_id)next[s.set_id]=s.set_name||s.set_id;});
+    if(Object.keys(next).length){SETS=next; if(!SETS[curSet])curSet=Object.keys(SETS)[0]||curSet; buildSetOptions();}
+  }catch(e){}
+}
+(function(){
+  const _cb=document.getElementById('c_base'); if(_cb) _cb.value=opBase;
+  buildSetOptions();
+  loadSets();
+  document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
+  ['f_name','f_set','f_num','f_rarity','f_type','f_color','f_attr','f_traits','f_cost','f_power','f_counter','f_life','f_lang','f_cond','f_pitch']
+    .forEach(id=>document.getElementById(id).addEventListener('input',render));
+  render();
+})();
+</script>
+</body>
+</html>

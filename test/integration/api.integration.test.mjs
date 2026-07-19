@@ -413,7 +413,7 @@ describe('/api/sealed (GET-safe, offline)', () => {
 });
 
 describe('static pages served', () => {
-  for (const page of ['/', '/tracker.html', '/inventory.html', '/shipping-label.html', '/sealed.html', '/locations.html']) {
+  for (const page of ['/', '/tracker.html', '/inventory.html', '/shipping-label.html', '/sealed.html', '/locations.html', '/onepiece-listing-builder.html']) {
     it(`GET ${page}`, async () => {
       const { status, text } = await get(page);
       assert.equal(status, 200);

@@ -104,6 +104,34 @@ describe('lookupPath (collector re-fetch keys)', () => {
   it('unknown game → null', () => assert.equal(lookupPath('funko', 'x'), null));
 });
 
+describe('mapPrice: onepiece (optcgapi)', () => {
+  const arr = [
+    { card_image: 'https://optcgapi.com/media/static/Card_Images/OP01-001.jpg', market_price: 6.07, inventory_price: 3.28 },
+    { card_image: 'https://optcgapi.com/media/static/Card_Images/OP01-001_p1.jpg', market_price: 568.01 },
+  ];
+  it('base art by default; alt/parallel art routes to the _p variant (GR5 — huge price gap)', () => {
+    assert.equal(mapPrice('onepiece', arr).market, 6.07);
+    assert.equal(mapPrice('onepiece', arr, 'Base').market, 6.07);
+    assert.equal(mapPrice('onepiece', arr, 'Alt Art').market, 568.01);
+    assert.equal(mapPrice('onepiece', arr, 'Parallel').market, 568.01);
+  });
+  it('single-variant array works; missing price / empty → null (GR4)', () => {
+    assert.equal(mapPrice('onepiece', [{ card_image: 'ST01-001.jpg', market_price: 2.5 }]).market, 2.5);
+    assert.equal(mapPrice('onepiece', [{ card_image: 'x.jpg' }]), null);
+    assert.equal(mapPrice('onepiece', []), null);
+    assert.equal(mapPrice('onepiece', null), null);
+  });
+  it('newer sets (OP-16+): hashed image + "(Alternate Art)" card_name still routes correctly', () => {
+    // OP16-001: base image has a random hash; alt image is "..._p1_<hash>.jpg" (breaks a naive "_pN.").
+    const op16 = [
+      { card_name: 'Portgas.D.Ace (001)', card_image: 'OP16-001_xBcGSbE.jpg', market_price: 0.17 },
+      { card_name: 'Portgas.D.Ace (001) (Alternate Art)', card_image: 'OP16-001_p1_ra2rQjc.jpg', market_price: 53.2 },
+    ];
+    assert.equal(mapPrice('onepiece', op16).market, 0.17, 'base by default');
+    assert.equal(mapPrice('onepiece', op16, 'Alternate Art').market, 53.2, 'alt via card_name / hashed _pN');
+  });
+});
+
 describe('GAMES coverage', () => {
   const SAMPLES = {
     riftbound: { variants: [{ name: 'normal', prices: [{ condition: 'NM', market: 1 }] }] },
@@ -111,6 +139,7 @@ describe('GAMES coverage', () => {
     pokemon: { tcgplayer: { prices: { normal: { market: 1 } } } },
     swu: { MarketPrice: '1' },
     lorcana: { prices: { usd: '1' } },
+    onepiece: [{ card_set_id: 'OP01-001', card_image: 'OP01-001.jpg', market_price: 1 }],
   };
   it('every tracked game has a working mapper and lookup path', () => {
     for (const g of GAMES) {
@@ -121,12 +150,12 @@ describe('GAMES coverage', () => {
 });
 
 describe('STOCK_GAMES (inventory-stockable games)', () => {
-  it('is a superset of the card-data GAMES and adds One Piece', () => {
+  it('is a superset of the card-data GAMES (every card game is stockable)', () => {
     for (const g of GAMES) assert.ok(STOCK_GAMES.includes(g), `${g} is stockable`);
-    assert.ok(STOCK_GAMES.includes('onepiece'), 'One Piece is stockable');
   });
-  it('keeps One Piece OUT of the card-data GAMES (no card API/mapper wired up)', () => {
-    assert.ok(!GAMES.includes('onepiece'), 'onepiece must not be in GAMES — the mapper invariant would fail');
+  it('includes One Piece', () => {
+    assert.ok(STOCK_GAMES.includes('onepiece'), 'One Piece is stockable');
+    assert.ok(GAMES.includes('onepiece'), 'One Piece is now a full card-data game (optcgapi wired in)');
   });
 });
 
@@ -138,6 +167,7 @@ describe('imageFrom', () => {
     assert.equal(imageFrom('lorcana', { image_uris: { digital: { large: 'D' } } }), 'D');
     assert.equal(imageFrom('swu', { FrontArt: 'A' }), 'A');
     assert.equal(imageFrom('riftbound', { images: [{ large: 'R' }] }), 'R');
+    assert.equal(imageFrom('onepiece', [{ card_image: 'OP.jpg' }]), 'OP.jpg');
     assert.equal(imageFrom('riftbound', { img: 'I' }), 'I');
   });
   it('never throws on junk', () => {

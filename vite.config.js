@@ -360,6 +360,17 @@ export default defineConfig(({ mode }) => {
               console.log('[api/swu]', req.url, '-> api.swu-db.com' + proxyReq.path))
           },
         },
+        // One Piece Card Game -> OPTCG API (optcgapi.com/api, KEYLESS — CORS bypass + TCGplayer market
+        // price). GET-only community API; covers OP-01..OP-15 + starter decks + promos (English).
+        '/api/op': {
+          target: 'https://optcgapi.com',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/op/, '/api'),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) =>
+              console.log('[api/op]', req.url, '-> optcgapi.com' + proxyReq.path))
+          },
+        },
         // Disney Lorcana -> Lorcast (api.lorcast.com/v0, KEYLESS — CORS bypass + daily prices)
         '/api/lorcana': {
           target: 'https://api.lorcast.com',

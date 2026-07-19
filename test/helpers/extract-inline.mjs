@@ -44,12 +44,13 @@ export function inlineScripts(html) {
   return out;
 }
 
-// The five card builders (Golden Rule 6 scope) + the two collectibles builders.
+// The card builders (Golden Rule 6 scope) + the two collectibles builders.
 export const CARD_BUILDERS = [
   'pokemon-listing-builder.html',
   'mtg-listing-builder.html',
   'swu-listing-builder.html',
   'lorcana-listing-builder.html',
   'riftbound-listing-builder.html',
+  'onepiece-listing-builder.html',
 ];
 export const COLLECTIBLE_BUILDERS = ['lego-listing-builder.html', 'funko-listing-builder.html'];
