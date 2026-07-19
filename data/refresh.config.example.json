@@ -1,6 +1,6 @@
 {
   "_comment": "TEMPLATE for data/refresh.config.json (which is gitignored — server-owned so the settings dashboard's runtime edits never collide with git pulls). lib/refresh.mjs seeds refresh.config.json from this file on boot if it's missing; a missing file also falls back to DEFAULT_CONFIG. Daily in-process refresh of BAKED data catalogs: riftbound.json + pokemon-intl-sets.json (JP/CN/KO from TCGdex) + pokemon-en-early.json (early EN sets from PriceCharting). Live-proxied games (mtg/swu/lorcana/lego/fx + English pokemon) need no refresh. interval_hours drives the timer; the boot pass skips catalogs already fresher than interval_hours.",
   "enabled": true,
-  "interval_hours": 24,
-  "bakes": ["riftbound", "pokemon-intl", "pokemon-en-early"]
+  "interval_hours": 6,
+  "bakes": ["riftbound", "pokemon-intl", "pokemon-en-early", "pokemon-mep"]
 }

@@ -58,6 +58,44 @@ score, and the divergence flag; API market prices carry no fabricated volatility
   pokemontcg.io returns no image, and as an `onerror` swap when its image breaks.
   **dotgg is EN-only** (keyed on the pokemontcg.io id) — never built for a JP/CN/KO id.
 
+## Pokémon EN "Mega Evolution Promo" — baked roster (`data/pokemon-mep.json`, no proxy)
+
+A **self-contained** EN set that neither of the EN lanes above can serve: pokemontcg.io has no
+`mep` set (its promo catalog stops at `svp`, 2023) **and** it has no PriceCharting console (so the
+early-EN overlay, which needs a `pcSlug` to enumerate cards, can't surface it either). It *is* in the
+paid **Scrydex** `/pokemon/v1` API (ids `mep-<n>`), but our key is `402 SUBSCRIPTION_INACTIVE` — so
+instead of migrating the whole EN lane to paid Scrydex we bake a small static roster:
+
+- **Roster** (name + number + market price + **stage/type/hp**): fetched **live, server-side** from
+  TCGplayer's public search API (`mp-search-api.tcgplayer.com/v1/search/request`, `setName:
+  me-mega-evolution-promo`) — a Node fetch with browser headers passes where the browser can't (CORS);
+  paginated (cap 50/page). `scripts/build-pokemon-mep.mjs` cleans the quirky product names (strips
+  `- NNN`/`[Staff]`/parentheticals, tolerates typos like `Comos Holo`, `Patch Black Stamp`), groups
+  variant rows under one padded card number, and emits `data/pokemon-mep.json` (`{ set, source,
+  cards:[{number, name, rarity:'Promo', stage?, type?, hp?, variants:[{label, market}], img? }] }`).
+  **79 base cards** (numbers 001–088). **No manual step** — the search API also carries stage/energy
+  type/HP that the earlier browser scrape lacked. GR7: a fetch failure THROWS pre-write, so the refresh
+  keeps the existing catalog (atomic temp+rename).
+- **Automation (≤24h freshness):** wired into the in-process refresh as the `pokemon-mep` bake
+  (`lib/refresh.mjs`), so a new promo or price move lands within `interval_hours` (default 6h). A NEW
+  card triggers a Telegram alert (`alertMepCards`, mirrors the early-set alert). The file is
+  **gitignored + server-owned** (like `pokemon-en-early.json`) so the daily rebuild never collides with
+  a git pull; a fresh deploy cold-starts from the tracked `data/pokemon-mep-seed.json` (`ensureMepSeeded`),
+  then the bake refreshes it live ~60s after boot.
+- **Images (runtime, not baked):** `images.scrydex.com/pokemon/mep-<bareNumber>/{small,large}` — that
+  CDN is **keyless** even though the API isn't (bare number, NOT zero-padded: `mep-66`, not `mep-066`).
+  The bake **probes** each card's `small` image and records `img` only when a real image is present
+  (the CDN returns a fixed 45,551-byte placeholder PNG at HTTP 200 for misses) — currently 71/79 have
+  art; the newest 8 (081–088) fall back to the builder's editable image field. Display + download route
+  through the `/api/img` disk cache like the JP/CN/KO path.
+- **Builder wiring:** loaded client-side (`loadMep()`, `localStorage` `pkm_mep_v1`); the set shows in
+  the EN picker (id `mep`, code `MEP`), hidden the moment pokemontcg.io lists it (`activeSets`
+  graduation, same as early-EN). A typed number resolves against the roster in `doLookupMep` — English
+  name/set/number + stage/type/HP + Scrydex image + TCGplayer price rows (base variant = `market`,
+  `[Staff]`/PC-exclusive/etc = `asking`). **Listing-only:** no pokemontcg.io id, so `identity_key` stays blank and
+  tracker/inventory are gated (like the JP/early-EN lanes). eBay AU comps work as usual off the filled
+  fields. Delete the roster once the set graduates to pokemontcg.io.
+
 ## Pokémon JP / CN / KO — TCGdex  (proxy `/api/tcgdex`, keyless)
 
 English uses pokemontcg.io (above). **Japanese, Simplified Chinese, Traditional Chinese, and

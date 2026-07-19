@@ -315,13 +315,29 @@ async function loadEarlyEn(){
   }catch(e){}
   return EARLY_EN;
 }
-// The set list for the ACTIVE language: EN → early pre-release sets + pokemontcg.io PKM_SETS; else the
-// baked intl catalog. An early set whose name pokemontcg.io now carries is hidden (graduated to live).
+// ── Mega Evolution Promo (mep): a BAKED English set absent from pokemontcg.io AND PriceCharting.
+// Roster (name/number/price) from TCGplayer; images from the keyless Scrydex CDN (data/pokemon-mep.json,
+// scripts/build-pokemon-mep.mjs). Listing-only — no pokemontcg.io id, so identity_key stays blank
+// (tracker/inventory gated), exactly like the JP/early-EN lanes. Hidden if pokemontcg.io ever adds it.
+let MEP=null, MEP_BY_NUM={};
+const MEP_CACHE_KEY='pkm_mep_v1';
+function mepSetRow(){return (MEP&&MEP.set)?{id:MEP.set.id||'mep',name:MEP.set.name,series:MEP.set.series||'',releaseDate:MEP.set.releaseDate||'',ptcgoCode:MEP.set.ptcgoCode||'MEP',symbol:'',mep:true}:null;}
+function indexMep(){MEP_BY_NUM={};if(MEP&&MEP.cards)MEP.cards.forEach(function(c){MEP_BY_NUM[String(parseInt(c.number,10))]=c;});}
+function loadCachedMep(){try{var raw=localStorage.getItem(MEP_CACHE_KEY);if(raw){var o=JSON.parse(raw);if(o&&o.cards){MEP=o;indexMep();return true;}}}catch(e){}return false;}
+async function loadMep(){
+  loadCachedMep();
+  try{var r=await fetch('/data/pokemon-mep.json');if(r.ok){var o=await r.json();if(o&&o.cards){MEP=o;indexMep();try{localStorage.setItem(MEP_CACHE_KEY,JSON.stringify(o));}catch(e){}}}}catch(e){}
+  return MEP;
+}
+// The set list for the ACTIVE language: EN → baked mep + early pre-release sets + pokemontcg.io PKM_SETS;
+// else the baked intl catalog. An overlay set whose name/id pokemontcg.io now carries is hidden (graduated).
 function activeSets(){var dl=activeDataLang();
   if(dl==='en'){
-    if(!EARLY_EN.length)return PKM_SETS;
     var live={};PKM_SETS.forEach(function(s){live[(s.name||'').toLowerCase()]=1;});
-    return EARLY_EN.filter(function(e){return !live[(e.name||'').toLowerCase()];}).concat(PKM_SETS);
+    var overlay=[], mep=mepSetRow();
+    if(mep&&!live[mep.name.toLowerCase()]&&!PKM_SETS.some(function(s){return (s.id||'').toLowerCase()==='mep';}))overlay.push(mep);
+    overlay=overlay.concat(EARLY_EN.filter(function(e){return !live[(e.name||'').toLowerCase()];}));
+    return overlay.length?overlay.concat(PKM_SETS):PKM_SETS;
   }
   return (PKM_INTL&&PKM_INTL[dl])||[];
 }
@@ -568,6 +584,8 @@ async function doLookup(){
   // Route to the same PriceCharting path JP uses (dl stays 'en' → English name/set/eBay; identity_key
   // blank so tracker/inventory stay gated until it graduates to pokemontcg.io).
   if(_setObj.pcSlug)return doLookupIntl(_setObj,num,'en');
+  // Baked Mega Evolution Promo set: no pokemontcg.io id, resolve against the local roster.
+  if(_setObj.mep)return doLookupMep(_setObj,num);
   const setId=_setObj.id;
   st.className='status load';st.textContent='Looking up '+setId+'-'+num+'\u2026';
   const act=window.TCG?TCG.activity('Looking up '+setId+'-'+num+'\u2026'):null;
@@ -603,6 +621,51 @@ async function doLookup(){
       var _exEl=document.getElementById("extras");var _ex={name:c.name,images:[{label:"Front",display:[_dg,_sm].filter(Boolean),download:_lg||_dg,fallback:_lg}],prices:_pr.slice(),history:null};
       TCG.renderExtras(_exEl,_ex);pcEnrich(_exEl,_ex,_pr,c,num);}regenTitle();
   }catch(e){act&&act.fail('lookup blocked');st.className='status err';st.textContent='Lookup blocked (proxy not running?). Start pnpm dev or fill fields manually.';}
+}
+// Mega Evolution Promo (mep): resolve a typed number against the baked roster (data/pokemon-mep.json).
+// English output; image from the keyless Scrydex CDN via the /api/img cache; prices from the TCGplayer
+// roster. Listing-only — identity_key stays blank (tracker/inventory gated), like the JP/early-EN lanes.
+async function doLookupMep(setObj,num){
+  const st=document.getElementById('status');
+  if(!MEP)await loadMep();
+  const enSet=(MEP&&MEP.set&&MEP.set.name)||'Mega Evolution Promo';
+  set('f_set',enSet);
+  const key=String(parseInt(String(num).replace(/\/.*/,''),10));
+  const card=MEP_BY_NUM[key];
+  if(!card){
+    clearCardFields({keepSet:true});
+    st.className='status warn';st.textContent='Card #'+num+' not found in '+enSet+' ('+((MEP&&MEP.cards&&MEP.cards.length)||0)+' cards). Check the number or fill manually.';
+    return;
+  }
+  const bare=String(parseInt(card.number,10));
+  const px=function(u){return '/api/img?u='+encodeURIComponent(u);};
+  const smallU=card.img?('https://images.scrydex.com/pokemon/mep-'+bare+'/small'):'';
+  const largeU=card.img?('https://images.scrydex.com/pokemon/mep-'+bare+'/large'):'';
+  const vars=card.variants||[];
+  const primary=vars.find(function(v){return v.label==='Standard';})||vars[0]||null;
+  set('f_name',card.name);
+  set('f_num',card.number);
+  set('f_rarity',card.rarity||'Promo');
+  set('f_poke',card.name);
+  set('f_stage',card.stage||'');set('f_type',card.type||'');
+  set('f_finish','Holo');   // promos are holofoil; user can adjust
+  _trk={game:'pokemon',identity_key:'',_mep:true,lang:'en',name:card.name,variant:'Holo',price:primary?{market:primary.market,currency:'USD'}:null};
+  _intlMeta={nativeName:'',romaji:'',nativeSet:'',enSet:'',setSymbol:setObj.ptcgoCode||'MEP',illustrator:'',hp:card.hp||'',regMark:'',
+    releaseYear:String((MEP&&MEP.set&&MEP.set.releaseDate)||'').slice(0,4),img:largeU};
+  set('f_img',largeU);
+  set('f_pitch',genPitch(readFields()));
+  st.className='status ok';st.textContent='✓ '+card.name+'  #'+card.number+'  ·  '+enSet+(primary?'  ·  ~US$'+primary.market+' market':'')+(card.img?'':'  · no stock image — paste a URL');
+  render();
+  if(window.TCG){
+    var imgs=card.img?[{label:'Front',display:[px(smallU),px(largeU)],download:largeU,fallback:px(largeU)}]:[];
+    var pr=vars.map(function(v){var isBase=v===primary;
+      return {source:'TCGplayer',measure:(isBase?'market':v.label+' · market'),group:(isBase?'market':'asking'),amount:v.market,currency:'USD'};});
+    var _exEl=document.getElementById('extras');
+    var _ex={name:card.name,images:imgs,prices:pr,history:null,
+      priceNote:'Mega Evolution Promo isn’t in pokemontcg.io — roster + prices from TCGplayer, image from Scrydex. eBay AU comps below are the local signal.'};
+    TCG.renderExtras(_exEl,_ex);
+  }
+  regenTitle();
 }
 // JP / Simplified-CN / Traditional-CN / KO lookup via TCGdex (native card data + image).
 // pokemontcg.io has no such cards; TCGdex has no reliable prices, so the panel is image + a
@@ -798,6 +861,7 @@ let tt;function showToast(m){const t=document.getElementById('toast');t.textCont
 let _trk=null;
 async function addInv(){
   if(_trk&&_trk._intl){showToast('JP/CN/KO cards are listing-only for now');return;}
+  if(_trk&&_trk._mep){showToast('Mega Evolution Promo is listing-only — not in the price DB yet');return;}
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   if(!(window.TCG&&TCG.addToInventory)){showToast('Inventory unavailable');return;}
   const body=Object.assign({},_trk,{set_name:val('f_set')||null,number:val('f_num')||null,status:'in_stock'});
@@ -807,6 +871,7 @@ async function addInv(){
 }
 async function addTrack(){
   if(_trk&&_trk._intl){showToast('JP/CN/KO cards are listing-only for now');return;}
+  if(_trk&&_trk._mep){showToast('Mega Evolution Promo is listing-only — not in the price DB yet');return;}
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   const r=await TCG.addToTracker(_trk);
   showToast(r?(r.created?'Added to tracker ✓':'Already tracking ✓'):'Add failed');
@@ -832,7 +897,7 @@ async function addTrack(){
     document.addEventListener('click',function(e){var r=document.querySelector('.setrow');if(r&&!r.contains(e.target)){closeSetMenu();toggleLangMenu(false);}});
     buildLangMenu();renderLangBtn();
   })();
-  loadSets(); loadIntlSets(); loadEarlyEn(); loadDexMap(); render();
+  loadSets(); loadIntlSets(); loadEarlyEn(); loadMep(); loadDexMap(); render();
   // Deep-link from catalog.html: ?lang=<dataLang>&set=<code|id|name> → switch language + prefill/resolve the set.
   (function(){try{
     var u=new URL(location.href),L=u.searchParams.get('lang'),S=u.searchParams.get('set');
