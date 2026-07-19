@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Locations · Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;--purple:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;min-height:100vh;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1200px;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;} a:hover{text-decoration:underline;text-underline-offset:3px;}
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);}
+  .sub .dot{color:var(--faint);margin:0 7px;}
+  .actions{display:flex;gap:9px;}
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s ease;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);} .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn.sm{padding:6px 10px;font-size:11.5px;border-radius:8px;}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  .btn.ghost:hover{color:var(--text);border-color:var(--line2);background:rgba(255,255,255,.03);}
+  .btn.danger{border-color:rgba(240,102,110,.38);color:var(--red);background:rgba(240,102,110,.06);}
+  .btn.danger:hover{background:rgba(240,102,110,.14);border-color:var(--red);}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.go:hover{background:rgba(67,214,160,.17);border-color:var(--green);}
+  select,input,textarea{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--sans);transition:.15s;}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  input::placeholder,textarea::placeholder{color:var(--faint);}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px;padding:11px 13px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));}
+  .sec-h{font-family:var(--sans);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);font-weight:700;}
+  .empty{color:var(--muted);font-size:13px;padding:26px;text-align:center;border:1px dashed var(--line);border-radius:14px;background:rgba(255,255,255,.012);}
+  /* location cards */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+  .loccard{position:relative;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 16px 13px;box-shadow:var(--shadow);transition:.18s ease;animation:rise .45s both;display:flex;flex-direction:column;gap:11px;}
+  .loccard:hover{border-color:var(--line2);transform:translateY(-2px);}
+  .loccard .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .loccard .nm{font-family:var(--serif);font-weight:600;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;}
+  .loccard .pin{color:var(--gold);}
+  .loccard .notes{color:var(--muted);font-size:12.5px;white-space:pre-wrap;max-height:4.2em;overflow:hidden;}
+  .loccard .notes.empty-note{color:var(--faint);font-style:italic;}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;}
+  .chip{font-family:var(--mono);font-size:11px;border:1px solid var(--line2);border-radius:999px;padding:2px 9px;color:var(--muted);}
+  .chip.g{color:var(--green);border-color:rgba(67,214,160,.35);background:rgba(67,214,160,.07);}
+  .chip.b{color:var(--blue);border-color:rgba(106,176,255,.35);background:rgba(106,176,255,.07);}
+  .chip.p{color:var(--purple);border-color:rgba(217,164,255,.35);background:rgba(217,164,255,.07);}
+  .chip.warn{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.06);}
+  .pstrip{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;}
+  .pstrip img{width:60px;height:60px;flex:0 0 auto;border-radius:8px;object-fit:cover;border:1px solid var(--line2);cursor:pointer;background:#0f131b;transition:.15s;}
+  .pstrip img:hover{border-color:var(--gold);transform:scale(1.04);}
+  .pstrip .more{width:60px;height:60px;flex:0 0 auto;border-radius:8px;border:1px dashed var(--line2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:var(--mono);font-size:12px;}
+  .loccard .acts{display:flex;gap:6px;margin-top:auto;padding-top:11px;border-top:1px solid var(--line);}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(6,7,11,.62);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:none;align-items:flex-start;justify-content:center;padding:42px 16px;overflow:auto;z-index:50;}
+  .overlay.on{display:flex;animation:fade .2s;}
+  .modal{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line2);border-radius:20px;max-width:640px;width:100%;padding:24px 26px;box-shadow:0 34px 90px -22px rgba(0,0,0,.82);animation:rise .28s both;}
+  .modal h2{font-family:var(--serif);font-weight:600;margin:0 0 18px;font-size:22px;}
+  .fld{display:flex;flex-direction:column;gap:5px;margin-bottom:13px;}
+  .fld label{font-size:10px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:600;}
+  .fld input,.fld textarea{width:100%;}
+  .row2{display:grid;grid-template-columns:1fr 130px;gap:13px;}
+  .modal-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--line);}
+  .status{font-size:12px;color:var(--muted);font-family:var(--mono);}
+  .status.ok{color:var(--green);} .status.err{color:var(--red);} .status.load{color:var(--blue);}
+  /* photo manager */
+  .photosec{border:1px solid var(--line);border-radius:13px;padding:13px;background:rgba(255,255,255,.012);margin-top:6px;}
+  .photosec .head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px;}
+  .pcell{border-radius:10px;overflow:hidden;border:1px solid var(--line2);background:#0f131b;display:flex;flex-direction:column;transition:.12s;}
+  .pcell.dragover{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-soft);}
+  .pcell.dragging{opacity:.4;}
+  .pcell .imgwrap{position:relative;aspect-ratio:1;}
+  .pcell .imgwrap img{width:100%;height:100%;object-fit:cover;cursor:zoom-in;display:block;}
+  .pcell .rm{position:absolute;top:4px;right:4px;background:rgba(6,7,11,.72);border:1px solid var(--line2);color:var(--red);border-radius:7px;width:24px;height:24px;cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;}
+  .pcell .rm:hover{background:rgba(240,102,110,.25);}
+  .pcell .drag{position:absolute;top:4px;left:4px;background:rgba(6,7,11,.72);border:1px solid var(--line2);color:var(--muted);border-radius:7px;height:24px;padding:0 6px;cursor:grab;font-size:13px;line-height:24px;letter-spacing:-3px;user-select:none;}
+  .pcell .drag:active{cursor:grabbing;} .pcell .drag:hover{color:var(--gold);border-color:var(--gold);}
+  .pcell .cap{border:none;border-top:1px solid var(--line);border-radius:0;background:var(--ink);color:var(--text);font-size:11px;padding:5px 7px;width:100%;font-family:var(--mono);}
+  .pcell .cap::placeholder{color:var(--faint);} .pcell .cap:focus{box-shadow:none;border-top-color:var(--gold);}
+  #lightboxCap{position:fixed;bottom:22px;left:0;right:0;text-align:center;color:var(--text);font-size:13px;font-family:var(--mono);pointer-events:none;text-shadow:0 1px 4px #000;}
+  .phint{color:var(--faint);font-size:11px;font-family:var(--mono);margin-top:8px;}
+  .drop{border:1.5px dashed var(--line2);border-radius:11px;padding:16px;text-align:center;color:var(--muted);font-size:12.5px;cursor:pointer;transition:.15s;}
+  .drop:hover,.drop.over{border-color:var(--gold);background:var(--gold-soft);color:var(--text);}
+  /* lightbox */
+  .lightbox{position:fixed;inset:0;background:rgba(4,5,8,.88);display:none;align-items:center;justify-content:center;z-index:80;padding:32px;cursor:zoom-out;}
+  .lightbox.on{display:flex;animation:fade .18s;}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:12px;box-shadow:0 30px 80px -20px #000;}
+  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  @keyframes fade{from{opacity:0;}to{opacity:1;}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+  ::-webkit-scrollbar{width:11px;height:11px;} ::-webkit-scrollbar-thumb{background:#20242e;border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Binders Keepers <span class="thin">Locations</span></h1>
+        <p class="sub"><a href="/sealed.html">← sealed inventory</a><span class="dot">·</span>storage spots, notes &amp; photos<span class="dot">·</span><span id="updated">—</span></p>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn go" onclick="openLoc(null)">＋ Add location</button>
+      <a class="btn ghost" href="/">all tools</a>
+    </div>
+  </header>
+
+  <div class="filters">
+    <span class="sec-h">Storage</span>
+    <input id="f_q" placeholder="search name / notes" style="width:200px;" oninput="render()">
+    <select id="f_sort" onchange="render()" style="margin-left:auto;" title="Sort">
+      <option value="custom">Custom order</option>
+      <option value="name">Name A–Z</option>
+      <option value="items">Most items</option>
+      <option value="units">Most units</option>
+      <option value="photos">Most photos</option>
+    </select>
+  </div>
+  <div id="list"></div>
+</div>
+
+<!-- location detail modal -->
+<div class="overlay" id="locOverlay">
+  <div class="modal">
+    <h2 id="locTitle">Add location</h2>
+    <div class="row2">
+      <div class="fld"><label>Name *</label><input id="l_name" placeholder="e.g. Storage room — shelf B"></div>
+      <div class="fld"><label>Sort order</label><input id="l_sort" type="number" step="1" value="0" title="Lower shows first in Custom order"></div>
+    </div>
+    <div class="fld"><label>Info / notes</label><textarea id="l_notes" rows="3" placeholder="What's kept here, access notes, box labels…"></textarea></div>
+    <div class="photosec">
+      <div class="head"><label style="font-size:10px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:600;">Photos <span id="l_pcount" class="chip">0</span></label>
+        <span class="status" id="l_pstatus"></span></div>
+      <div class="drop" id="l_drop" onclick="document.getElementById('l_file').click()">📷 Click or drop images here — taken &amp; uploaded by you (auto-downscaled)</div>
+      <input id="l_file" type="file" accept="image/*" multiple style="display:none;" onchange="addPhotos(this)">
+      <div class="pgrid" id="l_photos" style="margin-top:10px;"></div>
+      <div class="phint" id="l_phint"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeLoc()">Close</button>
+      <button class="btn go" id="locSave" onclick="saveLoc(false)">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" onclick="this.classList.remove('on')"><img id="lightboxImg" alt=""><div id="lightboxCap"></div></div>
+
+<script>
+const B='/api/sealed';
+function api(path,opts){return fetch(B+path,opts).then(r=>r.ok?r.json():Promise.reject(r));}
+function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function val(id){var el=document.getElementById(id);return el?el.value.trim():'';}
+function setV(id,v){const el=document.getElementById(id);if(el)el.value=(v==null?'':v);}
+
+let LOCS=[], curLocId=null, curLocPhotos=[];
+
+async function load(){
+  document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
+  try{const r=await api('/locations/cards');LOCS=r.locations||[];render();}
+  catch(e){document.getElementById('list').innerHTML='<div class="empty">Failed to load — is the dev server running?</div>';}
+}
+function sortLocs(arr){
+  const key=(document.getElementById('f_sort')||{}).value||'custom';
+  const a=arr.slice();
+  const num=(f)=>(x,y)=>f(y)-f(x);
+  switch(key){
+    case 'name': a.sort((x,y)=>String(x.name||'').localeCompare(String(y.name||''))); break;
+    case 'items': a.sort(num(l=>l.item_count||0)); break;
+    case 'units': a.sort(num(l=>l.unit_count||0)); break;
+    case 'photos': a.sort(num(l=>l.photo_count||0)); break;
+    default: a.sort((x,y)=>(x.sort_order-y.sort_order)||String(x.name||'').localeCompare(String(y.name||''))); break;
+  }
+  return a;
+}
+function locCard(l){
+  const notes=l.notes?('<div class="notes">'+esc(l.notes)+'</div>'):'<div class="notes empty-note">No notes yet.</div>';
+  const chips='<div class="chips">'
+    +'<span class="chip g">'+(l.item_count||0)+' item'+(l.item_count===1?'':'s')+'</span>'
+    +'<span class="chip b">'+(l.unit_count||0)+' unit'+(l.unit_count===1?'':'s')+'</span>'
+    +'<span class="chip p">'+(l.photo_count||0)+' photo'+(l.photo_count===1?'':'s')+'</span>'
+    +(l.has_record?'':'<span class="chip warn" title="Used on stock but no info/photos saved yet">unconfigured</span>')
+    +'</div>';
+  const strip=(l.thumb)?('<div class="pstrip"><img src="'+esc(l.thumb)+'" alt="" onclick="viewLocPhotos('+(l.id||'null')+')">'+((l.photo_count||0)>1?'<div class="more" onclick="viewLocPhotos('+(l.id||'null')+')">+'+((l.photo_count||0)-1)+'</div>':'')+'</div>'):'';
+  return '<div class="loccard"><div class="top"><div class="nm"><span class="pin">📍</span>'+esc(l.name)+'</div></div>'
+    +chips+notes+strip
+    +'<div class="acts">'
+      +'<button class="btn sm" onclick="openLocByName('+JSON.stringify(esc(l.name)).replace(/"/g,'&quot;')+')">Edit &amp; photos</button>'
+      +'<a class="btn sm ghost" href="/sealed.html">View stock</a>'
+      +(l.has_record?'<button class="btn sm danger" style="margin-left:auto;" onclick="removeLoc('+l.id+',\''+esc(l.name).replace(/'/g,"\\'")+'\')">✕</button>':'')
+    +'</div></div>';
+}
+function render(){
+  const el=document.getElementById('list');const q=val('f_q').toLowerCase();
+  let arr=LOCS;
+  if(q)arr=arr.filter(l=>(String(l.name||'')+' '+String(l.notes||'')).toLowerCase().includes(q));
+  if(!arr.length){el.className='';el.innerHTML='<div class="empty">'+(LOCS.length?'No locations match “'+esc(q)+'”.':'No locations yet. Add one, or assign a storage location to a sealed item.')+'</div>';return;}
+  el.className='grid';el.innerHTML=sortLocs(arr).map(locCard).join('');
+}
+
+// ---- modal ----
+function findLoc(name){return LOCS.find(l=>String(l.name).toLowerCase()===String(name).toLowerCase());}
+function openLocByName(name){openLoc(findLoc(name)||{name:name,id:null});}
+function openLoc(loc){
+  curLocId=(loc&&loc.id)||null;curLocPhotos=[];
+  document.getElementById('locTitle').textContent=loc?('Edit — '+loc.name):'Add location';
+  setV('l_name',loc?loc.name:'');setV('l_notes',(loc&&loc.notes)||'');setV('l_sort',(loc&&loc.sort_order)||0);
+  document.getElementById('l_pstatus').textContent='';
+  renderPhotos();updatePhint();
+  document.getElementById('locOverlay').classList.add('on');
+  if(curLocId)loadLocPhotos();
+  setTimeout(function(){document.getElementById('l_name').focus();},50);
+}
+function closeLoc(){document.getElementById('locOverlay').classList.remove('on');load();}
+async function saveLoc(silent){
+  const name=val('l_name');if(!name){if(!silent)alert('Name is required.');return;}
+  const body={name:name,notes:val('l_notes')||null,sort_order:parseInt(val('l_sort')||'0',10)||0};
+  const st=document.getElementById('l_pstatus');
+  try{
+    if(curLocId){await api('/locations/'+curLocId,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)});}
+    else{const r=await api('/locations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});curLocId=r.id;document.getElementById('locTitle').textContent='Edit — '+name;}
+    if(!silent){st.className='status ok';st.textContent='✓ saved';}
+    updatePhint();
+  }catch(e){st.className='status err';st.textContent='Save failed'+(e&&e.status===409?' — name already exists':'');throw e;}
+}
+async function removeLoc(id,name){
+  if(!confirm('Delete the info + photos for “'+name+'”? (stock stays; the location keeps its name on items)'))return;
+  try{await api('/locations/'+id,{method:'DELETE'});}catch(e){}
+  if(curLocId===id)closeLoc();else load();
+}
+
+// ---- photos ----
+function updatePhint(){document.getElementById('l_phint').textContent=curLocId?'Photos save immediately.':'Photos are saved automatically once the location has a name.';}
+async function loadLocPhotos(){
+  if(!curLocId)return;
+  try{const r=await api('/locations/'+curLocId+'/photos');curLocPhotos=r.photos||[];renderPhotos();}catch(e){}
+}
+function renderPhotos(){
+  const grid=document.getElementById('l_photos');
+  document.getElementById('l_pcount').textContent=curLocPhotos.length;
+  grid.innerHTML=curLocPhotos.map(function(ph){
+    return '<div class="pcell" data-pid="'+ph.id+'" ondragover="pDragOver(event)" ondragleave="pDragLeave(event)" ondrop="pDrop(event,'+ph.id+')">'
+      +'<div class="imgwrap">'
+        +'<img src="'+esc(ph.thumb||ph.data)+'" alt="" onclick="lightboxPhoto('+ph.id+')">'
+        +'<span class="drag" draggable="true" ondragstart="pDragStart(event,'+ph.id+')" ondragend="pDragEnd(event)" title="Drag to reorder">⋮⋮</span>'
+        +'<div class="rm" title="Remove" onclick="removePhoto('+ph.id+')">✕</div>'
+      +'</div>'
+      +'<input class="cap" value="'+esc(ph.caption||'')+'" placeholder="caption…" maxlength="120" onchange="setCaption('+ph.id+',this.value)">'
+    +'</div>';
+  }).join('');
+}
+// ---- captions ----
+async function setCaption(pid,value){
+  const p=curLocPhotos.find(function(x){return x.id===pid;});if(p)p.caption=value;
+  try{await api('/locations/photos/'+pid,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({caption:value})});}catch(e){}
+}
+// ---- drag-to-reorder ----
+let dragPhotoId=null;
+function pDragStart(e,id){dragPhotoId=id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(id));}catch(_){}
+  var cell=e.target.closest('.pcell');if(cell){cell.classList.add('dragging');try{e.dataTransfer.setDragImage(cell,24,24);}catch(_){}}}
+function pDragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('dragover');}
+function pDragLeave(e){e.currentTarget.classList.remove('dragover');}
+function pDrop(e,toId){e.preventDefault();e.currentTarget.classList.remove('dragover');if(dragPhotoId!=null)movePhoto(dragPhotoId,toId);}
+function pDragEnd(){document.querySelectorAll('#l_photos .pcell').forEach(function(c){c.classList.remove('dragover','dragging');});dragPhotoId=null;}
+function movePhoto(fromId,toId){
+  if(fromId===toId)return;
+  const from=curLocPhotos.findIndex(function(p){return p.id===fromId;});
+  const to=curLocPhotos.findIndex(function(p){return p.id===toId;});
+  if(from<0||to<0)return;
+  const moved=curLocPhotos.splice(from,1)[0];curLocPhotos.splice(to,0,moved);
+  renderPhotos();persistOrder();
+}
+async function persistOrder(){
+  if(!curLocId)return;
+  try{await api('/locations/'+curLocId+'/photos/reorder',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({order:curLocPhotos.map(function(p){return p.id;})})});}catch(e){}
+}
+function downscale(file,maxDim,quality){
+  return new Promise(function(resolve,reject){
+    var url=URL.createObjectURL(file);var img=new Image();
+    img.onload=function(){
+      var w=img.naturalWidth||1,h=img.naturalHeight||1;var scale=Math.min(1,maxDim/Math.max(w,h));
+      var cw=Math.max(1,Math.round(w*scale)),ch=Math.max(1,Math.round(h*scale));
+      var c=document.createElement('canvas');c.width=cw;c.height=ch;
+      c.getContext('2d').drawImage(img,0,0,cw,ch);URL.revokeObjectURL(url);
+      try{resolve(c.toDataURL('image/jpeg',quality||0.82));}catch(e){reject(e);}
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);reject(new Error('bad image'));};
+    img.src=url;
+  });
+}
+async function addPhotos(input){
+  const files=[].slice.call(input.files||[]);input.value='';
+  if(!files.length)return;
+  const st=document.getElementById('l_pstatus');
+  if(!curLocId){ if(!val('l_name')){alert('Enter a location name first, then add photos.');return;} try{await saveLoc(true);}catch(e){return;} if(!curLocId)return; }
+  st.className='status load';st.textContent='Uploading '+files.length+' photo(s)…';
+  let ok=0;
+  for(const f of files){
+    if(!/^image\//.test(f.type||''))continue;
+    try{
+      const data=await downscale(f,1400,0.82);const thumb=await downscale(f,256,0.72);
+      await api('/locations/'+curLocId+'/photos',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({data:data,thumb:thumb,mime:'image/jpeg'})});
+      ok++;
+    }catch(e){}
+  }
+  st.className='status ok';st.textContent='✓ added '+ok+' photo(s)';
+  await loadLocPhotos();
+}
+async function removePhoto(pid){
+  try{await api('/locations/photos/'+pid,{method:'DELETE'});}catch(e){}
+  await loadLocPhotos();
+}
+function lightboxPhoto(id){const p=curLocPhotos.find(function(x){return x.id===id;});if(!p)return;
+  document.getElementById('lightboxImg').src=p.data||p.thumb||'';
+  document.getElementById('lightboxCap').textContent=p.caption||'';
+  document.getElementById('lightbox').classList.add('on');}
+async function viewLocPhotos(id){
+  if(!id||id==='null'){return;}
+  const loc=LOCS.find(l=>l.id===id);openLoc(loc||{id:id,name:''});
+}
+
+// drag+drop onto the drop zone
+(function(){
+  const drop=document.getElementById('l_drop');
+  ['dragenter','dragover'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.add('over');});});
+  ['dragleave','drop'].forEach(function(ev){drop.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove('over');});});
+  drop.addEventListener('drop',function(e){if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){addPhotos({files:e.dataTransfer.files,value:''});}});
+})();
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){document.getElementById('lightbox').classList.remove('on');}});
+
+load();
+</script>
+</body>
+</html>

@@ -11,7 +11,8 @@ import { ROOT } from '../helpers/extract-inline.mjs';
 
 const TABLES = ['watchlist', 'price_snapshots', 'signals', 'card_cache', 'grading_submissions',
   'inventory_items', 'inventory_valuations', 'sku_counter', 'bulk_batches', 'channel_exports',
-  'sealed_items', 'sealed_valuations', 'sealed_barcodes', 'sealed_batches'];
+  'sealed_items', 'sealed_valuations', 'sealed_barcodes', 'sealed_batches', 'sealed_placements',
+  'sealed_locations', 'sealed_location_photos'];
 
 const dbPath = tmpFile('tracker-test.db');
 const db = openDb(dbPath);
@@ -43,6 +44,32 @@ describe('DDL idempotency', () => {
              db.prepare('SELECT COUNT(*) c FROM watchlist').get();`,
     ], { encoding: 'utf8' });
     assert.equal(r.status, 0, r.stderr);
+  });
+});
+
+describe('sealed_placements backfill migration', () => {
+  // A pre-feature sealed_items row has NO placement. On the next boot, migrateSealed must seed exactly
+  // one placement mirroring its scalar (location, quantity) — and stay a no-op on later boots. Fresh-DB
+  // API tests never hit this branch (they create items through lib/sealed.mjs, which seeds placements),
+  // so exercise the real-data path here via a child-process "reboot" (like the DDL idempotency test).
+  const reopenAndReadPlacements = () => {
+    const r = spawnSync(process.execPath, [
+      '--disable-warning=ExperimentalWarning', '--input-type=module',
+      '-e', `import { openDb } from ${JSON.stringify('file://' + path.join(ROOT, 'lib', 'db.mjs').replace(/\\/g, '/'))};
+             const db = openDb(${JSON.stringify(dbPath)});
+             const p = db.prepare("SELECT location, quantity FROM sealed_placements WHERE item_id=(SELECT id FROM sealed_items WHERE sku='BK-SLD-PKM-LEGACY')").all();
+             process.stdout.write(JSON.stringify(p));`,
+    ], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    return JSON.parse(r.stdout.trim());
+  };
+  it('seeds one placement mirroring a legacy item, idempotently across boots', () => {
+    db.prepare(`INSERT INTO sealed_items (sku, game, product_type, name, quantity, location)
+      VALUES ('BK-SLD-PKM-LEGACY','pokemon','booster_box','Legacy Box', 4, 'Old Shelf')`).run();
+    const p1 = reopenAndReadPlacements();
+    assert.deepEqual(p1, [{ location: 'Old Shelf', quantity: 4 }], 'one placement seeded from the scalar');
+    const p2 = reopenAndReadPlacements();               // second boot: WHERE NOT EXISTS => no duplicate
+    assert.equal(p2.length, 1, 'still exactly one placement after a second boot');
   });
 });
 

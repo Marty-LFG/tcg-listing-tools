@@ -3,7 +3,7 @@
 // shape, this fails alongside the builder-parity harness.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapPrice, lookupPath, imageFrom, toAUD, GAMES } from '../../lib/normalize.mjs';
+import { mapPrice, lookupPath, imageFrom, toAUD, GAMES, STOCK_GAMES } from '../../lib/normalize.mjs';
 
 describe('toAUD', () => {
   const rates = { USD: 1, AUD: 1.5, EUR: 0.9 };
@@ -117,6 +117,16 @@ describe('GAMES coverage', () => {
       assert.ok(mapPrice(g, SAMPLES[g]), `mapper for ${g}`);
       assert.ok(lookupPath(g, 'a-1'), `lookupPath for ${g}`);
     }
+  });
+});
+
+describe('STOCK_GAMES (inventory-stockable games)', () => {
+  it('is a superset of the card-data GAMES and adds One Piece', () => {
+    for (const g of GAMES) assert.ok(STOCK_GAMES.includes(g), `${g} is stockable`);
+    assert.ok(STOCK_GAMES.includes('onepiece'), 'One Piece is stockable');
+  });
+  it('keeps One Piece OUT of the card-data GAMES (no card API/mapper wired up)', () => {
+    assert.ok(!GAMES.includes('onepiece'), 'onepiece must not be in GAMES — the mapper invariant would fail');
   });
 });
 

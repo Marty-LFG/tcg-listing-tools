@@ -109,6 +109,8 @@
   .typepill{font-family:var(--mono);background:rgba(217,164,255,.08);border:1px solid rgba(217,164,255,.4);color:var(--purple);border-radius:8px;padding:2px 8px;font-size:11px;font-weight:600;}
   .gbadge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em;border-radius:6px;padding:2px 6px;border:1px solid var(--line2);color:var(--muted);}
   .gbadge.pokemon{color:#f0c04a;border-color:rgba(240,192,74,.4);} .gbadge.mtg{color:#d59a4a;border-color:rgba(213,154,74,.4);} .gbadge.riftbound{color:#d4b072;border-color:rgba(212,176,114,.4);}
+  .gbadge.swu{color:#6ab0ff;border-color:rgba(106,176,255,.4);} .gbadge.lorcana{color:#d9a4ff;border-color:rgba(217,164,255,.4);} .gbadge.other{color:#8b93a6;border-color:rgba(139,147,166,.4);}
+  .gbadge.onepiece{color:#f0925a;border-color:rgba(240,146,90,.4);}
   .prodthumb{width:54px;height:74px;flex:0 0 auto;border-radius:9px;overflow:hidden;background:linear-gradient(#1a1f2a,#0f131b);border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
   .prodthumb.sm{width:40px;height:54px;border-radius:7px;}
   .prodthumb img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -132,12 +134,29 @@
   .upcrow{display:flex;gap:10px;align-items:flex-end;background:rgba(106,176,255,.05);border:1px solid rgba(106,176,255,.24);border-radius:12px;padding:12px 14px;margin-bottom:16px;}
   .upcrow .fld{flex:1;}
   .hint{font-size:11px;color:var(--faint);margin-top:3px;font-family:var(--mono);}
+  /* saved-product fuzzy search dropdown */
+  .searchwrap{position:relative;}
+  .searchmenu{position:absolute;top:100%;left:0;right:0;z-index:6;margin-top:5px;background:var(--panel2);border:1px solid var(--line2);border-radius:11px;box-shadow:var(--shadow);max-height:280px;overflow:auto;}
+  .searchmenu .opt{display:flex;gap:10px;align-items:center;padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--line);}
+  .searchmenu .opt:last-child{border-bottom:none;}
+  .searchmenu .opt:hover{background:var(--gold-soft);}
+  .searchmenu .opt .nm{font-weight:600;font-size:13px;line-height:1.25;}
+  .searchmenu .opt .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .searchmenu .empty{padding:10px 12px;color:var(--muted);font-size:12px;}
   .curbar{background:var(--gold-soft);border:1px solid rgba(212,176,114,.24);border-radius:10px;padding:9px 12px;}
   .curbar label{color:var(--gold);}
   .curbar #m_currate{margin:0;color:var(--muted);}
   .cursym{color:var(--gold);font-weight:700;}
   .pinrow{display:flex;align-items:center;gap:7px;margin-top:6px;font-size:11px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:0;cursor:pointer;}
   .pinrow input{width:auto;margin:0;}
+  /* per-location stock placements (add/edit modal) */
+  .places{display:flex;flex-direction:column;gap:8px;}
+  .placerow{display:grid;grid-template-columns:1fr 84px auto;gap:8px;align-items:center;}
+  .placerow input{width:100%;}
+  .placerow .rm{padding:8px 11px;line-height:1;}
+  .placehead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px;}
+  .placehead .tot{font-family:var(--mono);color:var(--muted);font-size:11.5px;}
+  .placehead .tot strong{color:var(--text);font-weight:700;}
   /* view toggle + grid */
   .viewtog{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;}
   .vbtn{background:transparent;border:none;color:var(--muted);padding:7px 12px;cursor:pointer;font-size:15px;line-height:1;transition:.15s;}
@@ -182,6 +201,7 @@
     </div>
     <div class="actions">
       <button class="btn go" onclick="openItem()">＋ Add product</button>
+      <a class="btn ghost" href="/locations.html">📍 Locations</a>
       <button class="btn ghost" onclick="refreshValues(this)">↻ Refresh values</button>
     </div>
   </header>
@@ -213,6 +233,7 @@
       <span class="sec-h" style="margin:0;">Stock</span>
       <select id="f_game" onchange="onFilterGame()"><option value="">All games</option></select>
       <select id="f_type" onchange="load()"><option value="">All types</option></select>
+      <select id="f_location" onchange="load()" title="Filter by storage location"><option value="">All locations</option></select>
       <select id="f_status" onchange="load()"><option value="">All status</option><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select>
       <input id="f_q" placeholder="search name / SKU / UPC" style="width:190px;" oninput="debouncedLoad()">
       <select id="f_sort" onchange="renderStock()" title="Sort" style="margin-left:auto;">
@@ -240,6 +261,12 @@
       <button class="btn sm" onclick="upcLookup()">Look up</button>
       <span class="status" id="m_upcstatus" style="margin:0 0 8px;"></span>
     </div>
+    <div class="upcrow" style="background:rgba(212,176,114,.05);border-color:rgba(212,176,114,.24);">
+      <div class="fld searchwrap"><label>Or reuse a saved product (fuzzy — name or UPC)</label>
+        <input id="m_search" autocomplete="off" placeholder="e.g. surging sparks etb — no lookup, instant from cache" oninput="catalogSearch()" onfocus="catalogSearch()">
+        <div id="m_searchMenu" class="searchmenu" style="display:none;"></div>
+      </div>
+    </div>
     <input type="hidden" id="m_pcid"><input type="hidden" id="m_pcurl">
     <div class="grid">
       <div class="fld"><label>Game *</label><select id="m_game" onchange="fillTypeSelect('m_type',this.value,val('m_type'))"></select></div>
@@ -252,8 +279,14 @@
       <div class="fld"><label>Units / case (optional)</label><input id="m_case" type="number" min="0" placeholder="e.g. 6"></div>
       <div class="fld full"><label>Image URL (optional — auto-filled from lookup, or paste one)</label><input id="m_image" oninput="onImageInput()" placeholder="https://…product image">
         <label class="pinrow"><input type="checkbox" id="m_imglock"> 🔒 Pin this image — never auto-replace it</label></div>
-      <div class="fld"><label>Quantity</label><input id="m_qty" type="number" value="1" min="1"></div>
-      <div class="fld"><label>Location</label><input id="m_location" list="locList" autocomplete="off" placeholder="Shelf B / bin 3 — pick or type new"></div>
+      <div class="fld full"><label>Stock &amp; locations</label>
+        <div class="places" id="m_places"></div>
+        <div class="placehead">
+          <button type="button" class="btn sm ghost" onclick="addPlace()">＋ Add location</button>
+          <span class="tot">Total <strong id="m_qtytotal">0</strong> unit(s) · <span id="m_placecount">0</span> location(s)</span>
+        </div>
+        <div class="hint">Split units across storage spots — they sum into this one item. Leave a location blank for “unassigned”.</div>
+      </div>
       <div class="fld"><label>Status</label><select id="m_status" onchange="toggleSale()"><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select></div>
       <div class="fld"><label>Factory sealed</label><label class="pinrow" style="margin-top:9px;"><input type="checkbox" id="m_factory" checked> Sealed / shrink-wrapped</label></div>
       <div class="fld full curbar"><label>Money entered in</label>
@@ -289,12 +322,12 @@
 <script src="/extras.js"></script>
 <script>
 const B='/api/sealed';
-const SEALED_GAMES=['pokemon','mtg','riftbound'];
-const GAME_NAMES={pokemon:'Pokémon',mtg:'Magic: The Gathering',riftbound:'Riftbound'};
-const GAME_PREFIX={pokemon:'Pokemon',mtg:'Magic the Gathering',riftbound:'Riftbound'};
+const SEALED_GAMES=['pokemon','mtg','riftbound','swu','lorcana','onepiece','other'];
+const GAME_NAMES={pokemon:'Pokémon',mtg:'Magic: The Gathering',riftbound:'Riftbound',swu:'Star Wars: Unlimited',lorcana:'Disney Lorcana',onepiece:'One Piece Card Game',other:'Other'};
+const GAME_PREFIX={pokemon:'Pokemon',mtg:'Magic the Gathering',riftbound:'Riftbound',swu:'Star Wars Unlimited',lorcana:'Disney Lorcana',onepiece:'One Piece Card Game',other:''};
 const TYPE_LABELS={booster_box:'Booster Box',booster_pack:'Booster Pack',booster_case:'Booster Case',booster_bundle:'Booster Bundle',starter_deck:'Starter Deck',elite_trainer_box:'Elite Trainer Box',blister:'Blister',tin:'Tin',collection:'Collection',premium_collection:'Premium Collection',commander_deck:'Commander Deck',prerelease_pack:'Prerelease Pack',other:'Other'};
 const ALL_TYPES=['booster_box','elite_trainer_box','booster_bundle','blister','tin','collection','premium_collection','booster_pack','booster_case','starter_deck','commander_deck','prerelease_pack','other'];
-let TYPES_BY_GAME={pokemon:['booster_box','elite_trainer_box','booster_bundle','blister','tin','collection','premium_collection','booster_pack','booster_case','other'],mtg:['booster_box','booster_bundle','commander_deck','prerelease_pack','starter_deck','booster_pack','booster_case','other'],riftbound:['booster_box','booster_pack','booster_case','starter_deck','other']};
+let TYPES_BY_GAME={pokemon:['booster_box','elite_trainer_box','booster_bundle','blister','tin','collection','premium_collection','booster_pack','booster_case','other'],mtg:['booster_box','booster_bundle','commander_deck','prerelease_pack','starter_deck','booster_pack','booster_case','other'],riftbound:['booster_box','booster_pack','booster_case','starter_deck','other'],swu:['booster_box','booster_pack','booster_case','starter_deck','prerelease_pack','other'],lorcana:['booster_box','booster_pack','booster_case','starter_deck','collection','tin','other'],onepiece:['booster_box','booster_pack','booster_case','starter_deck','other'],other:ALL_TYPES};
 let editItemId=null;
 
 function api(path,opts){return fetch(B+path,opts).then(r=>r.ok?r.json():Promise.reject(r));}
@@ -335,6 +368,26 @@ function valueAud(it){
   const a=(window.TCG&&TCG.toAUD)?TCG.toAUD(d,cur):null;
   return a==null?null:a;
 }
+// AUD-first market label for a scanned/candidate price (cents in its native currency). Shows A$ primary
+// + native secondary, matching the item cards. Falls back to native only if the FX proxy is down.
+function mktAud(cents,cur){
+  if(cents==null)return '';
+  cur=cur||'USD';const d=cents/100;
+  const a=(cur==='AUD')?d:((window.TCG&&TCG.toAUD)?TCG.toAUD(d,cur):null);
+  if(a==null)return 'mkt '+esc(cur)+' '+d.toFixed(2);
+  return 'mkt A$'+(Math.round(a*100)/100).toFixed(2)+(cur!=='AUD'?(' · '+esc(cur)+' '+d.toFixed(2)):'');
+}
+// Prefill the modal's Manual value from a market-sourced price — ALWAYS in AUD (convert if the price is
+// native), entry currency left at AUD. Replaces the old set-USD-then-applyCur path that double-converted
+// (GR3: pricing is shown in AUD). FX down + a non-AUD price → leave blank rather than a wrong number.
+function prefillSuggested(cents,currency){
+  if(cents==null)return;
+  const cur=currency||'USD',d=cents/100;
+  const a=(cur==='AUD')?d:((window.TCG&&TCG.toAUD)?TCG.toAUD(d,cur):null);
+  const sel=document.getElementById('m_cur');if(sel){sel.value='AUD';sel.dataset.cur='AUD';}
+  relabelCur('m','AUD');
+  setV('m_value', a!=null?(Math.round(a*100)/100).toFixed(2):'');
+}
 function costAud(it){return ((it.cost_cents||0)+(it.acq_fees_cents||0))/100;}
 function unrealized(it){const v=valueAud(it);if(v==null)return null;return v-costAud(it);}
 function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
@@ -362,7 +415,16 @@ function sparkHtml(it){
   return '<div class="spark">'+(window.TCG?TCG.lineGraph(s):'')+'</div>';
 }
 function thumb(it,sm){return '<div class="prodthumb'+(sm?' sm':'')+'">'+(it.image_url?'<img src="'+esc(it.image_url)+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\'<span class=ph>📦</span>\';">':'<span class="ph">📦</span>')+'</div>';}
+// One-line location summary: split spots show "📍 spot ×n"; a single spot shows just "📍 spot".
+function placeLine(it){
+  const ps=(it.placements||[]).filter(p=>(p.quantity||0)>0);
+  if(ps.length>1)return ps.map(p=>'📍 '+(p.location&&String(p.location).trim()?esc(p.location):'unassigned')+' ×'+p.quantity).join(' · ');
+  if(ps.length===1&&ps[0].location)return '📍 '+esc(ps[0].location);
+  if(it.location)return '📍 '+esc(it.location);
+  return '';
+}
 function itemRow(it){
+  const locLine=placeLine(it);
   const v=valueAud(it), vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?' <small style="color:var(--muted);font-weight:600;">· '+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</small>':'';
   const pl=it.status==='sold'?realized(it):unrealized(it);
   const plLbl=it.status==='sold'?'realized':'unrealized';
@@ -372,7 +434,7 @@ function itemRow(it){
     +'<div style="min-width:180px;flex:1;">'
       +'<div class="nm"><span class="gbadge '+esc(it.game)+'">'+esc((it.game||'').slice(0,3).toUpperCase())+'</span>'+esc(it.name)+' <span class="typepill">'+typeLabel(it.product_type)+'</span> <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
       +'<div class="key">'+key+(it.pack_count?' · '+esc(it.pack_count)+' packs':'')+(it.units_per_case?' · '+esc(it.units_per_case)+'/case':'')+'</div>'
-      +'<div class="sku">'+esc(it.sku)+(it.location?' · 📍 '+esc(it.location):'')+(it.upc?' · '+esc(it.upc):'')+(it.quantity>1?' · ×'+esc(it.quantity):'')+'</div>'
+      +'<div class="sku">'+esc(it.sku)+(locLine?' · '+locLine:'')+(it.upc?' · '+esc(it.upc):'')+(it.quantity>1?' · ×'+esc(it.quantity):'')+'</div>'
       +(it.notes?'<div class="note">'+esc(it.notes)+'</div>':'')
       +'<div class="compbox" id="comp'+it.id+'"></div><div class="status" id="cs'+it.id+'"></div>'
     +'</div>'
@@ -391,6 +453,7 @@ function itemRow(it){
   +'</div></div>';
 }
 function gridCard(it){
+  const locLine=placeLine(it);
   const v=valueAud(it);
   const vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?'<div class="g-native">'+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</div>':'';
   const pl=it.status==='sold'?realized(it):unrealized(it);
@@ -402,6 +465,7 @@ function gridCard(it){
       +'<div class="g-name" title="'+esc(it.name)+'"><span class="gbadge '+esc(it.game)+'">'+esc((it.game||'').slice(0,3).toUpperCase())+'</span>'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
       +(setLine?'<div class="g-set">'+setLine+'</div>':'')
       +'<div class="g-set">'+esc(it.sku)+(it.quantity>1?' · ×'+esc(it.quantity):'')+'</div>'
+      +(locLine?'<div class="g-set">'+locLine+'</div>':'')
       +'<div class="g-price">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+'</div>'+vnative
       +'<div class="g-pl">'+plBadge(pl)+' <span class="g-pllbl">'+plLbl+'</span></div>'
       +'<div class="status" id="cs'+it.id+'"></div>'
@@ -444,7 +508,12 @@ function setView(v){VIEW=v;try{localStorage.setItem('bk_sealed_view',v);}catch(e
 let CURRENT=[];
 let VIEW=(function(){try{return localStorage.getItem('bk_sealed_view')||'list';}catch(e){return 'list';}})();
 async function loadLocations(){
-  try{const r=await api('/locations');const dl=document.getElementById('locList');if(dl)dl.innerHTML=(r.locations||[]).map(function(l){return '<option value="'+esc(l)+'"></option>';}).join('');}catch(e){}
+  try{
+    const r=await api('/locations');const locs=r.locations||[];
+    const dl=document.getElementById('locList');if(dl)dl.innerHTML=locs.map(function(l){return '<option value="'+esc(l)+'"></option>';}).join('');
+    const fl=document.getElementById('f_location');
+    if(fl){const cur=fl.value;fl.innerHTML='<option value="">All locations</option>'+locs.map(function(l){return '<option value="'+esc(l)+'">'+esc(l)+'</option>';}).join('');fl.value=(cur&&locs.indexOf(cur)>=0)?cur:'';}
+  }catch(e){}
 }
 async function load(){
   document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
@@ -452,6 +521,7 @@ async function load(){
   const params=new URLSearchParams();
   const g=val('f_game');if(g)params.set('game',g);
   const t=val('f_type');if(t)params.set('product_type',t);
+  const loc=val('f_location');if(loc)params.set('location',loc);
   const st=val('f_status');if(st)params.set('status',st);
   const qv=val('f_q');if(qv)params.set('q',qv);
   try{
@@ -473,21 +543,80 @@ function fillFilterTypes(){const el=document.getElementById('f_type');if(!el)ret
 // ---- item modal ----
 function toggleSale(){document.getElementById('saleFields').style.display = val('m_status')==='sold'?'block':'none';}
 function onImageInput(){var lk=document.getElementById('m_imglock');if(lk&&val('m_image'))lk.checked=true;}
-function openItem(){editItemId=null;document.getElementById('itemTitle').textContent='Add sealed product';
-  ['m_upc','m_name','m_set','m_packs','m_case','m_location','m_cost','m_fees','m_acqdate','m_vendor','m_target','m_value','m_notes','m_saleprice','m_salefees','m_saledate','m_image','m_pcid','m_pcurl'].forEach(i=>setV(i,''));
-  setV('m_lang','EN');setV('m_qty','1');document.getElementById('m_game').value='pokemon';fillTypeSelect('m_type','pokemon');
+
+// ---- per-location stock placements (modal) ----
+let PLACES=[], placeSeq=0;
+function placeRowHtml(p){
+  return '<div class="placerow" data-uid="'+p.uid+'">'
+    +'<input list="locList" autocomplete="off" placeholder="Shelf B / bin 3 — pick or type new" value="'+esc(p.location||'')+'" oninput="placeEdit('+p.uid+',\'location\',this.value)">'
+    +'<input type="number" min="0" step="1" value="'+esc(p.quantity)+'" oninput="placeEdit('+p.uid+',\'quantity\',this.value)" aria-label="Quantity at this location">'
+    +'<button type="button" class="btn sm danger rm" title="Remove this location" onclick="removePlace('+p.uid+')">✕</button>'
+  +'</div>';
+}
+function renderPlaces(){
+  var el=document.getElementById('m_places');if(!el)return;
+  el.innerHTML=PLACES.map(placeRowHtml).join('');
+  updatePlaceTotals();
+}
+// Mirror the server's placement normalization (round qty, merge same location case-insensitively,
+// drop empties) so the live "Total / N location(s)" preview EXACTLY matches what will be saved. A row
+// with a location typed but a blank quantity counts as 1 — a located spot always holds at least one.
+function normalizePlaces(){
+  var map={}, order=[];
+  PLACES.forEach(function(p){
+    var loc=(p.location||'').trim();
+    var raw=String(p.quantity==null?'':p.quantity).trim();
+    var qty;
+    if(raw===''){qty=loc?1:0;} else {qty=Math.round(parseFloat(raw));if(!isFinite(qty))qty=0;}
+    if(qty<=0)return;
+    qty=Math.min(1000000,qty);
+    var key=loc?loc.toLowerCase():'';
+    if(map[key]){map[key].quantity+=qty;} else {var row={location:loc||null,quantity:qty};map[key]=row;order.push(row);}
+  });
+  return order;
+}
+function updatePlaceTotals(){
+  var pay=placesPayload();
+  var total=pay.reduce(function(s,p){return s+p.quantity;},0);
+  var t=document.getElementById('m_qtytotal'),c=document.getElementById('m_placecount');
+  if(t)t.textContent=total;if(c)c.textContent=pay.length;
+}
+function placeEdit(uid,field,value){var p=PLACES.find(function(x){return x.uid===uid;});if(!p)return;p[field]=value;updatePlaceTotals();}
+function addPlace(location,quantity){PLACES.push({uid:++placeSeq,location:location||'',quantity:(quantity!=null?quantity:1)});renderPlaces();
+  var el=document.getElementById('m_places');if(el){var rows=el.querySelectorAll('.placerow');var last=rows[rows.length-1];if(last){var inp=last.querySelector('input');if(inp)inp.focus();}}}
+function removePlace(uid){PLACES=PLACES.filter(function(x){return x.uid!==uid;});if(!PLACES.length)PLACES.push({uid:++placeSeq,location:'',quantity:1});renderPlaces();}
+function setPlacesFrom(item){
+  PLACES=[];
+  var src=(item&&Array.isArray(item.placements)&&item.placements.length)?item.placements
+    :(item?[{location:item.location||'',quantity:item.quantity||1}]:[{location:'',quantity:1}]);
+  src.forEach(function(p){PLACES.push({uid:++placeSeq,location:p.location||'',quantity:(p.quantity!=null?p.quantity:1)});});
+  if(!PLACES.length)PLACES.push({uid:++placeSeq,location:'',quantity:1});
+  renderPlaces();
+}
+// Build the payload placements array — the normalized rows, guaranteeing >=1 unit total so an item is
+// never saved with zero stock (matches the tool's long-standing min-quantity-1 behaviour).
+function placesPayload(){
+  var out=normalizePlaces();
+  if(!out.length){var first=(PLACES[0]&&(PLACES[0].location||'').trim())||null;out=[{location:first,quantity:1}];}
+  return out;
+}
+function hideCatalogMenu(){var sm=document.getElementById('m_searchMenu');if(sm){sm.style.display='none';sm.innerHTML='';}}
+function openItem(){editItemId=null;loadLocations();hideCatalogMenu();document.getElementById('itemTitle').textContent='Add sealed product';
+  ['m_upc','m_search','m_name','m_set','m_packs','m_case','m_cost','m_fees','m_acqdate','m_vendor','m_target','m_value','m_notes','m_saleprice','m_salefees','m_saledate','m_image','m_pcid','m_pcurl'].forEach(i=>setV(i,''));
+  setV('m_lang','EN');document.getElementById('m_game').value='pokemon';fillTypeSelect('m_type','pokemon');
   document.getElementById('m_condition').value='sealed';document.getElementById('m_status').value='in_stock';document.getElementById('m_factory').checked=true;document.getElementById('m_imglock').checked=false;
+  setPlacesFrom(null);
   document.getElementById('m_upcstatus').textContent='';toggleSale();resetCur('m');
   document.getElementById('itemOverlay').classList.add('on');setTimeout(function(){document.getElementById('m_upc').focus();},60);}
 function editItem(id){
-  const it=CURRENT.find(x=>x.id===id);if(!it)return;editItemId=id;
+  const it=CURRENT.find(x=>x.id===id);if(!it)return;editItemId=id;loadLocations();hideCatalogMenu();setV('m_search','');
   document.getElementById('itemTitle').textContent='Edit — '+it.sku;
   document.getElementById('m_game').value=it.game;fillTypeSelect('m_type',it.game,it.product_type);
   setV('m_upc',it.upc);setV('m_pcid',it.pc_product_id);setV('m_pcurl',it.pc_url);
   setV('m_name',it.name);setV('m_set',it.set_name);setV('m_lang',it.language||'EN');
   document.getElementById('m_condition').value=it.condition||'sealed';document.getElementById('m_factory').checked=!!it.factory_sealed;
   setV('m_packs',it.pack_count);setV('m_case',it.units_per_case);
-  setV('m_qty',it.quantity||1);setV('m_location',it.location);document.getElementById('m_status').value=it.status;
+  setPlacesFrom(it);document.getElementById('m_status').value=it.status;
   setV('m_cost',it.cost_cents!=null?it.cost_cents/100:'');setV('m_fees',it.acq_fees_cents!=null?it.acq_fees_cents/100:'');setV('m_acqdate',it.acquired_at);setV('m_vendor',it.source_vendor);
   setV('m_target',it.target_price_cents!=null?it.target_price_cents/100:'');setV('m_value','');resetCur('m');setV('m_notes',it.notes);setV('m_image',it.image_url);document.getElementById('m_imglock').checked=!!it.image_manual;
   setV('m_saleprice',it.sale_price_cents!=null?it.sale_price_cents/100:'');setV('m_salefees',it.sale_fees_cents!=null?it.sale_fees_cents/100:'');setV('m_saledate',it.sold_at);
@@ -507,22 +636,57 @@ async function upcLookup(){
       if(pr.name)setV('m_name',pr.name);if(pr.set_name)setV('m_set',pr.set_name);
       setV('m_pcid',pr.pc_product_id);setV('m_pcurl',pr.pc_url);
       if(pr.image_url){setV('m_image',pr.image_url);}
-      if(pr.suggested_cents!=null){setV('m_value',(pr.suggested_cents/100).toFixed(2));document.getElementById('m_cur').value='USD';applyCur('m');}
+      if(pr.suggested_cents!=null){prefillSuggested(pr.suggested_cents,pr.suggested_currency);}
       s.className='status ok';s.textContent='✓ '+esc(pr.name||'found')+' ('+esc(r.source)+(r.confidence?' · '+esc(r.confidence):'')+')';
     }else{
       s.className='status warn';s.textContent='No match for this barcode — fill the fields manually (it’ll be remembered on save).';
     }
   }catch(e){s.className='status err';s.textContent='Lookup failed — fill manually.';}
 }
+
+// ---- reuse a saved product (fuzzy search over the permanent barcode cache) ----
+let _catT=null, _catResults={};
+function catalogSearch(){clearTimeout(_catT);_catT=setTimeout(_catalogSearch,200);}
+async function _catalogSearch(){
+  const qv=val('m_search');const menu=document.getElementById('m_searchMenu');if(!menu)return;
+  if(!qv||qv.length<2){menu.style.display='none';menu.innerHTML='';return;}
+  try{
+    const r=await api('/search?q='+encodeURIComponent(qv)+'&limit=8');
+    const res=r.results||[];_catResults={};res.forEach(function(p){_catResults[p.upc]=p;});
+    if(!res.length){menu.innerHTML='<div class="empty">No saved product matches — use the barcode lookup above, or fill the fields.</div>';menu.style.display='block';return;}
+    menu.innerHTML=res.map(function(p){
+      const price=p.suggested_cents!=null?mktAud(p.suggested_cents,p.suggested_currency):'';
+      const meta=[GAME_NAMES[p.game]||p.game||'',p.set_name||'',typeLabel(p.product_type),p.upc,price].filter(Boolean).join(' · ');
+      return '<div class="opt" onclick="pickCatalog(\''+esc(p.upc)+'\')">'+thumb(p,true)
+        +'<div style="flex:1;min-width:0;"><div class="nm">'+esc(p.name||'(unnamed)')+'</div><div class="meta">'+esc(meta)+'</div></div></div>';
+    }).join('');
+    menu.style.display='block';
+  }catch(e){menu.style.display='none';}
+}
+function pickCatalog(upc){
+  const p=_catResults[upc];if(!p)return;
+  const menu=document.getElementById('m_searchMenu');if(menu){menu.style.display='none';}setV('m_search','');
+  setV('m_upc',p.upc);
+  if(p.game&&SEALED_GAMES.indexOf(p.game)>=0){document.getElementById('m_game').value=p.game;fillTypeSelect('m_type',p.game,p.product_type);}
+  else if(p.product_type){fillTypeSelect('m_type',val('m_game'),p.product_type);}
+  if(p.name)setV('m_name',p.name);if(p.set_name)setV('m_set',p.set_name);
+  setV('m_pcid',p.pc_product_id);setV('m_pcurl',p.pc_url);
+  if(p.image_url){setV('m_image',p.image_url);document.getElementById('m_imglock').checked=false;}
+  if(p.suggested_cents!=null)prefillSuggested(p.suggested_cents,p.suggested_currency);
+  const s=document.getElementById('m_upcstatus');s.className='status ok';s.textContent='✓ reused “'+esc(p.name||'')+'” from cache';
+}
+document.addEventListener('click',function(e){var w=e.target.closest&&e.target.closest('.searchwrap');if(!w){var menu=document.getElementById('m_searchMenu');if(menu)menu.style.display='none';}});
+
 async function saveItem(btn){
   if(!val('m_name')){alert('Name is required.');return;}
   const cur=modalCur('m');
   if(cur==='USD'&&usdRate()==null){alert('FX rate unavailable — switch the currency to AUD (or retry once the FX proxy is up).');return;}
+  const places=placesPayload();
   const body={game:val('m_game'),product_type:val('m_type')||'other',name:val('m_name'),set_name:val('m_set')||null,language:val('m_lang')||'EN',
     upc:val('m_upc')||null,pc_product_id:val('m_pcid')||null,pc_url:val('m_pcurl')||null,
     condition:val('m_condition')||'sealed',factory_sealed:document.getElementById('m_factory').checked?1:0,
     pack_count:numv('m_packs'),units_per_case:numv('m_case'),
-    quantity:parseInt(val('m_qty')||'1',10)||1,location:val('m_location')||null,status:val('m_status')||'in_stock',
+    placements:places,quantity:places.reduce(function(s,p){return s+p.quantity;},0),location:(places.find(function(p){return p.location;})||{}).location||null,status:val('m_status')||'in_stock',
     cost_cents:dcAud('m_cost',cur),acq_fees_cents:dcAud('m_fees',cur),acquired_at:val('m_acqdate')||null,source_vendor:val('m_vendor')||null,
     target_price_cents:dcAud('m_target',cur),notes:val('m_notes')||null};
   const mv=dc('m_value');if(mv!=null){body.value_cents=mv;body.value_currency=cur;body.value_source='manual';body.value_manual=1;}
@@ -593,12 +757,12 @@ async function resolveScan(rawCode){
   renderScan();updateScanCount();
 }
 function scanRow(r){
-  const chipCls={cache:'ok',api:'ok','pricecharting-api':'ok','pricecharting-scrape':'blue',manual:'blue','needs-info':'warn',resolving:'load'}[r.source]||'';
-  const srcTxt={'pricecharting-api':'api','pricecharting-scrape':'scrape'}[r.source]||r.source;
+  const chipCls={cache:'ok',api:'ok','pricecharting-api':'ok','pricecharting-scrape':'blue',manual:'blue','upcitemdb':'blue','upcitemdb+pricecharting':'ok','needs-info':'warn',resolving:'load'}[r.source]||'';
+  const srcTxt={'pricecharting-api':'api','pricecharting-scrape':'scrape','upcitemdb':'UPCdb','upcitemdb+pricecharting':'UPCdb+PC'}[r.source]||r.source;
   const gameOpts=SEALED_GAMES.map(g=>'<option value="'+g+'"'+(g===r.game?' selected':'')+'>'+esc(GAME_NAMES[g])+'</option>').join('');
   const types=(TYPES_BY_GAME[r.game]||ALL_TYPES);
   const typeOpts=types.map(t=>'<option value="'+t+'"'+(t===r.product_type?' selected':'')+'>'+esc(typeLabel(t))+'</option>').join('');
-  const mkt=r.value_cents!=null?('mkt '+esc(r.value_currency||'USD')+' '+(r.value_cents/100).toFixed(2)):'';
+  const mkt=mktAud(r.value_cents,r.value_currency);
   return '<div class="card scanrow'+(r.matched===false?' needs':'')+'" id="sr'+r.uid+'"><div class="row" style="gap:10px;align-items:flex-start;">'
     +'<span class="srchip '+chipCls+'">'+esc(srcTxt||'…')+'</span>'
     +thumb(r,true)

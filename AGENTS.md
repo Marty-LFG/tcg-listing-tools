@@ -58,8 +58,20 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    `vite.config.js` and **never** reach the browser. Never hardcode a key into
    any committed file, HTML, or JS.
 
-3. **Money is integer cents.** Compare/round money as `Math.round(x*100)`. The
-   pricing calculator and FX conversion depend on this; never compare raw floats.
+3. **Money is integer cents — stored native, shown in AUD.** Compare/round money as
+   `Math.round(x*100)`; never compare raw floats (the pricing calculator + FX depend on it).
+   **Store** each amount as integer cents in the currency it was *sourced* in and record that
+   currency alongside it (`value_currency`/`suggested_currency` etc.) — PriceCharting/UPCItemDB →
+   `USD`, eBay AU + user-entered cost → `AUD`. **Never pre-convert at storage** (FX drifts; the stored
+   number must stay a faithful record of the source). **Display is AUD-first:** the market is AU/NZ
+   (§11), so every price a user sees must be converted to AUD at *render* time via `TCG.toAUD`
+   (cached ECB rates through `/api/fx`), showing **A$ as the primary figure** and the native amount as
+   a secondary annotation (e.g. `A$194.20 · USD 126.25`). If FX is unavailable, show the native amount
+   flagged as approximate — never a silently wrong AUD number, and never a bare non-AUD price as if it
+   were the headline. User money entry uses the AUD/USD toggle (`applyCur`/`dcAud`) and converts to the
+   chosen storage currency. This holds across every tool (tracker, graded + sealed inventory, catalog,
+   bulk, repricer); the graded/sealed inventory summaries return per-currency subtotals that the client
+   folds to AUD. `test/invariants/` guards the cents rule; the AUD-at-display rule is a review checkpoint.
 
 4. **Live pricing beats estimated pricing — always.** Surface API/live market
    numbers. Do not add features that present a model-guessed price as
@@ -392,8 +404,15 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
 Market is **AU/NZ**; prices shown/sold in **AUD**; postage model is **free
 postage within Australia**. eBay AU's **buyer protection fee** is what the
 landing-page calculator backs out. Cards are sold as raw (graded handled too).
-The five card games supported are Pokémon, Magic: The Gathering, Star Wars:
-Unlimited, Riftbound, and Disney Lorcana. The tool also lists **LEGO sets** and **Funko Pop!
+The five card games with a **live card-data pipeline** (builder + tracker + price mapper) are
+Pokémon, Magic: The Gathering, Star Wars: Unlimited, Riftbound, and Disney Lorcana — the
+`GAMES` list in `lib/normalize.mjs`. **Two game lists, don't conflate them:** `GAMES` is card-data
+games (every entry MUST have a mapper + lookup path + image extractor — enforced by
+`test/unit/normalize.test.mjs`); **`STOCK_GAMES`** (= `GAMES` + `onepiece`) is the games you can
+hold in **inventory** — the graded (`lib/inventory.mjs`) + sealed (`lib/sealed.mjs`, which also adds
+`'other'`) tools validate against it. One Piece is stockable (recorded manually / sealed-barcode-priced
+via PriceCharting) but has **no card API**, so it stays out of `GAMES` — adding it there would break the
+tracker + card builders. A new stockable-only game goes in `STOCK_GAMES`, not `GAMES`. The tool also lists **LEGO sets** and **Funko Pop!
 vinyl** — boxed collectibles whose condition (sealed/used-complete, box grade)
 and postage (bulky/calculated, not free penny-sleeve) differ from cards, which is
 why those builders carry their own condition/postage wording and item specifics. Accuracy of set / number / variant / condition in titles and item

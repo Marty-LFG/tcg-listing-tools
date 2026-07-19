@@ -107,6 +107,25 @@ describe('parseSealedProduct', () => {
     assert.equal(p.prices.loose, 35000);
     assert.equal(p.prices.cib, null);       // no CIB/Complete rung on the page — not fabricated (GR4)
   });
+  it('falls back to the "Ungraded" box price when there is no explicit New/Sealed rung', () => {
+    // Verified live 2026-07: a Surging Sparks ETB page lists only "Ungraded $126.25" (graded rungs "-").
+    const page = `<h1>Full Price Guide: Elite Trainer Box (Pokemon Surging Sparks)</h1>
+      <div id="full-prices"><table>
+      <tr><td>Ungraded</td><td class="price js-price">$126.25</td></tr>
+      <tr><td>Grade 9</td><td class="price js-price">-</td></tr>
+      <tr><td>PSA 10</td><td class="price js-price">-</td></tr>
+      </table></div>`;
+    const p = parseSealedProduct(page);
+    assert.equal(p.prices.sealed, 12625, 'Ungraded box price becomes the sealed value');
+    assert.equal(p.prices.loose, 12625);
+  });
+  it('an explicit New rung still wins over Ungraded when both are present', () => {
+    const page = `<div id="full-prices"><table>
+      <tr><td>New</td><td class="price js-price">$399.00</td></tr>
+      <tr><td>Ungraded</td><td class="price js-price">$350.00</td></tr>
+      </table></div>`;
+    assert.equal(parseSealedProduct(page).prices.sealed, 39900);
+  });
   it('missing table → empty prices, never a throw (GR7)', () => {
     const p = parseSealedProduct('<html></html>');
     assert.deepEqual(p.prices, { sealed: null, loose: null, cib: null });

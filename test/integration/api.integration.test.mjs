@@ -22,6 +22,12 @@ const post = async (p, body) => {
   let json = null; try { json = JSON.parse(text); } catch { /* html/plain */ }
   return { status: r.status, json, text };
 };
+const patch = async (p, body) => {
+  const r = await fetch(srv.base + p, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const text = await r.text();
+  let json = null; try { json = JSON.parse(text); } catch { /* html/plain */ }
+  return { status: r.status, json, text };
+};
 
 describe('server boots with isolated stores', () => {
   it('created the temp DBs, not the real ones', () => {
@@ -187,6 +193,142 @@ describe('inventory / sealed write bug-fixes (#3/#6/#7/#8/#9)', () => {
     assert.equal(got.json.items[0].product_type, 'other');
   });
 
+  it('sealed multi-location placements sum into the item quantity + surface locations', async () => {
+    const r = await post('/api/sealed/items', {
+      game: 'pokemon', name: 'MultiLocBox', product_type: 'booster_box',
+      placements: [{ location: 'Storage 1', quantity: 3 }, { location: 'Storage 2', quantity: 2 }],
+    });
+    assert.equal(r.status, 201, r.text);
+    const got = await get('/api/sealed/items?q=MultiLocBox');
+    const it = got.json.items[0];
+    assert.equal(it.quantity, 5, 'quantity mirrors SUM(placements)');
+    assert.equal(it.placements.length, 2);
+    assert.equal(it.placements.reduce((s, p) => s + p.quantity, 0), 5);
+    // both spots become reselectable in the location combobox
+    const locs = (await get('/api/sealed/locations')).json.locations;
+    assert.ok(locs.includes('Storage 1') && locs.includes('Storage 2'), locs.join(','));
+  });
+
+  it('sealed PATCH placements re-mirrors quantity (and merges same-location rows)', async () => {
+    const c = await post('/api/sealed/items', { game: 'pokemon', name: 'RelocBox', product_type: 'booster_box', placements: [{ location: 'A', quantity: 1 }] });
+    assert.equal(c.status, 201, c.text);
+    const id = c.json.id;
+    const up = await patch('/api/sealed/items/' + id, { placements: [{ location: 'A', quantity: 2 }, { location: 'a', quantity: 2 }, { location: 'B', quantity: 1 }] });
+    assert.equal(up.status, 200, up.text);
+    const it = (await get('/api/sealed/items?q=RelocBox')).json.items[0];
+    assert.equal(it.quantity, 5, 'A(2)+a(2)+B(1) => 5');
+    assert.equal(it.placements.length, 2, 'case-insensitive A/a merged into one row');
+  });
+
+  it('sealed GET /items?location= filters by ANY placement spot (not just the primary)', async () => {
+    const c = await post('/api/sealed/items', { game: 'pokemon', name: 'FilterLocBox', product_type: 'booster_box',
+      placements: [{ location: 'Vault North', quantity: 1 }, { location: 'Vault South', quantity: 4 }] });
+    assert.equal(c.status, 201, c.text);
+    const byPrimary = await get('/api/sealed/items?location=' + encodeURIComponent('Vault North'));
+    const bySecondary = await get('/api/sealed/items?location=' + encodeURIComponent('vault south'));   // case-insensitive, non-primary
+    const byNone = await get('/api/sealed/items?location=' + encodeURIComponent('Nowhere Land'));
+    assert.ok(byPrimary.json.items.some((x) => x.name === 'FilterLocBox'), 'found by primary spot');
+    assert.ok(bySecondary.json.items.some((x) => x.name === 'FilterLocBox'), 'found by secondary spot (case-insensitive)');
+    assert.ok(!byNone.json.items.some((x) => x.name === 'FilterLocBox'), 'not returned for an unrelated location');
+  });
+
+  it('sealed GET /search fuzzy-matches the permanent barcode cache by name, typo, or partial UPC', async () => {
+    await post('/api/sealed/barcodes', { upc: '820650999001', game: 'pokemon',
+      name: 'Prismatic Evolutions Elite Trainer Box', set_name: 'Pokemon Prismatic Evolutions', product_type: 'elite_trainer_box' });
+    const byName = await get('/api/sealed/search?q=' + encodeURIComponent('prismatic evolutions'));
+    const byTypo = await get('/api/sealed/search?q=' + encodeURIComponent('prizmatic evolutons'));   // deliberate typos
+    const byUpc = await get('/api/sealed/search?q=999001');                                          // trailing UPC digits
+    const miss = await get('/api/sealed/search?q=' + encodeURIComponent('lego millennium falcon'));
+    assert.ok(byName.json.results.some((r) => r.upc === '820650999001'), 'found by name');
+    assert.ok(byTypo.json.results.some((r) => r.upc === '820650999001'), 'found despite typos (fuzzy)');
+    assert.ok(byUpc.json.results.some((r) => r.upc === '820650999001'), 'found by partial UPC');
+    assert.ok(!miss.json.results.some((r) => r.upc === '820650999001'), 'unrelated query does not match');
+  });
+
+  it('sealed accepts every stockable game (incl. One Piece) plus a generic "other"', async () => {
+    for (const game of ['swu', 'lorcana', 'onepiece', 'other']) {
+      const r = await post('/api/sealed/items', { game, name: 'AllGames ' + game, product_type: 'booster_box' });
+      assert.equal(r.status, 201, `${game}: ${r.text}`);
+      assert.ok(r.json.sku, `${game} got a SKU`);
+    }
+    const op = await get('/api/sealed/items?game=onepiece');
+    assert.ok(op.json.items.some((x) => x.name === 'AllGames onepiece'), 'One Piece item is filterable by game');
+    const bad = await post('/api/sealed/items', { game: 'notagame', name: 'Nope' });
+    assert.equal(bad.status, 400, 'an unknown game is still rejected');
+  });
+
+  it('graded inventory accepts One Piece (stockable game) with an OP SKU', async () => {
+    const r = await post('/api/inventory/items', { game: 'onepiece', name: 'Monkey D. Luffy OP01-120', grading_company: 'PSA', grade: 10, image_url: 'x' });
+    assert.equal(r.status, 201, r.text);
+    assert.match(r.json.sku, /-OP-/, 'One Piece graded SKU carries the OP game code');
+    const bad = await post('/api/inventory/items', { game: 'notagame', name: 'Nope', image_url: 'x' });
+    assert.equal(bad.status, 400, 'an unknown game is still rejected by graded inventory');
+  });
+
+  it('sealed locations: create → cards → upload photo → rename propagates → delete', async () => {
+    // a location record + a piece of stock that uses it
+    const loc = await post('/api/sealed/locations', { name: 'Vault Alpha', notes: 'top shelf, left' });
+    assert.equal(loc.status, 201, loc.text);
+    await post('/api/sealed/items', { game: 'pokemon', name: 'LocStockBox', product_type: 'booster_box', placements: [{ location: 'Vault Alpha', quantity: 4 }] });
+    // the card carries notes + usage counts
+    let cards = (await get('/api/sealed/locations/cards')).json.locations;
+    let card = cards.find((c) => c.name === 'Vault Alpha');
+    assert.ok(card && card.has_record && card.notes === 'top shelf, left', 'record + notes present');
+    assert.equal(card.unit_count, 4, 'usage counted from placements');
+    // upload a 1x1 png as a data URL
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+    const up = await post('/api/sealed/locations/' + loc.json.id + '/photos', { data: png, thumb: png, mime: 'image/png' });
+    assert.equal(up.status, 201, up.text);
+    const photos = (await get('/api/sealed/locations/' + loc.json.id + '/photos')).json.photos;
+    assert.equal(photos.length, 1, 'photo stored + listed');
+    // rename propagates to the placement's location string
+    const rn = await patch('/api/sealed/locations/' + loc.json.id, { name: 'Vault Omega' });
+    assert.equal(rn.status, 200, rn.text);
+    const moved = (await get('/api/sealed/items?location=' + encodeURIComponent('Vault Omega'))).json.items;
+    assert.ok(moved.some((x) => x.name === 'LocStockBox'), 'stock followed the rename');
+    // delete the record removes its photos (cascade) but leaves the stock's location string
+    const del = await fetch(srv.base + '/api/sealed/locations/' + loc.json.id, { method: 'DELETE' });
+    assert.equal(del.status, 200);
+    cards = (await get('/api/sealed/locations/cards')).json.locations;
+    card = cards.find((c) => c.name === 'Vault Omega');
+    assert.ok(card && !card.has_record && card.unit_count === 4, 'spot still listed from usage, minus its record');
+  });
+
+  it('sealed location photos: captions persist + drag-reorder is saved', async () => {
+    const loc = await post('/api/sealed/locations', { name: 'Photo Order Test' });
+    const id = loc.json.id;
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+    const ids = [];
+    for (const cap of ['first', 'second', 'third']) {
+      const up = await post('/api/sealed/locations/' + id + '/photos', { data: png, thumb: png, caption: cap });
+      assert.equal(up.status, 201, up.text);
+      ids.push(up.json.id);
+    }
+    await patch('/api/sealed/locations/photos/' + ids[0], { caption: 'renamed first' });   // edit a caption
+    const rev = [...ids].reverse();
+    const ro = await post('/api/sealed/locations/' + id + '/photos/reorder', { order: rev });   // drag-reorder
+    assert.equal(ro.status, 200, ro.text);
+    const photos = (await get('/api/sealed/locations/' + id + '/photos')).json.photos;
+    assert.deepEqual(photos.map((p) => p.id), rev, 'photos return in the reordered sequence');
+    assert.equal(photos.find((p) => p.id === ids[0]).caption, 'renamed first', 'edited caption persisted');
+    const emptyOrder = await post('/api/sealed/locations/' + id + '/photos/reorder', { order: [] });
+    assert.equal(emptyOrder.status, 400, 'empty order is rejected');
+  });
+
+  it('sealed PATCH refuses to silently destroy stock (empty placements / bare-scalar collapse) → 400', async () => {
+    const c = await post('/api/sealed/items', { game: 'pokemon', name: 'GuardBox', product_type: 'booster_box',
+      placements: [{ location: 'Box A', quantity: 10 }, { location: 'Box B', quantity: 20 }] });
+    assert.equal(c.status, 201, c.text);
+    const id = c.json.id;
+    const empty = await patch('/api/sealed/items/' + id, { placements: [] });                 // would wipe to 1 unit
+    assert.equal(empty.status, 400, empty.text);
+    const scalar = await patch('/api/sealed/items/' + id, { location: 'Box Z' });              // would collapse the split
+    assert.equal(scalar.status, 400, scalar.text);
+    const it = (await get('/api/sealed/items?q=GuardBox')).json.items[0];
+    assert.equal(it.quantity, 30, 'stock is untouched after both rejected PATCHes');
+    assert.equal(it.placements.length, 2, 'both locations survive');
+  });
+
   it('#3 raw re-import across batches recounts the SOURCE batch, not just the target', async () => {
     const card = { game: 'pokemon', identity_key: 'bugtest-3', name: 'Recount Card', variant: 'Base', quantity: 1 };
     const a = await post('/api/inventory/batches', { batch: { game: 'pokemon', set_name: 'Recount A' }, rows: [card] });
@@ -271,7 +413,7 @@ describe('/api/sealed (GET-safe, offline)', () => {
 });
 
 describe('static pages served', () => {
-  for (const page of ['/', '/tracker.html', '/inventory.html', '/shipping-label.html']) {
+  for (const page of ['/', '/tracker.html', '/inventory.html', '/shipping-label.html', '/sealed.html', '/locations.html']) {
     it(`GET ${page}`, async () => {
       const { status, text } = await get(page);
       assert.equal(status, 200);
