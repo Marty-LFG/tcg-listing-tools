@@ -163,6 +163,15 @@
   .vbtn:hover{color:var(--text);}
   .vbtn.on{background:var(--gold-soft);color:var(--gold);}
   .grid-view{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;}
+  /* grouped (blended) view */
+  .gdetails{margin-top:9px;border-top:1px solid var(--line);padding-top:9px;}
+  .gdetails summary{cursor:pointer;font-size:11.5px;color:var(--muted);font-weight:600;list-style:none;}
+  .gdetails summary::-webkit-details-marker{display:none;} .gdetails summary:hover{color:var(--text);}
+  .gmembers{margin-top:8px;display:flex;flex-direction:column;gap:6px;}
+  .gmember{display:grid;grid-template-columns:auto 1fr auto auto auto;gap:12px;align-items:center;font-size:12px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.014);}
+  .gm-sku{font-family:var(--mono);color:var(--gold);font-size:11px;letter-spacing:.03em;}
+  .gm-loc{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .gm-qty{font-family:var(--mono);color:var(--text);} .gm-cost{font-family:var(--mono);color:var(--muted);}
   .gtile{position:relative;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 14px 13px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;transition:.18s ease;animation:rise .45s both;}
   .gtile:hover{border-color:var(--line2);transform:translateY(-2px);}
   .gtile .g-thumb{margin-bottom:13px;}
@@ -246,6 +255,7 @@
       <div class="viewtog" role="group" aria-label="View">
         <button id="viewList" class="vbtn on" onclick="setView('list')" title="List view" aria-label="List view">☰</button>
         <button id="viewGrid" class="vbtn" onclick="setView('grid')" title="Grid view" aria-label="Grid view">▦</button>
+        <button id="viewGroup" class="vbtn" onclick="setView('grouped')" title="Group by product (blended cost, shared value)" aria-label="Group by product">🧬</button>
       </div>
     </div>
     <div id="stock"></div>
@@ -389,7 +399,14 @@ function prefillSuggested(cents,currency){
   setV('m_value', a!=null?(Math.round(a*100)/100).toFixed(2):'');
 }
 function costAud(it){return ((it.cost_cents||0)+(it.acq_fees_cents||0))/100;}
-function unrealized(it){const v=valueAud(it);if(v==null)return null;return v-costAud(it);}
+// where a stored value came from + how fresh it is (eBay AU = your market, green; PriceCharting = blue).
+function valSrcLabel(s){return {ebay:'eBay AU',pricecharting:'PriceCharting','upcitemdb+pricecharting':'PriceCharting',manual:'manual'}[s]||(s||'');}
+function agoStr(ts){if(!ts)return '';var d=(Date.now()-new Date(String(ts).replace(' ','T')+'Z').getTime())/86400000;if(!isFinite(d)||d<0)return '';if(d<1)return 'today';if(d<2)return 'yesterday';return Math.round(d)+'d ago';}
+function valSrcHtml(it){if(it.value_cents==null||!it.value_source)return '';var s=it.value_source;var cls=s==='ebay'?'var(--green)':s==='manual'?'var(--gold)':'var(--blue)';var a=agoStr(it.value_updated_at);return '<div style="font-size:10px;color:var(--faint);margin-top:1px;"><span style="color:'+cls+';font-weight:600;">'+esc(valSrcLabel(s))+'</span>'+(a?' · '+a:'')+'</div>';}
+// value is the per-UNIT market value (per-UPC, shared); a row's total value = unit value × quantity.
+function totalValueAud(it){const v=valueAud(it);return v==null?null:v*(it.quantity||1);}
+function unrealized(it){const tv=totalValueAud(it);if(tv==null)return null;return tv-costAud(it);}
+function blendedUnitCost(it){const q=it.quantity||1;return q?costAud(it)/q:null;}
 function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
   return (it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100;}
 function plBadge(d){if(d==null)return '<span class="badge flat">—</span>';
@@ -440,8 +457,10 @@ function itemRow(it){
     +'</div>'
     +sparkHtml(it)
     +'<div style="text-align:right;min-width:150px;">'
-      +'<div class="money">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+vnative+'</div>'
-      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+'</div>'
+      +'<div class="money">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+(it.quantity>1?' <span style="font-size:11px;color:var(--muted);font-weight:400;">/unit</span>':'')+vnative+'</div>'
+      +valSrcHtml(it)
+      +(it.quantity>1&&v!=null?'<div style="font-size:11px;color:var(--muted);margin-top:1px;">×'+esc(it.quantity)+' = '+aud(totalValueAud(it))+'</div>':'')
+      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+(it.quantity>1?' · '+aud(blendedUnitCost(it))+'/unit':'')+'</div>'
       +'<div style="margin-top:5px;">'+plBadge(pl)+' <span style="font-size:10px;color:var(--muted);">'+plLbl+'</span></div>'
     +'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
@@ -479,7 +498,7 @@ function gridCard(it){
 }
 function sortItems(items){
   const key=(document.getElementById('f_sort')||{}).value||'added';
-  const vof=it=>{const a=valueAud(it);return a!=null?a:(it.value_cents!=null?it.value_cents/100:null);};
+  const vof=it=>{const a=totalValueAud(it);return a!=null?a:(it.value_cents!=null?(it.value_cents/100)*(it.quantity||1):null);};
   const plof=it=>it.status==='sold'?realized(it):unrealized(it);
   const arr=items.slice();
   const numDesc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return y-x;};
@@ -497,13 +516,79 @@ function renderStock(){
   const el=document.getElementById('stock');if(!el)return;
   if(!CURRENT||!CURRENT.length){el.className='';el.innerHTML='<div class="empty">No sealed product yet. Scan a barcode above, or click “＋ Add product”.</div>';return;}
   const items=sortItems(CURRENT);
-  if(VIEW==='grid'){el.className='grid-view';el.innerHTML=items.map(gridCard).join('');}
+  if(VIEW==='grouped'){el.className='';el.innerHTML=renderGrouped(sortGroups(groupItems(CURRENT)));}
+  else if(VIEW==='grid'){el.className='grid-view';el.innerHTML=items.map(gridCard).join('');}
   else{el.className='';el.innerHTML=items.map(itemRow).join('');}
 }
 function setView(v){VIEW=v;try{localStorage.setItem('bk_sealed_view',v);}catch(e){}
-  var l=document.getElementById('viewList'),g=document.getElementById('viewGrid');
-  if(l)l.classList.toggle('on',v==='list');if(g)g.classList.toggle('on',v==='grid');
+  [['viewList','list'],['viewGrid','grid'],['viewGroup','grouped']].forEach(function(p){var b=document.getElementById(p[0]);if(b)b.classList.toggle('on',v===p[1]);});
   renderStock();}
+
+// ---- blended "group by product" view: collapse items sharing a UPC (else name+set+type) ----
+// Cost is per-item (what you paid); VALUE is per-unit market (same per UPC). A group shows total qty,
+// BLENDED unit cost across its items, the shared unit value, and aggregate P&L.
+function groupItems(items){
+  const g={};
+  (items||[]).forEach(function(it){
+    if(it.status==='sold')return;                    // held stock only in the blended view
+    const key=(it.upc&&String(it.upc).trim())?('upc:'+String(it.upc).replace(/\D+/g,'')):('nm:'+(it.name||'').toLowerCase()+'|'+(it.set_name||'').toLowerCase()+'|'+it.product_type);
+    if(!g[key])g[key]={key:key,items:[],name:it.name,set_name:it.set_name,game:it.game,product_type:it.product_type,image_url:it.image_url,upc:it.upc,unitRef:it};
+    const grp=g[key];grp.items.push(it);
+    if(!grp.image_url&&it.image_url)grp.image_url=it.image_url;
+    if((valueAud(grp.unitRef)==null)&&valueAud(it)!=null)grp.unitRef=it;   // pick a member that has a value
+  });
+  return Object.values(g).map(function(grp){
+    const totalQty=grp.items.reduce(function(s,x){return s+(x.quantity||0);},0);
+    const totalCost=grp.items.reduce(function(s,x){return s+costAud(x);},0);
+    const unitVal=valueAud(grp.unitRef);
+    const totalVal=unitVal!=null?unitVal*totalQty:null;
+    return Object.assign(grp,{totalQty:totalQty,totalCost:totalCost,unitVal:unitVal,totalVal:totalVal,
+      blendedUnit:totalQty?totalCost/totalQty:null,pl:totalVal!=null?totalVal-totalCost:null,nItems:grp.items.length});
+  });
+}
+function sortGroups(groups){
+  const key=(document.getElementById('f_sort')||{}).value||'added';
+  const g=groups.slice();
+  switch(key){
+    case 'name':g.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));break;
+    case 'value_desc':g.sort((a,b)=>(b.totalVal||0)-(a.totalVal||0));break;
+    case 'value_asc':g.sort((a,b)=>(a.totalVal||0)-(b.totalVal||0));break;
+    case 'pl_desc':g.sort((a,b)=>(b.pl==null?-1e15:b.pl)-(a.pl==null?-1e15:a.pl));break;
+    default:g.sort((a,b)=>(b.totalVal||0)-(a.totalVal||0));break;
+  }
+  return g;
+}
+function renderGrouped(groups){
+  if(!groups.length)return '<div class="empty">No held stock to blend.</div>';
+  return groups.map(function(grp){
+    const src=grp.unitRef&&grp.unitRef.value_source?valSrcHtml(grp.unitRef):'';
+    const memberRows=grp.items.map(function(it){
+      const c=costAud(it),bu=blendedUnitCost(it);
+      return '<div class="gmember"><span class="gm-sku">'+esc(it.sku)+'</span>'
+        +'<span class="gm-loc">'+(placeLine(it)||'—')+'</span>'
+        +'<span class="gm-qty">×'+esc(it.quantity||0)+'</span>'
+        +'<span class="gm-cost">'+aud(c)+(it.quantity>1?' ('+aud(bu)+'/u)':'')+'</span>'
+        +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button></div>';
+    }).join('');
+    return '<div class="card gcard"><div class="row" style="align-items:center;">'
+      +thumb(grp,false)
+      +'<div style="min-width:200px;flex:1;">'
+        +'<div class="nm"><span class="gbadge '+esc(grp.game)+'">'+esc((grp.game||'').slice(0,3).toUpperCase())+'</span>'+esc(grp.name)+' <span class="typepill">'+typeLabel(grp.product_type)+'</span></div>'
+        +'<div class="key">'+esc(GAME_NAMES[grp.game]||grp.game)+(grp.set_name?' · '+esc(grp.set_name):'')+(grp.upc?' · '+esc(grp.upc):'')+'</div>'
+        +'<div class="sku">'+grp.nItems+' item'+(grp.nItems===1?'':'s')+' · '+grp.totalQty+' unit'+(grp.totalQty===1?'':'s')+'</div>'
+      +'</div>'
+      +'<div style="text-align:right;min-width:170px;">'
+        +'<div class="money">'+(grp.unitVal!=null?aud(grp.unitVal):'—')+' <span style="font-size:11px;color:var(--muted);font-weight:400;">/unit</span></div>'
+        +src
+        +'<div style="font-size:11px;color:var(--muted);margin-top:1px;">value '+(grp.totalVal!=null?aud(grp.totalVal):'—')+' · cost '+aud(grp.totalCost)+'</div>'
+        +'<div style="font-size:11px;color:var(--muted);">blended '+(grp.blendedUnit!=null?aud(grp.blendedUnit):'—')+'/unit</div>'
+        +'<div style="margin-top:5px;">'+plBadge(grp.pl)+' <span style="font-size:10px;color:var(--muted);">unrealized</span></div>'
+      +'</div>'
+    +'</div>'
+    +'<details class="gdetails"><summary>'+grp.nItems+' acquisition'+(grp.nItems===1?'':'s')+' (per-item cost)</summary><div class="gmembers">'+memberRows+'</div></details>'
+    +'</div>';
+  }).join('');
+}
 
 let CURRENT=[];
 let VIEW=(function(){try{return localStorage.getItem('bk_sealed_view')||'list';}catch(e){return 'list';}})();
@@ -703,12 +788,15 @@ async function saveItem(btn){
 // ---- valuation ----
 async function refreshOne(id,btn){if(btn)btn.disabled=true;
   try{const r=await api('/items/'+id+'/refresh-value',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
-    const cs=document.getElementById('cs'+id);if(cs)cs.textContent=r.updated?('✓ '+(r.price_label||'')+' '+centsAud(r.value_cents)):('no update — '+esc(r.reason||''));}catch(e){}
+    const cs=document.getElementById('cs'+id);if(cs)cs.textContent=r.updated?('✓ '+esc(valSrcLabel(r.source))+' '+centsAud(r.value_cents)+(r.low_confidence?' (low conf)':'')):('no update — '+esc(r.reason||''));}catch(e){}
   if(btn)btn.disabled=false;load();}
-async function refreshValues(btn){const t=btn.textContent;btn.disabled=true;btn.textContent='Refreshing…';
-  const ids=CURRENT.filter(it=>(it.pc_url||it.upc)&&!it.value_manual).map(it=>it.id);
-  let n=0;for(const id of ids){try{const r=await api('/items/'+id+'/refresh-value',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});if(r.updated)n++;}catch(e){}btn.textContent='Refreshing… '+(n>ids.length?ids.length:n)+'/'+ids.length;}
-  btn.textContent=t;btn.disabled=false;load();}
+// Refresh every non-manual, held item via the eBay-AU-first path (per-item, so the user sees progress).
+async function refreshValues(btn){const t=btn.textContent;btn.disabled=true;
+  const ids=CURRENT.filter(it=>!it.value_manual&&it.status!=='sold').map(it=>it.id);
+  if(!ids.length){btn.textContent='nothing to refresh';setTimeout(function(){btn.textContent=t;btn.disabled=false;},1800);return;}
+  let n=0;for(let i=0;i<ids.length;i++){btn.textContent='Refreshing '+(i+1)+'/'+ids.length+'… (eBay AU + PC)';
+    try{const r=await api('/items/'+ids[i]+'/refresh-value',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});if(r.updated)n++;}catch(e){}}
+  btn.textContent='✓ '+n+'/'+ids.length+' updated';setTimeout(function(){btn.textContent=t;},2600);btn.disabled=false;load();}
 function comps(id){
   const it=CURRENT.find(x=>x.id===id);if(!it)return;
   const box=document.getElementById('comp'+id), st=document.getElementById('cs'+id);
@@ -811,8 +899,7 @@ async function saveSession(btn){
   fillGameSelect('f_game',true);fillGameSelect('m_game',false);fillGameSelect('scan_game',false);
   fillFilterTypes();fillTypeSelect('m_type','pokemon');
   try{const pt=await fetch('/api/sealed/product-types').then(r=>r.json());if(pt&&pt.by_game)TYPES_BY_GAME=pt.by_game;}catch(e){}
-  var vl=document.getElementById('viewList'),vg=document.getElementById('viewGrid');
-  if(vl)vl.classList.toggle('on',VIEW==='list');if(vg)vg.classList.toggle('on',VIEW==='grid');
+  [['viewList','list'],['viewGrid','grid'],['viewGroup','grouped']].forEach(function(p){var b=document.getElementById(p[0]);if(b)b.classList.toggle('on',VIEW===p[1]);});
   if(window.TCG&&TCG.loadFx)await TCG.loadFx();
   load();focusScan();
 })();

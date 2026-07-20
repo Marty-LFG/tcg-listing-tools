@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Post-Sale Messenger · Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--green:#43d6a0;--amber:#f0c04a;--red:#f0666e;--blue:#6ab0ff;--purple:#c79bff;--pink:#e08a9b;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 22px 80px;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(224,138,155,.06),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.05),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1080px;width:100%;margin:0 auto;}
+  a{color:var(--gold);text-decoration:none;}
+  .mast{display:flex;align-items:center;gap:14px;margin-bottom:20px;}
+  .monogram{width:46px;height:46px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:19px;color:var(--pink);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.015em;margin:0;line-height:1.05;}
+  .mast p{color:var(--muted);font-size:12px;margin:4px 0 0;font-family:var(--mono);}
+  .mast .home{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);}
+  .banner{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;}
+  .banner .chip{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--faint);}
+  .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.55);} .dot.warn{background:var(--amber);} .dot.err{background:var(--red);} .dot.info{background:var(--blue);}
+  .banner b{color:var(--text);font-weight:600;}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .tab{font-family:var(--mono);font-size:12px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;transition:.15s;}
+  .tab:hover{border-color:var(--line2);color:var(--text);}
+  .tab.active{color:var(--ink);background:var(--pink);border-color:var(--pink);}
+  .tab .n{opacity:.7;font-weight:400;}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px;}
+  .card h2{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--pink);margin:0;padding:14px 16px 0;font-weight:600;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:12px 14px;border-bottom:1px solid var(--line);}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:rgba(255,255,255,.018);}
+  .mono{font-family:var(--mono);}
+  .muted{color:var(--muted);} .faint{color:var(--faint);} .num{font-family:var(--mono);text-align:right;white-space:nowrap;}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);}
+  .pill.pending{color:var(--muted);} .pill.drafted{color:var(--blue);border-color:rgba(106,176,255,.4);} .pill.awaiting_approval{color:var(--amber);border-color:rgba(240,192,74,.4);}
+  .pill.sent{color:var(--green);border-color:rgba(67,214,160,.4);} .pill.skipped{color:var(--faint);} .pill.failed{color:var(--red);border-color:rgba(240,102,110,.4);}
+  .pill.replied{color:var(--purple);border-color:rgba(199,155,255,.4);} .pill.closed{color:var(--faint);}
+  .pill.shipped{color:var(--green);border-color:rgba(67,214,160,.35);} .pill.unshipped{color:var(--amber);border-color:rgba(240,192,74,.35);} .pill.queued{color:var(--blue);}
+  .repeat{color:var(--gold);font-size:11px;font-family:var(--mono);}
+  button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.15s;}
+  button.act:hover{border-color:var(--pink);color:var(--text);}
+  .empty{padding:30px 16px;text-align:center;color:var(--faint);font-family:var(--mono);font-size:12.5px;}
+  details.diag{margin-top:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:0 14px;}
+  details.diag summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:11px 0;letter-spacing:.03em;list-style:none;}
+  details.diag summary::-webkit-details-marker{display:none;}
+  .diagrow{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:0 0 14px;}
+  .diagrow input{background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;flex:1;min-width:180px;outline:none;}
+  .diagrow input:focus{border-color:var(--pink);}
+  .diagrow button{font-family:var(--mono);font-size:12px;background:var(--pink);color:var(--ink);border:0;border-radius:8px;padding:8px 13px;font-weight:600;cursor:pointer;}
+  .diagrow button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line2);}
+  #diagOut{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto;padding:0 0 12px;}
+  .items{color:var(--text);} .items .sku{color:var(--faint);font-family:var(--mono);font-size:11px;}
+  tbody tr.clickable{cursor:pointer;}
+  .snippet{color:var(--muted);font-size:12px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(4,5,8,.66);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:40px 18px;z-index:50;overflow:auto;}
+  .overlay.open{display:flex;}
+  .modal{width:100%;max-width:600px;border:1px solid var(--line2);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:0 24px 60px -18px rgba(0,0,0,.8);overflow:hidden;}
+  .modal .mhead{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line);}
+  .modal .mhead .who{font-family:var(--mono);font-size:14px;color:var(--text);}
+  .modal .mhead .x{margin-left:auto;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;background:none;border:0;}
+  .modal .mbody{padding:16px 18px;}
+  .modal label{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:12px 0 5px;font-weight:600;}
+  .modal label:first-child{margin-top:0;}
+  .modal input.subj,.modal textarea.body{width:100%;background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);font-family:var(--sans);font-size:13.5px;padding:10px 12px;outline:none;resize:vertical;}
+  .modal input.subj:focus,.modal textarea.body:focus{border-color:var(--pink);}
+  .modal textarea.body{min-height:150px;line-height:1.55;}
+  .cc{font-family:var(--mono);font-size:11px;color:var(--faint);text-align:right;margin-top:4px;}
+  .cc.over{color:var(--red);}
+  .mctx{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:2px;}
+  .mfoot{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:14px 18px;border-top:1px solid var(--line);background:rgba(0,0,0,.15);}
+  .mfoot button{font-family:var(--mono);font-size:12.5px;border-radius:9px;padding:9px 15px;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--muted);font-weight:600;}
+  .mfoot button.primary{background:var(--green);color:var(--ink);border-color:var(--green);}
+  .mfoot button.warn{color:var(--amber);border-color:rgba(240,192,74,.4);}
+  .mfoot button:hover{border-color:var(--text);color:var(--text);}
+  .mfoot button.primary:hover{opacity:.9;color:var(--ink);}
+  .mfoot .spacer{flex:1;}
+  .mfoot .status{font-family:var(--mono);font-size:11px;color:var(--muted);}
+  .banner .mode-live{color:var(--red);font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mast">
+    <div class="monogram">BK</div>
+    <div>
+      <h1>Post-Sale Messenger</h1>
+      <p>Buyer CRM · order ingest · personalized thank-yous</p>
+    </div>
+    <a class="home" href="/">← all tools</a>
+  </div>
+
+  <div class="banner" id="banner"><span class="chip">loading…</span></div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-tab="messages">Messages <span class="n" id="n_messages"></span></div>
+    <div class="tab" data-tab="orders">Orders <span class="n" id="n_orders"></span></div>
+    <div class="tab" data-tab="buyers">Buyers <span class="n" id="n_buyers"></span></div>
+  </div>
+
+  <div class="card" id="panel"><div class="empty">loading…</div></div>
+
+  <details class="diag">
+    <summary>⚙ Diagnostics — manual triggers (needs DIAG_TOKEN)</summary>
+    <div class="diagrow">
+      <input id="diagToken" type="password" placeholder="DIAG_TOKEN (stored in this browser only)" autocomplete="off">
+      <button id="btnPoll">Run order poll</button>
+      <button id="btnDigest" class="ghost">Send pack digest</button>
+    </div>
+    <div id="diagOut"></div>
+  </details>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="mhead">
+      <span class="pill" id="m_status"></span>
+      <span class="who" id="m_who"></span>
+      <button class="x" id="m_close" title="Close">&times;</button>
+    </div>
+    <div class="mbody">
+      <div class="mctx" id="m_ctx"></div>
+      <div class="mctx" id="m_meta"></div>
+      <label>Subject</label>
+      <input class="subj" id="m_subject" maxlength="120" placeholder="Thanks for your order!">
+      <label>Message</label>
+      <textarea class="body" id="m_body" maxlength="2000" placeholder="No draft yet — hit Draft / Regenerate to write one."></textarea>
+      <div class="cc" id="m_cc">0 / 2000</div>
+      <div class="mctx" id="m_err" style="color:var(--red)"></div>
+    </div>
+    <div class="mfoot">
+      <button id="m_regen">✍ Regenerate</button>
+      <button id="m_save">Save edit</button>
+      <span class="spacer"></span>
+      <button id="m_skip" class="warn">Skip</button>
+      <button id="m_send" class="primary">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const money = (cents, cur='AUD') => (cur==='AUD'?'A$':cur+' ') + ((Math.round(+cents||0))/100).toFixed(2);
+const when = (t) => t ? String(t).replace('T',' ').replace(/\..*$/,'').slice(0,16) : '—';
+async function api(path, opts) {
+  const r = await fetch('/api/postsale'+path, opts);
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw Object.assign(new Error(j.error||('HTTP '+r.status)), { status:r.status, body:j });
+  return j;
+}
+
+let STATE = { config:null, messages:[], orders:[], buyers:[], tab:'messages' };
+
+function renderBanner() {
+  const c = STATE.config; if (!c) return;
+  const cfg = c.config || {};
+  const ebay = c.ebay_oauth || {};
+  const chips = [];
+  chips.push(`<span class="chip"><span class="dot ${cfg.enabled?'ok':'warn'}"></span>${cfg.enabled?'<b>Enabled</b>':'Disabled'}</span>`);
+  chips.push(`<span class="chip">mode <b>${esc(cfg.mode||'—')}</b></span>`);
+  chips.push(`<span class="chip"><span class="dot ${cfg.dry_run?'warn':'ok'}"></span>${cfg.dry_run?'<b>DRY-RUN</b> (no messages sent)':'live send'}</span>`);
+  const conn = ebay.connected;
+  chips.push(`<span class="chip"><span class="dot ${conn?'ok':'err'}"></span>eBay ${conn?'connected':'<a href="/api/repricer/oauth">connect →</a>'}</span>`);
+  const tg = c.telegram||{};
+  chips.push(`<span class="chip"><span class="dot ${tg.enabled&&tg.chat_configured?'ok':'warn'}"></span>Telegram ${tg.enabled?(tg.chat_configured?'on':'no chat_id'):'off'}</span>`);
+  if (c.activation_watermark) chips.push(`<span class="chip faint">since ${esc(when(c.activation_watermark))}</span>`);
+  $('banner').innerHTML = chips.join('');
+}
+
+function renderMessages() {
+  const rows = STATE.messages;
+  if (!rows.length) return `<div class="empty">No messages yet. New paid orders create a draft here once the order-poll runs.</div>`;
+  return `<table><thead><tr><th>Status</th><th>Buyer</th><th>Draft</th><th>Total</th><th>Created</th></tr></thead><tbody>`
+    + rows.map(m => `<tr class="clickable" data-msg="${m.id}">
+        <td><span class="pill ${esc(m.status)}">${esc(m.status)}</span>${m.is_repeat_buyer?' <span class="repeat">⭐</span>':''}</td>
+        <td class="mono">@${esc(m.buyer_username||'—')}</td>
+        <td class="snippet">${esc((m.body||'').replace(/\s+/g,' ').slice(0,90) || (m.error?('⚠ '+m.error):'—'))}</td>
+        <td class="num">${money(m.total_cents, m.currency)}</td>
+        <td class="mono muted">${esc(when(m.created_at))}</td>
+      </tr>`).join('')
+    + `</tbody></table>`;
+}
+
+function itemsCell(items) {
+  if (!items || !items.length) return '<span class="faint">—</span>';
+  return '<div class="items">' + items.map(it =>
+    `${esc(it.title||it.ebay_item_id||'item')}${it.quantity>1?` ×${it.quantity}`:''}${it.sku?` <span class="sku">${esc(it.sku)}</span>`:''}`
+  ).join('<br>') + '</div>';
+}
+function renderOrders() {
+  const rows = STATE.orders;
+  if (!rows.length) return `<div class="empty">No orders ingested yet.</div>`;
+  return `<table><thead><tr><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid</th><th>Status</th><th></th></tr></thead><tbody>`
+    + rows.map(o => {
+      const loc = [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_postal?` ${o.ship_postal}`:'');
+      return `<tr>
+        <td class="mono muted">${esc(o.order_id)}</td>
+        <td class="mono">@${esc(o.buyer_username||'—')}</td>
+        <td>${itemsCell(o.items)}</td>
+        <td class="num">${money(o.total_cents, o.currency)}</td>
+        <td class="muted">${esc(loc||'—')}</td>
+        <td class="mono muted">${esc(when(o.paid_time))}</td>
+        <td><span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>${o.label_status==='queued'?' <span class="pill queued">label</span>':''}</td>
+        <td>${o.shipped_status==='unshipped'?`<button class="act" data-ship="${esc(o.order_id)}">Mark shipped</button>`:''}</td>
+      </tr>`;
+    }).join('')
+    + `</tbody></table>`;
+}
+function renderBuyers() {
+  const rows = STATE.buyers;
+  if (!rows.length) return `<div class="empty">No buyers yet.</div>`;
+  return `<table><thead><tr><th>Buyer</th><th>Orders</th><th>Total spent</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>`
+    + rows.map(b => `<tr>
+        <td class="mono">@${esc(b.ebay_username)}${b.order_count>1?' <span class="repeat">⭐</span>':''}</td>
+        <td class="num">${b.order_count}</td>
+        <td class="num">${money(b.total_spent_cents)}</td>
+        <td class="mono muted">${esc(when(b.first_seen_at))}</td>
+        <td class="mono muted">${esc(when(b.last_seen_at))}</td>
+      </tr>`).join('')
+    + `</tbody></table>`;
+}
+
+function renderPanel() {
+  const t = STATE.tab;
+  const html = t==='messages' ? renderMessages() : t==='orders' ? renderOrders() : renderBuyers();
+  $('panel').innerHTML = `<h2>${t}</h2>` + html;
+  $('n_messages').textContent = STATE.messages.length ? `(${STATE.messages.length})` : '';
+  $('n_orders').textContent = STATE.orders.length ? `(${STATE.orders.length})` : '';
+  $('n_buyers').textContent = STATE.buyers.length ? `(${STATE.buyers.length})` : '';
+}
+
+async function loadAll() {
+  try {
+    const [config, messages, orders, buyers] = await Promise.all([
+      api('/config'), api('/messages'), api('/orders?limit=200'), api('/buyers'),
+    ]);
+    STATE.config = config;
+    STATE.messages = messages.messages || [];
+    STATE.orders = orders.orders || [];
+    STATE.buyers = buyers.buyers || [];
+    renderBanner(); renderPanel();
+  } catch (e) {
+    $('banner').innerHTML = `<span class="chip"><span class="dot err"></span>${esc(e.message)}</span>`;
+  }
+}
+
+// tabs
+$('tabs').addEventListener('click', (e) => {
+  const t = e.target.closest('.tab'); if (!t) return;
+  STATE.tab = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x===t));
+  renderPanel();
+});
+// panel clicks: mark-shipped button, or open a message row.
+$('panel').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-ship]');
+  if (btn) {
+    btn.disabled = true; btn.textContent = '…';
+    try { await api('/orders/'+encodeURIComponent(btn.dataset.ship)+'/shipped', { method:'POST' }); await loadAll(); }
+    catch (err) { btn.disabled = false; btn.textContent = 'retry'; }
+    return;
+  }
+  const row = e.target.closest('tr[data-msg]');
+  if (row) openMessage(+row.dataset.msg);
+});
+
+// ---- message detail modal ----
+let CUR = null; // current message id
+function setCC() { const n = $('m_body').value.length; const cc = $('m_cc'); cc.textContent = n + ' / 2000'; cc.classList.toggle('over', n > 2000); }
+$('m_body').addEventListener('input', setCC);
+function closeModal(){ $('overlay').classList.remove('open'); CUR = null; }
+$('m_close').addEventListener('click', closeModal);
+$('overlay').addEventListener('click', (e) => { if (e.target === $('overlay')) closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+async function openMessage(id) {
+  CUR = id;
+  $('m_err').textContent = '';
+  try {
+    const d = await api('/messages/'+id);
+    const m = d.message, o = d.order || {}, items = d.items || [];
+    $('m_status').className = 'pill ' + m.status; $('m_status').textContent = m.status;
+    $('m_who').textContent = '@' + (o.buyer_username || '') + (m.is_repeat_buyer ? ' · ⭐ repeat buyer' : '');
+    $('m_ctx').textContent = 'bought: ' + (items.map(i => (i.title||i.sku||i.ebay_item_id)+(i.quantity>1?(' ×'+i.quantity):'')).join(', ') || '—');
+    $('m_meta').textContent = money(o.total_cents, o.currency) + ' · order ' + (m.order_id||'') + (m.model?(' · '+m.model):'') + (d.dry_run?' · DRY-RUN':'');
+    $('m_subject').value = m.subject || '';
+    $('m_body').value = m.body || '';
+    $('m_err').textContent = m.error && m.status==='failed' ? ('⚠ ' + m.error) : '';
+    setCC();
+    const done = ['sent','skipped','replied','closed'].includes(m.status);
+    $('m_send').style.display = done ? 'none' : ''; $('m_skip').style.display = done ? 'none' : '';
+    $('m_send').textContent = d.dry_run ? 'Approve (dry-run)' : 'Send to buyer';
+    $('overlay').classList.add('open');
+  } catch (e) { $('m_err').textContent = e.message; $('overlay').classList.add('open'); }
+}
+async function modalAction(path, body, btn) {
+  if (!CUR) return; const label = btn.textContent; btn.disabled = true; btn.textContent = '…'; $('m_err').textContent='';
+  try {
+    const r = await api('/messages/'+CUR+path, { method:'POST', headers:{'content-type':'application/json'}, body: body?JSON.stringify(body):undefined });
+    if (r.message && (path==='/regenerate' || path==='/edit')) { // repopulate in place
+      $('m_status').className = 'pill ' + r.message.status; $('m_status').textContent = r.message.status;
+      $('m_subject').value = r.message.subject || ''; $('m_body').value = r.message.body || ''; setCC();
+      if (!r.ok && r.error) $('m_err').textContent = '⚠ ' + (r.violations?('blocked: '+r.violations.join(', ')):r.error);
+    } else { closeModal(); }
+    await loadAll();
+  } catch (e) { $('m_err').textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+$('m_send').addEventListener('click', (e) => modalAction('/approve', null, e.target));
+$('m_skip').addEventListener('click', (e) => modalAction('/skip', null, e.target));
+$('m_regen').addEventListener('click', (e) => modalAction('/regenerate', null, e.target));
+$('m_save').addEventListener('click', (e) => modalAction('/edit', { subject: $('m_subject').value, body: $('m_body').value }, e.target));
+
+// diagnostics
+const tokenKey = 'postsale_diag_token';
+$('diagToken').value = localStorage.getItem(tokenKey) || '';
+$('diagToken').addEventListener('change', () => localStorage.setItem(tokenKey, $('diagToken').value.trim()));
+async function diagPost(path, label) {
+  const token = $('diagToken').value.trim();
+  $('diagOut').textContent = label + '…';
+  try {
+    const r = await fetch('/api/postsale'+path+(token?('?token='+encodeURIComponent(token)):''), { method:'POST' });
+    const j = await r.json().catch(()=>({}));
+    $('diagOut').textContent = label + ' → ' + JSON.stringify(j, null, 2);
+    if (r.ok) await loadAll();
+  } catch (e) { $('diagOut').textContent = label + ' failed: ' + e.message; }
+}
+$('btnPoll').addEventListener('click', () => diagPost('/poll/orders', 'poll orders'));
+$('btnDigest').addEventListener('click', () => diagPost('/digest/pack', 'pack digest'));
+
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>

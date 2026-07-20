@@ -3,7 +3,18 @@
 // PriceCharting console name, and title -> product_type classification. Offline / no DB.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore } from '../../lib/sealed.mjs';
+import { normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore, naturalCompare } from '../../lib/sealed.mjs';
+
+describe('naturalCompare (locations)', () => {
+  it('sorts numeric suffixes 1,2,…10,11 — not 1,10,11,2', () => {
+    const sorted = ['Storage Crate 10', 'Storage Crate 2', 'Storage Crate 1', 'Wardrobe 1 / Shelf 5', 'Storage Crate 11'].sort(naturalCompare);
+    assert.deepEqual(sorted, ['Storage Crate 1', 'Storage Crate 2', 'Storage Crate 10', 'Storage Crate 11', 'Wardrobe 1 / Shelf 5']);
+  });
+  it('is case-insensitive', () => {
+    assert.equal(naturalCompare('shelf a', 'Shelf A'), 0);
+    assert.ok(naturalCompare('Bin 3', 'bin 20') < 0);
+  });
+});
 
 describe('normalizeUpc / upcCandidates', () => {
   it('strips separators, keeps digits', () => {

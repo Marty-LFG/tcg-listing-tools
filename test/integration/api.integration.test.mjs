@@ -257,6 +257,40 @@ describe('inventory / sealed write bug-fixes (#3/#6/#7/#8/#9)', () => {
     assert.equal(bad.status, 400, 'an unknown game is still rejected');
   });
 
+  it('sealed /locations is natural-sorted (Crate 1,2,10 — not 1,10,2)', async () => {
+    for (const n of ['10', '2', '1']) {
+      await post('/api/sealed/items', { game: 'pokemon', name: 'NatSortBox ' + n, product_type: 'other', placements: [{ location: 'ZZSort Crate ' + n, quantity: 1 }] });
+    }
+    const locs = (await get('/api/sealed/locations')).json.locations.filter((l) => l.startsWith('ZZSort Crate'));
+    assert.deepEqual(locs, ['ZZSort Crate 1', 'ZZSort Crate 2', 'ZZSort Crate 10']);
+  });
+
+  it('sealed /summary counts VALUE as unit value × quantity', async () => {
+    const before = (await get('/api/sealed/summary')).json.valueByCurrency.AUD || 0;
+    const r = await post('/api/sealed/items', { game: 'pokemon', name: 'QtyValBox', product_type: 'booster_box',
+      value_cents: 10000, value_currency: 'AUD', value_manual: true, placements: [{ location: 'X', quantity: 3 }] });
+    assert.equal(r.status, 201, r.text);
+    const after = (await get('/api/sealed/summary')).json.valueByCurrency.AUD || 0;
+    assert.equal(after - before, 30000, 'A$100 × 3 units = A$300 added to the portfolio value');
+  });
+
+  it('sealed value refresh: scheduler state + guards (no network in these paths)', async () => {
+    const st = await get('/api/sealed/refresh-state');
+    assert.equal(st.status, 200);
+    assert.equal(typeof st.json.enabled, 'boolean');
+    assert.equal(typeof st.json.interval_hours, 'number');
+    assert.equal(typeof st.json.running, 'boolean');
+    // a manual-valued item short-circuits before any eBay/PriceCharting fetch
+    const c = await post('/api/sealed/items', { game: 'pokemon', name: 'ManualValBox', product_type: 'booster_box', value_cents: 12345, value_currency: 'AUD', value_manual: true });
+    assert.equal(c.status, 201, c.text);
+    const rv = await post('/api/sealed/items/' + c.json.id + '/refresh-value', {});
+    assert.equal(rv.status, 200);
+    assert.equal(rv.json.updated, false);
+    assert.equal(rv.json.reason, 'manual_override');
+    const miss = await post('/api/sealed/items/99999999/refresh-value', {});
+    assert.equal(miss.status, 404);
+  });
+
   it('graded inventory accepts One Piece (stockable game) with an OP SKU', async () => {
     const r = await post('/api/inventory/items', { game: 'onepiece', name: 'Monkey D. Luffy OP01-120', grading_company: 'PSA', grade: 10, image_url: 'x' });
     assert.equal(r.status, 201, r.text);

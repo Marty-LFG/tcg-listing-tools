@@ -8,6 +8,9 @@ data/tracker.db-shm
 data/repricer.db
 data/repricer.db-wal
 data/repricer.db-shm
+data/postsale.db
+data/postsale.db-wal
+data/postsale.db-shm
 reports/
 
 # eBay channel secrets + artifacts (bulk listing tool) — NEVER commit.
@@ -51,3 +54,6 @@ data/pokemon-mep.json
 # then blocked every pull). data/refresh.config.example.json is the tracked template; a missing file
 # falls back to DEFAULT_CONFIG and is re-seeded from the example on boot (lib/refresh.mjs).
 data/refresh.config.json
+# Post-sale automation runtime config — SERVER-OWNED (settings dashboard writes it). Re-seeded from
+# the tracked data/postsale.config.example.json on boot (lib/postsale.mjs ensureConfigSeeded).
+data/postsale.config.json

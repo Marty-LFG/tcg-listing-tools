@@ -3,6 +3,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { keyPresence, versionInfo, SETTINGS, PROBES, diagTokenCheck } from '../../lib/status.mjs';
+import { availableBakes } from '../../lib/refresh.mjs';
 
 describe('keyPresence', () => {
   const env = {
@@ -76,9 +77,14 @@ describe('SETTINGS validators', () => {
     delete noCatch.tiers.default;
     assert.match(SETTINGS['bulk-pricing'].validate(noCatch), /catch-all/);
   });
-  it('refresh: unknown bakes rejected', () => {
-    assert.equal(SETTINGS.refresh.validate({ enabled: true, interval_hours: 24, bakes: ['riftbound'] }), null);
-    assert.match(SETTINGS.refresh.validate({ enabled: true, interval_hours: 24, bakes: ['nope'] }), /unknown bake/);
+  it('refresh: every registered bake is accepted, unknown rejected', () => {
+    assert.equal(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: ['riftbound'] }), null);
+    // Derived from the BAKES registry — so a config selecting ALL registered bakes always validates.
+    const all = availableBakes().map((b) => b.name);
+    assert.ok(all.includes('pokemon-mep'), 'pokemon-mep is a registered bake');
+    assert.equal(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: all }), null);
+    assert.match(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: ['nope'] }), /unknown bake/);
+    assert.match(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: ['funko'] }), /unknown bake/);   // funko isn't a bake
   });
   it('read-only entries are flagged and have no validators', () => {
     for (const name of ['collectr', 'grading', 'grading-companies']) {

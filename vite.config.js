@@ -8,6 +8,7 @@ import { inventoryPlugin } from './lib/inventory.mjs'
 import { sealedPlugin } from './lib/sealed.mjs'
 import { bulkPlugin } from './lib/bulk.mjs'
 import { repricerPlugin } from './lib/repricer.mjs'
+import { postsalePlugin } from './lib/postsale.mjs'
 import { statusPlugin } from './lib/status.mjs'
 import { catalogPlugin } from './lib/catalog.mjs'
 import { lookup as pcLookup, enumerateConsole as pcEnumerate, listPokemonConsoles as pcConsoles } from './lib/pricecharting.mjs'
@@ -337,7 +338,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), statusPlugin(env), catalogPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), statusPlugin(env), catalogPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

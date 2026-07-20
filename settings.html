@@ -39,7 +39,7 @@
   .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:14px;
     box-shadow:var(--shadow);padding:16px 18px;animation:rise .35s ease both;}
   .card h3{margin:0 0 10px;font-family:var(--serif);font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;justify-content:space-between;}
-  .card h3 .h-note{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;}
+  .h-note{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;}
   .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13px;}
   .kv .k{color:var(--muted);}
   .kv .v{font-family:var(--mono);font-size:12.5px;text-align:right;}
@@ -189,10 +189,12 @@
     const box = $('baked');
     box.innerHTML = '';
     const items = [
-      ['riftbound',   'Riftbound catalog',   (x)=>x.count + ' cards · ' + x.sets + ' sets'],
-      ['pokemon_intl','Pokémon intl sets',   (x)=>x.count + ' sets · ' + x.langs + ' langs'],
-      ['funko',       'Funko catalog',       (x)=>x.count + ' pops · frozen 2021'],
-      ['pokemon_dex', 'Pokémon dex names',   (x)=>x.count + ' species'],
+      ['riftbound',       'Riftbound catalog',     (x)=>x.count + ' cards · ' + x.sets + ' sets'],
+      ['pokemon_intl',    'Pokémon intl sets',     (x)=>x.count + ' sets · ' + x.langs + ' langs'],
+      ['pokemon_en_early','Early EN Pokémon sets', (x)=>x.count + ' sets'],
+      ['pokemon_mep',     'Mega Evolution Promo',  (x)=>x.count + ' cards · ' + x.with_art + ' w/ art'],
+      ['funko',           'Funko catalog',         (x)=>x.count + ' pops · frozen 2021'],
+      ['pokemon_dex',     'Pokémon dex names',     (x)=>x.count + ' species'],
     ];
     for (const [key,label,fmt] of items){
       const x = d[key]; if (!x) continue;
@@ -200,7 +202,7 @@
       box.appendChild(el('<div class="card"><h3>' + esc(label) + ' ' + pill(state, x.error ? 'broken' : x.stale ? 'stale' : x.frozen ? 'frozen' : 'fresh') + '</h3>' +
         '<div class="kv"><span class="k">Contents</span><span class="v">' + esc(x.error || (fmt(x) || x.count)) + '</span></div>' +
         '<div class="kv"><span class="k">Age</span><span class="v' + (x.stale ? ' warn' : '') + '">' + fmtAge(x.age_h) + '</span></div>' +
-        '<div class="kv"><span class="k">Refresh</span><span class="v">' + (x.managed ? 'daily bake' : x.frozen ? 'frozen upstream' : 'manual') + '</span></div>' +
+        '<div class="kv"><span class="k">Refresh</span><span class="v">' + (x.managed ? 'scheduled bake' : x.frozen ? 'frozen upstream' : 'manual') + '</span></div>' +
         '<div class="kv"><span class="k">File</span><span class="v">' + esc(x.file) + '</span></div></div>'));
     }
   }
@@ -232,12 +234,56 @@
     const lr = r.last_run;
     const headPill = !dr.enabled ? pill('disabled', 'off') : runPill(r.running);
     const res = lr && lr.results ? lr.results.map((x) => x.name + (x.skipped ? ' (fresh)' : x.ok ? ' ✓' : ' ✗')).join(', ') : '';
-    box.appendChild(el('<div class="card"><h3>Data refresh loop ' + headPill + '</h3>' +
+    const refreshCard = el('<div class="card"><h3><span>Data refresh loop</span>' +
+      '<span style="display:flex;align-items:center;gap:8px;font-weight:400;">' + headPill +
+      '<button class="btn go" data-refresh-now title="Re-run all enabled bakes now — picks up a just-pushed seed change without waiting for the interval (needs DIAG_TOKEN)">Refresh now</button></span></h3>' +
       '<div class="kv"><span class="k">Interval</span><span class="v">' + esc(dr.interval_hours ?? '—') + 'h</span></div>' +
       '<div class="kv"><span class="k">Bakes</span><span class="v">' + esc((dr.bakes || []).join(', ') || '—') + '</span></div>' +
       '<div class="kv"><span class="k">Last run</span>' + tsCell(lr && lr.finished_at, lr && lr.ok) + '</div>' +
       (res ? '<div class="kv"><span class="k">Result</span><span class="v">' + esc(res) + '</span></div>' : '') +
-      '<div class="kv"><span class="k">Next run</span><span class="v">' + fmtTs(r.next_run_at) + '</span></div></div>'));
+      '<div class="kv"><span class="k">Next run</span><span class="v">' + fmtTs(r.next_run_at) + '</span></div></div>');
+    refreshCard.querySelector('[data-refresh-now]').onclick = (e) => triggerRefresh(e.currentTarget);
+    box.appendChild(refreshCard);
+  }
+
+  // ---- manual "Refresh now" trigger (POST /api/status/refresh, DIAG_TOKEN-gated) ----
+  // Unlike same-origin config edits, the refresh trigger is token-gated (it doubles as a remote
+  // diagnostics hook), so cache the token the owner enters and send it as a Bearer header — never in
+  // the URL. Re-baking reads the latest seed + upstream, so this is how a just-pushed seed change
+  // (e.g. a newly-added set) goes live immediately instead of waiting for the interval timer.
+  const DIAG_KEY = 'tcg_diag_token';
+  function getDiagToken(force){
+    let t = '';
+    try { t = localStorage.getItem(DIAG_KEY) || ''; } catch (e) {}
+    if (!t || force){
+      t = (window.prompt('Server DIAG_TOKEN (from the ALCSERVER .env) — enables the refresh trigger:', '') || '').trim();
+      if (t) { try { localStorage.setItem(DIAG_KEY, t); } catch (e) {} }
+    }
+    return t;
+  }
+  async function triggerRefresh(btn){
+    const token = getDiagToken(false);
+    if (!token) return;   // cancelled at the prompt
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Refreshing…';
+    const act = window.TCG && TCG.activity ? TCG.activity('Refreshing baked data…') : null;
+    try {
+      const r = await fetch('/api/status/refresh', { method: 'POST', headers: { authorization: 'Bearer ' + token } });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401 || r.status === 403) {   // missing (401) or wrong (403) token — drop it so the next click re-prompts
+        try { localStorage.removeItem(DIAG_KEY); } catch (e) {}
+        act && act.fail('token rejected'); alert('DIAG_TOKEN rejected — click Refresh now again to re-enter it.'); return;
+      }
+      if (r.status === 503) { act && act.fail('diagnostics off'); alert(j.error || 'Diagnostics are disabled — set DIAG_TOKEN in the server .env to enable triggers.'); return; }
+      if (!r.ok) { act && act.fail('HTTP ' + r.status); alert('Refresh failed: ' + (j.error || ('HTTP ' + r.status))); return; }
+      const results = (j.result && j.result.results) || [];
+      act && act.done(results.map((x) => x.name + (x.skipped ? ' (fresh)' : x.ok ? ' ✓' : ' ✗')).join(', ') || 'done');
+      await load();   // re-render so ages / last-run / counts reflect the fresh bake
+    } catch (e) {
+      act && act.fail(String(e && e.message || e)); alert('Refresh failed: ' + (e && e.message || e));
+    } finally {
+      if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = label; }
+    }
   }
 
   function renderSubsystems(){
@@ -309,7 +355,7 @@
   const getPath = (o, p) => p.split('.').reduce((x, k) => (x == null ? x : x[k]), o);
   const setPath = (o, p, v) => { const ks = p.split('.'); let x = o; for (const k of ks.slice(0, -1)) x = x[k] = x[k] || {}; x[ks.at(-1)] = v; };
 
-  function renderSettings(files){
+  function renderSettings(files, availBakes){
     const box = $('settings');
     box.innerHTML = '';
     for (const [name, spec] of Object.entries(FORMS)){
@@ -338,10 +384,12 @@
       let bakesBox = null, jsonBox = null;
       if (spec.custom === 'bakes'){
         bakesBox = el('<div></div>');
-        for (const b of ['riftbound', 'pokemon-intl', 'funko']){
-          const row = el('<div class="checkline"><input type="checkbox"> bake: ' + esc(b) + '</div>');
-          row.querySelector('input').checked = (c.bakes || []).includes(b);
-          row.querySelector('input').dataset.bake = b;
+        // Rendered from the registry (/api/settings `bakes`) — every registered bake appears here, so a
+        // newly added one is toggleable with no edit to this file.
+        for (const b of (availBakes || [])){
+          const row = el('<div class="checkline"><input type="checkbox"> ' + esc(b.label || b.name) + ' <span class="h-note">' + esc(b.name) + '</span></div>');
+          row.querySelector('input').checked = (c.bakes || []).includes(b.name);
+          row.querySelector('input').dataset.bake = b.name;
           bakesBox.appendChild(row);
         }
         card.appendChild(bakesBox);
@@ -404,7 +452,7 @@
       renderBaked();
       renderJobs();
       renderSubsystems();
-      renderSettings(se.files);
+      renderSettings(se.files, se.bakes || []);
     } catch (e) {
       $('verline').textContent = 'status API unreachable — is the dev server running? (' + (e && e.message || e) + ')';
     }

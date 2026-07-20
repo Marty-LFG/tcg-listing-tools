@@ -596,9 +596,13 @@ Trading calls carry it in `X-EBAY-API-IAF-TOKEN` (site 15). `lib/ebay-oauth.mjs`
 **single** eBay user-token acquirer for the repo — bulk's Phase-2 Sell-API should import it, not build a
 second `ebaySellProxy`.
 
-**Comps + decision (Phase 3+).** Reuses `TCG.analyzeComps` (extras.js) — to be mirrored server-side as
-`lib/comps.mjs` per Golden Rule 9 **plus a `scripts/check-comps.mjs` byte-parity harness** (the §14
-mirror-rule now mandates a check script + cross-ref comments on both sides). Reuse `lib/fees.mjs` for AU
+**`lib/comps.mjs` (server-side eBay AU comps).** Exists now, built for the **sealed nightly valuation**
+(§16): it self-fetches the `/api/ebay` proxy (Browse asking / Marketplace-Insights sold → delivered AUD)
+and ports `TCG.analyzeComps`' cluster-median math (GR9 — keep the clustering in sync), but its FILTER is
+sealed-tuned (keep the right product type; drop empties/singles/wrong-bundles) — the mirror-opposite of
+the singles `JUNK_RE`. The repricer (Phase 3+) can reuse the same clustering helpers.
+
+**Comps + decision (repricer, Phase 3+).** Reuses `TCG.analyzeComps` (extras.js) / `lib/comps.mjs`. Reuse `lib/fees.mjs` for AU
 fee math rather than re-implementing it. Target = **cheapest *in-cluster* − $0.01** (the densest price
 cluster, so a lowball outlier can't drag it down); **our own listings are excluded** from the comp set.
 A raise is only proposed when `nComparable ≥ 8 AND confidence = high AND uplift ≥ threshold`
@@ -619,3 +623,18 @@ before scaling. Trading is comfortable (5,000/day). Global ~500ms throttle; batc
 collector + comps compare → alert-only. 4 = wire `ReviseInventoryStatus` to the Approve tap. 5 =
 Best-Offer floors + a `tracker.html`-style dashboard. A dry-run `test` proposal (`kind:'test'`) never
 writes to eBay — it's how the full alert→approve→edit loop is validated before real repricing.
+---
+
+## 16. Sealed-inventory valuation (eBay AU-first, nightly)
+
+The sealed tool (`sealed.html` / `lib/sealed.mjs`, `/api/sealed/*`) values held stock and refreshes it
+**automatically every night** (`startSealedValueRefresh`, in-process interval, HMR-guarded, boot-delayed;
+`SEALED_VALUE_REFRESH_ENABLED`/`_HOURS`). `resolveSealedValue()` is **eBay AU comps PRIMARY**
+(`lib/comps.mjs` → delivered-AUD cluster median for the item's product type — the seller's actual market),
+**PriceCharting (USD) FALLBACK** when eBay is thin/unreliable (`reliable` = not low-confidence and cluster
+not >4× wide). Every valuation is written to `sealed_valuations` **with its source** (`ebay`/`pricecharting`/
+`manual`) and the item card shows it (green "eBay AU" / blue "PriceCharting" + age). Key fixes baked in:
+the PriceCharting fallback **re-resolves by the item's current name** (a stale/wrong stored `pc_url` no
+longer makes a booster box read a booster PACK's price), and UPCItemDB titles are **de-mojibaked**
+(`PokÃ©mon`→`Pokémon`). Manual values (`value_manual=1`) are never auto-overwritten. State is surfaced at
+`GET /api/sealed/refresh-state` and in `/api/status` `jobs.sealed_value`.

@@ -12,7 +12,7 @@ import { ROOT } from '../helpers/extract-inline.mjs';
 const TABLES = ['watchlist', 'price_snapshots', 'signals', 'card_cache', 'grading_submissions',
   'inventory_items', 'inventory_valuations', 'sku_counter', 'bulk_batches', 'channel_exports',
   'sealed_items', 'sealed_valuations', 'sealed_barcodes', 'sealed_batches', 'sealed_placements',
-  'sealed_locations', 'sealed_location_photos'];
+  'sealed_locations', 'sealed_location_photos', 'sealed_upc_prices', 'sealed_upc_valuations'];
 
 const dbPath = tmpFile('tracker-test.db');
 const db = openDb(dbPath);

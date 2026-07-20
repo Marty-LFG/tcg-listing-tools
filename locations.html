@@ -184,12 +184,13 @@ function sortLocs(arr){
   const key=(document.getElementById('f_sort')||{}).value||'custom';
   const a=arr.slice();
   const num=(f)=>(x,y)=>f(y)-f(x);
+  var nat=(x,y)=>String(x||'').localeCompare(String(y||''),'en',{numeric:true,sensitivity:'base'});   // 1,2,…10,11 not 1,10,11,2
   switch(key){
-    case 'name': a.sort((x,y)=>String(x.name||'').localeCompare(String(y.name||''))); break;
+    case 'name': a.sort((x,y)=>nat(x.name,y.name)); break;
     case 'items': a.sort(num(l=>l.item_count||0)); break;
     case 'units': a.sort(num(l=>l.unit_count||0)); break;
     case 'photos': a.sort(num(l=>l.photo_count||0)); break;
-    default: a.sort((x,y)=>(x.sort_order-y.sort_order)||String(x.name||'').localeCompare(String(y.name||''))); break;
+    default: a.sort((x,y)=>(x.sort_order-y.sort_order)||nat(x.name,y.name)); break;
   }
   return a;
 }

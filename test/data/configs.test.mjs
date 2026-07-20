@@ -4,6 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read } from '../helpers/extract-inline.mjs';
+import { availableBakes } from '../../lib/refresh.mjs';
 
 const cfg = (name) => JSON.parse(read(`data/${name}`));
 
@@ -67,10 +68,11 @@ describe('bulk-pricing.config.json', () => {
 
 describe('refresh.config.example.json', () => {
   const c = cfg('refresh.config.example.json');   // refresh.config.json is gitignored (server-owned); validate the tracked template
-  it('interval + known bakes only', () => {
+  it('interval + known bakes only (allowlist derived from the BAKES registry — never stale)', () => {
     assert.equal(typeof c.enabled, 'boolean');
     assert.ok(c.interval_hours >= 1);
-    for (const b of c.bakes) assert.ok(['riftbound', 'pokemon-intl', 'pokemon-en-early', 'pokemon-mep', 'catalog-cards', 'funko'].includes(b), `unknown bake ${b}`);
+    const valid = new Set(availableBakes().map((b) => b.name));
+    for (const b of c.bakes) assert.ok(valid.has(b), `unknown bake ${b}`);
   });
 });
 
