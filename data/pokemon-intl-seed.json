@@ -152,9 +152,90 @@
     },
     "SV11W": {
       "name_en": "White Flare"
+    },
+    "S8A-P": {
+      "name_en": "Promo Card Pack 25th Anniversary Edition",
+      "name_native": "プロモカードパック 25th ANNIVERSARY edition",
+      "serie": "剣と盾",
+      "releaseDate": "2021-10-22",
+      "cardCount": 25,
+      "pcSlug": "pokemon-japanese-25th-anniversary-promo",
+      "pcOnly": true,
+      "enEquivalent": {
+        "id": "cel25c",
+        "name": "Celebrations: Classic Collection"
+      }
+    },
+    "S8A-G": {
+      "name_en": "25th Anniversary Golden Box",
+      "name_native": "25th ANNIVERSARY GOLDEN BOX",
+      "serie": "剣と盾",
+      "releaseDate": "2021-11-27",
+      "cardCount": 15,
+      "pcSlug": "pokemon-japanese-25th-anniversary-golden-box",
+      "pcOnly": true
+    },
+    "SVG": {
+      "name_en": "Venusaur & Charizard & Blastoise ex Special Deck Set",
+      "name_native": "フシギバナ&リザードン&カメックスex スペシャルデッキセット",
+      "serie": "スカーレット&バイオレット",
+      "releaseDate": "2023-09-22",
+      "cardCount": 52,
+      "pcSlug": "pokemon-japanese-svg-special-set",
+      "pcOnly": true
+    },
+    "V-UNION": {
+      "name_en": "V-UNION Special Card Sets",
+      "name_native": "VUNION スペシャルカードセット",
+      "serie": "ソード&シールド",
+      "releaseDate": "2021-01-01",
+      "cardCount": 13,
+      "pcSlug": "pokemon-japanese-v-union-special-set",
+      "pcOnly": true
+    },
+    "POKEPARK-F": {
+      "name_en": "PokePark Forest",
+      "name_native": "ポケパーク・フォレスト",
+      "cardCount": 11,
+      "pcSlug": "pokemon-japanese-pokepark-forest",
+      "pcOnly": true
+    },
+    "MOVIE11": {
+      "name_en": "11th Movie Commemoration Set",
+      "name_native": "劇場版ポケットモンスター 第11弾記念セット",
+      "releaseDate": "2008-07-01",
+      "cardCount": 9,
+      "pcSlug": "pokemon-japanese-11th-movie-commemoration-promo",
+      "pcOnly": true
     }
   },
-  "zh-cn": {},
+  "zh-cn": {
+    "M3": {
+      "name_en": "Nihil Zero",
+      "name_native": "梦幻虚无",
+      "serie": "宝可梦卡牌游戏 MEGA",
+      "cardCount": 117,
+      "pcSlug": "pokemon-chinese-m3",
+      "pcOnly": true
+    }
+  },
   "zh-tw": {},
-  "ko": {}
+  "ko": {
+    "BW4": {
+      "name_en": "Dark Rush",
+      "name_native": "다크러시",
+      "serie": "블랙 & 화이트",
+      "cardCount": 73,
+      "pcSlug": "pokemon-korean-dark-rush",
+      "pcOnly": true
+    },
+    "DOUBLE-CRISIS": {
+      "name_en": "Double Crisis",
+      "name_native": "더블 크라이시스",
+      "serie": "XY",
+      "cardCount": 34,
+      "pcSlug": "pokemon-korean-double-crisis",
+      "pcOnly": true
+    }
+  }
 }

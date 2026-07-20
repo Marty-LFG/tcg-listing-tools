@@ -59,6 +59,7 @@ function mergePcConsoles(result, dir) {
     const used = new Set()
     // 1) attach pcSlug to existing TCGdex sets
     for (const rec of list) {
+      if (rec.pcSlug) { used.add(rec.pcSlug); matched++; continue }   // seeded/pinned slug — never override
       const cands = []
       if (lang === 'zh-cn') {
         const c = rec.code.toLowerCase()
@@ -187,6 +188,8 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
         if (sd.serie && !ex.serie) ex.serie = sd.serie
         if (sd.releaseDate && !ex.releaseDate) ex.releaseDate = sd.releaseDate
         if (sd.cardCount != null && ex.cardCount == null) ex.cardCount = sd.cardCount
+        if (sd.pcSlug) ex.pcSlug = sd.pcSlug   // pin an explicit PriceCharting console (card source)
+        if (sd.pcOnly) ex.pcOnly = true
       } else {
         const rec = {
           code, tcgdexId: sd.tcgdexId || rawCode,
@@ -196,6 +199,10 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
           symbol: sd.symbol || '', seeded: true,
         }
         if (sd.enEquivalent) rec.enEquivalent = sd.enEquivalent
+        // A seeded set whose card data lives on PriceCharting (TCGdex has no such set — e.g. the JP
+        // promo packs): pin the console slug so the lookup uses PC directly instead of a dead TCGdex id.
+        if (sd.pcSlug) rec.pcSlug = sd.pcSlug
+        if (sd.pcOnly) rec.pcOnly = true
         records.push(rec); byCode.set(code, rec); injected++
       }
     }
