@@ -282,6 +282,8 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const el = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
+  const _ESC=String.fromCharCode(27), _ANSI=new RegExp(_ESC+'\\[[0-9;?]*[A-Za-z]','g');
+  const stripAnsi=(s)=>String(s==null?'':s).replace(_ANSI,'').split(_ESC).join('');   // terminal colour codes → readable text
   const fmtAge = (h) => h==null?'—':h<1?Math.round(h*60)+'m':h<48?(Math.round(h*10)/10)+'h':Math.round(h/24)+'d';
   const fmtTs = (t) => t?String(t).replace('T',' ').slice(0,16):'—';
   function ago(t){ if(!t) return '—'; const s=(Date.now()-new Date(t).getTime())/1000; if(!isFinite(s)) return '—';
@@ -659,7 +661,7 @@
     if(!rows.length){ body.innerHTML='<div class="con-empty">No log lines'+(logLevel?' at this level':'')+(clearBefore?' since clear':'')+' yet.</div>'; return; }
     body.innerHTML=rows.map(L=>{
       const lv=(L.level||'info'); const t=L.t?String(L.t).slice(11,19):'';
-      return '<div class="logline '+esc(lv)+'"><span class="lt">'+esc(t)+'</span><span class="lv '+esc(lv)+'">'+esc(lv)+'</span><span class="lm">'+esc(L.msg||'')+'</span></div>';
+      return '<div class="logline '+esc(lv)+'"><span class="lt">'+esc(t)+'</span><span class="lv '+esc(lv)+'">'+esc(lv)+'</span><span class="lm">'+esc(stripAnsi(L.msg))+'</span></div>';
     }).join('');
     body.scrollTop = stick ? body.scrollHeight : prevTop;   // pin to bottom only if already there; else hold the reader's place
   }

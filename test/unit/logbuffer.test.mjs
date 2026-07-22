@@ -95,3 +95,24 @@ describe('ring buffer + filters', () => {
     assert.equal(e.level, 'error');
   });
 });
+
+describe('ANSI stripping + Vite HMR noise filtering', () => {
+  const ESC = String.fromCharCode(27);   // build escape codes without a literal control byte in source
+  it('strips terminal colour codes but keeps bracketed [tags]', () => {
+    _push('info', ESC + '[32m[collector]' + ESC + '[39m pass ok');
+    const m = getLogs().at(-1).msg;
+    assert.equal(m, '[collector] pass ok');
+    assert.ok(!m.includes(ESC), 'no raw escape byte survived');
+  });
+  it('drops Vite HMR/reload chatter but keeps real app logs', () => {
+    _push('info', ESC + '[2m8:49:55 am' + ESC + '[22m ' + ESC + '[36m[vite]' + ESC + '[39m page reload settings.html');
+    _push('info', '[refresh] baked pokemon ok');
+    const msgs = getLogs().map((l) => l.msg);
+    assert.ok(!msgs.some((m) => m.includes('[vite]')), 'vite reload line dropped');
+    assert.ok(msgs.includes('[refresh] baked pokemon ok'), 'app log kept');
+  });
+  it('keeps a vite line that is an ERROR (only info-level HMR noise is dropped)', () => {
+    _push('error', '[vite] internal server error');
+    assert.ok(getLogs().some((l) => l.level === 'error' && l.msg.includes('[vite]')));
+  });
+});
