@@ -3,88 +3,199 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Settings &amp; Status — TCG Listing Tools</title>
+<title>System Console — TCG Listing Tools</title>
 <style>
   :root{
-    --gold:#a8b6cf; --gold-soft:rgba(168,182,207,.14);
-    --ink:#0b0d12; --panel:#14171f; --panel2:#1b1f2a; --field:#0b0d12; --bg2:#0d0f15;
-    --line:rgba(255,255,255,.075); --line2:rgba(255,255,255,.13);
-    --text:#e9edf6; --muted:#8b93a6; --faint:#5b6373;
-    --green:#43d6a0; --red:#f0666e; --amber:#f0c04a; --blue:#6ab0ff;
-    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --bg:#090a0e; --bg2:#0d0f15; --panel:#14171f; --panel2:#1a1e28; --field:#0b0d12; --ink:#0b0d12;
+    --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.13); --line3:rgba(255,255,255,.22);
+    --text:#e9edf6; --muted:#8b93a6; --faint:#5b6373; --dim:#404857;
+    --gold:#d4b072; --gold-soft:rgba(212,176,114,.13);
+    --green:#43d6a0; --red:#f0666e; --amber:#f0c04a; --blue:#6ab0ff; --purple:#c79bff; --pink:#e08a9b;
+    --shadow:0 16px 40px -18px rgba(0,0,0,.78);
     --serif:'Fraunces',Georgia,'Times New Roman',serif;
-    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:var(--sans);color:var(--text);background:#0a0b0f;min-height:100vh;}
-  .wrap{max-width:1280px;margin:0 auto;padding:26px 22px 80px;}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;}
+  body{margin:0;font-family:var(--sans);color:var(--text);font-size:14px;line-height:1.5;min-height:100vh;
+    background:
+      radial-gradient(1100px 560px at 8% -10%,rgba(212,176,114,.055),transparent 60%),
+      radial-gradient(900px 520px at 108% -6%,rgba(106,176,255,.05),transparent 55%),
+      linear-gradient(180deg,#0a0b10,#07080c 70%);
+    background-attachment:fixed;}
+  /* faint grain overlay */
+  body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.028'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:1;max-width:1320px;margin:0 auto;padding:26px 22px 90px;}
+  a{color:var(--gold);text-decoration:none;}
 
-  .masthead{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
-  .monogram{width:48px;height:48px;border-radius:12px;border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;
-    font-family:var(--serif);font-size:22px;color:var(--gold);background:linear-gradient(180deg,var(--panel),var(--bg2));flex:0 0 auto;}
-  h1{font-family:var(--serif);font-weight:600;font-size:26px;margin:0;}
-  h1 em{color:var(--muted);font-style:italic;font-weight:500;}
-  .subline{font-family:var(--mono);font-size:12px;color:var(--muted);margin:2px 0 26px 62px;}
-  .subline b{color:var(--gold);font-weight:500;}
-  a.back{color:var(--muted);text-decoration:none;font-size:13px;} a.back:hover{color:var(--text);}
+  /* masthead */
+  .masthead{display:flex;align-items:center;gap:15px;margin-bottom:4px;}
+  .monogram{width:50px;height:50px;flex:0 0 auto;border-radius:13px;border:1px solid var(--line2);
+    background:linear-gradient(160deg,#1f2534,#111420);display:flex;align-items:center;justify-content:center;
+    font-family:var(--serif);font-size:24px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:27px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 em{color:var(--muted);font-style:italic;font-weight:500;font-size:20px;}
+  .subline{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:5px 0 0 65px;letter-spacing:.02em;}
+  .subline b{color:var(--gold);font-weight:600;}
+  a.back{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);align-self:flex-start;}
+  a.back:hover{color:var(--text);}
 
-  h2{font-family:var(--serif);font-weight:600;font-size:17px;margin:34px 0 12px;display:flex;align-items:center;gap:10px;}
-  h2::after{content:'';flex:1;height:1px;background:var(--line);}
+  /* sticky segmented nav */
+  .nav{position:sticky;top:0;z-index:20;margin:22px 0 8px;padding:9px 0;
+    backdrop-filter:blur(10px);background:linear-gradient(180deg,rgba(9,10,14,.92),rgba(9,10,14,.62));
+    border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .nav a{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+    color:var(--muted);padding:7px 13px;border-radius:9px;border:1px solid transparent;transition:.16s;}
+  .nav a:hover{color:var(--text);border-color:var(--line2);}
+  .nav a.active{color:var(--ink);background:var(--gold);border-color:var(--gold);}
+  .nav .sp{flex:1;}
+  .nav .live{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;}
 
-  .grid{display:grid;gap:12px;}
-  .grid.cols3{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));}
-  .grid.cols2{grid-template-columns:repeat(auto-fill,minmax(380px,1fr));}
+  section{scroll-margin-top:66px;padding-top:14px;}
+  .sec-h{font-family:var(--serif);font-weight:600;font-size:18px;margin:26px 0 14px;display:flex;align-items:baseline;gap:12px;}
+  .sec-h::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent);}
+  .sec-h .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:400;}
 
-  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:14px;
-    box-shadow:var(--shadow);padding:16px 18px;animation:rise .35s ease both;}
-  .card h3{margin:0 0 10px;font-family:var(--serif);font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;justify-content:space-between;}
-  .h-note{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;}
-  .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:13px;}
-  .kv .k{color:var(--muted);}
-  .kv .v{font-family:var(--mono);font-size:12.5px;text-align:right;}
-  .kv .v.ok{color:var(--green);} .kv .v.bad{color:var(--red);} .kv .v.warn{color:var(--amber);}
+  .grid{display:grid;gap:13px;}
+  .g-vitals{grid-template-columns:repeat(auto-fill,minmax(232px,1fr));}
+  .g3{grid-template-columns:repeat(auto-fill,minmax(290px,1fr));}
+  .g2{grid-template-columns:repeat(auto-fill,minmax(420px,1fr));}
 
-  /* source table */
-  .srcrow{display:grid;grid-template-columns:170px 90px 1fr auto;gap:10px;align-items:center;
-    padding:9px 14px;border:1px solid var(--line);border-radius:11px;background:linear-gradient(180deg,var(--panel),var(--bg2));}
-  .srcrow + .srcrow{margin-top:8px;}
-  .srcname{font-size:13.5px;font-weight:600;}
-  .srcname small{display:block;font-weight:400;color:var(--faint);font-size:11px;}
-  .evidence{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:15px;
+    box-shadow:var(--shadow);padding:16px 18px;opacity:0;transform:translateY(10px);animation:rise .45s cubic-bezier(.2,.7,.3,1) forwards;}
+  .card h3{margin:0 0 12px;font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);
+    font-weight:600;display:flex;align-items:center;gap:8px;justify-content:space-between;}
+  .h-note{font-family:var(--mono);font-size:10.5px;color:var(--faint);font-weight:400;letter-spacing:0;text-transform:none;}
+  @keyframes rise{to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}.card{opacity:1;transform:none;}}
 
-  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
-    padding:3px 9px;border-radius:99px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;}
-  .pill.ok{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.08);}
-  .pill.auth_failed,.pill.billing,.pill.down{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.08);}
-  .pill.degraded,.pill.rate_limited,.pill.stale{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.08);}
-  .pill.unknown,.pill.disabled{color:var(--faint);}
+  /* vitals tile */
+  .vital{position:relative;overflow:hidden;}
+  .vital .top{display:flex;align-items:center;gap:9px;margin-bottom:9px;}
+  .vital .led{width:11px;height:11px;border-radius:50%;background:var(--dim);flex:0 0 auto;}
+  .vital .name{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .vital .state{font-family:var(--serif);font-size:21px;font-weight:600;line-height:1.05;letter-spacing:-.01em;}
+  .vital .detail{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.45;word-break:break-word;}
+  .vital.ok .led{background:var(--green);box-shadow:0 0 0 3px rgba(67,214,160,.16),0 0 12px rgba(67,214,160,.5);}
+  .vital.ok .state{color:var(--green);}
+  .vital.warn .led{background:var(--amber);box-shadow:0 0 0 3px rgba(240,192,74,.14),0 0 10px rgba(240,192,74,.45);}
+  .vital.warn .state{color:var(--amber);}
+  .vital.bad .led{background:var(--red);box-shadow:0 0 0 3px rgba(240,102,110,.14),0 0 10px rgba(240,102,110,.45);}
+  .vital.bad .state{color:var(--red);}
+  .vital.off .state{color:var(--faint);}
+
+  /* kv rows */
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:12.5px;align-items:baseline;}
+  .kv .k{color:var(--muted);display:flex;align-items:center;gap:6px;}
+  .kv .v{font-family:var(--mono);font-size:12px;text-align:right;color:var(--text);}
+  .kv .v.ok{color:var(--green);} .kv .v.bad{color:var(--red);} .kv .v.warn{color:var(--amber);} .kv .v.dim{color:var(--faint);}
+
+  /* systems table */
+  .systable{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .systable th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:7px 12px;border-bottom:1px solid var(--line);}
+  .systable td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  .systable tr:last-child td{border-bottom:none;}
+  .systable .nm{font-weight:600;} .systable .nm small{display:block;color:var(--faint);font-weight:400;font-size:11px;font-family:var(--mono);}
+  .systable .mono{font-family:var(--mono);color:var(--muted);font-size:11.5px;white-space:nowrap;}
+
+  /* status pills */
+  .pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 9px;border-radius:99px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;font-weight:600;}
+  .pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.9;}
+  .pill.ok{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.07);}
+  .pill.bad,.pill.down,.pill.auth_failed,.pill.billing{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.07);}
+  .pill.warn,.pill.degraded,.pill.rate_limited,.pill.stale{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.07);}
+  .pill.off,.pill.disabled,.pill.unknown{color:var(--faint);}
   .pill.keyed{color:var(--blue);border-color:rgba(106,176,255,.35);background:rgba(106,176,255,.07);}
+  .pill.plain::before{display:none;}
 
-  .btn{font-family:var(--sans);font-size:12.5px;padding:6px 13px;border-radius:9px;border:1px solid var(--line2);
-    background:var(--panel2);color:var(--text);cursor:pointer;transition:all .16s ease;}
-  .btn:hover{transform:translateY(-1px);border-color:var(--gold);}
-  .btn.go{border-color:rgba(67,214,160,.5);color:var(--green);}
-  .btn:disabled{opacity:.45;cursor:default;transform:none;}
+  /* source rows */
+  .srcrow{display:grid;grid-template-columns:180px 96px 1fr auto;gap:12px;align-items:center;
+    padding:10px 15px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--panel),var(--bg2));}
+  .srcrow + .srcrow{margin-top:8px;}
+  .srcname{font-size:13px;font-weight:600;}
+  .srcname small{display:block;font-weight:400;color:var(--faint);font-size:11px;}
+  .evidence{font-family:var(--mono);font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-  label{display:block;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px;}
-  input,select,textarea{width:100%;font-family:var(--mono);font-size:13px;color:var(--text);background:var(--field);
-    border:1px solid var(--line2);border-radius:9px;padding:8px 10px;}
-  input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
-  textarea{min-height:180px;resize:vertical;white-space:pre;}
-  .formrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:0 12px;}
-  .checkline{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--text);}
-  .checkline input{width:auto;}
-  .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
-  .savenote{font-family:var(--mono);font-size:11px;color:var(--faint);margin-right:auto;align-self:center;}
+  /* buttons */
+  .btn{font-family:var(--mono);font-size:11.5px;font-weight:600;padding:7px 13px;border-radius:9px;border:1px solid var(--line2);
+    background:var(--panel2);color:var(--text);cursor:pointer;transition:all .16s ease;white-space:nowrap;}
+  .btn:hover{transform:translateY(-1px);border-color:var(--gold);color:var(--gold);}
+  .btn:active{transform:none;}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);}
+  .btn.go:hover{border-color:var(--green);}
+  .btn.sm{padding:5px 10px;font-size:11px;}
+  .btn:disabled{opacity:.4;cursor:default;transform:none;}
+  .actionbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
 
-  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
-  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
-  @media (max-width:720px){.srcrow{grid-template-columns:1fr auto;} .srcrow .evidence{grid-column:1/-1;} }
+  /* forms */
+  .fgroup{margin-top:4px;}
+  .fgroup + .fgroup{margin-top:16px;padding-top:14px;border-top:1px dashed var(--line);}
+  .fgroup-h{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 10px;font-weight:600;}
+  .frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px 14px;}
+  .field label{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 5px;font-weight:600;}
+  .field input,.field select,.field textarea{width:100%;font-family:var(--mono);font-size:12.5px;color:var(--text);background:var(--field);
+    border:1px solid var(--line2);border-radius:9px;padding:8px 10px;transition:.15s;}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .field textarea{min-height:70px;resize:vertical;line-height:1.5;white-space:pre-wrap;}
+  .field.wide{grid-column:1/-1;}
+  .field.jsonf textarea{min-height:200px;white-space:pre;font-size:12px;}
+
+  /* toggle switch */
+  .tog{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;color:var(--text);}
+  .tog .sw{position:relative;width:38px;height:22px;flex:0 0 auto;border-radius:99px;background:var(--panel2);border:1px solid var(--line2);cursor:pointer;transition:.18s;}
+  .tog .sw::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--faint);transition:.18s;}
+  .tog input{position:absolute;opacity:0;width:0;height:0;}
+  .tog input:checked + .sw{background:rgba(67,214,160,.22);border-color:rgba(67,214,160,.5);}
+  .tog input:checked + .sw::after{transform:translateX(16px);background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.55);}
+  .tog input:focus-visible + .sw{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .tog .lbl{display:flex;align-items:center;gap:6px;}
+  .tog .lbl b{font-weight:600;}
+  .lock{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;}
+
+  .actions{display:flex;gap:9px;justify-content:flex-end;align-items:center;margin-top:16px;padding-top:13px;border-top:1px solid var(--line);}
+  .savenote{font-family:var(--mono);font-size:11px;color:var(--faint);margin-right:auto;}
+
+  /* info dot + tooltip */
+  .info{width:14px;height:14px;flex:0 0 auto;border-radius:50%;border:1px solid var(--line3);color:var(--muted);
+    font-family:var(--mono);font-size:10px;font-weight:700;line-height:12px;text-align:center;cursor:help;user-select:none;transition:.15s;}
+  .info:hover{border-color:var(--gold);color:var(--gold);}
+  .info:focus-visible{border-color:var(--gold);color:var(--gold);outline:none;box-shadow:0 0 0 3px var(--gold-soft);}
+  #tip{position:fixed;z-index:100;max-width:290px;padding:10px 12px;border-radius:10px;pointer-events:none;
+    background:#11141c;border:1px solid var(--line3);box-shadow:0 12px 30px -8px rgba(0,0,0,.8);
+    font-size:12px;line-height:1.5;color:var(--text);opacity:0;transform:translateY(4px);transition:opacity .13s,transform .13s;}
+  #tip.on{opacity:1;transform:none;}
+  #tip b{color:var(--gold);}
+
+  /* console / logs */
+  .console{background:#080a0e;border:1px solid var(--line2);border-radius:13px;overflow:hidden;box-shadow:var(--shadow),inset 0 0 60px rgba(0,0,0,.4);}
+  .con-bar{display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0d1016,#0a0c11);flex-wrap:wrap;}
+  .con-bar .dot3{display:flex;gap:6px;}
+  .con-bar .dot3 i{width:10px;height:10px;border-radius:50%;}
+  .con-bar .title{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .con-bar .sp{flex:1;}
+  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;}
+  .seg button{font-family:var(--mono);font-size:10.5px;font-weight:600;padding:5px 11px;background:transparent;color:var(--muted);border:0;cursor:pointer;transition:.14s;}
+  .seg button.on{background:var(--gold);color:var(--ink);}
+  .con-body{height:340px;overflow:auto;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.65;
+    background-image:repeating-linear-gradient(0deg,transparent,transparent 25px,rgba(255,255,255,.012) 25px,rgba(255,255,255,.012) 26px);}
+  .logline{display:flex;gap:11px;white-space:pre-wrap;word-break:break-word;padding:1px 0;}
+  .logline .lt{color:var(--dim);flex:0 0 auto;}
+  .logline .lv{flex:0 0 auto;width:44px;font-weight:600;text-transform:uppercase;font-size:10px;padding-top:1px;}
+  .logline .lv.info{color:var(--blue);} .logline .lv.warn{color:var(--amber);} .logline .lv.error{color:var(--red);}
+  .logline .lm{color:#c6cede;flex:1;}
+  .logline.error .lm{color:#ffd0d3;} .logline.warn .lm{color:#ffe9bd;}
+  .con-empty{color:var(--faint);font-family:var(--mono);font-size:12px;padding:8px 2px;}
+  .tokfield{font-family:var(--mono);font-size:11.5px;background:var(--field);border:1px solid var(--line2);border-radius:8px;color:var(--text);padding:6px 9px;width:200px;}
+  .tokfield:focus{outline:none;border-color:var(--gold);}
+
+  @media (max-width:720px){.srcrow{grid-template-columns:1fr auto;}.srcrow .evidence{grid-column:1/-1;}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/vault.css">
 </head>
 <body>
@@ -92,372 +203,513 @@
   <div class="masthead">
     <div class="monogram">⚙</div>
     <div>
-      <h1>Settings &amp; Status <em>· system ledger</em></h1>
+      <h1>System Console <em>· one pane for everything</em></h1>
     </div>
-    <div style="margin-left:auto;"><a class="back" href="/">← All tools</a></div>
+    <a class="back" href="/">← All tools</a>
   </div>
-  <div class="subline" id="verline">loading…</div>
+  <div class="subline" id="verline">booting…</div>
 
-  <h2>Data sources</h2>
-  <div id="sources">loading…</div>
+  <nav class="nav" id="nav">
+    <a href="#overview" class="active">Overview</a>
+    <a href="#sources">Sources</a>
+    <a href="#data">Baked data</a>
+    <a href="#settings">Settings</a>
+    <a href="#console">Console</a>
+    <span class="sp"></span>
+    <span class="live"><span class="pill ok plain" id="liveDot" style="width:9px;height:9px;padding:0;border:0;"></span><span id="liveTxt">live · refreshing every 10s</span></span>
+  </nav>
 
-  <h2>Baked data</h2>
-  <div class="grid cols3" id="baked"></div>
+  <section id="overview">
+    <div class="sec-h">Vitals <span class="cap">health at a glance</span></div>
+    <div class="grid g-vitals" id="vitals"></div>
 
-  <h2>Background jobs</h2>
-  <div class="grid cols2" id="jobs"></div>
+    <div class="sec-h" style="font-size:15px;">Background systems <span class="cap">the loops that keep the suite alive</span></div>
+    <div class="card" id="systemsCard" style="padding:6px 4px;"><table class="systable" id="systems"></table></div>
 
-  <h2>Databases &amp; subsystems</h2>
-  <div class="grid cols3" id="subsystems"></div>
+    <div class="sec-h" style="font-size:15px;">Quick actions <span class="cap">manual triggers · needs DIAG_TOKEN</span></div>
+    <div class="card">
+      <div class="actionbar" id="quickActions"></div>
+      <div class="savenote" id="qaNote" style="margin-top:10px;"></div>
+    </div>
+  </section>
 
-  <h2>Settings</h2>
-  <div class="grid cols2" id="settings"></div>
+  <section id="sources">
+    <div class="sec-h">Data sources <span class="cap">upstream APIs · live probe</span></div>
+    <div id="sourcesBox">loading…</div>
+  </section>
+
+  <section id="data">
+    <div class="sec-h">Baked data <span class="cap">local catalog snapshots &amp; freshness</span></div>
+    <div class="grid g3" id="baked"></div>
+  </section>
+
+  <section id="settings">
+    <div class="sec-h">Settings <span class="cap">every knob, explained — hover the ⓘ</span></div>
+    <div class="grid g2" id="settingsBox">loading…</div>
+  </section>
+
+  <section id="console">
+    <div class="sec-h">Live console <span class="cap">server log stream · scrubbed of secrets</span></div>
+    <div class="console">
+      <div class="con-bar">
+        <span class="dot3"><i style="background:#f0666e"></i><i style="background:#f0c04a"></i><i style="background:#43d6a0"></i></span>
+        <span class="title">tail /var/log/tcg-tools</span>
+        <span class="sp"></span>
+        <div class="seg" id="logLevel">
+          <button data-lvl="" class="on">All</button>
+          <button data-lvl="warn">Warn+</button>
+          <button data-lvl="error">Errors</button>
+        </div>
+        <button class="btn sm" id="logPause">⏸ Pause</button>
+        <button class="btn sm" id="logClear">Clear</button>
+      </div>
+      <div class="con-body" id="conBody"><div class="con-empty" id="conEmpty">Enter the server <b>DIAG_TOKEN</b> to stream logs.</div></div>
+      <div class="con-bar" style="border-top:1px solid var(--line);border-bottom:0;">
+        <input class="tokfield" id="conToken" type="password" placeholder="DIAG_TOKEN" autocomplete="off">
+        <button class="btn go sm" id="conConnect">Connect</button>
+        <span class="sp"></span>
+        <span class="h-note" id="conStatus">not connected</span>
+      </div>
+    </div>
+  </section>
 </div>
 
-<script src="/extras.js"></script>
+<div id="tip"></div>
+
 <script>
 (function(){
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const el = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; };
-  const fmtAge = (h) => h == null ? '—' : h < 1 ? Math.round(h * 60) + 'm' : h < 48 ? (Math.round(h * 10) / 10) + 'h' : Math.round(h / 24) + 'd';
-  const fmtTs = (t) => t ? String(t).replace('T', ' ').slice(0, 16) : '—';
+  const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const el = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
+  const fmtAge = (h) => h==null?'—':h<1?Math.round(h*60)+'m':h<48?(Math.round(h*10)/10)+'h':Math.round(h/24)+'d';
+  const fmtTs = (t) => t?String(t).replace('T',' ').slice(0,16):'—';
+  function ago(t){ if(!t) return '—'; const s=(Date.now()-new Date(t).getTime())/1000; if(!isFinite(s)) return '—';
+    if(s<0) return 'in '+rel(-s); if(s<10) return 'just now'; return rel(s)+' ago'; }
+  function rel(s){ if(s<60) return Math.round(s)+'s'; const m=s/60; if(m<60) return Math.round(m)+'m'; const h=m/60; if(h<36) return Math.round(h)+'h'; return Math.round(h/24)+'d'; }
+  const pill = (state,txt) => '<span class="pill '+esc(state)+'">'+esc(txt||state)+'</span>';
 
-  // Source display metadata: label, what it powers, which keys gate it (from status.keys).
-  const SOURCES = [
-    { id:'pkm',        label:'pokemontcg.io',   powers:'Pokémon EN cards + prices',    keyed:(k)=>k.pokemon.POKEMONTCG_API_KEY, optional:true },
-    { id:'tcgdex',     label:'TCGdex',          powers:'Pokémon JP/CN/KO sets',        keyed:()=>null },
-    { id:'mtg',        label:'Scryfall',        powers:'Magic cards + prices',         keyed:()=>null },
-    { id:'swu',        label:'swu-db',          powers:'Star Wars: Unlimited',         keyed:()=>null },
-    { id:'lorcana',    label:'Lorcast',         powers:'Disney Lorcana',               keyed:()=>null },
-    { id:'rb',         label:'Scrydex',         powers:'Riftbound live pricing/trend', keyed:(k)=>k.riftbound.SCRYDEX_API_KEY && k.riftbound.SCRYDEX_TEAM_ID, optional:true },
-    { id:'rbs',        label:'riftscribe.gg',   powers:'Riftbound live (keyless)',     keyed:()=>null },
-    { id:'fx',         label:'Frankfurter FX',  powers:'AUD conversion',               keyed:()=>null },
-    { id:'pc',         label:'PriceCharting',   powers:'Graded ladder + pop',          keyed:(k)=>k.pricecharting.PRICECHARTING_TOKEN, optional:true },
-    { id:'ebay',       label:'eBay Browse',     powers:'Comps, Funko search',          keyed:(k)=>k.ebay.EBAY_APP_ID && k.ebay.EBAY_CERT_ID },
-    { id:'psa',        label:'PSA cert API',    powers:'Cert auto-fill',               keyed:(k)=>k.psa.PSA_API_TOKEN, optional:true },
-    { id:'rebrickable',label:'Rebrickable',     powers:'LEGO set lookup',              keyed:(k)=>k.lego.REBRICKABLE_API_KEY },
-    { id:'brickset',   label:'Brickset',        powers:'LEGO RRP / age / dims',        keyed:(k)=>k.lego.BRICKSET_API_KEY },
-    { id:'bricklink',  label:'BrickLink',       powers:'LEGO new/used pricing',        keyed:(k)=>k.lego.BRICKLINK },
+  let STATUS=null, SETTINGS=null;
+
+  /* ---------------- shared tooltip ---------------- */
+  const tip = $('tip'); tip.setAttribute('role','tooltip'); let tipEl=null;
+  function showTip(t){
+    tipEl=t; tip.innerHTML=t.getAttribute('data-tip'); tip.classList.add('on');
+    const r=t.getBoundingClientRect();
+    tip.style.left='0px'; tip.style.top='-999px';   // measure, then clamp to viewport
+    const tw=tip.offsetWidth, th=tip.offsetHeight;
+    let x=r.left+r.width/2-tw/2; x=Math.max(10,Math.min(x,window.innerWidth-tw-10));
+    let y=r.top-th-9; if(y<8) y=r.bottom+9;          // flip below if no room above
+    tip.style.left=x+'px'; tip.style.top=y+'px';
+  }
+  function hideTip(){ tip.classList.remove('on'); tipEl=null; }
+  document.addEventListener('mouseover',(e)=>{ const t=e.target.closest('[data-tip]'); if(t) showTip(t); });
+  document.addEventListener('mouseout',(e)=>{ if(e.target.closest('[data-tip]')) hideTip(); });
+  document.addEventListener('focusin',(e)=>{ const t=e.target.closest('[data-tip]'); if(t) showTip(t); });   // keyboard
+  document.addEventListener('focusout',(e)=>{ if(e.target.closest('[data-tip]')) hideTip(); });
+  document.addEventListener('click',(e)=>{ const t=e.target.closest('.info[data-tip]'); if(!t) return; e.preventDefault(); (tipEl===t)?hideTip():showTip(t); });   // touch / tap toggle
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') hideTip(); });
+  // The visible tooltip keeps its HTML (bold etc.); aria-label carries a tag-stripped plain-text copy.
+  const inf = (txt) => '<span class="info" tabindex="0" role="button" aria-label="'+esc(String(txt).replace(/<[^>]+>/g,''))+'" data-tip="'+esc(txt)+'">i</span>';
+
+  /* ---------------- vitals ---------------- */
+  function vital(cls,name,state,detail){
+    return el('<div class="card vital '+cls+'"><div class="top"><span class="led"></span><span class="name">'+esc(name)+'</span></div>'+
+      '<div class="state">'+esc(state)+'</div><div class="detail">'+detail+'</div></div>');
+  }
+  function renderVitals(){
+    const box=$('vitals'); box.innerHTML='';
+    const sub=STATUS.subsystems||{}, jobs=STATUS.jobs||{}, dbs=STATUS.dbs||{}, data=STATUS.data||{};
+    // eBay connection
+    const eo=sub.ebay_oauth||{};
+    box.appendChild(vital(eo.connected?'ok':'bad','eBay account',eo.connected?'Connected':'Offline',
+      eo.connected?('token · '+esc(eo.token_source||'consent')+(eo.refresh_expires_at?' · exp '+fmtTs(eo.refresh_expires_at):'')):'<a href="/api/repricer/oauth">run consent →</a>'));
+    // Order sync (postsale)
+    const ps=jobs.postsale||{}, op=ps.order_poll||{};
+    const psState = !op.enabled?'off':(op.running?'ok':'warn');
+    const psWord = !op.enabled?'Off':(op.running?'Syncing':'Idle');
+    const psd = dbs.postsale||{};
+    box.appendChild(vital(psState,'Order sync',psWord,
+      (op.enabled?('next '+ago(op.next_run_at)):'enable in Settings ↓')+' · '+esc((psd.orders??0))+' orders · '+esc((psd.to_pack??0))+' to pack'));
+    // Telegram
+    const tg=sub.telegram||{};
+    const tgOk=tg.enabled&&tg.chat_configured;
+    box.appendChild(vital(tgOk?'ok':(tg.enabled?'warn':'off'),'Telegram',tgOk?'Connected':(tg.enabled?'No chat id':'Off'),
+      tgOk?'sale alerts · approvals · digests':'set TELEGRAM_* in .env'));
+    // Printer
+    const pr=sub.printer||{};
+    box.appendChild(vital(pr.enabled?'ok':'off','Label printer',pr.enabled?'Online':'Off',
+      pr.enabled?('AUSPRINT '+esc(pr.ip)+':'+esc(pr.port)+' · '+esc(pr.lang)+' '+esc(pr.dpi)+'dpi'):'set LABEL_PRINTER_IP'));
+    // Data refresh
+    const rf=jobs.refresh||{}, dr=data.refresh||{};
+    box.appendChild(vital(!dr.enabled?'off':(rf.running?'ok':'warn'),'Baked data',!dr.enabled?'Manual':(rf.running?'Auto':'Idle'),
+      'every '+esc(dr.interval_hours??'—')+'h · '+esc((dr.bakes||[]).length)+' bakes · last '+ago(rf.last_run&&rf.last_run.finished_at)));
+    // Backups
+    const bk=jobs.backup||{};
+    const bkRun=bk.running!==undefined?bk.running:(bk.enabled!==false);
+    box.appendChild(vital(bkRun?'ok':'warn','Backups',bkRun?'Scheduled':'Stopped',
+      'last '+ago(bk.last_run&&(bk.last_run.finished_at||bk.last_run.at)||bk.last_backup_at)));
+    // Price collector
+    const co=jobs.collector||{};
+    box.appendChild(vital(co.running?'ok':'bad','Price collector',co.running?'Running':'Stopped',
+      'every '+esc((sub.collector&&sub.collector.cadence_hours)??'—')+'h · last '+ago(co.last_pass&&co.last_pass.finished_at)));
+    // Databases
+    const t=dbs.tracker||{}, inv=dbs.inventory||{}, rep=dbs.repricer||{};
+    box.appendChild(vital('ok','Databases','Healthy',
+      esc(t.watchlist??0)+' watched · '+esc(inv.items??0)+' stock · '+esc((psd.orders??0))+' orders · '+esc(rep.listings??0)+' listings'));
+  }
+
+  /* ---------------- background systems table ---------------- */
+  function sysRow(name,sub,running,last,next){
+    const rp = running===true?pill('ok','running'):running===false?pill('down','stopped'):pill('off','idle');
+    return '<tr><td class="nm">'+esc(name)+(sub?'<small>'+esc(sub)+'</small>':'')+'</td>'+
+      '<td>'+rp+'</td><td class="mono">'+esc(last?ago(last):'never')+'</td><td class="mono">'+esc(next?ago(next):'—')+'</td></tr>';
+  }
+  function renderSystems(){
+    const j=STATUS.jobs||{}, tb=$('systems');
+    let h='<thead><tr><th>Loop</th><th>State</th><th>Last run</th><th>Next run</th></tr></thead><tbody>';
+    const co=j.collector||{}; h+=sysRow('Price collector','snapshots watchlist prices',co.running,co.last_pass&&co.last_pass.finished_at,co.next_run_at);
+    const rf=j.refresh||{}; h+=sysRow('Baked-data refresh','re-bakes catalogs',rf.running,rf.last_run&&rf.last_run.finished_at,rf.next_run_at);
+    const ps=j.postsale||{}; const op=ps.order_poll||{}, mp=ps.reply_poll||{}, pd=ps.pack_digest||{};
+    h+=sysRow('eBay order poll','ingests new paid orders',op.enabled?op.running:null,op.last_run&&op.last_run.finished_at,op.next_run_at);
+    h+=sysRow('Buyer-reply poll','watches for buyer replies',mp.running,mp.last_run&&mp.last_run.finished_at,mp.next_run_at);
+    h+=sysRow('Pack digest','daily “to pack” Telegram',pd.running,pd.last_run&&pd.last_run.at,null);
+    const bk=j.backup||{}; h+=sysRow('DB backups','VACUUM-INTO snapshots',bk.running,bk.last_run&&(bk.last_run.finished_at||bk.last_run.at)||bk.last_backup_at,bk.next_run_at);
+    const sv=j.sealed_value||{}; h+=sysRow('Sealed revaluation','nightly sealed value refresh',sv.running,sv.last_run&&(sv.last_run.finished_at||sv.last_run.at),sv.next_run_at);
+    const hb=j.heartbeat||{}; h+=sysRow('Heartbeat','liveness canary',hb.running!==undefined?hb.running:true,hb.last_run&&(hb.last_run.at||hb.last_run.finished_at)||hb.last_beat_at,null);
+    h+='</tbody>'; tb.innerHTML=h;
+  }
+
+  /* ---------------- quick actions (DIAG-gated) ---------------- */
+  const ACTIONS=[
+    {label:'Poll eBay orders',path:'/api/postsale/poll/orders',tip:'Check eBay for new paid orders right now (instead of waiting for the timer).'},
+    {label:'Backfill history',path:'/api/postsale/backfill?months=60',tip:'One-time sweep of ALL historical orders into the dashboard. Data only — past buyers are never auto-messaged.'},
+    {label:'Refresh baked data',path:'/api/status/refresh',tip:'Re-bake all enabled catalogs now — picks up a just-pushed seed change without waiting for the interval.'},
+    {label:'Run collector pass',path:'/api/status/collect',tip:'Force one price-collector pass now. May bill metered sources (e.g. Scrydex).'},
+    {label:'Backup now',path:'/api/status/backup',tip:'Snapshot the money-bearing databases immediately (VACUUM INTO + rotate).'},
   ];
+  function renderQuickActions(){
+    const box=$('quickActions'); box.innerHTML='';
+    for(const a of ACTIONS){
+      const b=el('<button class="btn" data-tip="'+esc(a.tip)+'">'+esc(a.label)+'</button>');
+      b.onclick=()=>runAction(a,b);
+      box.appendChild(b);
+    }
+  }
+  async function runAction(a,btn){
+    const token=getDiagToken(false); if(!token) return;
+    const orig=btn.textContent; btn.disabled=true; btn.textContent='running…';
+    $('qaNote').style.color='var(--faint)'; $('qaNote').textContent=a.label+'…';
+    try{
+      const sep=a.path.includes('?')?'&':'?';
+      const r=await fetch(a.path+sep+'token='+encodeURIComponent(token),{method:'POST',headers:{authorization:'Bearer '+token}});
+      const j=await r.json().catch(()=>({}));
+      if(r.status===401||r.status===403){ try{localStorage.removeItem(DIAG_KEY);}catch(e){} $('qaNote').style.color='var(--red)'; $('qaNote').textContent='DIAG_TOKEN rejected — click again to re-enter.'; return; }
+      if(!r.ok){ $('qaNote').style.color='var(--red)'; $('qaNote').textContent=a.label+' failed: '+(j.error||('HTTP '+r.status)); return; }
+      const res=j.result||j;
+      $('qaNote').style.color='var(--green)'; $('qaNote').textContent=a.label+' ✓  '+summarize(res);
+      load();
+    }catch(e){ $('qaNote').style.color='var(--red)'; $('qaNote').textContent=a.label+' failed: '+(e&&e.message||e); }
+    finally{ btn.disabled=false; btn.textContent=orig; }
+  }
+  function summarize(r){ if(!r||typeof r!=='object') return '';
+    if(r.ingested!=null) return r.ingested+' ingested / '+(r.seen!=null?r.seen+' seen':'');
+    if(Array.isArray(r.results)) return r.results.map(x=>x.name+(x.skipped?'(fresh)':x.ok?'✓':'✗')).join(' ');
+    if(r.snapshots!=null) return r.snapshots+' snapshots';
+    if(r.ok!=null) return r.ok?'ok':'failed'; return JSON.stringify(r).slice(0,80); }
 
-  let STATUS = null;
-
-  function pill(state, txt){ return '<span class="pill ' + esc(state) + '">' + esc(txt || state) + '</span>'; }
-
+  /* ---------------- sources (probes) ---------------- */
+  const SOURCES=[
+    {id:'pkm',label:'pokemontcg.io',powers:'Pokémon EN cards + prices',keyed:(k)=>k.pokemon.POKEMONTCG_API_KEY,optional:true},
+    {id:'tcgdex',label:'TCGdex',powers:'Pokémon JP/CN/KO sets',keyed:()=>null},
+    {id:'mtg',label:'Scryfall',powers:'Magic cards + prices',keyed:()=>null},
+    {id:'swu',label:'swu-db',powers:'Star Wars: Unlimited',keyed:()=>null},
+    {id:'lorcana',label:'Lorcast',powers:'Disney Lorcana',keyed:()=>null},
+    {id:'rb',label:'Scrydex',powers:'Riftbound live pricing',keyed:(k)=>k.riftbound.SCRYDEX_API_KEY&&k.riftbound.SCRYDEX_TEAM_ID,optional:true},
+    {id:'rbs',label:'riftscribe.gg',powers:'Riftbound (keyless)',keyed:()=>null},
+    {id:'fx',label:'Frankfurter FX',powers:'AUD conversion',keyed:()=>null},
+    {id:'pc',label:'PriceCharting',powers:'Graded ladder + pop',keyed:(k)=>k.pricecharting.PRICECHARTING_TOKEN,optional:true},
+    {id:'ebay',label:'eBay Browse',powers:'Comps, Funko search',keyed:(k)=>k.ebay.EBAY_APP_ID&&k.ebay.EBAY_CERT_ID},
+    {id:'psa',label:'PSA cert API',powers:'Cert auto-fill',keyed:(k)=>k.psa.PSA_API_TOKEN,optional:true},
+    {id:'rebrickable',label:'Rebrickable',powers:'LEGO set lookup',keyed:(k)=>k.lego.REBRICKABLE_API_KEY},
+    {id:'brickset',label:'Brickset',powers:'LEGO RRP / dims',keyed:(k)=>k.lego.BRICKSET_API_KEY},
+    {id:'bricklink',label:'BrickLink',powers:'LEGO new/used pricing',keyed:(k)=>k.lego.BRICKLINK},
+  ];
   function renderSources(){
-    const box = $('sources');
-    box.innerHTML = '';
-    const k = STATUS.keys;
-    for (const s of SOURCES){
-      const st = STATUS.sources[s.id] || { state:'unknown' };
-      const keyed = s.keyed(k);
-      const keyPill = keyed == null ? pill('ok','keyless')
-        : keyed ? pill('keyed','key set')
-        : pill(s.optional ? 'unknown' : 'degraded', s.optional ? 'no key (opt)' : 'no key');
-      const evid = (st.detail ? st.detail + ' · ' : '') + (st.evidence ? st.evidence + ' · ' : '') + fmtTs(st.last_evidence_at || st.checked_at);
-      const row = el('<div class="srcrow">' +
-        '<div class="srcname">' + esc(s.label) + '<small>' + esc(s.powers) + '</small></div>' +
-        '<div>' + keyPill + '</div>' +
-        '<div class="evidence">' + pill(st.state) + ' <span title="' + esc(evid) + '">' + esc(evid) + '</span></div>' +
-        '<div><button class="btn" data-src="' + s.id + '">Test now</button></div>' +
-      '</div>');
-      row.querySelector('button').onclick = () => probe(s.id, row);
+    const box=$('sourcesBox'); box.innerHTML=''; const k=STATUS.keys||{}; const srcs=STATUS.sources||{};
+    for(const s of SOURCES){
+      const st=srcs[s.id]||{state:'unknown'};
+      let keyed=null; try{ keyed=s.keyed(k); }catch(e){ keyed=null; }   // a missing key-group never crashes the page
+      const keyPill=keyed==null?pill('ok','keyless'):keyed?pill('keyed','key set'):pill(s.optional?'unknown':'degraded',s.optional?'no key (opt)':'no key');
+      const evid=(st.detail?st.detail+' · ':'')+(st.evidence?st.evidence+' · ':'')+fmtTs(st.last_evidence_at||st.checked_at);
+      const row=el('<div class="srcrow"><div class="srcname">'+esc(s.label)+'<small>'+esc(s.powers)+'</small></div>'+
+        '<div>'+keyPill+'</div><div class="evidence">'+pill(st.state)+' <span title="'+esc(evid)+'">'+esc(evid)+'</span></div>'+
+        '<div><button class="btn sm" data-src="'+s.id+'">Test</button></div></div>');
+      row.querySelector('button').onclick=()=>probe(s.id,row);
       box.appendChild(row);
     }
   }
-
-  async function probe(src, row){
-    const btn = row.querySelector('button');
-    btn.disabled = true;
-    const act = window.TCG && TCG.activity ? TCG.activity('Probe ' + src) : null;
-    try {
-      const r = await fetch('/api/status/probe/' + src + '?force=1', { method:'POST' });
-      const j = await r.json();
-      STATUS.sources[src] = { ...j, evidence:'probe', last_evidence_at:j.checked_at };
-      if (act) j.state === 'ok' ? act.done(src + ': ok (' + j.http + ', ' + j.ms + 'ms)') : act.fail(src + ': ' + j.state + (j.http ? ' (' + j.http + ')' : '') + (j.detail ? ' — ' + j.detail : ''));
-      renderSources();
-    } catch (e) {
-      if (act) act.fail(src + ': ' + (e && e.message || e));
-      btn.disabled = false;
-    }
+  async function probe(src,row){
+    const btn=row.querySelector('button'); btn.disabled=true; btn.textContent='…';
+    try{ const r=await fetch('/api/status/probe/'+src+'?force=1',{method:'POST'}); const j=await r.json();
+      STATUS.sources[src]={...j,evidence:'probe',last_evidence_at:j.checked_at}; renderSources();
+    }catch(e){ btn.disabled=false; btn.textContent='retry'; }
   }
 
+  /* ---------------- baked data ---------------- */
   function renderBaked(){
-    const d = STATUS.data;
-    const box = $('baked');
-    box.innerHTML = '';
-    const items = [
-      ['riftbound',       'Riftbound catalog',     (x)=>x.count + ' cards · ' + x.sets + ' sets'],
-      ['pokemon_intl',    'Pokémon intl sets',     (x)=>x.count + ' sets · ' + x.langs + ' langs'],
-      ['pokemon_en_early','Early EN Pokémon sets', (x)=>x.count + ' sets'],
-      ['pokemon_mep',     'Mega Evolution Promo',  (x)=>x.count + ' cards · ' + x.with_art + ' w/ art'],
-      ['funko',           'Funko catalog',         (x)=>x.count + ' pops · frozen 2021'],
-      ['pokemon_dex',     'Pokémon dex names',     (x)=>x.count + ' species'],
+    const d=STATUS.data||{}, box=$('baked'); box.innerHTML='';
+    const items=[
+      ['riftbound','Riftbound catalog',(x)=>x.count+' cards · '+x.sets+' sets'],
+      ['pokemon_intl','Pokémon intl sets',(x)=>x.count+' sets · '+x.langs+' langs'],
+      ['pokemon_en_early','Early EN Pokémon',(x)=>x.count+' sets'],
+      ['pokemon_mep','Mega Evolution Promo',(x)=>x.count+' cards · '+x.with_art+' w/ art'],
+      ['funko','Funko catalog',(x)=>x.count+' pops · frozen 2021'],
+      ['pokemon_dex','Pokémon dex names',(x)=>x.count+' species'],
     ];
-    for (const [key,label,fmt] of items){
-      const x = d[key]; if (!x) continue;
-      const state = x.error ? 'down' : x.stale ? 'stale' : 'ok';
-      box.appendChild(el('<div class="card"><h3>' + esc(label) + ' ' + pill(state, x.error ? 'broken' : x.stale ? 'stale' : x.frozen ? 'frozen' : 'fresh') + '</h3>' +
-        '<div class="kv"><span class="k">Contents</span><span class="v">' + esc(x.error || (fmt(x) || x.count)) + '</span></div>' +
-        '<div class="kv"><span class="k">Age</span><span class="v' + (x.stale ? ' warn' : '') + '">' + fmtAge(x.age_h) + '</span></div>' +
-        '<div class="kv"><span class="k">Refresh</span><span class="v">' + (x.managed ? 'scheduled bake' : x.frozen ? 'frozen upstream' : 'manual') + '</span></div>' +
-        '<div class="kv"><span class="k">File</span><span class="v">' + esc(x.file) + '</span></div></div>'));
+    for(const [key,label,fmt] of items){
+      const x=d[key]; if(!x) continue;
+      const state=x.error?'bad':x.stale?'warn':'ok';
+      box.appendChild(el('<div class="card"><h3>'+esc(label)+' '+pill(state,x.error?'broken':x.stale?'stale':x.frozen?'frozen':'fresh')+'</h3>'+
+        '<div class="kv"><span class="k">Contents</span><span class="v">'+esc(x.error||(fmt(x)||x.count))+'</span></div>'+
+        '<div class="kv"><span class="k">Age</span><span class="v'+(x.stale?' warn':'')+'">'+fmtAge(x.age_h)+'</span></div>'+
+        '<div class="kv"><span class="k">Refresh</span><span class="v dim">'+(x.managed?'scheduled bake':x.frozen?'frozen upstream':'manual')+'</span></div></div>'));
     }
   }
 
-  // Background jobs: the two in-process loops (price collector + baked-data refresh).
-  // `running` is the load-bearing signal — a Vite restart used to silently kill these
-  // (they'd show `stopped` in red here); last-run detail + next-run come from /api/status jobs.*.
-  function renderJobs(){
-    const box = $('jobs');
-    box.innerHTML = '';
-    const j = STATUS.jobs || {};
-    const sub = STATUS.subsystems || {};
-    const runPill = (on) => on ? pill('ok', 'running') : pill('down', 'stopped');
-    const tsCell = (ts, ok) => ts ? '<span class="v ' + (ok ? 'ok' : 'bad') + '">' + fmtTs(ts) + (ok ? '' : ' · failed') + '</span>' : '<span class="v">never</span>';
-
-    const c = j.collector || {};
-    const lp = c.last_pass;
-    const errs = lp && lp.errors ? Object.entries(lp.errors).map(([k, n]) => n + '× ' + k).join(', ') : '';
-    box.appendChild(el('<div class="card"><h3>Collector loop ' + runPill(c.running) + '</h3>' +
-      '<div class="kv"><span class="k">Cadence</span><span class="v">' + esc(sub.collector ? (sub.collector.cadence_hours ?? '—') : '—') + 'h</span></div>' +
-      '<div class="kv"><span class="k">Last pass</span>' + tsCell(lp && lp.finished_at, lp && lp.ok) + '</div>' +
-      (lp && lp.checked != null ? '<div class="kv"><span class="k">Snapshotted</span><span class="v">' + esc(lp.snapshots + ' / ' + lp.checked + ' cards') + '</span></div>' : '') +
-      (errs ? '<div class="kv"><span class="k">Errors</span><span class="v warn">' + esc(errs) + '</span></div>' : '') +
-      '<div class="kv"><span class="k">Next run</span><span class="v">' + fmtTs(c.next_run_at) + '</span></div>' +
-      '<div class="kv"><span class="k">Probe cache</span><span class="v">' + esc(STATUS.probe_ttl_min) + ' min</span></div></div>'));
-
-    const r = j.refresh || {};
-    const dr = (STATUS.data && STATUS.data.refresh) || {};
-    const lr = r.last_run;
-    const headPill = !dr.enabled ? pill('disabled', 'off') : runPill(r.running);
-    const res = lr && lr.results ? lr.results.map((x) => x.name + (x.skipped ? ' (fresh)' : x.ok ? ' ✓' : ' ✗')).join(', ') : '';
-    const refreshCard = el('<div class="card"><h3><span>Data refresh loop</span>' +
-      '<span style="display:flex;align-items:center;gap:8px;font-weight:400;">' + headPill +
-      '<button class="btn go" data-refresh-now title="Re-run all enabled bakes now — picks up a just-pushed seed change without waiting for the interval (needs DIAG_TOKEN)">Refresh now</button></span></h3>' +
-      '<div class="kv"><span class="k">Interval</span><span class="v">' + esc(dr.interval_hours ?? '—') + 'h</span></div>' +
-      '<div class="kv"><span class="k">Bakes</span><span class="v">' + esc((dr.bakes || []).join(', ') || '—') + '</span></div>' +
-      '<div class="kv"><span class="k">Last run</span>' + tsCell(lr && lr.finished_at, lr && lr.ok) + '</div>' +
-      (res ? '<div class="kv"><span class="k">Result</span><span class="v">' + esc(res) + '</span></div>' : '') +
-      '<div class="kv"><span class="k">Next run</span><span class="v">' + fmtTs(r.next_run_at) + '</span></div></div>');
-    refreshCard.querySelector('[data-refresh-now]').onclick = (e) => triggerRefresh(e.currentTarget);
-    box.appendChild(refreshCard);
-  }
-
-  // ---- manual "Refresh now" trigger (POST /api/status/refresh, DIAG_TOKEN-gated) ----
-  // Unlike same-origin config edits, the refresh trigger is token-gated (it doubles as a remote
-  // diagnostics hook), so cache the token the owner enters and send it as a Bearer header — never in
-  // the URL. Re-baking reads the latest seed + upstream, so this is how a just-pushed seed change
-  // (e.g. a newly-added set) goes live immediately instead of waiting for the interval timer.
-  const DIAG_KEY = 'tcg_diag_token';
-  function getDiagToken(force){
-    let t = '';
-    try { t = localStorage.getItem(DIAG_KEY) || ''; } catch (e) {}
-    if (!t || force){
-      t = (window.prompt('Server DIAG_TOKEN (from the ALCSERVER .env) — enables the refresh trigger:', '') || '').trim();
-      if (t) { try { localStorage.setItem(DIAG_KEY, t); } catch (e) {} }
-    }
-    return t;
-  }
-  async function triggerRefresh(btn){
-    const token = getDiagToken(false);
-    if (!token) return;   // cancelled at the prompt
-    const label = btn.textContent;
-    btn.disabled = true; btn.textContent = 'Refreshing…';
-    const act = window.TCG && TCG.activity ? TCG.activity('Refreshing baked data…') : null;
-    try {
-      const r = await fetch('/api/status/refresh', { method: 'POST', headers: { authorization: 'Bearer ' + token } });
-      const j = await r.json().catch(() => ({}));
-      if (r.status === 401 || r.status === 403) {   // missing (401) or wrong (403) token — drop it so the next click re-prompts
-        try { localStorage.removeItem(DIAG_KEY); } catch (e) {}
-        act && act.fail('token rejected'); alert('DIAG_TOKEN rejected — click Refresh now again to re-enter it.'); return;
-      }
-      if (r.status === 503) { act && act.fail('diagnostics off'); alert(j.error || 'Diagnostics are disabled — set DIAG_TOKEN in the server .env to enable triggers.'); return; }
-      if (!r.ok) { act && act.fail('HTTP ' + r.status); alert('Refresh failed: ' + (j.error || ('HTTP ' + r.status))); return; }
-      const results = (j.result && j.result.results) || [];
-      act && act.done(results.map((x) => x.name + (x.skipped ? ' (fresh)' : x.ok ? ' ✓' : ' ✗')).join(', ') || 'done');
-      await load();   // re-render so ages / last-run / counts reflect the fresh bake
-    } catch (e) {
-      act && act.fail(String(e && e.message || e)); alert('Refresh failed: ' + (e && e.message || e));
-    } finally {
-      if (document.body.contains(btn)) { btn.disabled = false; btn.textContent = label; }
-    }
-  }
-
-  function renderSubsystems(){
-    const box = $('subsystems');
-    box.innerHTML = '';
-    const dbs = STATUS.dbs, sub = STATUS.subsystems, k = STATUS.keys;
-    const yn = (b, good, bad) => '<span class="v ' + (b ? 'ok' : 'bad') + '">' + (b ? (good || 'yes') : (bad || 'no')) + '</span>';
-    box.appendChild(el('<div class="card"><h3>Price tracker</h3>' +
-      '<div class="kv"><span class="k">Watchlist</span><span class="v">' + dbs.tracker.watchlist + ' cards</span></div>' +
-      '<div class="kv"><span class="k">Snapshots</span><span class="v">' + dbs.tracker.snapshots + '</span></div>' +
-      '<div class="kv"><span class="k">Pending signals</span><span class="v' + (dbs.tracker.signals_pending ? ' warn' : '') + '">' + dbs.tracker.signals_pending + '</span></div>' +
-      '<div class="kv"><span class="k">Last pass</span><span class="v">' + fmtTs(dbs.tracker.last_pass_at) + '</span></div>' +
-      '<div class="kv"><span class="k">DB size</span><span class="v">' + (dbs.tracker.size_mb ?? '—') + ' MB</span></div></div>'));
-    box.appendChild(el('<div class="card"><h3>Inventory</h3>' +
-      '<div class="kv"><span class="k">Items</span><span class="v">' + dbs.inventory.items + '</span></div>' +
-      '<div class="kv"><span class="k">Open submissions</span><span class="v">' + dbs.inventory.submissions_open + '</span></div></div>'));
-    box.appendChild(el('<div class="card"><h3>Repricer</h3>' +
-      '<div class="kv"><span class="k">Listings</span><span class="v">' + dbs.repricer.listings + '</span></div>' +
-      '<div class="kv"><span class="k">Open proposals</span><span class="v">' + dbs.repricer.proposals_open + '</span></div>' +
-      '<div class="kv"><span class="k">Telegram</span>' + yn(sub.telegram.enabled && sub.telegram.chat_configured, 'connected', sub.telegram.enabled ? 'no chat id' : 'off') + '</div>' +
-      '<div class="kv"><span class="k">eBay user token</span>' + yn(sub.ebay_oauth.connected, sub.ebay_oauth.token_source || 'connected', 'not connected') + '</div></div>'));
-    box.appendChild(el('<div class="card"><h3>Label printer</h3>' +
-      '<div class="kv"><span class="k">Configured</span>' + yn(sub.printer.enabled) + '</div>' +
-      (sub.printer.enabled ? '<div class="kv"><span class="k">Address</span><span class="v">' + esc(sub.printer.ip) + ':' + esc(sub.printer.port) + '</span></div>' +
-      '<div class="kv"><span class="k">Language / DPI</span><span class="v">' + esc(sub.printer.lang) + ' · ' + esc(sub.printer.dpi) + '</span></div>' : '') + '</div>'));
-    box.appendChild(el('<div class="card"><h3>AI grader</h3>' +
-      '<div class="kv"><span class="k">Anthropic key</span>' + yn(k.grader.ANTHROPIC_API_KEY) + '</div>' +
-      '<div class="kv"><span class="k">OpenAI key</span>' + yn(k.grader.OPENAI_API_KEY) + '</div>' +
-      '<div class="kv"><span class="k">Provider</span><span class="v">' + esc(k.grader.provider || 'none — centering only') + '</span></div></div>'));
-  }
-
-  // ---- settings forms ----
-  const FORMS = {
-    tracker: {
-      title: 'Price tracker', note: 'cadence restarts the collector',
-      fields: [
-        ['cadence_hours', 'Cadence (hours)', 'number'],
-        ['thresholds.opportunity_drop_pct', 'Opportunity drop %', 'number'],
-        ['thresholds.downtrend_drop_pct', 'Downtrend drop %', 'number'],
-        ['thresholds.momentum_rise_pct', 'Momentum rise %', 'number'],
-        ['thresholds.min_price_aud', 'Min price (A$)', 'number'],
-      ],
-    },
-    repricer: {
-      title: 'Repricer guardrails', note: 'never_decrease is locked on',
-      checks: [['scan_enabled', 'Scanning enabled'], ['telegram.digest_enabled', 'Telegram digest'], ['telegram.poll_enabled', 'Telegram poll loop']],
-      fields: [
-        ['cadence_hours', 'Cadence (hours)', 'number'],
-        ['guardrails.min_uplift_pct', 'Min uplift %', 'number'],
-        ['guardrails.min_uplift_aud', 'Min uplift (A$)', 'number'],
-        ['guardrails.min_comparable', 'Min comparables', 'number'],
-        ['guardrails.max_increase_pct_per_run', 'Max increase %/run', 'number'],
-        ['guardrails.proposal_ttl_hours', 'Proposal TTL (h)', 'number'],
-      ],
-    },
-    refresh: {
-      title: 'Data refresh', note: 'restart applied immediately',
-      checks: [['enabled', 'Daily refresh enabled']],
-      fields: [['interval_hours', 'Interval (hours)', 'number']],
-      custom: 'bakes',
-    },
-    'bulk-pricing': {
-      title: 'Bulk pricing', note: 'tiers edited as JSON',
-      fields: [['min_price_aud', 'Min price (A$)', 'number'], ['market_threshold_aud.default', 'Market threshold (A$)', 'number']],
-      json: 'tiers',
-    },
+  /* ---------------- settings (spec-driven, tooltips + toggles) ---------------- */
+  const SPEC={
+    postsale:{ title:'Post-sale &amp; fulfilment', groups:[
+      {name:'Order sync',fields:[
+        {p:'enabled',l:'Order sync',t:'toggle',tip:'<b>Master switch.</b> When on, the server polls eBay for new paid orders and powers the Fulfilment dashboard. Off = nothing is ingested.'},
+        {p:'messaging',l:'AI buyer messages',t:'toggle',tip:'When on, the AI drafts a personalised thank-you for each <b>new</b> order. Off = fulfilment only (orders, labels, pick sheet) with no buyer messaging.'},
+        {p:'poll_interval_min',l:'Poll every (min)',t:'number',tip:'How often, in minutes, to check eBay for new orders.'},
+        {p:'lookback_hours',l:'Look back (hrs)',t:'number',tip:'How far back each poll scans for changed orders. eBay caps this at 720h (30 days).'},
+        {p:'max_per_run',l:'Max / run',t:'number',tip:'Safety cap on how many new orders are processed in a single poll.'},
+      ]},
+      {name:'Messaging behaviour',fields:[
+        {p:'mode',l:'Send mode',t:'select',opts:['approve','auto'],tip:'<b>Approve:</b> drafts wait for your OK (Telegram or dashboard). <b>Auto:</b> sends automatically, outside quiet hours.'},
+        {p:'dry_run',l:'Dry run (safe)',t:'toggle',tip:'<b>Safety.</b> When on, nothing is sent to eBay and “Mark shipped” won’t dispatch — actions are only recorded. Turn OFF to go live.'},
+        {p:'reply_poll_interval_min',l:'Reply check (min)',t:'number',tip:'How often, in minutes, to check for buyer replies so a human can take over.'},
+        {p:'digest_hour',l:'Digest hour',t:'number',min:0,max:23,tip:'Hour of day (0–23, in the timezone below) to send the “📦 to pack today” Telegram digest.'},
+        {p:'timezone',l:'Timezone',t:'text',tip:'IANA timezone for quiet hours + digest timing, e.g. Australia/Sydney.'},
+        {p:'signature',l:'Signature',t:'text',tip:'Sign-off appended to buyer messages, e.g. -BK.'},
+        {p:'invite_offers',l:'Invite offers',t:'toggle',tip:'Let the AI invite the buyer to make bundle offers in the thank-you.'},
+        {p:'brand_voice',l:'Brand voice',t:'textarea',wide:true,tip:'Tone guidance for the AI — e.g. “casual, warm, an Aussie TCG store owner who loves the hobby”.'},
+        {p:'style_notes',l:'Style notes',t:'textarea',wide:true,tip:'Extra style rules for the drafts (length, what to mention, what to avoid).'},
+      ]},
+      {name:'Quiet hours',fields:[
+        {p:'quiet_hours.enabled',l:'Quiet hours',t:'toggle',tip:'Don’t auto-send messages during the window below (buyer-friendly).'},
+        {p:'quiet_hours.start',l:'Start',t:'text',tip:'Start of quiet window, 24h HH:MM (e.g. 21:00).'},
+        {p:'quiet_hours.end',l:'End',t:'text',tip:'End of quiet window, 24h HH:MM (e.g. 08:00).'},
+      ]},
+      {name:'Alerts &amp; integrations',fields:[
+        {p:'alerts',l:'Telegram alerts',t:'toggle',tip:'Send Telegram sale alerts + the daily to-pack digest.'},
+        {p:'labels',l:'Queue labels',t:'toggle',tip:'Flag each new unshipped order for the label tool (sets its label status to “queued”).'},
+        {p:'dashboard_url',l:'Dashboard URL',t:'text',wide:true,tip:'Base URL of this box, used for the Telegram “Edit in dashboard” button, e.g. http://192.168.4.200:5273.'},
+      ]},
+    ]},
+    tracker:{ title:'Price tracker', groups:[{name:null,fields:[
+      {p:'cadence_hours',l:'Cadence (hrs)',t:'number',tip:'How often the price collector runs a full pass. Saving restarts the collector.'},
+      {p:'thresholds.opportunity_drop_pct',l:'Opportunity drop %',t:'number',tip:'A price drop of at least this % flags a <b>buy opportunity</b>. Use a negative number (e.g. -10).'},
+      {p:'thresholds.downtrend_drop_pct',l:'Downtrend drop %',t:'number',tip:'A sustained drop of at least this % flags a <b>downtrend</b>. Negative (e.g. -8).'},
+      {p:'thresholds.momentum_rise_pct',l:'Momentum rise %',t:'number',tip:'A rise of at least this % flags upward <b>momentum</b> (e.g. 15).'},
+      {p:'thresholds.min_price_aud',l:'Min price (A$)',t:'number',tip:'Ignore cards below this AUD price when raising signals — cuts noise on cheap cards.'},
+    ]}]},
+    repricer:{ title:'Repricer', locked:'never_decrease is locked on — this tool only ever raises', groups:[{name:null,fields:[
+      {p:'scan_enabled',l:'Scanning',t:'toggle',tip:'Turn the up-only repricer scan loop on/off.'},
+      {p:'cadence_hours',l:'Cadence (hrs)',t:'number',tip:'How often the repricer scans your live listings.'},
+      {p:'guardrails.min_uplift_pct',l:'Min uplift %',t:'number',tip:'Only propose a raise if it lifts the price by at least this %.'},
+      {p:'guardrails.min_uplift_aud',l:'Min uplift (A$)',t:'number',tip:'…and by at least this many AUD (whichever is stricter).'},
+      {p:'guardrails.min_comparable',l:'Min comparables',t:'number',tip:'Require at least this many comparable sold listings before proposing a new price.'},
+      {p:'guardrails.max_increase_pct_per_run',l:'Max rise %/run',t:'number',tip:'Cap any single raise to this % so a listing can’t jump wildly in one pass.'},
+      {p:'guardrails.proposal_ttl_hours',l:'Proposal TTL (h)',t:'number',tip:'How long a price proposal stays valid before it expires unapproved.'},
+      {p:'telegram.digest_enabled',l:'Telegram digest',t:'toggle',tip:'Send the repricer proposal digest to Telegram.'},
+      {p:'telegram.poll_enabled',l:'Telegram poll',t:'toggle',tip:'Run the Telegram approve/apply poll loop for repricer proposals.'},
+    ]}]},
+    refresh:{ title:'Baked-data refresh', groups:[{name:null,fields:[
+      {p:'enabled',l:'Auto refresh',t:'toggle',tip:'Automatically re-bake the enabled catalogs on a timer.'},
+      {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to re-bake the catalogs below.'},
+    ]}], bakes:true },
+    backup:{ title:'Backups', groups:[{name:null,fields:[
+      {p:'enabled',l:'Scheduled backups',t:'toggle',tip:'Take VACUUM-INTO snapshots of the money-bearing databases on a timer.'},
+      {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to snapshot the databases.'},
+      {p:'keep',l:'Keep (count)',t:'number',min:1,max:365,tip:'How many snapshots to retain before rotating out the oldest (1–365).'},
+      {p:'include_secrets',l:'Include .env',t:'toggle',tip:'Bundle the .env (secrets) into the backup. Off by default — only enable if the backup target is secure.'},
+    ]}]},
+    'bulk-pricing':{ title:'Bulk pricing', groups:[{name:null,fields:[
+      {p:'min_price_aud',l:'Min price (A$)',t:'number',tip:'Absolute floor for any bulk-listed card.'},
+      {p:'market_threshold_aud.default',l:'Market threshold (A$)',t:'number',tip:'At/above this the live market price is used; below it the conservative tier floor applies.'},
+    ]}], json:'tiers', jsonTip:'Per-game rarity/finish floor prices (AUD). Advanced — edit as JSON.' },
   };
 
-  const getPath = (o, p) => p.split('.').reduce((x, k) => (x == null ? x : x[k]), o);
-  const setPath = (o, p, v) => { const ks = p.split('.'); let x = o; for (const k of ks.slice(0, -1)) x = x[k] = x[k] || {}; x[ks.at(-1)] = v; };
+  const getP=(o,p)=>p.split('.').reduce((x,k)=>x==null?x:x[k],o);
+  const setP=(o,p,v)=>{const ks=p.split('.');let x=o;for(const k of ks.slice(0,-1))x=x[k]=x[k]||{};x[ks.at(-1)]=v;};
 
-  function renderSettings(files, availBakes){
-    const box = $('settings');
-    box.innerHTML = '';
-    for (const [name, spec] of Object.entries(FORMS)){
-      const f = files[name];
-      if (!f || !f.content) continue;
-      const c = JSON.parse(JSON.stringify(f.content));
-      const card = el('<div class="card"><h3>' + esc(spec.title) + ' <span class="h-note">' + esc(f.file) + '</span></h3></div>');
-      const inputs = {};
-      for (const [path, label] of (spec.checks || [])){
-        const row = el('<div class="checkline"><input type="checkbox"> ' + esc(label) + '</div>');
-        const cb = row.querySelector('input');
-        cb.checked = !!getPath(c, path);
-        inputs[path] = () => cb.checked;
-        card.appendChild(row);
+  function fieldCtl(f,c,inputs){
+    const cur=getP(c,f.p);
+    if(f.t==='toggle'){
+      const row=el('<label class="tog"><input type="checkbox"><span class="sw"></span><span class="lbl"><b>'+f.l+'</b>'+inf(f.tip)+'</span></label>');
+      const cb=row.querySelector('input'); cb.checked=!!cur; inputs[f.p]=()=>cb.checked;
+      return {node:row,wide:true};
+    }
+    const cell=el('<div class="field'+(f.wide?' wide':'')+'"><label>'+esc(f.l)+inf(f.tip)+'</label></div>');
+    let input;
+    if(f.t==='select'){ input=document.createElement('select'); for(const o of f.opts){const op=document.createElement('option');op.value=o;op.textContent=o;input.appendChild(op);} input.value=cur??f.opts[0]; inputs[f.p]=()=>input.value; }
+    else if(f.t==='textarea'){ input=document.createElement('textarea'); input.value=cur??''; inputs[f.p]=()=>input.value; }
+    else if(f.t==='number'){ input=document.createElement('input'); input.type='number'; input.step='any'; if(f.min!=null)input.min=f.min; if(f.max!=null)input.max=f.max; input.value=cur??''; inputs[f.p]=()=>input.value===''?null:+input.value; }
+    else { input=document.createElement('input'); input.type='text'; input.value=cur??''; inputs[f.p]=()=>input.value; }
+    cell.appendChild(input);
+    return {node:cell,wide:f.wide};
+  }
+
+  function renderSettings(){
+    const box=$('settingsBox'); box.innerHTML=''; const files=SETTINGS.files||{};
+    for(const [name,spec] of Object.entries(SPEC)){
+      const f=files[name]; if(!f||!f.content) continue;
+      const c=JSON.parse(JSON.stringify(f.content));
+      const card=el('<div class="card"><h3><span>'+spec.title+'</span><span class="h-note">'+esc(f.file)+'</span></h3></div>');
+      const inputs={};
+      for(const g of spec.groups){
+        const grp=el('<div class="fgroup"></div>');
+        if(g.name) grp.appendChild(el('<div class="fgroup-h">'+g.name+'</div>'));
+        const rowGrid=el('<div class="frow"></div>'); let togWrap=null;
+        for(const fld of g.fields){
+          const {node,wide}=fieldCtl(fld,c,inputs);
+          if(fld.t==='toggle'){ node.classList.add('field'); node.style.gridColumn='1/-1'; rowGrid.appendChild(node); }
+          else rowGrid.appendChild(node);
+        }
+        grp.appendChild(rowGrid); card.appendChild(grp);
       }
-      const grid = el('<div class="formrow"></div>');
-      for (const [path, label] of (spec.fields || [])){
-        const cell = el('<div><label>' + esc(label) + '</label></div>');
-        const inp = document.createElement('input');
-        inp.type = 'number'; inp.step = 'any'; inp.value = getPath(c, path) ?? '';
-        inputs[path] = () => inp.value === '' ? null : +inp.value;
-        cell.appendChild(inp);
-        grid.appendChild(cell);
-      }
-      card.appendChild(grid);
-      let bakesBox = null, jsonBox = null;
-      if (spec.custom === 'bakes'){
-        bakesBox = el('<div></div>');
-        // Rendered from the registry (/api/settings `bakes`) — every registered bake appears here, so a
-        // newly added one is toggleable with no edit to this file.
-        for (const b of (availBakes || [])){
-          const row = el('<div class="checkline"><input type="checkbox"> ' + esc(b.label || b.name) + ' <span class="h-note">' + esc(b.name) + '</span></div>');
-          row.querySelector('input').checked = (c.bakes || []).includes(b.name);
-          row.querySelector('input').dataset.bake = b.name;
-          bakesBox.appendChild(row);
+      // refresh bakes checklist
+      let bakesBox=null;
+      if(spec.bakes){
+        bakesBox=el('<div class="fgroup"><div class="fgroup-h">Catalogs to bake '+inf('Each registered catalog. Tick the ones the auto-refresh should keep fresh.')+'</div></div>');
+        for(const b of (SETTINGS.bakes||[])){
+          const t=el('<label class="tog"><input type="checkbox" data-bake="'+esc(b.name)+'"><span class="sw"></span><span class="lbl"><b>'+esc(b.label||b.name)+'</b><span class="h-note">'+esc(b.name)+'</span></span></label>');
+          t.querySelector('input').checked=(c.bakes||[]).includes(b.name);
+          bakesBox.appendChild(t);
         }
         card.appendChild(bakesBox);
       }
-      if (spec.json){
-        const cell = el('<div><label>' + esc(spec.json) + ' (JSON)</label></div>');
-        jsonBox = document.createElement('textarea');
-        jsonBox.value = JSON.stringify(c[spec.json], null, 2);
-        cell.appendChild(jsonBox);
-        card.appendChild(cell);
+      // json advanced field
+      let jsonBox=null;
+      if(spec.json){
+        const cell=el('<div class="fgroup"><div class="field jsonf wide"><label>'+esc(spec.json)+' (JSON)'+inf(spec.jsonTip||'')+'</label></div></div>');
+        jsonBox=document.createElement('textarea'); jsonBox.value=JSON.stringify(c[spec.json],null,2);
+        cell.querySelector('.field').appendChild(jsonBox); card.appendChild(cell);
       }
-      const actions = el('<div class="actions"><span class="savenote"></span><button class="btn go">Save</button></div>');
-      const note = actions.querySelector('.savenote');
-      actions.querySelector('button').onclick = async () => {
-        const body = JSON.parse(JSON.stringify(f.content));   // start from what's on disk → unknown keys survive
-        for (const [path, get] of Object.entries(inputs)) setPath(body, path, get());
-        if (bakesBox) body.bakes = [...bakesBox.querySelectorAll('input:checked')].map((x) => x.dataset.bake);
-        if (jsonBox){
-          try { body[spec.json] = JSON.parse(jsonBox.value); }
-          catch (e) { note.textContent = 'bad JSON: ' + e.message; note.style.color = 'var(--red)'; return; }
-        }
-        const act = window.TCG && TCG.activity ? TCG.activity('Save ' + name) : null;
-        const r = await fetch('/api/settings/' + name, { method:'PUT', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-        const j = await r.json();
-        if (r.ok){
-          f.content = j.content;
-          note.textContent = j.applied || 'saved'; note.style.color = 'var(--green)';
-          if (act) act.done(name + ' saved — ' + (j.applied || 'ok'));
-        } else {
-          note.textContent = j.error || ('HTTP ' + r.status); note.style.color = 'var(--red)';
-          if (act) act.fail(name + ': ' + (j.error || r.status));
-        }
+      if(spec.locked) card.appendChild(el('<div style="margin-top:12px;"><span class="lock">🔒 '+esc(spec.locked)+'</span></div>'));
+      const actions=el('<div class="actions"><span class="savenote"></span><button class="btn go">Save '+esc(name)+'</button></div>');
+      const note=actions.querySelector('.savenote');
+      actions.querySelector('button').onclick=async(e)=>{
+        const btn=e.currentTarget; btn.disabled=true;
+        const body=JSON.parse(JSON.stringify(f.content));   // start from disk → unknown keys survive
+        for(const [p,get] of Object.entries(inputs)) setP(body,p,get());
+        if(bakesBox) body.bakes=[...bakesBox.querySelectorAll('input:checked')].map(x=>x.dataset.bake);
+        if(jsonBox){ try{ body[spec.json]=JSON.parse(jsonBox.value); }catch(err){ note.style.color='var(--red)'; note.textContent='bad JSON: '+err.message; btn.disabled=false; return; } }
+        try{
+          const r=await fetch('/api/settings/'+name,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+          const j=await r.json();
+          if(r.ok){ f.content=j.content; note.style.color='var(--green)'; note.textContent='✓ '+(j.applied||'saved'); refreshLive(); }
+          else { note.style.color='var(--red)'; note.textContent=j.error||('HTTP '+r.status); }
+        }catch(err){ note.style.color='var(--red)'; note.textContent=String(err&&err.message||err); }
+        finally{ btn.disabled=false; }
       };
       card.appendChild(actions);
       box.appendChild(card);
     }
     // read-only registry cards
-    for (const name of ['collectr', 'grading', 'grading-companies']){
-      const f = files[name];
-      if (!f) continue;
-      box.appendChild(el('<div class="card"><h3>' + esc(name) + ' <span class="h-note">' + esc(f.file) + ' · read-only</span></h3>' +
-        '<div class="kv"><span class="k">Edit</span><span class="v">on disk (owner)</span></div>' +
-        (name === 'grading-companies' && f.content ? '<div class="kv"><span class="k">Companies</span><span class="v">' + f.content.companies.length + '</span></div>' : '') +
-        (name === 'grading' && f.content ? '<div class="kv"><span class="k">Tolerance set</span><span class="v">' + Object.keys(f.content.companies).join(' ') + '</span></div>' : '') +
-        '</div>'));
+    for(const name of ['collectr','grading','grading-companies']){
+      const f=files[name]; if(!f) continue;
+      box.appendChild(el('<div class="card"><h3><span>'+esc(name)+'</span><span class="h-note">'+esc(f.file)+' · read-only</span></h3>'+
+        '<div class="kv"><span class="k">Editing '+inf('These are edited on disk by the owner, not via this UI.')+'</span><span class="v dim">on disk</span></div>'+
+        (name==='grading-companies'&&Array.isArray(f.content&&f.content.companies)?'<div class="kv"><span class="k">Companies</span><span class="v">'+f.content.companies.length+'</span></div>':'')+
+        (name==='grading'&&f.content&&f.content.companies&&typeof f.content.companies==='object'?'<div class="kv"><span class="k">Tolerance sets</span><span class="v">'+esc(Object.keys(f.content.companies).join(' '))+'</span></div>':'')+'</div>'));
     }
   }
 
+  /* ---------------- DIAG token ---------------- */
+  const DIAG_KEY='tcg_diag_token';
+  function getDiagToken(force){
+    let t=''; try{ t=localStorage.getItem(DIAG_KEY)||''; }catch(e){}
+    if(!t||force){ t=(window.prompt('Server DIAG_TOKEN (from the ALCSERVER .env):','')||'').trim(); if(t){ try{localStorage.setItem(DIAG_KEY,t);}catch(e){} } }
+    return t;
+  }
+
+  /* ---------------- live console ---------------- */
+  let logTimer=null, logToken='', logLevel='', logPaused=false, clearBefore=null, lastMaxT=null;
+  function autoAtBottom(b){ return b.scrollHeight-b.scrollTop-b.clientHeight<40; }
+  async function pollLogs(){
+    if(!logToken||logPaused) return;
+    try{
+      const r=await fetch('/api/status/logs?tail=400'+(logLevel?'&level='+logLevel:''),{headers:{authorization:'Bearer '+logToken}});
+      if(r.status===401||r.status===403){ $('conStatus').textContent='token rejected'; logToken=''; stopLogs(); try{localStorage.removeItem(DIAG_KEY);}catch(e){} return; }
+      if(r.status===503){ $('conStatus').textContent='diagnostics disabled (no DIAG_TOKEN on server)'; stopLogs(); return; }
+      if(!r.ok){ $('conStatus').textContent='HTTP '+r.status; return; }
+      const j=await r.json();
+      renderLogs(j.logs||[]);
+      $('conStatus').textContent='streaming · '+(j.count||0)+' lines · '+new Date().toLocaleTimeString();
+    }catch(e){ $('conStatus').textContent='stream error: '+(e&&e.message||e); }
+  }
+  function renderLogs(logs){
+    const body=$('conBody'); const stick=autoAtBottom(body); const prevTop=body.scrollTop;
+    if(logs.length) lastMaxT=logs[logs.length-1].t||lastMaxT;   // newest fetched line (chronological tail)
+    const rows=clearBefore?logs.filter(L=>!L.t||L.t>clearBefore):logs;
+    if(!rows.length){ body.innerHTML='<div class="con-empty">No log lines'+(logLevel?' at this level':'')+(clearBefore?' since clear':'')+' yet.</div>'; return; }
+    body.innerHTML=rows.map(L=>{
+      const lv=(L.level||'info'); const t=L.t?String(L.t).slice(11,19):'';
+      return '<div class="logline '+esc(lv)+'"><span class="lt">'+esc(t)+'</span><span class="lv '+esc(lv)+'">'+esc(lv)+'</span><span class="lm">'+esc(L.msg||'')+'</span></div>';
+    }).join('');
+    body.scrollTop = stick ? body.scrollHeight : prevTop;   // pin to bottom only if already there; else hold the reader's place
+  }
+  function startLogs(){ if(logTimer) clearInterval(logTimer); $('conEmpty')&&($('conEmpty').style.display='none'); pollLogs(); logTimer=setInterval(pollLogs,3000); }
+  function stopLogs(){ if(logTimer){ clearInterval(logTimer); logTimer=null; } }
+  $('conConnect').onclick=()=>{ const t=$('conToken').value.trim()||getDiagToken(false); if(!t){ $('conStatus').textContent='need a token'; return; } logToken=t; clearBefore=null; try{localStorage.setItem(DIAG_KEY,t);}catch(e){} $('conToken').value=''; $('conStatus').textContent='connecting…'; startLogs(); };
+  $('logPause').onclick=(e)=>{ logPaused=!logPaused; e.target.textContent=logPaused?'▶ Resume':'⏸ Pause'; if(!logPaused) pollLogs(); };
+  $('logClear').onclick=()=>{ clearBefore=lastMaxT||new Date().toISOString(); $('conBody').innerHTML='<div class="con-empty">cleared — new lines will stream in.</div>'; };
+  $('logLevel').querySelectorAll('button').forEach(b=>b.onclick=()=>{ logLevel=b.dataset.lvl; clearBefore=null; $('logLevel').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); pollLogs(); });
+
+  /* ---------------- scrollspy ---------------- */
+  function initSpy(){
+    const links=[...document.querySelectorAll('.nav a')];
+    const map={}; links.forEach(a=>map[a.getAttribute('href').slice(1)]=a);
+    const obs=new IntersectionObserver((ents)=>{
+      ents.forEach(e=>{ if(e.isIntersecting){ links.forEach(a=>a.classList.remove('active')); map[e.target.id]&&map[e.target.id].classList.add('active'); } });
+    },{rootMargin:'-45% 0px -50% 0px'});
+    document.querySelectorAll('section').forEach(s=>obs.observe(s));
+  }
+
+  /* ---------------- load ---------------- */
+  function renderVerline(){
+    const v=STATUS.version||{};
+    $('verline').innerHTML='v<b>'+esc(v.pkg)+'</b> · commit <b>'+esc(v.commit||'—')+'</b> · node <b>'+esc(v.node)+'</b> · up <b>'+Math.round((v.uptime_s||0)/60)+'m</b> · probes cached '+esc(STATUS.probe_ttl_min)+'m';
+  }
+  // Live panels only — safe to re-render on the timer (they hold no user input).
+  function renderLive(){ renderVerline(); renderVitals(); renderSystems(); $('liveDot').style.background='var(--green)'; }
+  // Timer path: refresh the status snapshot + live panels. NEVER re-renders the settings forms,
+  // source probes or baked cards — doing so would wipe in-progress edits, focus and selection.
+  async function refreshLive(){
+    try{ STATUS=await fetch('/api/status').then(r=>r.json()); renderLive(); }
+    catch(e){ $('liveDot').style.background='var(--red)'; }
+  }
+  // First load: fetch everything and render every panel once.
   async function load(){
-    try {
-      const [st, se] = await Promise.all([
-        fetch('/api/status').then((r) => r.json()),
-        fetch('/api/settings').then((r) => r.json()),
+    try{
+      const [st,se]=await Promise.all([
+        fetch('/api/status').then(r=>r.json()),
+        fetch('/api/settings').then(r=>r.json()),
       ]);
-      STATUS = st;
-      const v = st.version;
-      $('verline').innerHTML = 'v<b>' + esc(v.pkg) + '</b>' + (v.commit ? ' · <b>' + esc(v.commit) + '</b>' : '') +
-        ' · node <b>' + esc(v.node) + '</b> · up <b>' + Math.round(v.uptime_s / 60) + 'm</b> · probes cached <b>' + esc(st.probe_ttl_min) + 'm</b>';
-      renderSources();
-      renderBaked();
-      renderJobs();
-      renderSubsystems();
-      renderSettings(se.files, se.bakes || []);
-    } catch (e) {
-      $('verline').textContent = 'status API unreachable — is the dev server running? (' + (e && e.message || e) + ')';
+      STATUS=st; SETTINGS=se;
+      renderLive(); renderQuickActions(); renderSources(); renderBaked(); renderSettings();
+    }catch(e){
+      $('verline').textContent='status API unreachable — is the server running? ('+(e&&e.message||e)+')';
+      $('liveDot').style.background='var(--red)';
     }
   }
   load();
+  setInterval(()=>{ if(document.visibilityState==='visible') refreshLive(); },10000);
+  initSpy();
 })();
 </script>
 </body>
