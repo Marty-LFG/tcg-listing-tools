@@ -13,11 +13,13 @@ describe('printConfig', () => {
     assert.equal(c.lang, 'tspl');
     assert.equal(c.dpi, 300);
     assert.equal(c.invert, false);
+    assert.equal(c.speed, 2);   // default mirrors the AUSPRINT vendor app's "Speed 2"
   });
   it('parses the env block', () => {
     const c = printConfig({
       LABEL_PRINTER_IP: ' 192.168.4.220 ', LABEL_PRINTER_PORT: '9101', LABEL_PRINTER_LANG: 'ZPL',
       LABEL_PRINTER_DPI: '203', LABEL_PRINTER_DENSITY: '12', LABEL_PRINTER_INVERT: 'TRUE',
+      LABEL_PRINTER_SPEED: '3',
     });
     assert.equal(c.enabled, true);
     assert.equal(c.ip, '192.168.4.220');
@@ -25,6 +27,7 @@ describe('printConfig', () => {
     assert.equal(c.lang, 'zpl');
     assert.equal(c.dpi, 203);
     assert.equal(c.invert, true);
+    assert.equal(c.speed, 3);
   });
 });
 
@@ -38,7 +41,11 @@ describe('buildTSPL', () => {
     const head = buf.toString('latin1');
     assert.match(head, /SIZE 50 mm, 30 mm/);
     assert.match(head, /GAP 3 mm, 0 mm/);
+    assert.match(head, /SPEED 2/);
     assert.match(head, /DENSITY 10/);
+    // SPEED sits between GAP and DENSITY (both must precede CLS); this also documents that
+    // inserting it does not disturb the marker-relative bitmap byte read below.
+    assert.ok(head.indexOf('GAP 3') < head.indexOf('SPEED 2') && head.indexOf('SPEED 2') < head.indexOf('DENSITY 10'));
     assert.match(head, /BITMAP 0,0,2,2,0,/);
     assert.match(head, /PRINT 1,1/);
     // the 4 data bytes sit between the BITMAP header and \r\nPRINT — inverted
@@ -59,6 +66,12 @@ describe('buildTSPL', () => {
   it('copies flow into PRINT', () => {
     const j = { ...job(), copies: 3 };
     assert.match(buildTSPL([j], cfg).toString('latin1'), /PRINT 3,1/);
+  });
+  it('per-request speed/density overrides land in the TSPL', () => {
+    const buf = buildTSPL([job()], { ...cfg, speed: 3, density: 6 });
+    const head = buf.toString('latin1');
+    assert.match(head, /SPEED 3/);
+    assert.match(head, /DENSITY 6/);
   });
 });
 

@@ -107,7 +107,7 @@
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
   <div class="tag">Print &middot; Thermal labels</div>
   <h1>PDF Label Printer</h1>
-  <p class="sub">Drop a <b>PDF</b> &rarr; it rasterises each page and prints straight to the AUSPRINT over the network &mdash; no vendor app. Each page prints at its own size (the PDF's page size becomes the label size), or force-fit to a stock. Handy for pre-made labels like storage-box tags, barcodes, and address slips.</p>
+  <p class="sub">Drop a <b>PDF</b> and it prints straight to the AUSPRINT over the network, no vendor app. Printing an <b>Australia Post</b> shipping label? Hit the <b>Australia Post 100 &times; 150</b> preset, then drop the eBay PDF and print. For anything else (storage-box tags, barcodes, address slips) it uses the PDF's own page size, or fits it to a stock.</p>
 
   <div class="grid">
     <!-- LEFT: input + controls -->
@@ -120,6 +120,11 @@
       <input type="file" id="file" accept="application/pdf,.pdf" multiple style="display:none;">
       <div class="flist" id="flist"></div>
 
+      <div style="margin-top:14px;">
+        <label>Quick preset</label>
+        <button class="btn solid" onclick="applyAusPostPreset()" title="Arm the settings for an Australia Post 100×150 shipping label: fit to 100×150, flip 180°, crisp threshold, no dither. Then drop the eBay PDF and print.">&#127462;&#127482; Australia Post 100 &times; 150</button>
+      </div>
+
       <div class="controls">
         <div class="grp">
           <label>Label size</label>
@@ -127,6 +132,7 @@
             <span class="pill on" data-v="native" onclick="setSizeMode('native')" title="Use each PDF page's own size as the label size">Use PDF size</span>
             <span class="pill" data-v="50x30" onclick="setSizeMode('50x30')">Fit 50 &times; 30</span>
             <span class="pill" data-v="100x50" onclick="setSizeMode('100x50')">Fit 100 &times; 50</span>
+            <span class="pill" data-v="100x150" onclick="setSizeMode('100x150')">Fit 100 &times; 150</span>
           </div>
         </div>
         <div class="grp">
@@ -144,6 +150,22 @@
             <button class="step" onclick="bumpCopies(-1)" title="Fewer">&minus;</button>
             <div class="stepval" id="copiesval">1</div>
             <button class="step" onclick="bumpCopies(1)" title="More">+</button>
+          </div>
+        </div>
+        <div class="grp">
+          <label>Darkness</label>
+          <div class="stepper">
+            <button class="step" onclick="bumpDensity(-1)" title="Lighter">&minus;</button>
+            <div class="stepval" id="densval">10<small>0&ndash;15</small></div>
+            <button class="step" onclick="bumpDensity(1)" title="Darker">+</button>
+          </div>
+        </div>
+        <div class="grp">
+          <label>Speed</label>
+          <div class="stepper">
+            <button class="step" onclick="bumpSpeed(-1)" title="Slower = crisper barcodes">&minus;</button>
+            <div class="stepval" id="spdval">2<small>in/s</small></div>
+            <button class="step" onclick="bumpSpeed(1)" title="Faster">+</button>
           </div>
         </div>
       </div>
@@ -214,11 +236,13 @@ if (pdfjsOk) window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker
 //   ptW, ptH (unrotated page box in points), selected, raster:{bitmap,widthDots,heightDots,wmm,hmm}|null,
 //   previewCanvas }
 var pages = [];
-var sizeMode = 'native';      // 'native' | '50x30' | '100x50'
+var sizeMode = 'native';      // 'native' | '50x30' | '100x50' | '100x150'
 var rotate = 0;               // 0 | 90 | 180 | 270 (degrees CW, added to the page's own rotation)
 var copies = 1;
+var density = 10;             // TSPL DENSITY 0–15 (darkness); seeded from GET /api/print
+var speed = 2;                // TSPL SPEED in/s; seeded from GET /api/print
 var _uid = 0;
-var STOCK = { '50x30': { w:50, h:30 }, '100x50': { w:100, h:50 } };
+var STOCK = { '50x30': { w:50, h:30 }, '100x50': { w:100, h:50 }, '100x150': { w:100, h:150 } };
 
 /* ---------- tiny helpers ---------- */
 function $(id){ return document.getElementById(id); }
@@ -237,6 +261,9 @@ function loadPrintCfg(){
     if(printCfg.dpi && $('a_dpi')) $('a_dpi').value = printCfg.dpi;
     if(printCfg.offXmm!=null && $('a_offx')) $('a_offx').value = printCfg.offXmm;
     if(printCfg.offYmm!=null && $('a_offy')) $('a_offy').value = printCfg.offYmm;
+    // .env is the source of truth for shop-tuned darkness/speed; seed the steppers from it.
+    if(printCfg.density!=null){ density=printCfg.density; if($('densval')) $('densval').firstChild.nodeValue=density; }
+    if(printCfg.speed!=null){ speed=printCfg.speed; if($('spdval')) $('spdval').firstChild.nodeValue=speed; }
     updatePrintChrome();
   });
 }
@@ -458,7 +485,26 @@ function pillsOn(id,v){ var ps=$(id).querySelectorAll('.pill'); for(var i=0;i<ps
 function setSizeMode(v){ sizeMode=v; pillsOn('sizePills',v); rerenderAll(); }
 function setRotate(v){ rotate=v; pillsOn('rotPills',v); rerenderAll(); }
 function bumpCopies(d){ copies=Math.max(1,Math.min(99,copies+d)); $('copiesval').textContent=copies; }
+// Darkness/Speed only affect the TSPL command sent at print time, not the raster preview,
+// so they don't rerender. The stepval keeps a <small> suffix, so update the number node only.
+function bumpDensity(d){ density=Math.max(0,Math.min(15,density+d)); $('densval').firstChild.nodeValue=density; }
+function bumpSpeed(d){ speed=Math.max(1,Math.min(6,speed+d)); $('spdval').firstChild.nodeValue=speed; }
 function onThreshInput(){ $('threshval').textContent=threshold(); rerenderAll(); }
+
+// One-click Australia Post 100×150 shipping label: fit the PDF into the true 100×150 die-cut
+// (native would send SIZE 151.7mm and drift the gap sensor), flip 180° for the vendor app's
+// "Invert Page", crisp threshold, no dither, no white border. Darkness/Speed and the X-origin
+// nudge stay as configured (env-seeded), so shop calibration survives the preset.
+function applyAusPostPreset(){
+  setSizeMode('100x150');
+  setRotate(180);
+  $('a_dither').checked = false;
+  $('a_invert').checked = false;
+  if($('a_pad')) $('a_pad').value = 0;
+  $('thresh').value = 150; onThreshInput();   // repaints the preview via rerenderAll()
+  showToast('Australia Post preset armed');
+  setStatus('ok', 'Australia Post 100 × 150 ready. Drop the eBay PDF and print. Darkness ' + density + ', speed ' + speed + ', flipped 180°.');
+}
 
 /* ---------- printing ---------- */
 function printSelected(){
@@ -472,7 +518,7 @@ function printSelected(){
   $('printBtn').disabled=true;
   var total = sel.length*copies;
   setStatus('load','Sending ' + total + ' label' + (total>1?'s':'') + ' to the printer…');
-  fetch('/api/print', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ jobs:jobs }) })
+  fetch('/api/print', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ jobs:jobs, speed:speed, density:density }) })
     .then(function(r){ return r.json().catch(function(){ return { ok:false, message:'bad response' }; }); })
     .then(function(res){
       if(res && res.ok){ setStatus('ok','Printed ' + res.printed + ' label' + (res.printed>1?'s':'') + '.'); showToast('Printed ' + res.printed); }

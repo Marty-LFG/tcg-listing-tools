@@ -279,6 +279,12 @@ function graderProxy(env) {
 //                            -> wraps each bitmap in TSPL/ZPL and streams it to the printer.
 // Never throws to a 500 that hides the cause; an unconfigured/unreachable printer returns
 // ok:false with a message so the tool degrades to download-only (Golden Rule 7).
+// Per-request Speed/Darkness overrides mirror the AUSPRINT vendor app's controls. Clamp to
+// the printer's valid range and fall back to the env default on anything non-numeric, so a
+// stray value never emits a broken TSPL command or blocks a print.
+function clampDensity(v, fb) { const n = Number(v); return Number.isFinite(n) ? Math.min(15, Math.max(0, Math.round(n))) : fb }
+function clampSpeed(v, fb) { const n = Number(v); return (Number.isFinite(n) && n > 0) ? Math.min(6, Math.max(1, n)) : fb }
+
 function printProxy(env) {
   return {
     name: 'label-print',
@@ -289,7 +295,7 @@ function printProxy(env) {
         const cfg = printConfig(env)
         const method = (req.method || 'GET').toUpperCase()
         if (method === 'GET') {
-          return res.end(JSON.stringify({ enabled: cfg.enabled, dpi: cfg.dpi, ip: cfg.ip, lang: cfg.lang, page: { w: cfg.pageWmm, h: cfg.pageHmm }, offXmm: cfg.offXmm, offYmm: cfg.offYmm }))
+          return res.end(JSON.stringify({ enabled: cfg.enabled, dpi: cfg.dpi, ip: cfg.ip, lang: cfg.lang, page: { w: cfg.pageWmm, h: cfg.pageHmm }, offXmm: cfg.offXmm, offYmm: cfg.offYmm, speed: cfg.speed, density: cfg.density }))
         }
         if (method !== 'POST') {
           res.statusCode = 405
@@ -320,8 +326,10 @@ function printProxy(env) {
               return res.end(JSON.stringify({ ok: false, error: 'size', message: `bitmap is ${j.data.length} bytes, expected ${need} for ${j.widthDots}×${j.heightDots}` }))
             }
           }
-          const buf = buildJob(jobs, cfg)
-          console.log('[api/print]', jobs.length, 'label(s) ->', cfg.ip + ':' + cfg.port, cfg.lang, buf.length + 'B')
+          // Speed/Darkness are one-per-batch (top-level body fields), matching the vendor UI.
+          const reqCfg = { ...cfg, speed: clampSpeed(body.speed, cfg.speed), density: clampDensity(body.density, cfg.density) }
+          const buf = buildJob(jobs, reqCfg)
+          console.log('[api/print]', jobs.length, 'label(s) ->', cfg.ip + ':' + cfg.port, cfg.lang, `spd${reqCfg.speed} dns${reqCfg.density}`, buf.length + 'B')
           await sendToPrinter(buf, { ip: cfg.ip, port: cfg.port })
           res.end(JSON.stringify({ ok: true, printed: jobs.length }))
         } catch (e) {

@@ -143,6 +143,13 @@ Setup:
    label plus any staged batch. Tick **Auto-print** to print each label automatically
    as it settles / is added.
 
+For a **prepaid Australia Post 100×150 shipping label** (the PDF eBay/AP hands you),
+open the **PDF Label Printer**, click the **🇦🇺 Australia Post 100 × 150** preset, then
+drop the PDF and print. The preset fits the label to the true 100×150 die-cut, flips it
+180° (the vendor app's "Invert Page"), and turns dithering off so the Code128 barcode and
+the datamatrix stay crisp. The **Darkness** and **Speed** steppers mirror the vendor app's
+controls and default to your `.env` values (`LABEL_PRINTER_DENSITY` / `LABEL_PRINTER_SPEED`).
+
 Calibration (one-off, against a real label): use the bundled harness to sanity-check
 the connection and tune placement —
 
@@ -152,8 +159,9 @@ node scripts/labeltest.mjs --lang self  # prints the printer's own config page
 ```
 
 If a printed address sits in the wrong spot, nudge `LABEL_PRINTER_OFFX_MM` /
-`OFFY_MM`; if it's faint, raise `LABEL_PRINTER_DENSITY`; if it prints as a
-photo-negative, set `LABEL_PRINTER_INVERT=true`. The printer is on Wi-Fi on the
+`OFFY_MM`; if it's faint, raise `LABEL_PRINTER_DENSITY` or lower `LABEL_PRINTER_SPEED`;
+if a barcode won't scan because the ink has bled, lower `LABEL_PRINTER_DENSITY`; if it
+prints as a photo-negative, set `LABEL_PRINTER_INVERT=true`. The printer is on Wi-Fi on the
 same LAN as the dev-server host, so the host does the printing regardless of which
 LAN client opened the tool.
 
