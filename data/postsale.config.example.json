@@ -2,6 +2,7 @@
   "enabled": false,
   "mode": "approve",
   "dry_run": true,
+  "messaging": true,
   "poll_interval_min": 10,
   "reply_poll_interval_min": 15,
   "lookback_hours": 48,

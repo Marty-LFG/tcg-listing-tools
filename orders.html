@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fulfilment · Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--green:#43d6a0;--amber:#f0c04a;--red:#f0666e;--blue:#6ab0ff;--purple:#c79bff;--pink:#e08a9b;
+    --accent:#43d6a0;--accent-soft:rgba(67,214,160,.14);
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 22px 80px;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(67,214,160,.06),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.05),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1140px;width:100%;margin:0 auto;}
+  a{color:var(--gold);text-decoration:none;}
+  .mast{display:flex;align-items:center;gap:14px;margin-bottom:20px;}
+  .monogram{width:46px;height:46px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:19px;color:var(--accent);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.015em;margin:0;line-height:1.05;}
+  .mast p{color:var(--muted);font-size:12px;margin:4px 0 0;font-family:var(--mono);}
+  .mast .home{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);}
+  .banner{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;}
+  .banner .chip{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--faint);}
+  .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.55);} .dot.warn{background:var(--amber);} .dot.err{background:var(--red);} .dot.info{background:var(--blue);}
+  .banner b{color:var(--text);font-weight:600;}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  .tabs{display:flex;gap:8px;}
+  .tab{font-family:var(--mono);font-size:12px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;transition:.15s;}
+  .tab:hover{border-color:var(--line2);color:var(--text);}
+  .tab.active{color:var(--ink);background:var(--accent);border-color:var(--accent);}
+  .tab .n{opacity:.7;font-weight:400;}
+  .spacer{flex:1;}
+  .btn{font-family:var(--mono);font-size:12px;font-weight:600;border-radius:10px;padding:8px 14px;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--text);transition:.15s;}
+  .btn:hover{border-color:var(--accent);color:var(--accent);}
+  .btn.solid{background:var(--accent);color:var(--ink);border-color:var(--accent);}
+  .btn.solid:hover{opacity:.9;color:var(--ink);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .stepper{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;color:var(--muted);}
+  .stepper .s{width:26px;height:26px;border:1px solid var(--line2);background:var(--panel);color:var(--text);border-radius:7px;font-size:15px;font-weight:700;cursor:pointer;line-height:1;padding:0;}
+  .stepper .s:hover{border-color:var(--accent);color:var(--accent);}
+  .stepper .v{min-width:20px;text-align:center;color:var(--text);font-weight:600;}
+  .chk{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;user-select:none;}
+  .chk input{width:15px;height:15px;accent-color:var(--accent);}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px;}
+  .card h2{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0;padding:14px 16px 0;font-weight:600;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:12px 14px;border-bottom:1px solid var(--line);}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:rgba(255,255,255,.018);}
+  .mono{font-family:var(--mono);}
+  .muted{color:var(--muted);} .faint{color:var(--faint);} .num{font-family:var(--mono);text-align:right;white-space:nowrap;}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;}
+  .pill.shipped{color:var(--green);border-color:rgba(67,214,160,.35);} .pill.unshipped{color:var(--amber);border-color:rgba(240,192,74,.35);}
+  .pill.printed{color:var(--blue);border-color:rgba(106,176,255,.4);} .pill.queued{color:var(--muted);}
+  .loc{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;margin-left:4px;}
+  .loc.none{color:var(--faint);background:rgba(255,255,255,.03);}
+  .items{color:var(--text);} .items .sku{color:var(--faint);font-family:var(--mono);font-size:11px;}
+  .rowbtns{display:flex;flex-direction:column;gap:5px;align-items:stretch;min-width:120px;}
+  button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:5px 9px;cursor:pointer;transition:.15s;white-space:nowrap;}
+  button.act:hover{border-color:var(--accent);color:var(--text);}
+  button.act.ship:hover{border-color:var(--green);color:var(--green);}
+  .empty{padding:34px 16px;text-align:center;color:var(--faint);font-family:var(--mono);font-size:12.5px;}
+  .status{font-family:var(--mono);font-size:12px;min-height:18px;margin:2px 2px 12px;}
+  .status.ok{color:var(--green);} .status.warn{color:var(--amber);} .status.err{color:var(--red);} .status.load{color:var(--muted);}
+  .overlay{position:fixed;inset:0;background:rgba(4,5,8,.72);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:36px 18px;z-index:50;overflow:auto;}
+  .overlay.open{display:flex;}
+  .modal{width:100%;max-width:560px;border:1px solid var(--line2);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:0 24px 60px -18px rgba(0,0,0,.8);overflow:hidden;}
+  .modal .mhead{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:13px;}
+  .modal .mhead .x{margin-left:auto;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;background:none;border:0;}
+  .modal .mbody{padding:16px 18px;max-height:60vh;overflow:auto;background:#1a1d26;text-align:center;}
+  .modal .mbody canvas{background:#fff;max-width:100%;height:auto;border-radius:6px;box-shadow:0 6px 20px -8px rgba(0,0,0,.6);margin:6px 0;}
+  .mfoot{display:flex;gap:9px;align-items:center;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line);background:rgba(0,0,0,.15);}
+  details.diag{margin-top:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:0 14px;}
+  details.diag summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:11px 0;letter-spacing:.03em;list-style:none;}
+  details.diag summary::-webkit-details-marker{display:none;}
+  .diagrow{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:0 0 14px;}
+  .diagrow input{background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;flex:1;min-width:180px;outline:none;}
+  .diagrow button{font-family:var(--mono);font-size:12px;background:var(--accent);color:var(--ink);border:0;border-radius:8px;padding:8px 13px;font-weight:600;cursor:pointer;}
+  #diagOut{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto;padding:0 0 12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mast">
+    <div class="monogram">BK</div>
+    <div>
+      <h1>Fulfilment</h1>
+      <p>eBay orders · packing slips · address labels · pick sheet</p>
+    </div>
+    <a class="home" href="/">← all tools</a>
+  </div>
+
+  <div class="banner" id="banner"><span class="chip">loading…</span></div>
+
+  <div class="toolbar">
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-tab="unshipped">To pack <span class="n" id="n_unshipped"></span></div>
+      <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
+    </div>
+    <span class="chk" title="Show a preview before sending to the printer"><input type="checkbox" id="previewChk"> Preview first</span>
+    <div class="spacer"></div>
+    <span class="stepper" title="Darkness (TSPL DENSITY)">Dark <button class="s" id="densDn">&minus;</button><span class="v" id="densV">–</span><button class="s" id="densUp">+</button></span>
+    <span class="stepper" title="Print speed (TSPL SPEED)">Spd <button class="s" id="spdDn">&minus;</button><span class="v" id="spdV">–</span><button class="s" id="spdUp">+</button></span>
+    <button class="btn solid" id="pickBtn">🖨 Pick sheet</button>
+    <button class="btn" id="refreshBtn" title="Reload orders">↻</button>
+  </div>
+
+  <div class="status load" id="status">&nbsp;</div>
+  <div class="card" id="panel"><div class="empty">loading…</div></div>
+
+  <details class="diag">
+    <summary>⚙ Diagnostics — pull latest orders from eBay (needs DIAG_TOKEN)</summary>
+    <div class="diagrow">
+      <input id="diagToken" type="password" placeholder="DIAG_TOKEN (stored in this browser only)" autocomplete="off">
+      <button id="btnPoll">Run order poll</button>
+    </div>
+    <div id="diagOut"></div>
+  </details>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="mhead"><span id="pv_title">Preview</span><button class="x" id="pv_close" title="Close">&times;</button></div>
+    <div class="mbody" id="pv_body"></div>
+    <div class="mfoot">
+      <button class="btn" id="pv_cancel">Cancel</button>
+      <button class="btn" id="pv_download">Download PNG</button>
+      <button class="btn solid" id="pv_print">🖨 Print</button>
+    </div>
+  </div>
+</div>
+
+<script src="/label-render.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const money = (cents, cur='AUD') => (cur==='AUD'?'A$':cur+' ') + ((Math.round(+cents||0))/100).toFixed(2);
+const when = (t) => t ? String(t).replace('T',' ').replace(/\..*$/,'').slice(0,16) : '—';
+function setStatus(cls, msg){ const el=$('status'); el.className='status '+cls; el.textContent=msg||' '; }
+async function api(path, opts) {
+  const r = await fetch('/api/postsale'+path, opts);
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw Object.assign(new Error(j.error||('HTTP '+r.status)), { status:r.status, body:j });
+  return j;
+}
+
+let STATE = { config:null, orders:[], counts:{}, tab:'unshipped', density:null, speed:null };
+
+/* ---------- banner ---------- */
+function renderBanner() {
+  const c = STATE.config; if (!c) return;
+  const cfg = c.config || {}, ebay = c.ebay_oauth || {};
+  const chips = [];
+  chips.push(`<span class="chip"><span class="dot ${cfg.enabled?'ok':'warn'}"></span>${cfg.enabled?'<b>Order sync on</b>':'Order sync off'}</span>`);
+  chips.push(`<span class="chip"><span class="dot ${ebay.connected?'ok':'err'}"></span>eBay ${ebay.connected?'connected':'<a href="/api/repricer/oauth">connect →</a>'}</span>`);
+  const pc = STATE.printCfg||{};
+  chips.push(`<span class="chip"><span class="dot ${pc.enabled?'ok':'warn'}"></span>Printer ${pc.enabled?('AUSPRINT '+(pc.ip||'')):'off (download only)'}</span>`);
+  if (cfg.dry_run) chips.push(`<span class="chip"><span class="dot warn"></span><b>DRY-RUN</b> — Mark shipped won't write to eBay</span>`);
+  $('banner').innerHTML = chips.join('');
+}
+
+/* ---------- orders table ---------- */
+function itemsCell(items) {
+  if (!items || !items.length) return '<span class="faint">—</span>';
+  return '<div class="items">' + items.map(it => {
+    const loc = it.location ? `<span class="loc">${esc(it.location)}</span>` : `<span class="loc none">loc?</span>`;
+    return `${esc(it.title||it.ebay_item_id||'item')}${it.quantity>1?` ×${it.quantity}`:''}${loc}${it.sku?`<br><span class="sku">${esc(it.sku)}</span>`:''}`;
+  }).join('<div style="height:5px"></div>') + '</div>';
+}
+function renderOrders() {
+  const rows = STATE.orders;
+  if (!rows.length) return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders appear here after the order poll runs (Diagnostics below, or every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min).</span></div>`;
+  return `<table><thead><tr><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
+    + rows.map(o => {
+      const loc = [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_postal?` ${o.ship_postal}`:'');
+      const statusPill = `<span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>` + (o.label_status==='printed'?' <span class="pill printed">label ✓</span>':'');
+      const shipBtn = o.shipped_status==='unshipped' ? `<button class="act ship" data-ship="${esc(o.order_id)}">✓ Mark shipped</button>` : '';
+      return `<tr>
+        <td class="mono muted">${esc(o.order_id)}${o.sales_record_number?`<br><span class="faint">rec #${esc(o.sales_record_number)}</span>`:''}</td>
+        <td class="mono">@${esc(o.buyer_username||'—')}</td>
+        <td>${itemsCell(o.items)}</td>
+        <td class="num">${money(o.total_cents, o.currency)}</td>
+        <td class="muted">${esc(loc||'—')}</td>
+        <td class="mono muted">${esc(when(o.paid_time))}</td>
+        <td>${statusPill}</td>
+        <td><div class="rowbtns">
+          <button class="act" data-slip="${esc(o.order_id)}">🧾 Packing slip</button>
+          <button class="act" data-label="${esc(o.order_id)}">📮 Address label</button>
+          ${shipBtn}
+        </div></td>
+      </tr>`;
+    }).join('')
+    + `</tbody></table>`;
+}
+function renderPanel() {
+  $('panel').innerHTML = `<h2>${STATE.tab==='unshipped'?'To pack':'All orders'}</h2>` + renderOrders();
+  $('n_unshipped').textContent = STATE.counts.unshipped!=null ? `(${STATE.counts.unshipped})` : '';
+  $('n_all').textContent = STATE.counts.all!=null ? `(${STATE.counts.all})` : '';
+}
+
+async function loadAll() {
+  try {
+    const statusQ = STATE.tab==='unshipped' ? '?limit=300&status=unshipped' : '?limit=300';
+    const [config, orders] = await Promise.all([ api('/config'), api('/orders'+statusQ) ]);
+    STATE.config = config;
+    STATE.orders = orders.orders || [];
+    if (STATE.tab==='unshipped') STATE.counts.unshipped = STATE.orders.length;
+    else STATE.counts.all = STATE.orders.length;
+    // fetch the other tab's count cheaply (unshipped) if we're on all
+    renderBanner(); renderPanel();
+  } catch (e) {
+    $('banner').innerHTML = `<span class="chip"><span class="dot err"></span>${esc(e.message)}</span>`;
+  }
+}
+function orderById(id){ return STATE.orders.find(o => o.order_id === id); }
+
+/* ---------- printing ---------- */
+function printOpts(){ return { density: STATE.density, speed: STATE.speed }; }
+// Send jobs to the printer (or download PNG when unconfigured). Optionally record label-printed.
+async function sendToPrinter(jobs, label, orderId){
+  if (!jobs.length) { setStatus('warn','Nothing to print.'); return; }
+  if (STATE.printCfg && STATE.printCfg.enabled){
+    setStatus('load','Printing '+label+'…');
+    try {
+      const res = await LR.printJobs(jobs, printOpts());
+      if (res && res.ok){
+        setStatus('ok','Printed '+label+' ('+res.printed+' label'+(res.printed>1?'s':'')+').');
+        if (orderId){ try { await api('/orders/'+encodeURIComponent(orderId)+'/label-printed', { method:'POST' }); } catch(e){} loadAll(); }
+      } else { setStatus('err','Print failed: '+((res&&res.message)||'printer error')); }
+    } catch(e){ setStatus('err','Print failed (printer offline?): '+e.message); }
+  } else {
+    jobs.forEach((j,i)=> LR.downloadJob(j, label.replace(/[^\w]+/g,'-')+(jobs.length>1?('-'+(i+1)):'')+'.png'));
+    setStatus('warn','Printer not configured — downloaded '+label+' as PNG'+(jobs.length>1?'s':'')+'.');
+  }
+}
+// Preview modal → confirm-print. When "Preview first" is off, prints straight away.
+function handleJobs(jobs, label, orderId){
+  if (!jobs.length){ setStatus('warn','Nothing to print.'); return; }
+  if (!$('previewChk').checked){ sendToPrinter(jobs, label, orderId); return; }
+  const body = $('pv_body'); body.innerHTML='';
+  jobs.forEach(j => body.appendChild(LR.jobToCanvas(j)));
+  $('pv_title').textContent = 'Preview · '+label+(jobs.length>1?(' ('+jobs.length+' pages)'):'');
+  $('overlay').classList.add('open');
+  $('pv_print').onclick = () => { closePreview(); sendToPrinter(jobs, label, orderId); };
+  $('pv_download').onclick = () => { jobs.forEach((j,i)=>LR.downloadJob(j, label.replace(/[^\w]+/g,'-')+(jobs.length>1?('-'+(i+1)):'')+'.png')); };
+}
+function closePreview(){ $('overlay').classList.remove('open'); }
+
+function printSlip(id){ const o=orderById(id); if(!o) return; handleJobs([LR.renderPackingSlip(o)], 'packing slip', id); }
+function printLabel(id){ const o=orderById(id); if(!o) return; handleJobs([LR.renderAddressLabel(o)], 'address label', id); }
+async function printPickSheet(){
+  setStatus('load','Building pick sheet…');
+  try {
+    const ps = await api('/picksheet?status='+(STATE.tab==='all'?'all':'unshipped'));
+    if (!ps.rows || !ps.rows.length){ setStatus('warn','Nothing to pick — no unshipped orders.'); return; }
+    const jobs = LR.renderPickSheet(ps.groups, { wmm:100, hmm:150 });
+    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → '+jobs.length+' page'+(jobs.length===1?'':'s')+'.');
+    handleJobs(jobs, 'pick sheet');
+  } catch(e){ setStatus('err','Pick sheet failed: '+e.message); }
+}
+
+async function markShipped(id, btn){
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '…';
+  try {
+    const r = await api('/orders/'+encodeURIComponent(id)+'/shipped', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({}) });
+    setStatus('ok', r.dispatched ? ('Marked dispatched on eBay · '+id) : r.dry_run ? ('Marked shipped (dry-run — no eBay write) · '+id) : ('Marked shipped · '+id));
+    loadAll();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = 'retry';
+    const eb = err.body && err.body.ebay;
+    const detail = eb && (eb.error || (eb.errors||[]).map(e=>e.shortMessage||e.longMessage).filter(Boolean).join('; '));
+    setStatus('err', 'Dispatch failed'+(detail?': '+detail:'')+' — order kept in the queue to retry.');
+  }
+}
+
+/* ---------- events ---------- */
+$('tabs').addEventListener('click', (e) => {
+  const t = e.target.closest('.tab'); if (!t) return;
+  STATE.tab = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x===t));
+  loadAll();
+});
+$('panel').addEventListener('click', (e) => {
+  const slip = e.target.closest('button[data-slip]'); if (slip) return printSlip(slip.dataset.slip);
+  const label = e.target.closest('button[data-label]'); if (label) return printLabel(label.dataset.label);
+  const ship = e.target.closest('button[data-ship]'); if (ship) return markShipped(ship.dataset.ship, ship);
+});
+$('pickBtn').addEventListener('click', printPickSheet);
+$('refreshBtn').addEventListener('click', loadAll);
+$('pv_close').addEventListener('click', closePreview);
+$('pv_cancel').addEventListener('click', closePreview);
+$('overlay').addEventListener('click', (e)=>{ if (e.target===$('overlay')) closePreview(); });
+document.addEventListener('keydown', (e)=>{ if (e.key==='Escape') closePreview(); });
+
+// density / speed steppers (persist in this browser; seeded from the printer config)
+function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+function bumpDensity(d){ STATE.density = clamp((STATE.density??10)+d, 0, 15); $('densV').textContent=STATE.density; try{localStorage.setItem('ff_density',STATE.density);}catch(e){} }
+function bumpSpeed(d){ STATE.speed = clamp((STATE.speed??2)+d, 1, 6); $('spdV').textContent=STATE.speed; try{localStorage.setItem('ff_speed',STATE.speed);}catch(e){} }
+$('densDn').onclick=()=>bumpDensity(-1); $('densUp').onclick=()=>bumpDensity(1);
+$('spdDn').onclick=()=>bumpSpeed(-1); $('spdUp').onclick=()=>bumpSpeed(1);
+
+// diagnostics
+const tokenKey = 'postsale_diag_token';
+$('diagToken').value = localStorage.getItem(tokenKey) || '';
+$('diagToken').addEventListener('change', () => localStorage.setItem(tokenKey, $('diagToken').value.trim()));
+$('btnPoll').addEventListener('click', async () => {
+  const token = $('diagToken').value.trim();
+  $('diagOut').textContent = 'polling eBay for orders…';
+  try {
+    const r = await fetch('/api/postsale/poll/orders'+(token?('?token='+encodeURIComponent(token)):''), { method:'POST' });
+    const j = await r.json().catch(()=>({}));
+    $('diagOut').textContent = JSON.stringify(j, null, 2);
+    if (r.ok) loadAll();
+  } catch (e) { $('diagOut').textContent = 'poll failed: '+e.message; }
+});
+
+/* ---------- init ---------- */
+(async function(){
+  STATE.printCfg = await LR.loadPrintCfg();
+  try { const d=localStorage.getItem('ff_density'); const s=localStorage.getItem('ff_speed'); STATE.density = d!=null?+d:(STATE.printCfg.density??10); STATE.speed = s!=null?+s:(STATE.printCfg.speed??2); } catch(e){ STATE.density=10; STATE.speed=2; }
+  $('densV').textContent = STATE.density; $('spdV').textContent = STATE.speed;
+  await loadAll();
+  setInterval(loadAll, 60000);
+})();
+</script>
+</body>
+</html>

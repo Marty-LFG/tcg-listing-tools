@@ -4,7 +4,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseOrders, buildGetOrdersInner, xmlAmount, decodeEntities,
-  buildAddMemberMessageAAQToPartnerInner, parseMemberMessages, buildGetMemberMessagesInner } from '../../lib/ebay-trading.mjs';
+  buildAddMemberMessageAAQToPartnerInner, parseMemberMessages, buildGetMemberMessagesInner,
+  buildCompleteSaleInner } from '../../lib/ebay-trading.mjs';
+import { matchLineItem, buildPickSheet, PICK_UNSORTED } from '../../lib/postsale.mjs';
 
 // Two orders: #1 PAID (multi-line, one card title with an &), #2 UNPAID (no PaidTime).
 const FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -15,6 +17,7 @@ const FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
   <OrderArray>
     <Order>
       <OrderID>14-14908-12300</OrderID>
+      <SalesRecordNumber>873</SalesRecordNumber>
       <OrderStatus>Completed</OrderStatus>
       <CheckoutStatus>
         <Status>Complete</Status>
@@ -44,6 +47,7 @@ const FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
           <Item><ItemID>296123456789</ItemID><SKU>BK-PKM-000042</SKU><Title>Pokemon Flygon ex 222/191 SV</Title></Item>
           <QuantityPurchased>1</QuantityPurchased>
           <TransactionPrice currencyID="AUD">30.00</TransactionPrice>
+          <BuyerCheckoutMessage>Please pack with extra care &amp; a top loader, thanks!</BuyerCheckoutMessage>
           <OrderLineItemID>296123456789-1122334455</OrderLineItemID>
         </Transaction>
         <Transaction>
@@ -113,6 +117,15 @@ describe('parseOrders', () => {
     assert.equal(o.shipService, 'AU_Regular');
     assert.equal(o.paidTime, '2026-07-19T01:53:00.000Z');
     assert.equal(o.paid, true);
+  });
+
+  it('extracts the packing-slip extras: SalesRecordNumber + buyer checkout note (entity-decoded)', () => {
+    const o = orders[0];
+    assert.equal(o.salesRecordNumber, '873');
+    assert.equal(o.buyerNote, 'Please pack with extra care & a top loader, thanks!');
+    // order #2 has neither → both null
+    assert.equal(orders[1].salesRecordNumber, null);
+    assert.equal(orders[1].buyerNote, null);
   });
 
   it('extracts the shipping address the seller receives (email stays masked)', () => {
@@ -222,5 +235,67 @@ describe('xmlAmount / decodeEntities', () => {
   });
   it('decodes the common XML entities', () => {
     assert.equal(decodeEntities('Charizard &amp; Pikachu &#39;GX&#39;'), "Charizard & Pikachu 'GX'");
+  });
+});
+
+describe('buildCompleteSaleInner', () => {
+  it('marks a whole order dispatched by OrderID with no Shipment (untracked letter)', () => {
+    const xml = buildCompleteSaleInner({ orderId: '14-14908-12300', shipped: true });
+    assert.match(xml, /<OrderID>14-14908-12300<\/OrderID>/);
+    assert.match(xml, /<Shipped>true<\/Shipped>/);
+    assert.doesNotMatch(xml, /Shipment/);   // untracked → no tracking block
+  });
+  it('includes the tracking block only when BOTH number + carrier are supplied', () => {
+    const xml = buildCompleteSaleInner({ orderId: 'X', tracking: 'AA123', carrier: 'AU_AUSTRALIA_POST' });
+    assert.match(xml, /<ShipmentTrackingNumber>AA123<\/ShipmentTrackingNumber>/);
+    assert.match(xml, /<ShippingCarrierUsed>AU_AUSTRALIA_POST<\/ShippingCarrierUsed>/);
+    // tracking without a carrier must NOT emit a partial Shipment
+    assert.doesNotMatch(buildCompleteSaleInner({ orderId: 'X', tracking: 'AA123' }), /Shipment/);
+  });
+  it('falls back to OrderLineItemID for a single line', () => {
+    const xml = buildCompleteSaleInner({ orderLineItemId: '296123456789-1122334455' });
+    assert.match(xml, /<OrderLineItemID>296123456789-1122334455<\/OrderLineItemID>/);
+    assert.doesNotMatch(xml, /<OrderID>/);
+  });
+});
+
+describe('matchLineItem (reconcile ladder → inventory location)', () => {
+  const lookup = {
+    bySku: new Map([['BK-PKM-000042', { kind: 'inventory', id: 7, location: 'Shelf A1', name: 'Flygon ex' }]]),
+    byItemId: new Map([['296987654321', { kind: 'sealed', id: 8, location: 'Cage B', name: 'Booster Box' }]]),
+    locSort: new Map(),
+  };
+  it('matches on SKU case-insensitively (primary key)', () => {
+    const m = matchLineItem(lookup, { sku: 'bk-pkm-000042', ebay_item_id: '999' });
+    assert.equal(m.id, 7); assert.equal(m.method, 'sku'); assert.equal(m.location, 'Shelf A1');
+  });
+  it('falls back to the eBay item id when the SKU misses', () => {
+    const m = matchLineItem(lookup, { sku: 'UNKNOWN', ebay_item_id: '296987654321' });
+    assert.equal(m.id, 8); assert.equal(m.method, 'item_id'); assert.equal(m.kind, 'sealed');
+  });
+  it('returns null for an unmatched line (→ Unsorted bucket)', () => {
+    assert.equal(matchLineItem(lookup, { sku: 'nope', ebay_item_id: 'nope' }), null);
+    assert.equal(matchLineItem(null, { sku: 'BK-PKM-000042' }), null);   // no inventory DB
+  });
+});
+
+describe('buildPickSheet (sort + group by location)', () => {
+  const rows = [
+    { order_id: 'o2', location: null, title: 'Loose card', quantity: 1 },
+    { order_id: 'o1', location: 'Shelf B', title: 'Card B', quantity: 2 },
+    { order_id: 'o3', location: 'Shelf A', title: 'Card A', quantity: 1 },
+    { order_id: 'o4', location: 'Vault', title: 'Card V', quantity: 3 },
+  ];
+  it('puts sort_order locations first, then alpha, then Unsorted last; sums units', () => {
+    const locSort = new Map([['vault', 0]]);   // Vault pinned to the front
+    const ps = buildPickSheet(rows, locSort);
+    assert.deepEqual(ps.groups.map((g) => g.location), ['Vault', 'Shelf A', 'Shelf B', PICK_UNSORTED]);
+    assert.equal(ps.unit_count, 7);
+    assert.equal(ps.rows[0].order_id, 'o4');            // Vault row first
+    assert.equal(ps.groups[3].items[0].title, 'Loose card');
+  });
+  it('with no sort_order, locations are alphabetical and Unsorted is last', () => {
+    const ps = buildPickSheet(rows, new Map());
+    assert.deepEqual(ps.groups.map((g) => g.location), ['Shelf A', 'Shelf B', 'Vault', PICK_UNSORTED]);
   });
 });
