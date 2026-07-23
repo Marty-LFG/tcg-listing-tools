@@ -159,10 +159,10 @@
   .savenote{font-family:var(--mono);font-size:11px;color:var(--faint);margin-right:auto;}
 
   /* info dot + tooltip */
-  .info{width:14px;height:14px;flex:0 0 auto;border-radius:50%;border:1px solid var(--line3);color:var(--muted);
-    font-family:var(--mono);font-size:10px;font-weight:700;line-height:12px;text-align:center;cursor:help;user-select:none;transition:.15s;}
-  .info:hover{border-color:var(--gold);color:var(--gold);}
-  .info:focus-visible{border-color:var(--gold);color:var(--gold);outline:none;box-shadow:0 0 0 3px var(--gold-soft);}
+  .infodot{width:14px;height:14px;flex:0 0 auto;border-radius:50%;border:1px solid var(--line3);color:var(--muted);
+    font-family:var(--mono);font-size:10px;font-weight:700;line-height:12px;text-align:center;cursor:help;user-select:none;transition:.15s;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;}
+  .infodot:hover{border-color:var(--gold);color:var(--gold);}
+  .infodot:focus-visible{border-color:var(--gold);color:var(--gold);outline:none;box-shadow:0 0 0 3px var(--gold-soft);}
   #tip{position:fixed;z-index:100;max-width:290px;padding:10px 12px;border-radius:10px;pointer-events:none;
     background:#11141c;border:1px solid var(--line3);box-shadow:0 12px 30px -8px rgba(0,0,0,.8);
     font-size:12px;line-height:1.5;color:var(--text);opacity:0;transform:translateY(4px);transition:opacity .13s,transform .13s;}
@@ -309,10 +309,10 @@
   document.addEventListener('mouseout',(e)=>{ if(e.target.closest('[data-tip]')) hideTip(); });
   document.addEventListener('focusin',(e)=>{ const t=e.target.closest('[data-tip]'); if(t) showTip(t); });   // keyboard
   document.addEventListener('focusout',(e)=>{ if(e.target.closest('[data-tip]')) hideTip(); });
-  document.addEventListener('click',(e)=>{ const t=e.target.closest('.info[data-tip]'); if(!t) return; e.preventDefault(); (tipEl===t)?hideTip():showTip(t); });   // touch / tap toggle
+  document.addEventListener('click',(e)=>{ const t=e.target.closest('.infodot[data-tip]'); if(!t) return; e.preventDefault(); (tipEl===t)?hideTip():showTip(t); });   // touch / tap toggle
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') hideTip(); });
   // The visible tooltip keeps its HTML (bold etc.); aria-label carries a tag-stripped plain-text copy.
-  const inf = (txt) => '<span class="info" tabindex="0" role="button" aria-label="'+esc(String(txt).replace(/<[^>]+>/g,''))+'" data-tip="'+esc(txt)+'">i</span>';
+  const inf = (txt) => '<span class="infodot" tabindex="0" role="button" aria-label="'+esc(String(txt).replace(/<[^>]+>/g,''))+'" data-tip="'+esc(txt)+'">i</span>';
 
   /* ---------------- vitals ---------------- */
   function vital(cls,name,state,detail){
