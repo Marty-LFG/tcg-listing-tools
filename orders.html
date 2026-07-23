@@ -124,7 +124,7 @@
     <div class="diagrow">
       <input id="diagToken" type="password" placeholder="DIAG_TOKEN (stored in this browser only)" autocomplete="off">
       <button id="btnPoll">Run order poll</button>
-      <button id="btnBackfill" title="One-time sweep of historical orders. Data only — old buyers are never auto-messaged.">Backfill all history</button>
+      <button id="btnBackfill" title="Pull your recent eBay orders in (eBay's Trading API serves the last ~90 days). Data only — past buyers are never auto-messaged.">Backfill recent (90d)</button>
     </div>
     <div id="diagOut"></div>
   </details>
@@ -327,7 +327,7 @@ $('btnPoll').addEventListener('click', async () => {
 });
 $('btnBackfill').addEventListener('click', async () => {
   const token = $('diagToken').value.trim();
-  if (!confirm('Sweep ALL historical eBay orders into the dashboard?\n\nData only — past buyers are never auto-messaged. This can take a minute for a large history.')) return;
+  if (!confirm('Pull your recent eBay orders into the dashboard?\n\neBay\'s Trading API serves the last ~90 days. Data only — past buyers are never auto-messaged.')) return;
   $('btnBackfill').disabled = true;
   $('diagOut').textContent = 'backfilling historical orders… (this can take a minute)';
   try {

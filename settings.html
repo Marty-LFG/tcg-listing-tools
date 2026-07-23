@@ -385,7 +385,7 @@
   /* ---------------- quick actions (DIAG-gated) ---------------- */
   const ACTIONS=[
     {label:'Poll eBay orders',path:'/api/postsale/poll/orders',tip:'Check eBay for new paid orders right now (instead of waiting for the timer).'},
-    {label:'Backfill history',path:'/api/postsale/backfill?months=60',tip:'One-time sweep of ALL historical orders into the dashboard. Data only — past buyers are never auto-messaged.'},
+    {label:'Backfill orders',path:'/api/postsale/backfill?months=60',tip:'Pull recent eBay orders (the last ~90 days — eBay\'s Trading API limit) into the dashboard. Data only — past buyers are never auto-messaged.'},
     {label:'Refresh baked data',path:'/api/status/refresh',tip:'Re-bake all enabled catalogs now — picks up a just-pushed seed change without waiting for the interval.'},
     {label:'Run collector pass',path:'/api/status/collect',tip:'Force one price-collector pass now. May bill metered sources (e.g. Scrydex).'},
     {label:'Backup now',path:'/api/status/backup',tip:'Snapshot the money-bearing databases immediately (VACUUM INTO + rotate).'},
