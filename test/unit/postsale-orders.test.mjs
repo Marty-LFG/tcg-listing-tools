@@ -300,15 +300,15 @@ describe('buildPickSheet (sort + group by location)', () => {
   });
 });
 
-describe('skuGroupLabel (SKU-prefix bin fallback for the pick sheet)', () => {
-  it('strips the trailing number to the prefix bin', () => {
-    assert.equal(skuGroupLabel('AAC-012'), 'SKU AAC');
-    assert.equal(skuGroupLabel('AAA-073'), 'SKU AAA');
-    assert.equal(skuGroupLabel('AAC012'), 'SKU AAC');       // no separator
-    assert.equal(skuGroupLabel('AAB-018a'), 'SKU AAB');     // trailing variant letter
+describe('skuGroupLabel (chaos-sort box from the SKU prefix)', () => {
+  it('strips the trailing slot number to the box prefix', () => {
+    assert.equal(skuGroupLabel('AAC-012'), 'Box AAC');
+    assert.equal(skuGroupLabel('AAA-073'), 'Box AAA');
+    assert.equal(skuGroupLabel('AAC012'), 'Box AAC');       // no separator
+    assert.equal(skuGroupLabel('AAB-018a'), 'Box AAB');     // trailing variant letter
   });
   it('handles a prefix-less or empty SKU without throwing', () => {
-    assert.equal(skuGroupLabel('12345'), 'SKU 12345');       // all digits → keep as-is
+    assert.equal(skuGroupLabel('12345'), 'Box 12345');       // all digits → keep as-is
     assert.equal(skuGroupLabel(''), null);
     assert.equal(skuGroupLabel(null), null);
   });
