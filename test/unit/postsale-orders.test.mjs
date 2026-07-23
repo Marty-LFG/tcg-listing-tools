@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { parseOrders, buildGetOrdersInner, xmlAmount, decodeEntities,
   buildAddMemberMessageAAQToPartnerInner, parseMemberMessages, buildGetMemberMessagesInner,
   buildCompleteSaleInner } from '../../lib/ebay-trading.mjs';
-import { matchLineItem, buildPickSheet, PICK_UNSORTED } from '../../lib/postsale.mjs';
+import { matchLineItem, buildPickSheet, PICK_UNSORTED, skuGroupLabel } from '../../lib/postsale.mjs';
 
 // Two orders: #1 PAID (multi-line, one card title with an &), #2 UNPAID (no PaidTime).
 const FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -297,5 +297,19 @@ describe('buildPickSheet (sort + group by location)', () => {
   it('with no sort_order, locations are alphabetical and Unsorted is last', () => {
     const ps = buildPickSheet(rows, new Map());
     assert.deepEqual(ps.groups.map((g) => g.location), ['Shelf A', 'Shelf B', 'Vault', PICK_UNSORTED]);
+  });
+});
+
+describe('skuGroupLabel (SKU-prefix bin fallback for the pick sheet)', () => {
+  it('strips the trailing number to the prefix bin', () => {
+    assert.equal(skuGroupLabel('AAC-012'), 'SKU AAC');
+    assert.equal(skuGroupLabel('AAA-073'), 'SKU AAA');
+    assert.equal(skuGroupLabel('AAC012'), 'SKU AAC');       // no separator
+    assert.equal(skuGroupLabel('AAB-018a'), 'SKU AAB');     // trailing variant letter
+  });
+  it('handles a prefix-less or empty SKU without throwing', () => {
+    assert.equal(skuGroupLabel('12345'), 'SKU 12345');       // all digits → keep as-is
+    assert.equal(skuGroupLabel(''), null);
+    assert.equal(skuGroupLabel(null), null);
   });
 });
