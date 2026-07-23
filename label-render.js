@@ -149,9 +149,9 @@
       + '.meta{font-family:"Courier New",monospace;font-size:9.5pt;color:#333;margin:6px 0 16px;}'
       + '.shipto{margin:6px 0 18px;}.shipto .lbl{font-size:8pt;letter-spacing:1.5px;color:#777;margin-bottom:3px;}.shipto .name{font-size:15pt;font-weight:700;}.shipto div{margin:1px 0;}'
       + 'table{width:100%;border-collapse:collapse;margin:6px 0;}th{text-align:left;font-size:8.5pt;letter-spacing:.5px;color:#555;border-bottom:2px solid #000;padding:6px 5px;}td{padding:8px 5px;border-bottom:1px solid #e2e2e2;font-size:11.5pt;vertical-align:top;}'
-      + '.box{font-family:"Courier New",monospace;font-weight:700;white-space:nowrap;}.qty{text-align:center;width:44px;}.chk{width:26px;font-size:14pt;}.ord{font-family:"Courier New",monospace;font-size:8.5pt;color:#666;white-space:nowrap;}'
+      + '.box{font-family:"Courier New",monospace;font-weight:700;white-space:nowrap;}.qty{text-align:center;width:44px;}.chk{width:26px;}.chk::before{content:"";display:inline-block;width:12px;height:12px;border:1.5px solid #000;vertical-align:middle;}.ord{font-family:"Courier New",monospace;font-size:8.5pt;color:#666;white-space:nowrap;}'
       + '.total{text-align:right;font-size:14pt;font-weight:700;margin-top:12px;}.note{margin-top:16px;border:1px solid #bbb;border-radius:6px;padding:9px 12px;font-size:11pt;background:#f7f7f7;}.thanks{margin-top:26px;font-size:11pt;color:#222;}'
-      + 'h2{font-size:12pt;margin:20px 0 4px;padding-bottom:3px;border-bottom:1px solid #000;page-break-after:avoid;}h2 span{color:#888;font-weight:400;font-size:10pt;}table.pick tr{page-break-inside:avoid;}'
+      + 'h2{font-size:12pt;margin:20px 0 4px;padding-bottom:3px;border-bottom:1px solid #000;page-break-after:avoid;}h2 span{color:#888;font-weight:400;font-size:10pt;}tr{page-break-inside:avoid;}.foot{page-break-inside:avoid;}'
       + '</style></head><body>' + body + '</body></html>';
   }
 
@@ -210,9 +210,9 @@
       + '<div class="shipto"><div class="lbl">SHIP TO</div><div class="name">' + esc(name) + '</div>'
       + rest.map(function (l) { return '<div>' + esc(l) + '</div>'; }).join('') + '</div>'
       + '<table><thead><tr><th>Box / Slot</th><th class="qty">Qty</th><th>Item</th></tr></thead><tbody>' + rows + '</tbody></table>'
-      + '<div class="total">Total &nbsp; ' + esc(money(order.total_cents, order.currency)) + '</div>'
+      + '<div class="foot"><div class="total">Total &nbsp; ' + esc(money(order.total_cents, order.currency)) + '</div>'
       + note
-      + '<div class="thanks">Thanks so much for your order &mdash; hope you love the cards!' + footer + '</div>'
+      + '<div class="thanks">Thanks so much for your order &mdash; hope you love the cards!' + footer + '</div></div>'
     );
   };
 
@@ -222,7 +222,7 @@
     meta = meta || {};
     var sections = (groups || []).map(function (g) {
       var rows = g.items.map(function (it) {
-        return '<tr><td class="chk">&#9744;</td><td class="box">' + esc(it.sku || '') + '</td><td class="qty">' + (it.quantity || 1)
+        return '<tr><td class="chk"></td><td class="box">' + esc(it.sku || '') + '</td><td class="qty">' + (it.quantity || 1)
           + '</td><td>' + esc(it.title || 'item') + '</td><td class="ord">' + esc(it.order_id || '') + '</td></tr>';
       }).join('');
       return '<h2>' + esc(g.location || 'Unsorted') + ' <span>(' + g.items.length + ')</span></h2>'
