@@ -66,6 +66,10 @@
   .loc{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;margin-left:4px;}
   .loc.none{color:var(--faint);background:rgba(255,255,255,.03);}
   .items{color:var(--text);} .items .sku{color:var(--faint);font-family:var(--mono);font-size:11px;}
+  .items .item{display:flex;gap:9px;align-items:flex-start;padding:3px 0;}
+  .cardthumb{width:38px;height:53px;flex:0 0 auto;border-radius:4px;object-fit:cover;background:#0d0f15;border:1px solid var(--line2);}
+  .cardthumb.none{display:inline-block;background:repeating-linear-gradient(135deg,#12151d,#12151d 4px,#0d0f15 4px,#0d0f15 8px);}
+  .itxt{flex:1;min-width:0;}
   .rowbtns{display:flex;flex-direction:column;gap:5px;align-items:stretch;min-width:120px;}
   button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:5px 9px;cursor:pointer;transition:.15s;white-space:nowrap;}
   button.act:hover{border-color:var(--accent);color:var(--text);}
@@ -176,8 +180,11 @@ function itemsCell(items) {
   if (!items || !items.length) return '<span class="faint">—</span>';
   return '<div class="items">' + items.map(it => {
     const loc = it.location ? `<span class="loc">${esc(it.location)}</span>` : `<span class="loc none">loc?</span>`;
-    return `${esc(it.title||it.ebay_item_id||'item')}${it.quantity>1?` ×${it.quantity}`:''}${loc}${it.sku?`<br><span class="sku">${esc(it.sku)}</span>`:''}`;
-  }).join('<div style="height:5px"></div>') + '</div>';
+    const img = it.image_url
+      ? `<img class="cardthumb" src="${esc(it.image_url)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+      : `<span class="cardthumb none" title="image loading…"></span>`;
+    return `<div class="item">${img}<div class="itxt">${esc(it.title||it.ebay_item_id||'item')}${it.quantity>1?` ×${it.quantity}`:''}${loc}${it.sku?`<br><span class="sku">${esc(it.sku)}</span>`:''}</div></div>`;
+  }).join('') + '</div>';
 }
 function renderOrders() {
   const rows = STATE.orders;

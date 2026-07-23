@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseOrders, buildGetOrdersInner, xmlAmount, decodeEntities,
   buildAddMemberMessageAAQToPartnerInner, parseMemberMessages, buildGetMemberMessagesInner,
-  buildCompleteSaleInner } from '../../lib/ebay-trading.mjs';
+  buildCompleteSaleInner, parseItemImage } from '../../lib/ebay-trading.mjs';
 import { matchLineItem, buildPickSheet, PICK_UNSORTED, skuGroupLabel } from '../../lib/postsale.mjs';
 
 // Two orders: #1 PAID (multi-line, one card title with an &), #2 UNPAID (no PaidTime).
@@ -256,6 +256,19 @@ describe('buildCompleteSaleInner', () => {
     const xml = buildCompleteSaleInner({ orderLineItemId: '296123456789-1122334455' });
     assert.match(xml, /<OrderLineItemID>296123456789-1122334455<\/OrderLineItemID>/);
     assert.doesNotMatch(xml, /<OrderID>/);
+  });
+});
+
+describe('parseItemImage (GetItem primary listing image)', () => {
+  it('prefers GalleryURL over PictureURL', () => {
+    const xml = '<Item><PictureDetails><GalleryURL>https://i.ebayimg.com/x/g.jpg</GalleryURL><PictureURL>https://i.ebayimg.com/x/p1.jpg</PictureURL></PictureDetails></Item>';
+    assert.equal(parseItemImage(xml), 'https://i.ebayimg.com/x/g.jpg');
+  });
+  it('falls back to the first PictureURL when there is no gallery image', () => {
+    assert.equal(parseItemImage('<Item><PictureDetails><PictureURL>https://i.ebayimg.com/x/p1.jpg</PictureURL></PictureDetails></Item>'), 'https://i.ebayimg.com/x/p1.jpg');
+  });
+  it('returns null when the listing has no pictures', () => {
+    assert.equal(parseItemImage('<Item></Item>'), null);
   });
 });
 
