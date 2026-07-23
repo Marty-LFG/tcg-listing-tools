@@ -99,19 +99,63 @@
     return out.length ? out : [''];
   }
 
-  /* ---------- address label (the "print postage label" button — same output as shipping-label.html) ---------- */
-  function addressLines(order) {
-    var L = [];
-    if (order.ship_name) L.push(order.ship_name);
-    if (order.ship_street1) L.push(order.ship_street1);
-    if (order.ship_street2) L.push(order.ship_street2);
+  /* ---------- shared HTML / address helpers ---------- */
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(cents, cur) { return (cur === 'AUD' || !cur ? 'A$' : cur + ' ') + ((Math.round(+cents || 0)) / 100).toFixed(2); }
+  function isPhoneLine(l) { var d = (String(l).match(/\d/g) || []).length; return d >= 6 && !/[a-zA-Z]/.test(l); }
+
+  // Ship-to lines from the structured order fields, cleaned exactly like shipping-label.html: eBay AU
+  // puts the buyer's username in Street1 ("ebay:xxxx") and the real street in Street2, so drop any
+  // "ebay:" line and any bare phone line; drop the domestic AU country line. Line 0 = recipient name.
+  function cleanAddressLines(order) {
+    var raw = [];
+    if (order.ship_name) raw.push(order.ship_name);
+    if (order.ship_street1) raw.push(order.ship_street1);
+    if (order.ship_street2) raw.push(order.ship_street2);
     var cityline = [order.ship_city, order.ship_state].filter(Boolean).join(' ');
     if (order.ship_postal) cityline = (cityline ? cityline + '  ' : '') + order.ship_postal;
-    if (cityline.trim()) L.push(cityline.trim());
+    if (cityline.trim()) raw.push(cityline.trim());
     var cn = order.ship_country_name || order.ship_country;
-    if (cn && !/^au(s(tralia)?)?$/i.test(String(cn).trim())) L.push(cn);   // drop the domestic AU country line
-    return L.filter(Boolean);
+    if (cn && !/^au(s(tralia)?)?$/i.test(String(cn).trim())) raw.push(cn);
+    return raw.map(function (l) { return String(l).trim(); }).filter(Boolean)
+      .filter(function (l) { return !/^ebay:/i.test(l); })   // the eBay username line — never on a label
+      .filter(function (l) { return !isPhoneLine(l); });
   }
+  LR.cleanAddressLines = cleanAddressLines;
+
+  // Print an HTML document via the browser's own print dialog (normal printer OR "Save as PDF"), using
+  // a hidden same-origin iframe so it isn't popup-blocked. For paper documents (packing slip, pick
+  // sheet) — NOT the thermal printer.
+  LR.openPrintDoc = function (html) {
+    var ifr = document.createElement('iframe');
+    ifr.setAttribute('aria-hidden', 'true');
+    ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(ifr);
+    var win = ifr.contentWindow, cleaned = false, fired = false;
+    function cleanup() { if (cleaned) return; cleaned = true; setTimeout(function () { if (ifr.parentNode) ifr.parentNode.removeChild(ifr); }, 500); }
+    function go() { if (fired) return; fired = true; try { win.focus(); win.print(); } catch (e) { } setTimeout(cleanup, 60000); }
+    win.onafterprint = cleanup;
+    win.document.open(); win.document.write(html); win.document.close();
+    ifr.onload = go;        // fires in most browsers after document.close()
+    setTimeout(go, 400);    // fallback — onload on a written iframe is unreliable (go() is single-fire)
+  };
+
+  // Print-ready HTML document shell (A4/Letter, black on white).
+  function DOC(title, body) {
+    return '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>'
+      + '@page{margin:14mm;}'
+      + '*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:12pt;line-height:1.4;margin:0;}'
+      + '.store{font-size:20pt;font-weight:700;}.tag{font-size:9pt;letter-spacing:2px;color:#555;margin-top:1px;}'
+      + '.meta{font-family:"Courier New",monospace;font-size:9.5pt;color:#333;margin:6px 0 16px;}'
+      + '.shipto{margin:6px 0 18px;}.shipto .lbl{font-size:8pt;letter-spacing:1.5px;color:#777;margin-bottom:3px;}.shipto .name{font-size:15pt;font-weight:700;}.shipto div{margin:1px 0;}'
+      + 'table{width:100%;border-collapse:collapse;margin:6px 0;}th{text-align:left;font-size:8.5pt;letter-spacing:.5px;color:#555;border-bottom:2px solid #000;padding:6px 5px;}td{padding:8px 5px;border-bottom:1px solid #e2e2e2;font-size:11.5pt;vertical-align:top;}'
+      + '.box{font-family:"Courier New",monospace;font-weight:700;white-space:nowrap;}.qty{text-align:center;width:44px;}.chk{width:26px;font-size:14pt;}.ord{font-family:"Courier New",monospace;font-size:8.5pt;color:#666;white-space:nowrap;}'
+      + '.total{text-align:right;font-size:14pt;font-weight:700;margin-top:12px;}.note{margin-top:16px;border:1px solid #bbb;border-radius:6px;padding:9px 12px;font-size:11pt;background:#f7f7f7;}.thanks{margin-top:26px;font-size:11pt;color:#222;}'
+      + 'h2{font-size:12pt;margin:20px 0 4px;padding-bottom:3px;border-bottom:1px solid #000;page-break-after:avoid;}h2 span{color:#888;font-weight:400;font-size:10pt;}table.pick tr{page-break-inside:avoid;}'
+      + '</style></head><body>' + body + '</body></html>';
+  }
+
+  /* ---------- address label (thermal — the AUSPRINT sticky label for the envelope) ---------- */
   // Auto-fit: largest pt in [minPt,maxPt] where every line fits the usable width and the block fits height.
   function fitFont(ctx, lines, usableW, usableH, dpi, lineSpacing, minPt, maxPt) {
     for (var pt = maxPt; pt >= minPt; pt -= 0.5) {
@@ -131,7 +175,7 @@
     var dpi = dpiOf(opts), wmm = opts.wmm || 100, hmm = opts.hmm || 50, margin = opts.margin != null ? opts.margin : 5;
     var c = mkCanvas(wmm, hmm, dpi), ctx = c.ctx, pxPerMm = c.pxPerMm, lineSpacing = 1.2;
     var usableW = (wmm - 2 * margin) * pxPerMm, usableH = (hmm - 2 * margin) * pxPerMm;
-    var lines = addressLines(order);
+    var lines = cleanAddressLines(order);
     var pt = fitFont(ctx, lines, usableW, usableH, dpi, lineSpacing, 8, opts.maxPt || 28);
     var px = pt2px(pt, dpi), lh = px * lineSpacing;
     var blockH = lines.length ? (lines.length - 1) * lh + px : 0;
@@ -144,169 +188,51 @@
     return canvasToJob(c.cv, wmm, hmm);
   };
 
-  /* ---------- packing slip (self-built from order data — eBay has no packing-slip API) ---------- */
-  LR.renderPackingSlip = function (order, opts) {
-    opts = opts || {};
-    var dpi = dpiOf(opts), wmm = opts.wmm || 100, hmm = opts.hmm || 150, margin = opts.margin != null ? opts.margin : 5;
-    var store = opts.store || (LR.config && LR.config.store) || 'Binders Keepers';
-    var c = mkCanvas(wmm, hmm, dpi), ctx = c.ctx, pxPerMm = c.pxPerMm;
-    var left = Math.round(margin * pxPerMm), right = c.wDots - margin * pxPerMm, usableW = right - left;
-    var y = margin * pxPerMm;
-    function setFont(pt, bold, mono) { ctx.font = (bold ? 'bold ' : '') + pt2px(pt, dpi).toFixed(2) + 'px ' + (mono ? MONO : FAMILY); ctx.textAlign = 'left'; }
-    function draw(s, pt, bold, o) {
-      o = o || {}; setFont(pt, bold, o.mono);
-      var x = left; ctx.textAlign = o.align || 'left';
-      if (o.align === 'right') x = right; else if (o.align === 'center') x = (left + right) / 2;
-      ctx.fillText(s == null ? '' : String(s), Math.round(x), Math.round(y));
-      if (!o.noAdvance) y += pt2px(pt, dpi) * (o.spacing || 1.35);
-    }
-    function rule() { y += 1.4 * pxPerMm; ctx.fillRect(left, Math.round(y), usableW, Math.max(1, Math.round(0.28 * pxPerMm))); y += 2.4 * pxPerMm; }
-    function money(cents, cur) { return (cur === 'AUD' || !cur ? 'A$' : cur + ' ') + ((Math.round(+cents || 0)) / 100).toFixed(2); }
-
-    // header
-    draw(store, 13, true);
-    draw('PACKING SLIP', 8.5, false, { spacing: 1.6 });
-    draw('Order ' + (order.order_id || ''), 8, false, { mono: true, spacing: 1.25 });
-    var meta = [];
-    if (order.sales_record_number) meta.push('Sales rec #' + order.sales_record_number);
-    var paid = order.paid_time ? String(order.paid_time).replace('T', ' ').slice(0, 10) : '';
-    if (paid) meta.push(paid);
-    if (meta.length) draw(meta.join('   ·   '), 8, false, { mono: true });
-    rule();
-
-    // ship to
-    draw('SHIP TO', 7.5, true, { spacing: 1.5 });
-    draw(order.ship_name || '', 11, true);
-    if (order.ship_street1) draw(order.ship_street1, 10, false, { spacing: 1.25 });
-    if (order.ship_street2) draw(order.ship_street2, 10, false, { spacing: 1.25 });
-    var cityline = [order.ship_city, order.ship_state].filter(Boolean).join(' ');
-    if (order.ship_postal) cityline = (cityline ? cityline + '  ' : '') + order.ship_postal;
-    if (cityline.trim()) draw(cityline.trim(), 10, false, { spacing: 1.25 });
-    var cn = order.ship_country_name || order.ship_country;
-    if (cn && !/^au(s(tralia)?)?$/i.test(String(cn).trim())) draw(cn, 10, false, { spacing: 1.25 });
-    if (order.buyer_username) draw('@' + order.buyer_username, 8, false, { mono: true });
-    rule();
-
-    // items
-    draw('ITEMS', 7.5, true, { spacing: 1.5 });
-    var items = order.items || [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var qty = (it.quantity || 1);
-      setFont(9.5, true, false); var qtyStr = qty + '×  ';
-      var qtyW = ctx.measureText(qtyStr).width;
-      // qty (bold) on the same baseline as the first wrapped title line
-      var titleFontPt = 9.5;
-      setFont(titleFontPt, false, false);
-      var titleLines = wrapText(ctx, it.title || it.sku || it.ebay_item_id || 'item', usableW - qtyW);
-      var startY = y;
-      setFont(9.5, true, false); ctx.textAlign = 'left';
-      ctx.fillText(qtyStr, left, Math.round(startY));
-      for (var t = 0; t < titleLines.length; t++) {
-        setFont(titleFontPt, false, false); ctx.textAlign = 'left';
-        ctx.fillText(titleLines[t], Math.round(left + qtyW), Math.round(y));
-        y += pt2px(titleFontPt, dpi) * 1.25;
-      }
-      if (it.sku) draw(it.sku + (it.location ? '   ·   ' + it.location : ''), 7.5, false, { mono: true, spacing: 1.35 });
-      else if (it.location) draw(it.location, 7.5, false, { mono: true, spacing: 1.35 });
-      y += 0.8 * pxPerMm;
-    }
-    rule();
-
-    // totals
-    var totalStr = money(order.total_cents, order.currency);
-    setFont(11, true, false); ctx.textAlign = 'left'; ctx.fillText('TOTAL', left, Math.round(y));
-    ctx.textAlign = 'right'; ctx.fillText(totalStr, Math.round(right), Math.round(y));
-    y += pt2px(11, dpi) * 1.6; ctx.textAlign = 'left';
-
-    // buyer note
-    if (order.buyer_note) {
-      rule();
-      draw('NOTE FROM BUYER', 7.5, true, { spacing: 1.4 });
-      setFont(9, false, false);
-      var noteLines = wrapText(ctx, order.buyer_note, usableW);
-      for (var n = 0; n < noteLines.length; n++) draw(noteLines[n], 9, false, { spacing: 1.25 });
-    }
-
-    // footer thank-you (only if there's room)
-    if (y < c.hDots - 10 * pxPerMm) {
-      y = c.hDots - 7 * pxPerMm;
-      draw('Thanks for your order! ' + (LR.config && LR.config.footer || ''), 8, false, { spacing: 1.2 });
-    }
-    return canvasToJob(c.cv, wmm, hmm);
+  /* ---------- packing slip (browser print / PDF on a NORMAL printer — carries the box/slot) ---------- */
+  LR.packingSlipHTML = function (order) {
+    var store = (LR.config && LR.config.store) || 'Binders Keepers';
+    var addr = cleanAddressLines(order);           // already strips the eBay username line
+    var name = addr.length ? addr[0] : '';
+    var rest = addr.slice(1);
+    var meta = ['Order ' + esc(order.order_id || '')];
+    if (order.sales_record_number) meta.push('Sales #' + esc(order.sales_record_number));
+    var d = order.paid_time ? String(order.paid_time).slice(0, 10) : '';
+    if (d) meta.push(esc(d));
+    var rows = (order.items || []).map(function (it) {
+      var box = it.sku ? esc(it.sku) : (it.location ? esc(it.location) : '&mdash;');
+      return '<tr><td class="box">' + box + '</td><td class="qty">' + (it.quantity || 1) + '</td><td>' + esc(it.title || it.ebay_item_id || 'item') + '</td></tr>';
+    }).join('');
+    var note = order.buyer_note ? '<div class="note"><b>Note from buyer:</b> ' + esc(order.buyer_note) + '</div>' : '';
+    var footer = (LR.config && LR.config.footer) ? ' ' + esc(LR.config.footer) : '';
+    return DOC('Packing slip ' + (order.order_id || ''),
+      '<div class="store">' + esc(store) + '</div><div class="tag">PACKING SLIP</div>'
+      + '<div class="meta">' + meta.join(' &nbsp;&middot;&nbsp; ') + '</div>'
+      + '<div class="shipto"><div class="lbl">SHIP TO</div><div class="name">' + esc(name) + '</div>'
+      + rest.map(function (l) { return '<div>' + esc(l) + '</div>'; }).join('') + '</div>'
+      + '<table><thead><tr><th>Box / Slot</th><th class="qty">Qty</th><th>Item</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + '<div class="total">Total &nbsp; ' + esc(money(order.total_cents, order.currency)) + '</div>'
+      + note
+      + '<div class="thanks">Thanks so much for your order &mdash; hope you love the cards!' + footer + '</div>'
+    );
   };
 
-  /* ---------- pick sheet (one consolidated pull list, grouped by location; paginates across pages) ---------- */
-  // groups: [{ location, items:[{ title, sku, quantity, order_id, buyer_username }] }] (from /api/postsale/picksheet).
-  // Returns an ARRAY of jobs — one per label page — so a long run spans several die-cut labels.
-  LR.renderPickSheet = function (groups, opts) {
-    opts = opts || {};
-    var dpi = dpiOf(opts), wmm = opts.wmm || 100, hmm = opts.hmm || 150, margin = opts.margin != null ? opts.margin : 5;
-    var pageItems = flattenGroups(groups);
-    var jobs = [], idx = 0, pageNo = 0;
-    var totalUnits = 0, totalOrders = {};
-    for (var g = 0; g < groups.length; g++) for (var ii = 0; ii < groups[g].items.length; ii++) { totalUnits += (groups[g].items[ii].quantity || 1); totalOrders[groups[g].items[ii].order_id] = 1; }
-    var orderCount = Object.keys(totalOrders).length;
-
-    while (idx < pageItems.length || pageNo === 0) {
-      pageNo++;
-      var c = mkCanvas(wmm, hmm, dpi), ctx = c.ctx, pxPerMm = c.pxPerMm;
-      var left = Math.round(margin * pxPerMm), right = c.wDots - margin * pxPerMm, usableW = right - left;
-      var bottom = c.hDots - margin * pxPerMm;
-      var y = margin * pxPerMm;
-      function setFont(pt, bold, mono) { ctx.font = (bold ? 'bold ' : '') + pt2px(pt, dpi).toFixed(2) + 'px ' + (mono ? MONO : FAMILY); ctx.textAlign = 'left'; }
-      // header (page 1 gets the summary; later pages a slim continuation line)
-      setFont(12, true, false); ctx.fillText('PICK SHEET', left, Math.round(y)); y += pt2px(12, dpi) * 1.4;
-      setFont(8, false, true);
-      var hdr = pageNo === 1 ? (orderCount + ' order' + (orderCount === 1 ? '' : 's') + ' · ' + totalUnits + ' item' + (totalUnits === 1 ? '' : 's')) : ('continued · p' + pageNo);
-      ctx.fillText(hdr, left, Math.round(y)); y += pt2px(8, dpi) * 1.4;
-      y += 1.2 * pxPerMm; ctx.fillRect(left, Math.round(y), usableW, Math.max(1, Math.round(0.28 * pxPerMm))); y += 2.2 * pxPerMm;
-
-      var lastLoc = null, placed = 0;
-      while (idx < pageItems.length) {
-        var row = pageItems[idx];
-        // measure the height this row (loc header if new + wrapped title + meta) would consume
-        var needsHeader = row.location !== lastLoc;
-        setFont(9, false, false);
-        var titleLines = wrapText(ctx, row.title || row.sku || row.ebay_item_id || 'item', usableW - 8 * (dpi / 96));
-        var rowH = (needsHeader ? pt2px(9, dpi) * 1.6 + 1.5 * pxPerMm : 0)
-          + titleLines.length * pt2px(9, dpi) * 1.25 + pt2px(7, dpi) * 1.3 + 1 * pxPerMm;
-        if (placed > 0 && y + rowH > bottom) break;   // overflow → next page (but always place ≥1 row so we can't loop forever)
-
-        if (needsHeader) {
-          y += 1.2 * pxPerMm;
-          setFont(9.5, true, false);
-          ctx.fillText(row.location || 'Unsorted', left, Math.round(y));
-          y += pt2px(9.5, dpi) * 1.6;
-          lastLoc = row.location;
-        }
-        // checkbox glyph + qty + title
-        setFont(9, true, false); var qtyStr = '[ ] ' + (row.quantity || 1) + '×  ';
-        var qtyW = ctx.measureText(qtyStr).width;
-        ctx.fillText(qtyStr, left, Math.round(y));
-        for (var t = 0; t < titleLines.length; t++) {
-          setFont(9, false, false);
-          ctx.fillText(titleLines[t], Math.round(left + qtyW), Math.round(y));
-          y += pt2px(9, dpi) * 1.25;
-        }
-        setFont(7, false, true);
-        ctx.fillText((row.order_id || '') + '  @' + (row.buyer_username || ''), Math.round(left + qtyW), Math.round(y));
-        y += pt2px(7, dpi) * 1.3 + 1 * pxPerMm;
-        idx++; placed++;
-      }
-      jobs.push(canvasToJob(c.cv, wmm, hmm));
-      if (idx >= pageItems.length) break;
-    }
-    return jobs;
+  /* ---------- pick sheet (browser print / PDF — grouped by box, sorted by slot) ---------- */
+  // groups: [{ location, items:[{ title, sku, quantity, order_id, buyer_username }] }] from /api/postsale/picksheet.
+  LR.pickSheetHTML = function (groups, meta) {
+    meta = meta || {};
+    var sections = (groups || []).map(function (g) {
+      var rows = g.items.map(function (it) {
+        return '<tr><td class="chk">&#9744;</td><td class="box">' + esc(it.sku || '') + '</td><td class="qty">' + (it.quantity || 1)
+          + '</td><td>' + esc(it.title || 'item') + '</td><td class="ord">' + esc(it.order_id || '') + '</td></tr>';
+      }).join('');
+      return '<h2>' + esc(g.location || 'Unsorted') + ' <span>(' + g.items.length + ')</span></h2>'
+        + '<table class="pick"><tbody>' + rows + '</tbody></table>';
+    }).join('');
+    var summary = (meta.order_count || 0) + ' orders · ' + (meta.item_count || 0) + ' lines · ' + (meta.unit_count || 0) + ' units';
+    return DOC('Pick sheet',
+      '<div class="store">Pick sheet</div><div class="meta">' + esc(summary) + '</div>' + (sections || '<p>Nothing to pick.</p>')
+    );
   };
-  function flattenGroups(groups) {
-    var out = [];
-    for (var g = 0; g < (groups || []).length; g++) {
-      var loc = groups[g].location;
-      for (var i = 0; i < groups[g].items.length; i++) { var r = groups[g].items[i]; out.push({ location: loc, title: r.title, sku: r.sku, quantity: r.quantity, order_id: r.order_id, buyer_username: r.buyer_username, ebay_item_id: r.ebay_item_id }); }
-    }
-    return out;
-  }
 
   window.LR = LR;
 })();

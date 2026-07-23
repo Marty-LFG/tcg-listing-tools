@@ -258,16 +258,17 @@ function handleJobs(jobs, label, orderId){
 }
 function closePreview(){ $('overlay').classList.remove('open'); }
 
-function printSlip(id){ const o=orderById(id); if(!o) return; handleJobs([LR.renderPackingSlip(o)], 'packing slip', id); }
+// Packing slip + pick sheet are paper documents → browser print dialog (normal printer / Save as PDF),
+// NOT the thermal printer. Only the address label goes to the AUSPRINT.
+function printSlip(id){ const o=orderById(id); if(!o) return; LR.openPrintDoc(LR.packingSlipHTML(o)); setStatus('ok','Packing slip → print dialog (pick your printer, or Save as PDF).'); }
 function printLabel(id){ const o=orderById(id); if(!o) return; handleJobs([LR.renderAddressLabel(o)], 'address label', id); }
 async function printPickSheet(){
   setStatus('load','Building pick sheet…');
   try {
     const ps = await api('/picksheet?status='+(STATE.tab==='all'?'all':'unshipped'));
     if (!ps.rows || !ps.rows.length){ setStatus('warn','Nothing to pick — no unshipped orders.'); return; }
-    const jobs = LR.renderPickSheet(ps.groups, { wmm:100, hmm:150 });
-    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → '+jobs.length+' page'+(jobs.length===1?'':'s')+'.');
-    handleJobs(jobs, 'pick sheet');
+    LR.openPrintDoc(LR.pickSheetHTML(ps.groups, { order_count:ps.order_count, item_count:ps.item_count, unit_count:ps.unit_count }));
+    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → print dialog.');
   } catch(e){ setStatus('err','Pick sheet failed: '+e.message); }
 }
 
