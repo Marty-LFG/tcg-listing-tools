@@ -193,10 +193,15 @@ function itemsCell(items) {
     return `<div class="item">${img}<div class="itxt">${esc(it.title||it.ebay_item_id||'item')}${it.quantity>1?` ×${it.quantity}`:''}${loc}${it.sku?`<br><span class="sku">${esc(it.sku)}</span>`:''}</div></div>`;
   }).join('') + '</div>';
 }
-// Group orders that ship together: same buyer AND same ship-to (name + street + postcode). A group
-// of >1 can print one COMBINED packing slip. STATE.groupOf maps an order_id → its sibling orders.
+// Group orders that ship together: same buyer AND same ship-to. A group of >1 can print one COMBINED
+// packing slip. STATE.groupOf maps an order_id → its sibling orders. Key off the CLEANED address lines
+// (name + real street + locality) — eBay masks ship_street1 with a per-order "ebay:<token>" and puts
+// the real street in ship_street2, so the raw street1 never matches across a buyer's orders. Using the
+// same cleaner the slip prints with (LR.cleanAddressLines) makes the key stable and correct.
 function shipGroupKey(o){
-  return (o.buyer_username||'').toLowerCase()+'|'+[o.ship_name,o.ship_street1,o.ship_postal].map(s=>String(s||'').trim().toLowerCase()).join('|');
+  const addr = (window.LR && LR.cleanAddressLines) ? LR.cleanAddressLines(o).join('|')
+    : [o.ship_name,o.ship_city,o.ship_state,o.ship_postal].filter(Boolean).join('|');
+  return (o.buyer_username||'').toLowerCase()+'|'+String(addr).toLowerCase();
 }
 function computeGroups(rows){
   const byKey = new Map();
