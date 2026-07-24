@@ -53,7 +53,7 @@ console.log('\n[extras.js parity]');
   const src = read('extras.js');
   const ctx = { TCG: {} };
   vm.createContext(ctx);
-  for (const name of ['condCode', 'langCode', 'fitTitle']) {
+  for (const name of ['condCode', 'langCode', 'fitTitle', 'formatCardNumber', 'cardNumberKey']) {
     vm.runInContext(extractFn(src, 'TCG.' + name + '=function') + ';', ctx);
   }
   const condVec = ['Ungraded, Near Mint', 'Near Mint', 'PSA 10', 'bgs 9.5', 'Lightly Played', 'MP', 'heavily played', 'Damaged', 'Excellent', 'Mint', '', 'Something Odd'];
@@ -69,6 +69,35 @@ console.log('\n[extras.js parity]');
     check('fitTitle(vec ' + i + ')', LC.fitTitle(partsVec[i], 80), ctx.TCG.fitTitle(partsVec[i], 80));
     check('fitTitle(vec ' + i + ', 40)', LC.fitTitle(partsVec[i], 40), ctx.TCG.fitTitle(partsVec[i], 40));
   }
+  // Golden Rule 10 — the card-exact collector number. Every set shape below was verified
+  // against a hi-res scan of the real card (see docs/DATA_SOURCES.md).
+  const SV = { series: 'Scarlet & Violet', releaseDate: '2025/07/18' };
+  const SWSH = { series: 'Sword & Shield', releaseDate: '2020/02/07' };
+  const numVec = [
+    ['12', { ...SV, name: 'White Flare', printedTotal: 86, total: 173 }, {}],                                        // 012/086
+    ['106', { ...SV, name: 'White Flare', printedTotal: 86, total: 173 }, {}],                                       // 106/086 (secret rare)
+    ['4', { ...SWSH, name: 'Sword & Shield', printedTotal: 202, total: 216 }, {}],                                   // 004/202
+    ['1', { series: 'Sword & Shield', releaseDate: '2021/10/08', name: 'Celebrations', printedTotal: 25, total: 25 }, {}],
+    ['4', { series: 'Sun & Moon', releaseDate: '2017/02/03', name: 'Sun & Moon', printedTotal: 149, total: 163 }, {}],   // 4/149 (pre-SWSH)
+    ['58', { series: 'Base', releaseDate: '1999/01/09', name: 'Base', printedTotal: 102, total: 102 }, {}],          // 58/102
+    ['1', { series: 'Scarlet & Violet', releaseDate: '2023/01/01', name: 'Scarlet & Violet Black Star Promos', printedTotal: 215, total: 196 }, {}],   // 001
+    ['SWSH039', { series: 'Sword & Shield', releaseDate: '2019/11/15', name: 'SWSH Black Star Promos', printedTotal: 307, total: 304 }, {}],
+    ['1', { series: 'Base', releaseDate: '1999/07/01', name: 'Wizards Black Star Promos', printedTotal: 53, total: 53 }, {}],
+    ['TG01', { series: 'Sword & Shield', releaseDate: '2022/02/25', name: 'Brilliant Stars Trainer Gallery', printedTotal: 30, total: 30 }, {}],
+    ['SV001', { series: 'Sword & Shield', releaseDate: '2021/02/19', name: 'Shining Fates Shiny Vault', printedTotal: 122, total: 122 }, {}],
+    ['001', { name: 'スカーレットex', printedTotal: 78, total: 108 }, { source: 'tcgdex' }],                            // 001/078
+    ['106', { name: 'ホワイトフレア', printedTotal: 86, total: 174 }, { source: 'tcgdex' }],                            // 106/086
+    ['039a', { ...SWSH, name: 'Astral Radiance', printedTotal: 298, total: 300 }, {}],                               // GR5 verbatim
+    ['H1', { series: 'E-Card', releaseDate: '2002/09/15', name: 'Expedition Base Set', printedTotal: 165, total: 165 }, {}],
+    ['25', { name: 'No Total Set' }, {}],
+    ['001', { mep: true, series: 'Scarlet & Violet', releaseDate: '2025/09/26', name: 'Mega Evolution Promo', printedTotal: 88, total: 79 }, {}],
+    ['', { ...SV, name: 'White Flare', printedTotal: 86 }, {}],
+  ];
+  for (const [n, s, o] of numVec) {
+    check('formatCardNumber(' + JSON.stringify(n) + ', ' + (s.name || '?') + ')', LC.formatCardNumber(n, s, o), ctx.TCG.formatCardNumber(n, s, o));
+  }
+  const keyVec = ['106/86', '106/086', '012/086', 'TG01/TG30', '001', '4/102', '', 'SV001/SV122'];
+  for (const s of keyVec) check('cardNumberKey(' + JSON.stringify(s) + ')', LC.cardNumberKey(s), ctx.TCG.cardNumberKey(s));
 }
 
 // ---------------------------------------------------------------------------

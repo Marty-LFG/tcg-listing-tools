@@ -418,7 +418,7 @@ async function loadSets(){
   setStatus(hadCache?PKM_SETS.length+' sets · refreshing…':'loading sets…');
   var act=window.TCG?TCG.activity(hadCache?'Refreshing Pokémon sets…':'Loading Pokémon sets…'):null;
   try{
-    var r=await fetch(base.replace(/\/$/,'')+'/sets?pageSize=500');
+    var r=await TCG.fetchJson(base.replace(/\/$/,'')+'/sets?pageSize=500');   // retries pokemontcg.io's intermittent 500s
     if(!r.ok)throw new Error('http '+r.status);
     var j=await r.json();
     var sets=(j.data||[]).map(slimSet).sort(function(a,b){return (b.releaseDate||'').localeCompare(a.releaseDate||'');});
@@ -590,13 +590,22 @@ async function doLookup(){
   st.className='status load';st.textContent='Looking up '+setId+'-'+num+'\u2026';
   const act=window.TCG?TCG.activity('Looking up '+setId+'-'+num+'\u2026'):null;
   try{
-    const r=await fetch(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(setId+'-'+num));
-    if(!r.ok){act&&act.fail('no match');set('f_set',_setObj.name||setId);clearCardFields({keepSet:true});st.className='status warn';st.textContent='No match for '+setId+'-'+num+'. Check the set/number or fill manually.';return;}
+    const r=await TCG.fetchJson(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(setId+'-'+num),
+      {onRetry:function(n){st.textContent='Looking up '+setId+'-'+num+'… (retry '+n+')';}});
+    if(!r.ok){
+      // pokemontcg.io flakes with 500s — after the retries that is the SOURCE being down,
+      // not a missing card. Saying "no match" for it sends people hunting a typo (GR7).
+      const down=r.status>=500||r.status===429;
+      act&&act.fail(down?'source down':'no match');set('f_set',_setObj.name||setId);clearCardFields({keepSet:true});st.className='status warn';
+      st.textContent=down
+        ?'pokemontcg.io is temporarily unavailable (HTTP '+r.status+') — hit Look up again in a moment, or fill the fields manually.'
+        :'No match for '+setId+'-'+num+'. Check the set/number or fill manually.';
+      return;}
     const j=await r.json(); const c=j.data||j;
     if(!c||!c.name){act&&act.fail('no card');set('f_set',_setObj.name||setId);clearCardFields({keepSet:true});st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
     set('f_name',c.name);
     set('f_set',(c.set&&c.set.name)||setId);
-    set('f_num',(c.number||num)+'/'+((c.set&&(c.set.printedTotal||c.set.total))||''));
+    set('f_num',TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity}));
     set('f_rarity',c.rarity||'');
     set('f_poke',c.name);
     set('f_stage',(c.subtypes||[]).join(' / '));
@@ -644,7 +653,7 @@ async function doLookupMep(setObj,num){
   const vars=card.variants||[];
   const primary=vars.find(function(v){return v.label==='Standard';})||vars[0]||null;
   set('f_name',card.name);
-  set('f_num',card.number);
+  set('f_num',TCG.formatCardNumber(card.number,Object.assign({mep:true},(MEP&&MEP.set)||{}),{source:'ptcg',rarity:card.rarity}));
   set('f_rarity',card.rarity||'Promo');
   set('f_poke',card.name);
   set('f_stage',card.stage||'');set('f_type',card.type||'');
@@ -735,7 +744,7 @@ async function tryPcLookup(setObj,num,dl,enSet){
     var total=setObj.cardCount||'';
     set('f_name',card.name);
     set('f_set',enSet);
-    set('f_num',card.number+(total?'/'+total:''));
+    set('f_num',TCG.formatCardNumber(card.number,{name:enSet,printedTotal:total,total:total,series:setObj.serie||'',releaseDate:setObj.releaseDate||''},{source:'ptcg'}));
     set('f_poke',card.name);
     // PriceCharting rows carry no rarity/stage/type — enrich from TCGdex when it has the set (skipped
     // for brand-new sets TCGdex hasn't published yet). For JP/CN/KO we ALSO surface the native card
@@ -818,7 +827,7 @@ async function doLookupIntl(setObj,num,dl){
     const total=(c.set&&c.set.cardCount&&(c.set.cardCount.official||c.set.cardCount.total))||setObj.cardCount||'';
     set('f_name',enName);
     set('f_set',enSet);
-    set('f_num',(c.localId||num)+(total?'/'+total:''));
+    set('f_num',TCG.formatCardNumber(c.localId||num,{name:enSet,printedTotal:total,total:total,series:setObj.serie||'',releaseDate:setObj.releaseDate||''},{source:'tcgdex',rarity:c.rarity}));
     set('f_rarity',c.rarity||'');
     set('f_poke',enName);
     set('f_stage',c.stage||'');

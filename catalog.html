@@ -535,7 +535,12 @@ function ownedBlock(own){
 function closeDrawer(){$('scrim').classList.remove('open');$('drawer').classList.remove('open');$('drawer').setAttribute('aria-hidden','true');_openRid=null;}
 
 // EN owned graded matched by number (for the ✓ flag on card tiles).
-function ownedNumbers(set){const m=new Map();for(const it of (set._own?set._own.graded:[]))if(it.number)m.set(String(it.number).replace(/^0+/,''),it);return m;}
+// An owned row stores the FULL printed number ("25/191", or the card-exact "025/191" since
+// Golden Rule 10) while a catalog tile only knows its numerator ("25"), so both sides are
+// reduced to the padding-insensitive NUMERATOR before matching — comparing the raw strings
+// (old behaviour) never matched once a "/total" was stored.
+function ownedNumKey(s){return TCG.cardNumberKey(s).split('/')[0];}
+function ownedNumbers(set){const m=new Map();for(const it of (set._own?set._own.graded:[]))if(it.number)m.set(ownedNumKey(it.number),it);return m;}
 
 // Leading integer of a card number ("75" -> 75, "TG01" -> Infinity so it sorts last).
 function parseCardNum(s){const m=String(s==null?'':s).match(/\d+/);return m?parseInt(m[0],10):Infinity;}
@@ -601,7 +606,7 @@ async function loadCards(set,wrap){
     const toAud=(v,cur)=>(window.TCG&&v!=null&&cur&&TCG.toAUD)?TCG.toAUD(v,cur):null;
     const cards=raw.map((c)=>({numN:parseCardNum(c.numRaw),numRaw:c.numRaw,name:c.name||'',rarity:c.rarity||'',
       priceVal:c.priceVal,priceCur:c.priceCur,price:c.price,priceAud:toAud(c.priceVal,c.priceCur),
-      img:c.img||'',owned:ownNums.get(String(c.numRaw).replace(/^0+/,''))}));
+      img:c.img||'',owned:ownNums.get(ownedNumKey(c.numRaw))}));
     const fx=(window.TCG&&TCG.fxInfo)?TCG.fxInfo():null;
     const fxNote=(fx&&fx.stale)?' · FX cached'+(fx.date?' '+fx.date:''):'';
     const srcLabel=j.stale?'cached copy':(j.source==='pricecharting-early'?'via PriceCharting · pre-release':(j.source==='pricecharting'?'via PriceCharting':(j.source==='tcgdex'?'via TCGdex':'')));

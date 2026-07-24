@@ -113,6 +113,22 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    `lib/normalize.mjs` to match — they must stay in sync (like Golden Rule 6's
    "edit all five card builders together").
 
+10. **Every Pokémon card number is rendered by the shared formatter.** The number
+    printed on a card is era-, promo- and subset-dependent: Scarlet & Violet / Sword &
+    Shield pad to three digits (`012/086`, and `106/086` for a secret rare), everything
+    before Sword & Shield does not (`58/102`, `4/149`), promos carry no `/total` at all
+    (`001`, `SWSH039`, `XY01`), and subsets repeat their prefix (`TG01/TG30`,
+    `GG01/GG70`, `SV001/SV122`). pokemontcg.io **strips** the printed zero-padding (a
+    card printed `004/165` arrives as `"4"`), so it has to be rebuilt — never
+    concatenate `number + '/' + printedTotal`. Use `TCG.formatCardNumber` (`extras.js`)
+    or its verbatim twin in `lib/listing-copy.mjs`. It is **display-only**: lookups,
+    identity keys (`sv4-25`) and the pokemontcg.io `number:` query DSL keep the RAW
+    upstream number — padding those returns zero results — and `cardNumberKey()` is the
+    padding-insensitive key for matching/dedupe across the old and new forms. Buyers
+    search eBay for the exact printed string, so a number that isn't on the card is a
+    lost sale. Enforced by `test/invariants/card-number.test.mjs` plus the
+    `formatCardNumber` vectors in `scripts/check-listing-copy.mjs` (`pnpm test`).
+
 ---
 
 ## 3. Run / dev loop
@@ -235,6 +251,9 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `funkoCondToken({grade,oob,boxcond,protector})` | Funko condition → title token (grade if graded, else box grade, else `Loose`; `w/ Protector`). |
 | `renderItemSpecifics(el, pairs)` | Renders an eBay item-specifics name/value list + a Copy button (tab-separated). Used by LEGO/Funko. |
 | `fitTitle(parts, max=80)` | Assemble an eBay title from prioritised parts; full → abbreviated → drop-lowest-priority until ≤ max chars. |
+| `formatCardNumber(number, set, opts)` | **Pokémon collector number exactly as printed on the card** (Golden Rule 10) — era padding, promos without a `/total`, subset prefixes. `opts.source:'tcgdex'` for JP/CN/KO (numerator already card-correct); `opts.rarity` helps promo detection. Display-only. |
+| `cardNumberKey(s)` | Padding-insensitive key for matching/dedupe (`106/86` ⇄ `106/086`). Not for display, not a lookup number. |
+| `fetchJson(url, {tries, base, timeoutMs, onRetry})` | Fetch with backoff retry on network errors + 5xx/429 + a per-attempt abort timeout (default 8s), never on 404. Wraps pokemontcg.io, whose intermittent 500s **and 45s+ hangs** otherwise surface as a false "card not found" that only a refresh clears. |
 | `histFromTrends(market, trends)` | Reconstruct a rough price series from Scrydex trend deltas (Riftbound graph). |
 | `clear(el)` | Empty an extras panel. |
 | `setCombobox({input, menu, items, onPick, display})` | Filterable dropdown with a per-row **icon** (reusable version of the Pokémon set picker — native `<select>`/`<datalist>` can't show images). `items` is an array or `()=>array` of `{value,label,code?,icon?}`. Self-themes + injects its own CSS. Used by MTG (Scryfall `icon_svg_uri`). |
@@ -321,7 +340,8 @@ It runs the two suites:
 
 - **`pnpm test`** — offline, <1s. `test/unit/` (pure lib modules), `test/invariants/`
   (the six §14 `scripts/check-*.mjs` harnesses wrapped as tests, GR6 five-builder wording
-  parity, GR8 no-`<style>/<script>` in eBay HTML, GR2 no-hardcoded-secrets scan, and an
+  parity, GR8 no-`<style>/<script>` in eBay HTML, GR2 no-hardcoded-secrets scan, GR10
+  no hand-rolled `number + '/' + printedTotal` on any Pokémon surface, and an
   automated inline-`<script>` `node --check` sweep of every page), `test/data/` (shape
   audits for the baked catalogs + schema pins for every `data/*.config.json` — e.g.
   repricer `never_decrease:true` is asserted, BJB config-audit style).
@@ -549,8 +569,8 @@ cache] + baked as defaults in `lib/channels/ebay-map.mjs`):** all card games →
 EXPERIMENTAL** — per-card is the primary shape. 1st Edition maps to the `Features` aspect + a
 high-prio title token.
 
-**Mirror rules (extends Golden Rules 6/9):** `lib/listing-copy.mjs` holds verbatim ports of
-`extras.js` `fitTitle`/`condCode`/`langCode` and both builders' `genTitle`/`genPitch`/`buildHTML`
+**Mirror rules (extends Golden Rules 6/9/10):** `lib/listing-copy.mjs` holds verbatim ports of
+`extras.js` `fitTitle`/`condCode`/`langCode`/`formatCardNumber`/`cardNumberKey` and both builders' `genTitle`/`genPitch`/`buildHTML`
 (classic scripts can't import ESM), plus the single printing→finish→variant vocabulary and the
 GR6 wording constants (slab wording ⚠ pending owner sign-off). `lib/fees.mjs` is the one home
 for the AU fee bands (`index.html` imports it as a `<script type="module">`). **If you touch

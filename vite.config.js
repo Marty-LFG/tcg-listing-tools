@@ -415,6 +415,13 @@ export default defineConfig(({ mode }) => {
               if (env.POKEMONTCG_API_KEY) proxyReq.setHeader('X-Api-Key', env.POKEMONTCG_API_KEY)
               console.log('[api/pkm]', req.url, '-> api.pokemontcg.io' + proxyReq.path)
             })
+            // pokemontcg.io returns intermittent 500s. Logging only the OUTBOUND request made
+            // those invisible in /api/status/logs, so a user's "card not found" looked like our
+            // bug. The client retries them (extras.js TCG.fetchJson); this makes them diagnosable.
+            proxy.on('proxyRes', (proxyRes, req) => {
+              if (proxyRes.statusCode >= 400) console.warn('[api/pkm]', proxyRes.statusCode, req.url)
+            })
+            proxy.on('error', (err, req) => console.warn('[api/pkm] proxy error', req.url, err.message))
           },
         },
         // Pokemon JP/CN/KO -> TCGdex (community REST, KEYLESS, multilingual). English stays on

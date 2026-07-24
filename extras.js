@@ -415,12 +415,15 @@
   // proxy/custom, multi-card lot, booster pack, etc.). Word-boundaried to avoid false hits
   // ("showcase" won't match \bcase\b, "metallic" won't match \bmetal\b).
   var JUNK_RE = /keyring|key\s*ring|\bcase\b|display|\bsleeve\b|toploader|top\s*loader|protector|\bproxy\b|custom|orica|\bmetal\b|jumbo|oversized|playmat|\bdecal\b|\bsticker\b|\bbundle\b|\blot\b|\bbooster\b|\bpack\b|\bbox\b|\bcoin\b|\bpin\b|\bsigned\b|\baltered\b|art\s*card|art\s*series|\bsealed\b|starter\s*deck|\bplayset\b|pick\s*your|choose\s*your|complete\s*your|set\s*of\b|\bsingles\b|\bbulk\b/i;
-  // Build a flexible title matcher for a collector number. "232/91" matches 232/91 AND 232/091
-  // (eBay titles zero-pad inconsistently); a bare "296" matches the number on a word boundary.
+  // Build a flexible title matcher for a collector number. Zero-padding is ignored on BOTH sides,
+  // so "232/91", "232/091", "032/091" and "32/91" all match each other (eBay titles zero-pad
+  // inconsistently, and TCG.formatCardNumber now emits the card-exact padded form — Golden Rule
+  // 10 — so the numerator must be as padding-tolerant as the denominator or comps silently
+  // return nothing). A bare "296" matches the number on a word boundary.
   function buildNumberRe(num){
     var s = String(num || '').trim(); if (!s) return null;
     var m = s.match(/(\d{1,4})\s*\/\s*(\d{1,4})/);
-    if (m) return new RegExp('\\b' + m[1] + '\\s*\\/\\s*0*' + String(+m[2]) + '\\b');
+    if (m) return new RegExp('\\b0*' + String(+m[1]) + '\\s*\\/\\s*0*' + String(+m[2]) + '\\b');
     var n = s.match(/\d{1,4}/); return n ? new RegExp('\\b0*' + String(+n[0]) + '\\b') : null;
   }
 
@@ -726,9 +729,37 @@
     } catch (e) { S('err', 'eBay lookup blocked (proxy not running?).'); }
   };
 
-  // MIRROR: condCode/langCode/fitTitle are ported verbatim in lib/listing-copy.mjs
-  // (the bulk tool's shared copy — classic scripts can't import ESM). If you edit
-  // any of the three, edit BOTH sides and run scripts/check-listing-copy.mjs.
+  // Fetch with retry, for flaky upstreams. pokemontcg.io intermittently returns HTTP 500
+  // (measured ~40-60% of requests during an outage window) and the proxy passes it straight
+  // through, which used to surface as a false "card not found" until the user hit refresh.
+  // Retries network errors + 5xx/429; NEVER retries 404 (that's a genuine miss, and a real
+  // answer). Returns the final Response so the caller can tell the two apart. GR7: a caller
+  // that still fails must warn and keep manual entry working, never crash.
+  TCG.fetchJson=async function(url,opts){
+    opts=opts||{};
+    var tries=opts.tries||4,base=opts.base||300,timeoutMs=opts.timeoutMs||8000,onRetry=opts.onRetry,lastErr=null;
+    for(var i=0;i<tries;i++){
+      let r=null,ctl=(typeof AbortController!=='undefined')?new AbortController():null,timer=null;
+      try{
+        // A HUNG request is the worst case: without this the await never settles, the lookup
+        // spins forever and the user refreshes — the exact symptom we're fixing. Observed
+        // pokemontcg.io taking 45s+ to deliver a body while a retry succeeds in ~300ms.
+        if(ctl)timer=setTimeout(function(){try{ctl.abort();}catch(e){}},timeoutMs);
+        r=await fetch(url,ctl?{signal:ctl.signal}:undefined);
+      }catch(e){ lastErr=e; r=null; }                        // includes the abort → retried
+      finally{ if(timer)clearTimeout(timer); }
+      if(r&&r.ok)return r;
+      if(r&&!(r.status>=500||r.status===429))return r;      // 4xx (incl. 404): don't retry
+      if(i===tries-1){ if(r)return r; throw lastErr||new Error('fetch failed'); }
+      if(onRetry){try{onRetry(i+1);}catch(e2){}}
+      await new Promise(function(res){setTimeout(res,base*(i+1));});
+    }
+    throw lastErr||new Error('fetch failed');
+  };
+
+  // MIRROR: condCode/langCode/fitTitle/formatCardNumber are ported verbatim in
+  // lib/listing-copy.mjs (the bulk tool's shared copy — classic scripts can't import
+  // ESM). If you edit any of them, edit BOTH sides and run scripts/check-listing-copy.mjs.
   TCG.condCode=function(s){
     s=(s||'').trim();var l=s.toLowerCase();
     var g=l.match(/(psa|cgc|bgs|sgc)\s*([0-9]+(?:\.5)?)/);
@@ -766,6 +797,54 @@
     var out=join(cur);
     if(out.length>max)out=out.slice(0,max).trim();
     return out;
+  };
+  // The Pokémon collector number EXACTLY as printed on the card (Golden Rule 10).
+  // pokemontcg.io strips the printed zero-padding from `number` (a card printed 004/165
+  // arrives as "4"), so it is rebuilt from the set's ERA. Verified against card scans:
+  //   Sword & Shield (2020)+ → pad both sides to 3   012/086 · 106/086 · 004/202 · 001/025
+  //   before Sword & Shield  → numerator natural      58/102 · 4/149 · 4/146
+  //   promos  → printed number alone, no /total, no invented prefix: 001 · SWSH039 · XY01 · 1
+  //   subsets → denominator repeats the letter prefix: TG01/TG30 · GG01/GG70 · SV001/SV122
+  // opts.source 'tcgdex' (JP/CN/KO) keeps the numerator verbatim — TCGdex already returns it
+  // card-correct ("001") — and only pads the denominator.
+  // ⚠ DISPLAY ONLY: lookups, identity keys (`sv4-25`) and the pokemontcg.io `number:` query
+  // DSL must keep the RAW upstream number; padding them returns nothing. See cardNumberKey().
+  TCG.formatCardNumber=function(number,set,opts){
+    set=set||{};opts=opts||{};
+    var raw=String(number==null?'':number).trim();
+    if(!raw)return '';
+    var denomRaw=(set.printedTotal!=null?set.printedTotal:set.total);
+    var denom=(denomRaw==null||denomRaw==='')?'':String(denomRaw);
+    var name=set.name||'';
+    var isPromo=/promo/i.test(name)||set.mep===true||/^promo$/i.test(opts.rarity||'');
+    var isSubset=/\b(gallery|vault)\b/i.test(name);
+    function pad(s,w){s=String(s);while(s.length<w)s='0'+s;return s;}
+    var yr=parseInt(String(set.releaseDate||'').slice(0,4),10);
+    var modern=/sword\s*&\s*shield|scarlet\s*&\s*violet/i.test(set.series||'')||yr>=2020;
+    if(/^\d+$/.test(raw)){
+      var numStr;
+      if(opts.source==='tcgdex')numStr=raw;
+      else if(modern){var widthSrc=(set.total!=null?set.total:denomRaw);numStr=pad(raw,Math.max(3,(widthSrc==null?'':String(widthSrc)).length));}
+      else numStr=raw;
+      if(isPromo||!denom)return numStr;
+      return numStr+'/'+pad(denom,Math.max(numStr.length,denom.length));
+    }
+    var m=raw.match(/^([A-Za-z]+)(\d+)$/);
+    if(m){
+      if(isPromo)return raw;
+      if(isSubset&&denom)return raw+'/'+m[1]+pad(denom,m[2].length);
+      return raw;
+    }
+    if(isPromo)return raw;
+    return denom?raw+'/'+denom:raw;
+  };
+  // Matching/dedupe key — collapses printed padding so "106/86" and "106/086" resolve to the
+  // same card. NOT for display, and not a lookup number.
+  TCG.cardNumberKey=function(s){
+    return String(s==null?'':s).trim().toLowerCase()
+      .split('/')
+      .map(function(p){return p.replace(/^0+(?=[0-9a-z])/,'');})
+      .join('/');
   };
 
   // --- collectibles helpers (LEGO / Funko) — condCode() above stays card-only ---

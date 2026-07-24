@@ -180,7 +180,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_bulk_identity
 
 A pure module with a per-game **`ENUMERATORS[game]`** adapter table beside `normalize.mjs`'s `MAPPERS`/`lookupPath` — adding MTG/SWU/Riftbound later = one table entry.
 
-- **Pokémon:** page `GET /api/pkm/cards?q=set.id:{id}&pageSize=250&page=N`; expand `Object.keys(tcgplayer.prices)` into rows via the builder's `_finMap`; number `num + '/' + printedTotal`.
+- **Pokémon:** page `GET /api/pkm/cards?q=set.id:{id}&pageSize=250&page=N`; expand `Object.keys(tcgplayer.prices)` into rows via the builder's `_finMap`; number via `formatCardNumber()` (Golden Rule 10 — era/promo/subset aware, **not** a raw `num + '/' + printedTotal`).
 - **Lorcana:** `GET /api/lorcana/sets/{id}` if it returns the card array with prices, else fall back to iterating `collector_number 1..set.total` against `/cards/{set}/{num}` (`lorcana:420`). Enchanted = foil-only → `variant='Enchanted'`.
 - **Reuse:** `jfetch` 429→`sleep(1500)` retry + 400ms politeness gap (`lib/collector.mjs:11,101`); `card_cache` upsert (`collector.mjs:33-41`) to conserve the keyed pokemontcg budget.
 - **`card_cache` freshness (GR4):** read cached rows only within a 24h TTL (matching collector cadence); older → re-fetch; `?fresh=1` forces live. Shared with the collector (single-writer → no lock race), documented as shared.

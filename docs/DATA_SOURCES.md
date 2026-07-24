@@ -47,6 +47,10 @@ score, and the divergence flag; API market prices carry no fabricated volatility
 - Card fields used: `name`, `supertype`, `subtypes[]`, `hp`, `types[]`, `number`,
   `rarity`, `set{ id, name, series, printedTotal, total }`, `images{ small,
   large }`, `tcgplayer.prices` (USD), `cardmarket.prices` (EUR).
+- ⚠ `number` arrives **without the printed zero-padding** — a card printed
+  `004/165` comes back as `"4"`, and `printedTotal` as `165`. Rebuild the printed
+  form with `formatCardNumber()` (Golden Rule 10); see "Card-number formatting"
+  below. `series` + `releaseDate` are what decide the padding era.
 - Set fields used (picker): `id`, `name`, `series`, `releaseDate`, `ptcgoCode`
   (the **printed code** on cards, e.g. `PAR`), `images.symbol` (set symbol icon).
 - Set picker resolves a typed token against `id`, `ptcgoCode`, **or** `name`
@@ -503,6 +507,41 @@ proxies above** on a schedule and persists results. Card-games only (Riftbound/M
 Riftbound `OGN-296` → `/api/rb/cards/OGN-296?include=prices`; MTG `neo-1` → `/api/mtg/cards/neo/1`;
 Pokémon `sv4-25` → `/api/pkm/cards/sv4-25`; SWU `sor/010` → `/api/swu/cards/sor/010`;
 Lorcana `1/207` → `/api/lorcana/cards/1/207`.
+
+### Card-number formatting (mirrors `extras.js` ⇄ `lib/listing-copy.mjs` — keep in sync, Golden Rule 10)
+
+pokemontcg.io returns `number` with the printed zero-padding **stripped** (`"4"` for a card
+printed `004/165`) and `printedTotal` as a bare integer, so the printed string has to be
+reconstructed. The rule is era-, promo- and subset-dependent. Every row below was read off a
+hi-res scan of the real card — do not "simplify" this table without re-checking scans.
+
+| Case | Example | API gives | Printed on card |
+| --- | --- | --- | --- |
+| Scarlet & Violet | White Flare #12 | `12` + `86` | `012/086` |
+| …secret rare (number > printedTotal) | White Flare #106 | `106` + `86` | `106/086` |
+| Sword & Shield (the 2020 cutover) | SWSH #4 | `4` + `202` | `004/202` |
+| Small modern set | Celebrations #1 | `1` + `25` | `001/025` |
+| Sun & Moon / XY and earlier | SM #4 · Base #58 | `4` + `149` | `4/149` · `58/102` |
+| Promo (any era) | SVP · SWSH · Wizards | `1` / `SWSH039` / `1` | `001` · `SWSH039` · `1` — **no `/total`** |
+| Subset ("set within a set") | Trainer Gallery · Shiny Vault | `TG01` + `30` | `TG01/TG30` · `SV001/SV122` |
+| JP/CN/KO via TCGdex | SV1S #1 | `localId:"001"` + `78` | `001/078` |
+
+- **Era test:** `series` contains `Sword & Shield`/`Scarlet & Violet`, **or** `releaseDate`
+  year ≥ 2020 → pad both sides to (at least) 3. Otherwise the numerator keeps its natural width.
+- **Promos** are detected by `/promo/i` on the set name (or the baked `mep` flag / a `Promo`
+  rarity). pokemontcg.io still reports a `printedTotal` for them (215, 307) but it is a
+  **catalog count, not on the card** — emitting it produced junk like `1/215`.
+- **Subsets** are separate sets upstream with the *correct* subset `printedTotal` (30/70/122);
+  the denominator repeats the numerator's letter prefix. An unrecognised lettered numbering
+  (e-Card `H1`, whose parent total is 165 — not the `H32` on the card) emits the bare number
+  rather than a wrong denominator.
+- **TCGdex** (`opts.source:'tcgdex'`) already returns a card-correct `localId`, so only the
+  denominator is padded.
+- **Display only.** Identity keys (`sv4-25`), the `/cards/{setId}-{num}` fetches, the
+  pokemontcg.io `number:` query DSL and the Scrydex image slug all need the RAW number —
+  padding them returns nothing. `cardNumberKey()` is the padding-insensitive key for
+  matching/dedupe, and `extras.js buildNumberRe()` ignores padding on **both** sides so eBay
+  comps still match titles written either way.
 
 ### Per-game price mapping (mirrors `lib/normalize.mjs` — keep in sync, Golden Rule 9)
 - **Riftbound** (`scrydex`): variant `foil`/`normal` → `prices` where `condition==='NM'` → `market`,

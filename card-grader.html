@@ -236,7 +236,7 @@ function slimSet(s){ return {id:s.id,name:s.name,series:s.series||'',releaseDate
 async function loadSets(){
   try{ var raw=localStorage.getItem(SETS_CACHE_KEY); if(raw){ var a=JSON.parse(raw); if(Array.isArray(a)&&a.length){PKM_SETS=a;setStatus(a.length+' sets · refreshing…');} } }catch(e){}
   try{
-    var r=await fetch('/api/pkm/sets?pageSize=500'); if(!r.ok) throw 0;
+    var r=await TCG.fetchJson('/api/pkm/sets?pageSize=500'); if(!r.ok) throw 0;   // retries pokemontcg.io's intermittent 500s
     var j=await r.json(); var sets=(j.data||[]).map(slimSet).sort(function(a,b){return (b.releaseDate||'').localeCompare(a.releaseDate||'');});
     if(sets.length){ PKM_SETS=sets; try{localStorage.setItem(SETS_CACHE_KEY,JSON.stringify(sets));}catch(e){} setStatus(sets.length+' sets'); }
   }catch(e){ setStatus(PKM_SETS.length?PKM_SETS.length+' sets (cached)':'offline — type set + number manually'); }
@@ -263,11 +263,17 @@ async function doLookup(){
   st.className='status load'; st.textContent='Looking up '+setId+'-'+n+'…';
   var act=window.TCG?TCG.activity('Looking up '+setId+'-'+n+'…'):null;
   try{
-    var r=await fetch('/api/pkm/cards/'+encodeURIComponent(setId+'-'+n));
-    if(!r.ok){ act&&act.fail('no match'); st.className='status warn'; st.textContent='No API match for '+setId+'-'+n+' (new sets can be missing). Fill fields manually — everything still works.'; return; }
+    var r=await TCG.fetchJson('/api/pkm/cards/'+encodeURIComponent(setId+'-'+n),
+      {onRetry:function(k){st.textContent='Looking up '+setId+'-'+n+'… (retry '+k+')';}});
+    if(!r.ok){ var down=r.status>=500||r.status===429;   // source down ≠ missing card
+      act&&act.fail(down?'source down':'no match'); st.className='status warn';
+      st.textContent=down
+        ?'pokemontcg.io is temporarily unavailable (HTTP '+r.status+') — try again shortly, or fill fields manually.'
+        :'No API match for '+setId+'-'+n+' (new sets can be missing). Fill fields manually — everything still works.';
+      return; }
     var j=await r.json(); var c=j.data||j;
     setv('f_name',c.name); setv('f_set',(c.set&&c.set.name)||setId);
-    setv('f_num',(c.number||n)+'/'+((c.set&&(c.set.printedTotal||c.set.total))||'')); setv('f_rarity',c.rarity||'');
+    setv('f_num',TCG.formatCardNumber(c.number||n,c.set||{},{source:'ptcg',rarity:c.rarity})); setv('f_rarity',c.rarity||'');
     setv('f_finish',/gold|metal|hyper/i.test(c.rarity||'')?'Gold / Metal':(/holo/i.test(c.rarity||'')?'Holo':'Non-holo'));
     _card={ name:c.name, set:(c.set&&c.set.name)||setId, number:val('f_num'), rarity:c.rarity||'', finish:val('f_finish'), id:c.id, pc:null };
     act&&act.done('pokemontcg.io');
