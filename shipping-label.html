@@ -64,7 +64,9 @@
   .status{font-size:12.5px;min-height:18px;margin:0;line-height:1.4;}
   .status.ok{color:#36d399;} .status.warn{color:#f0b429;} .status.err{color:#f06262;} .status.load{color:var(--muted);}
   .previewhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;}
-  iframe{width:100%;height:300px;border:1px solid var(--line);border-radius:10px;background:#525659;}
+  .prevbox{width:100%;min-height:180px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:#525659;padding:14px;}
+  .prevbox canvas{max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.4);background:#fff;}
+  .prevbox .prevempty{color:var(--muted);font-size:12.5px;}
   .btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
   details{margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);}
   summary{cursor:pointer;padding:10px 13px;font-weight:600;font-size:12.5px;list-style:none;color:var(--muted);}
@@ -102,7 +104,7 @@
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
   <div class="tag">Shipping &middot; Thermal labels</div>
   <h1>Shipping Label Maker</h1>
-  <p class="sub">Paste the address you copied from eBay &rarr; get a print-ready <b id="subSize">100 &times; 50 mm</b> PDF for AUSPRINT. The <code>ebay:</code> username and phone line are stripped automatically; the font auto-fits with a 5 mm safe margin.</p>
+  <p class="sub">Paste the address you copied from eBay &rarr; get a print-ready <b id="subSize">100 &times; 50 mm</b> label for AUSPRINT. The <code>ebay:</code> username and phone line are stripped automatically; the font auto-fits with a 5 mm safe margin. Same renderer as the Fulfilment dashboard, so a given address prints an identical label from either place.</p>
 
   <div class="grid">
     <!-- LEFT: input + controls -->
@@ -169,8 +171,8 @@
             <option value="courier">Courier (mono)</option>
           </select></div>
           <div><label>Min / Max pt</label><input id="a_minmax" value="5 to 14" disabled></div>
-          <div><label>Print nudge X (mm)</label><input id="a_offx" type="number" step="0.5" value="0" title="Shift the PRINTED label left/right on the sticker to align with your printer (negative = left). Does NOT affect the PDF / preview."></div>
-          <div><label>Print nudge Y (mm)</label><input id="a_offy" type="number" step="0.5" value="0" title="Shift the PRINTED label up/down on the sticker (negative = up). Does NOT affect the PDF / preview."></div>
+          <div><label>Print nudge X (mm)</label><input id="a_offx" type="number" step="0.5" value="0" title="Shift the PRINTED label left/right on the sticker to align with your printer (negative = left). Does NOT affect the on-screen preview."></div>
+          <div><label>Print nudge Y (mm)</label><input id="a_offy" type="number" step="0.5" value="0" title="Shift the PRINTED label up/down on the sticker (negative = up). Does NOT affect the on-screen preview."></div>
           <div class="full"><input type="checkbox" id="a_splitunit" checked><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Put unit / flat / level on its own line (e.g. "Unit 8" above "62 Allowah St")</label></div>
           <div class="full"><input type="checkbox" id="a_wrap"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Wrap long lines (off = shrink font to keep each line whole)</label></div>
         </div>
@@ -184,7 +186,7 @@
       <div class="previewhead">
         <label style="margin:0;">Preview &middot; <span id="prevSize">100 &times; 50 mm</span></label>
       </div>
-      <iframe id="preview" title="Label preview"></iframe>
+      <div id="preview" class="prevbox" aria-label="Label preview"><span class="prevempty">Paste an address to see the label.</span></div>
       <div class="status load" id="status" style="margin-top:10px;">Paste an eBay address to begin.</div>
 
       <div class="btns">
@@ -203,11 +205,10 @@
 </div>
 <div class="toast" id="toast">Done</div>
 
-<script src="/vendor/jspdf.umd.min.js"></script>
+<script src="/label-render.js"></script>
 <script src="/extras.js"></script>
 <script>
 /* ---------- constants ---------- */
-var MM_PER_PT = 25.4 / 72;
 // Supported label stocks. Font min/max scale with the usable height so auto-fit targets
 // the same visual fill on every size; hardMax caps how far the manual (+) override can go.
 var SIZES = {
@@ -216,21 +217,18 @@ var SIZES = {
 };
 var curSize = '100x50';
 var AU_STATES = 'NSW|VIC|QLD|SA|WA|TAS|ACT|NT';
-var COUNTRY_RE = /^(australia|new zealand|aotearoa|united states( of america)?|usa|u\.s\.a\.|united kingdom|u\.k\.|uk|england|scotland|wales|canada|ireland|singapore|germany|france|japan|china|hong kong|new caledonia|fiji|papua new guinea)$/i;
-var SYM_OK = '\u2713', SYM_WARN = '\u26a0', SYM_DOT = '\u00b7', SYM_DL = '\u2b07';
+var SYM_OK = '✓', SYM_WARN = '⚠', SYM_DOT = '·', SYM_DL = '⬇';
 
 /* ---------- state ---------- */
-var jsPDFok = !!(window.jspdf && window.jspdf.jsPDF);
 var curAlign = 'left', curCountry = 'auto', sizeOverride = null;
-var batch = [];                          // [{lines, opts, name, sub}]
-var _lastBlob = null, _lastUrl = null, _renderTimer = null;
+var batch = [];                          // [{lines, opts, name, sub, sizeLabel}]
+var _renderTimer = null;
 
 /* ---------- tiny helpers ---------- */
 function $(id){ return document.getElementById(id); }
 var tt; function showToast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('show');},1500); }
 function cleanLines(){ return $('clean').value.replace(/\r\n?/g,'\n').split('\n').map(function(s){return s.trim();}).filter(Boolean); }
-function isPhoneLine(l){ var d=(l.match(/\d/g)||[]).length; return d>=6 && !/[a-zA-Z]/.test(l); }
-function isCountryLine(l){ return COUNTRY_RE.test(l.trim()); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 /* ---------- parsing (pure, array-shaped, batch-ready) ---------- */
 // Australian sub-dwelling (flat/unit) type words, per AS4590 / Australia Post AMAS.
@@ -245,133 +243,35 @@ function splitUnit(line){
 function splitBlocks(raw){
   return raw.replace(/\r\n?/g,'\n').split(/\n[ \t]*\n+/).map(function(b){return b.trim();}).filter(Boolean);
 }
+// Clean one address block: drop the eBay username + phone lines, optionally split the unit onto its
+// own line, and normalise the locality to the comma-free AusPost form (LR.normalizeLocality) so this
+// tool and the orders dashboard render the SAME lines for the same address.
 function parseOne(block, splitUnits){
   var lines = block.split('\n').map(function(s){return s.trim();}).filter(Boolean)
     .filter(function(l){ return !/^ebay:/i.test(l); })
-    .filter(function(l){ return !isPhoneLine(l); });    // country stays as a normal trailing line
+    .filter(function(l){ return !LR.isPhoneLine(l); });    // country stays as a normal trailing line
   if(splitUnits){
     var out = [];
     for(var i=0;i<lines.length;i++){
-      var parts = (i>0) ? splitUnit(lines[i]) : null;   // never split the name (line 0)
+      var parts = (i>0) ? splitUnit(lines[i]) : null;      // never split the name (line 0)
       if(parts){ out.push(parts[0]); out.push(parts[1]); } else out.push(lines[i]);
     }
     lines = out;
   }
-  return lines;
+  return lines.map(function(l){ return LR.normalizeLocality(l); });
 }
 function parseAddresses(raw, splitUnits){ return splitBlocks(raw).map(function(b){return parseOne(b, splitUnits);}).filter(function(a){return a.length;}); }
 
-/* ---------- options snapshot ---------- */
+/* ---------- options snapshot (the shape LR.layoutLines / renderLinesToJob consume) ---------- */
 function currentOpts(){
   var margin = parseFloat($('a_margin').value); if(!(margin>=0)) margin=5; margin=Math.min(margin,12);
   var spacing = parseFloat($('a_spacing').value); if(!(spacing>=1)) spacing=1.2;
   var sz = SIZES[curSize] || SIZES['50x30'];
   return {
     align: curAlign, countryMode: curCountry, margin: margin, lineSpacing: spacing,
-    wrap: $('a_wrap').checked, font: $('a_font').value, sizeOverride: sizeOverride,
-    size: curSize, pageW: sz.w, pageH: sz.h, minPt: sz.minPt, maxPt: sz.maxPt, hardMax: sz.hardMax
+    wrap: $('a_wrap').checked, font: $('a_font').value, ptOverride: sizeOverride, boldFirst: true,
+    size: curSize, wmm: sz.w, hmm: sz.h, pageW: sz.w, pageH: sz.h, minPt: sz.minPt, maxPt: sz.maxPt, hardMax: sz.hardMax
   };
-}
-
-/* ---------- fit math (line 0 = recipient name, rendered bold) ---------- */
-function physLines(doc, lines, pt, opts){
-  // returns [{t,b}] physical lines, honoring wrap + bold-name. Bold is wider, so each
-  // line is measured/drawn at its own weight.
-  var usableW = opts.pageW - 2*opts.margin, out = [];
-  doc.setFontSize(pt);
-  for(var i=0;i<lines.length;i++){
-    var bold = (i===0);
-    doc.setFont(opts.font, bold?'bold':'normal');
-    if(opts.wrap){ var parts = doc.splitTextToSize(lines[i], usableW); for(var j=0;j<parts.length;j++) out.push({t:parts[j], b:bold}); }
-    else out.push({t:lines[i], b:bold});
-  }
-  return out;
-}
-function fitsAt(doc, lines, pt, opts){
-  var usableW = opts.pageW - 2*opts.margin, usableH = opts.pageH - 2*opts.margin;
-  var phys = physLines(doc, lines, pt, opts);
-  var lineH = pt*opts.lineSpacing*MM_PER_PT;
-  if(phys.length*lineH > usableH + 1e-6) return false;
-  doc.setFontSize(pt);
-  for(var i=0;i<phys.length;i++){ doc.setFont(opts.font, phys[i].b?'bold':'normal'); if(doc.getTextWidth(phys[i].t) > usableW + 1e-6) return false; }
-  return true;
-}
-function autoFitPt(doc, lines, opts){
-  if(!lines.length) return opts.maxPt;
-  for(var pt=opts.maxPt; pt>=opts.minPt; pt-=0.5){ if(fitsAt(doc, lines, pt, opts)) return pt; }
-  return opts.minPt;                       // nothing fits, smallest (overflow flagged elsewhere)
-}
-
-/* ---------- country resolution (smart-auto) ---------- */
-function resolveCountry(doc, lines, opts){
-  if(!lines.length || !isCountryLine(lines[lines.length-1])) return { lines: lines, dropped:false };
-  var withC = lines.slice(), without = lines.slice(0,-1);
-  if(opts.countryMode==='keep') return { lines: withC, dropped:false };
-  if(opts.countryMode==='drop') return { lines: without, dropped:true };
-  // auto: keep only if the country line does not force a smaller font
-  var sWith = autoFitPt(doc, withC, opts), sWithout = autoFitPt(doc, without, opts);
-  return (sWith >= sWithout) ? { lines: withC, dropped:false } : { lines: without, dropped:true };
-}
-
-/* ---------- draw one page; returns info for status ---------- */
-function layoutOnePage(doc, rawLines, opts){
-  var res = resolveCountry(doc, rawLines, opts);
-  var lines = res.lines;
-  var autoPt = autoFitPt(doc, lines, opts);
-  var pt = opts.sizeOverride!=null ? opts.sizeOverride : autoPt;
-  pt = Math.max(opts.minPt, Math.min(pt, opts.hardMax));
-  var phys = physLines(doc, lines, pt, opts);
-  var overflow = !fitsAt(doc, lines, pt, opts);
-
-  if(opts.guides) drawGuides(doc, opts);                     // preview only; never in the saved PDF
-
-  var usableH = opts.pageH - 2*opts.margin;
-  var lineH = pt*opts.lineSpacing*MM_PER_PT;
-  var glyphH = pt*MM_PER_PT;                                  // approx ink height of one line
-  var blockH = (phys.length-1)*lineH + glyphH;
-  var top = opts.margin + Math.max(0, (usableH - blockH)/2);
-  var x = opts.align==='center' ? opts.pageW/2 : opts.margin;
-  var align = opts.align==='center' ? 'center' : 'left';
-
-  doc.setTextColor(0,0,0); doc.setFontSize(pt);
-  var draws = [];                                            // reused by the thermal raster path
-  for(var i=0;i<phys.length;i++){
-    doc.setFont(opts.font, phys[i].b?'bold':'normal');
-    var yy = top + i*lineH;
-    doc.text(phys[i].t, x, yy, { baseline:'top', align: align });
-    draws.push({ t: phys[i].t, x: x, y: yy, pt: pt, bold: phys[i].b, align: align });
-  }
-  return { pt: pt, autoPt: autoPt, overflow: overflow, dropped: res.dropped,
-           lineCount: phys.length, lines: lines, draws: draws };
-}
-// Preview-only guides: the sticker edge + the dashed safe-margin box. Drawn before the text.
-function drawGuides(doc, opts){
-  doc.setLineWidth(0.15); doc.setDrawColor(170,180,195);     // sticker edge (light gray)
-  doc.rect(0.25, 0.25, opts.pageW-0.5, opts.pageH-0.5, 'S');
-  doc.setDrawColor(90,176,255); doc.setLineWidth(0.12);      // safe-margin box (dashed accent)
-  if(doc.setLineDashPattern) doc.setLineDashPattern([0.8,0.6], 0);
-  doc.rect(opts.margin, opts.margin, opts.pageW-2*opts.margin, opts.pageH-2*opts.margin, 'S');
-  if(doc.setLineDashPattern) doc.setLineDashPattern([], 0);
-  doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
-}
-
-/* ---------- build a (multi-page) document ---------- */
-function buildDoc(items){
-  var jsPDF = window.jspdf.jsPDF;
-  var doc = null, infos = [];
-  for(var i=0;i<items.length;i++){
-    var o = items[i].opts, w = o.pageW, h = o.pageH;     // each page may be a different stock size
-    if(i===0){
-      doc = new jsPDF({ unit:'mm', format:[w, h], orientation:'landscape' });
-      if(Math.round(doc.internal.pageSize.getWidth()) !== w){    // axis guard
-        doc = new jsPDF({ unit:'mm', format:[h, w], orientation:'landscape' });
-      }
-    } else {
-      doc.addPage([w, h], 'landscape');
-    }
-    infos.push(layoutOnePage(doc, items[i].lines, o));
-  }
-  return { doc: doc, infos: infos };
 }
 
 /* ---------- filename ---------- */
@@ -381,55 +281,64 @@ function suburbOf(lines){
   return '';
 }
 function sanitizeName(s){
-  return (s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+  return (s||'').normalize('NFKD').replace(/[̀-ͯ]/g,'')
     .replace(/[^\w\-]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'').slice(0,80);
 }
 function deriveName(lines){
   var base = [lines[0]||'', suburbOf(lines)].filter(Boolean).join('-');
   return sanitizeName(base) || 'address-label';
 }
-function ensurePdf(n){ return /\.pdf$/i.test(n) ? n : n + '.pdf'; }
 
 /* ---------- live preview ---------- */
 function batchCount(){ return batch.length + (cleanLines().length ? 1 : 0); }
 function refreshDownloadLabel(){ $('dlBtn').innerHTML = SYM_DL + ' Download (' + batchCount() + ')'; updatePrintChrome(); }
 
+// Preview = the exact printed pixels (rasterised at a screen dpi via the shared LR renderer) plus the
+// sticker edge + dashed safe-margin guides. The print nudge is a PHYSICAL offset, so it's not applied
+// here — only on the sticker.
+function renderPreview(layout, opts){
+  var dpi = 150;
+  var job = LR.rasterizeLayout(layout, { wmm:opts.pageW, hmm:opts.pageH, dpi:dpi, font:opts.font });
+  var cv = LR.jobToCanvas(job);
+  var ctx = cv.getContext('2d'), pxPerMm = dpi/25.4;
+  ctx.strokeStyle = 'rgba(150,160,175,.85)'; ctx.lineWidth = Math.max(1, pxPerMm*0.15);
+  ctx.strokeRect(0.5, 0.5, cv.width-1, cv.height-1);                            // sticker edge
+  ctx.strokeStyle = 'rgba(90,176,255,.9)'; ctx.lineWidth = Math.max(1, pxPerMm*0.12);
+  ctx.setLineDash([pxPerMm*0.9, pxPerMm*0.7]);
+  var m = opts.margin*pxPerMm; ctx.strokeRect(m, m, cv.width-2*m, cv.height-2*m); // safe-margin box
+  ctx.setLineDash([]);
+  var host = $('preview'); host.innerHTML=''; host.appendChild(cv);
+}
+
 function regenerate(){
   var lines = cleanLines();
   refreshDownloadLabel();
-  if(!jsPDFok){ $('status').className='status err'; $('status').textContent='PDF engine failed to load (vendor/jspdf.umd.min.js). Reload the page.'; $('dlBtn').disabled=true; $('addBtn').disabled=true; return; }
   if(!lines.length){
-    if(_lastUrl){ URL.revokeObjectURL(_lastUrl); _lastUrl=null; } _lastBlob=null;
-    $('preview').removeAttribute('src');
+    $('preview').innerHTML = '<span class="prevempty">Paste an address to see the label.</span>';
     $('status').className='status load'; $('status').textContent = batch.length ? ('Batch has '+batch.length+' label'+(batch.length>1?'s':'')+'. Paste another, or download.') : 'Paste an eBay address to begin.';
     $('addBtn').disabled=true; $('dlBtn').disabled = batch.length===0;
     $('sizeval').innerHTML='&mdash;';
     return;
   }
   var opts = currentOpts();
-  var built = buildDoc([{ lines: lines, opts: opts }]);                 // clean PDF -> download
-  var info = built.infos[0];
-  _lastBlob = built.doc.output('blob');
-  var prev = buildDoc([{ lines: lines, opts: Object.assign({}, opts, { guides:true }) }]);  // preview w/ margin guides
-  if(_lastUrl) URL.revokeObjectURL(_lastUrl);
-  _lastUrl = URL.createObjectURL(prev.doc.output('blob'));
-  $('preview').src = _lastUrl + '#zoom=page-fit&toolbar=0&navpanes=0&scrollbar=0&view=Fit';
+  var layout = LR.layoutLines(lines, opts);
+  renderPreview(layout, opts);
 
   // size readout
-  if(opts.sizeOverride!=null) $('sizeval').innerHTML = info.pt.toFixed(1)+' pt<small>auto '+info.autoPt.toFixed(1)+'</small>';
-  else $('sizeval').innerHTML = info.pt.toFixed(1)+' pt<small>auto-fit</small>';
+  if(opts.ptOverride!=null) $('sizeval').innerHTML = layout.pt.toFixed(1)+' pt<small>auto '+layout.autoPt.toFixed(1)+'</small>';
+  else $('sizeval').innerHTML = layout.pt.toFixed(1)+' pt<small>auto-fit</small>';
 
   // status
-  var msg = SYM_OK + ' ' + info.lineCount + ' line' + (info.lineCount>1?'s':'') + ' ' + SYM_DOT + ' ' + info.pt.toFixed(1) + ' pt';
+  var msg = SYM_OK + ' ' + layout.lineCount + ' line' + (layout.lineCount>1?'s':'') + ' ' + SYM_DOT + ' ' + layout.pt.toFixed(1) + ' pt';
   var cls = 'status ok';
-  if(info.dropped) msg += ' ' + SYM_DOT + ' country line dropped to fit';
+  if(layout.dropped) msg += ' ' + SYM_DOT + ' country line dropped to fit';
   if((function(j){for(var k=0;k<j.length;k++){if(j.charCodeAt(k)>255)return true;}return false;})(lines.join(''))){ cls='status warn'; msg += ' ' + SYM_DOT + ' ' + SYM_WARN + ' some characters may not render in this font'; }
-  if(info.overflow){ cls='status err'; msg = SYM_WARN + ' Too long to fit at ' + info.pt.toFixed(1) + ' pt. Shorten a line, reduce the margin, or turn on wrapping (Advanced).'; }
+  if(layout.overflow){ cls='status err'; msg = SYM_WARN + ' Too long to fit at ' + layout.pt.toFixed(1) + ' pt. Shorten a line, reduce the margin, or turn on wrapping (Advanced).'; }
   $('status').className = cls; $('status').textContent = msg;
 
   $('addBtn').disabled=false; $('dlBtn').disabled=false;
   if(!$('fname').value.trim()) $('fname').placeholder = deriveName(lines);
-  scheduleAutoPrint(info, lines);                            // auto-print (if armed) once the label settles
+  scheduleAutoPrint(layout, lines);                         // auto-print (if armed) once the label settles
 }
 function scheduleRender(){ clearTimeout(_renderTimer); _renderTimer=setTimeout(regenerate, 180); }
 
@@ -447,7 +356,7 @@ function pillsOn(id,v){ var ps=$(id).querySelectorAll('.pill'); for(var i=0;i<ps
 function bumpSize(d){
   var base;
   if(sizeOverride!=null) base = sizeOverride;
-  else { var lines=cleanLines(); if(!lines.length){ return; } var b=buildDoc([{lines:lines,opts:currentOpts()}]); base=b.infos[0].pt; }
+  else { var lines=cleanLines(); if(!lines.length){ return; } base = LR.layoutLines(lines, currentOpts()).autoPt; }
   var o = currentOpts();
   sizeOverride = Math.max(o.minPt, Math.min(base + d, o.hardMax));
   regenerate();
@@ -494,12 +403,12 @@ function addToBatch(){
 function removeBatch(i){ batch.splice(i,1); renderBatch(); regenerate(); }
 function renderBatch(){
   var el = $('batchlist');
-  if(!batch.length){ el.innerHTML='<div class="bempty">No staged labels. Use <b>+ Add to batch</b> to queue several orders into one multi-page PDF (one label per page). Each staged label keeps its own font size, which you can nudge with the &minus;/+ beside it.</div>'; refreshDownloadLabel(); return; }
+  if(!batch.length){ el.innerHTML='<div class="bempty">No staged labels. Use <b>+ Add to batch</b> to queue several orders, then Download / Print emits one per label. Each staged label keeps its own font size, which you can nudge with the &minus;/+ beside it.</div>'; refreshDownloadLabel(); return; }
   var h = '<div class="blist">';
   for(var i=0;i<batch.length;i++){
     var it = batch[i];
-    var info = buildDoc([{ lines: it.lines, opts: it.opts }]).infos[0];
-    var ov = it.opts.sizeOverride!=null;
+    var info = LR.layoutLines(it.lines, it.opts);
+    var ov = it.opts.ptOverride!=null;
     var cls = 'bpt' + (info.overflow ? ' of' : (ov ? ' ov' : ''));
     var title = info.overflow ? ('Overflows at ' + info.pt.toFixed(1) + ' pt')
               : ov ? ('Custom ' + info.pt.toFixed(1) + ' pt (auto ' + info.autoPt.toFixed(1) + '), click to reset to auto')
@@ -520,40 +429,27 @@ function renderBatch(){
 }
 function batchBump(i, d){
   var it = batch[i]; if(!it) return;
-  var base = it.opts.sizeOverride!=null ? it.opts.sizeOverride
-           : buildDoc([{ lines: it.lines, opts: it.opts }]).infos[0].autoPt;
-  it.opts.sizeOverride = Math.max(it.opts.minPt, Math.min(base + d, it.opts.hardMax));
+  var base = it.opts.ptOverride!=null ? it.opts.ptOverride : LR.layoutLines(it.lines, it.opts).autoPt;
+  it.opts.ptOverride = Math.max(it.opts.minPt, Math.min(base + d, it.opts.hardMax));
   renderBatch();
 }
 function batchReset(i){
-  var it = batch[i]; if(!it || it.opts.sizeOverride==null) return;
-  it.opts.sizeOverride = null; renderBatch(); showToast('Reset to auto-fit');
+  var it = batch[i]; if(!it || it.opts.ptOverride==null) return;
+  it.opts.ptOverride = null; renderBatch(); showToast('Reset to auto-fit');
 }
-function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-/* ---------- download ---------- */
-function saveBlob(blob, name){
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a'); a.href=url; a.download=name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
-}
+/* ---------- download (PNG — the exact bytes the AUSPRINT would print) ---------- */
 function downloadAll(){
-  if(!jsPDFok){ showToast('PDF engine not loaded'); return; }
-  var items = batch.slice();
+  var items = batch.slice().map(function(b){ return { lines:b.lines, opts:b.opts }; });
   var cur = cleanLines();
   if(cur.length) items.push({ lines: cur, opts: currentOpts() });
   if(!items.length){ showToast('Nothing to download'); return; }
-  if(items.length===1 && cur.length && _lastBlob){
-    // single working label, reuse the exact previewed bytes
-    var nm = $('fname').value.trim() || deriveName(cur);
-    saveBlob(_lastBlob, ensurePdf(nm)); showToast('Label saved'); return;
-  }
-  var built = buildDoc(items);
-  var blob = built.doc.output('blob');
-  var fname = (items.length===1) ? ($('fname').value.trim() || deriveName(items[0].lines))
-                                 : ('shipping-labels-' + items.length);
-  saveBlob(blob, ensurePdf(fname));
+  var dpi = printCfg.dpi || 300;
+  items.forEach(function(it, i){
+    var job = LR.renderLinesToJob(it.lines, Object.assign({}, it.opts, { dpi: dpi }));
+    var nm = (items.length===1) ? ($('fname').value.trim() || deriveName(it.lines)) : (deriveName(it.lines) + '-' + (i+1));
+    LR.downloadJob(job, sanitizeName(nm) + '.png');
+  });
   showToast(items.length + ' label' + (items.length>1?'s':'') + ' saved');
 }
 
@@ -587,59 +483,20 @@ function updatePrintChrome(){
     : 'Direct printing off — set LABEL_PRINTER_IP in .env to enable. (Download still works.)';
 }
 
-// Rasterise one composed label to a 1-bpp bitmap (1 = ink, MSB-first, rows padded to a byte)
-// at the printer's dot density, reusing the exact jsPDF layout so what prints matches preview.
-function renderLabelToBitmap(lines, opts, dpi){
-  var built = buildDoc([{ lines: lines, opts: Object.assign({}, opts, { guides:false }) }]);
-  var draws = (built.infos[0] && built.infos[0].draws) || [];
-  var wDots = Math.max(1, Math.round(opts.pageW * dpi/25.4));
-  var hDots = Math.max(1, Math.round(opts.pageH * dpi/25.4));
-  var cv = document.createElement('canvas'); cv.width = wDots; cv.height = hDots;
-  var ctx = cv.getContext('2d');
-  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,wDots,hDots);
-  ctx.fillStyle = '#000'; ctx.textBaseline = 'top';
-  var pxPerMm = dpi/25.4, pxPerPt = dpi/72;
-  // Print-only alignment nudge (mm -> dots): compensates for the printer's physical origin
-  // offset. Negative shifts left/up. Applied to the RASTER only — the PDF/preview is untouched.
-  var offX = (parseFloat(($('a_offx')||{}).value) || 0) * pxPerMm;
-  var offY = (parseFloat(($('a_offy')||{}).value) || 0) * pxPerMm;
-  var fam = opts.font==='times' ? '"Times New Roman", Times, serif'
-          : opts.font==='courier' ? '"Courier New", Courier, monospace'
-          : 'Arial, Helvetica, sans-serif';
-  for(var i=0;i<draws.length;i++){
-    var d = draws[i];
-    ctx.font = (d.bold?'bold ':'') + (d.pt*pxPerPt).toFixed(2) + 'px ' + fam;
-    ctx.textAlign = d.align==='center' ? 'center' : 'left';
-    ctx.fillText(d.t, Math.round(d.x*pxPerMm + offX), Math.round(d.y*pxPerMm + offY));
-  }
-  var img = ctx.getImageData(0,0,wDots,hDots).data;
-  var wBytes = Math.ceil(wDots/8);
-  var out = new Uint8Array(wBytes*hDots);                    // 0-filled => background
-  for(var y=0;y<hDots;y++){
-    var row = y*wBytes;
-    for(var x=0;x<wDots;x++){
-      var p = (y*wDots+x)*4;
-      var lum = 0.299*img[p] + 0.587*img[p+1] + 0.114*img[p+2];
-      if(img[p+3] > 128 && lum < 128) out[row + (x>>3)] |= (0x80 >> (x&7));  // dark pixel = ink bit 1
-    }
-  }
-  var bin = '';
-  for(var k=0;k<out.length;k+=8192){ bin += String.fromCharCode.apply(null, out.subarray(k, Math.min(k+8192, out.length))); }
-  return { bitmap: btoa(bin), widthDots: wDots, heightDots: hDots };
-}
-
-// items: [{lines, opts}]. Rasterises each, POSTs the jobs, surfaces progress via TCG.activity,
-// and restores the Print button on any outcome.
+// items: [{lines, opts}]. Rasterises each via the shared LR renderer (identical to the orders
+// dashboard label), applies the print nudge, POSTs the jobs, and restores the button on any outcome.
 function sendPrint(items){
   if(!printCfg.enabled || !items.length) return;
   var n = items.length;
   var act = (window.TCG && TCG.activity) ? TCG.activity('Printing ' + n + ' label' + (n>1?'s':'')) : null;
+  var offX = parseFloat(($('a_offx')||{}).value) || 0, offY = parseFloat(($('a_offy')||{}).value) || 0;
+  var dpi = printCfg.dpi || 300;
   var jobs;
   try {
     jobs = items.map(function(it){
-      var bm = renderLabelToBitmap(it.lines, it.opts, printCfg.dpi || 300);
-      bm.wmm = it.opts.pageW; bm.hmm = it.opts.pageH;     // TSPL label SIZE = the selected label size
-      return bm;
+      var job = LR.renderLinesToJob(it.lines, Object.assign({}, it.opts, { dpi: dpi, offXmm: offX, offYmm: offY }));
+      job.wmm = it.opts.pageW; job.hmm = it.opts.pageH;   // TSPL label SIZE = the selected label size
+      return job;
     });
   }
   catch(e){ if(act) act.fail('render failed'); showToast('Print render failed'); return; }
@@ -706,7 +563,6 @@ function pasteClip(){
 
 /* ---------- init ---------- */
 (function(){
-  if(!jsPDFok){ $('status').className='status err'; $('status').textContent='PDF engine failed to load (vendor/jspdf.umd.min.js missing). Restart the dev server.'; }
   $('raw').addEventListener('input', onRawInput);
   $('clean').addEventListener('input', scheduleRender);
   ['a_margin','a_spacing','a_wrap','a_font'].forEach(function(id){ $(id).addEventListener('input', regenerate); $(id).addEventListener('change', regenerate); });
