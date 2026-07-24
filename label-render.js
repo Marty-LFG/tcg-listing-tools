@@ -317,7 +317,8 @@
       + '.store{font-size:20pt;font-weight:700;}.tag{font-size:9pt;letter-spacing:2px;color:#555;margin-top:1px;}'
       + '.meta{font-family:"Courier New",monospace;font-size:9.5pt;color:#333;margin:6px 0 16px;}'
       + 'table{width:100%;border-collapse:collapse;margin:6px 0;}th{text-align:left;font-size:8.5pt;letter-spacing:.5px;color:#555;border-bottom:2px solid #000;padding:6px 5px;}td{padding:8px 5px;border-bottom:1px solid #e2e2e2;font-size:11.5pt;vertical-align:top;}'
-      + '.box{font-family:"Courier New",monospace;font-weight:700;white-space:nowrap;}.qty{text-align:center;width:44px;}.chk{width:26px;}.chk::before{content:"";display:inline-block;width:12px;height:12px;border:1.5px solid #000;vertical-align:middle;}.ord{font-family:"Courier New",monospace;font-size:8.5pt;color:#666;white-space:nowrap;}'
+      + '.box{font-family:"Courier New",monospace;font-weight:700;white-space:nowrap;}.qty{text-align:center;width:44px;}.chk{width:26px;}.chk::before{content:"";display:inline-block;width:14px;height:14px;border:1.5px solid #000;vertical-align:middle;}.ord{font-family:"Courier New",monospace;font-size:8.5pt;color:#666;white-space:nowrap;}'
+      + '.pim{width:56px;padding:5px;}.pim img{width:46px;height:64px;object-fit:cover;border:1px solid #ccc;border-radius:3px;filter:grayscale(1);}.pim .pnone{display:inline-block;width:46px;height:64px;border-radius:3px;background:repeating-linear-gradient(135deg,#eee,#eee 3px,#f7f7f7 3px,#f7f7f7 6px);}'
       + 'h2{font-size:12pt;margin:20px 0 4px;padding-bottom:3px;border-bottom:1px solid #000;page-break-after:avoid;}h2 span{color:#888;font-weight:400;font-size:10pt;}tr{page-break-inside:avoid;}'
       + '</style></head><body>' + body + '</body></html>';
   }
@@ -325,42 +326,73 @@
   /* ---------- packing slip (adaptive single A4: branded slip + marketing, greyscale) ---------- */
   function firstName(s) { var m = String(s == null ? '' : s).trim().split(/\s+/)[0]; return m || ''; }
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // The date on paper is the SYDNEY date (AEST/AEDT), converted from the stored UTC timestamp — near
+  // UTC midnight the raw ISO date is the wrong day here in Australia. Uses numeric Intl parts + MON so
+  // the month is always "Jul" (ICU 'short' can render "July"); falls back to the raw ISO date offline.
   function niceDate(iso) {
+    var d = iso ? new Date(iso) : null;
+    if (d && !isNaN(d.getTime())) {
+      try {
+        var p = new Intl.DateTimeFormat('en-US', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
+        var o = {}; for (var i = 0; i < p.length; i++) o[p[i].type] = p[i].value;
+        return (+o.day) + ' ' + (MON[(+o.month) - 1] || '') + ' ' + o.year;
+      } catch (e) { /* fall through to raw ISO */ }
+    }
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); if (!m) return '';
     return (+m[3]) + ' ' + (MON[(+m[2]) - 1] || '') + ' ' + m[1];
   }
   function host(url) { return String(url || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); }
 
-  LR.packingSlipHTML = function (order) {
+  // One item row on a packing slip (shared by single + combined slips). This is the CUSTOMER copy —
+  // no picking tick-box and no internal box/SKU code (the seller-side pick sheet carries those); a
+  // larger card image, closer to eBay's own slip.
+  function slipItemRow(it, order) {
+    var img = it.image_url
+      ? '<img class="th" src="' + esc(it.image_url) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
+      : '<span class="th none"></span>';
+    var iid = it.ebay_item_id ? '<span class="iid">#' + esc(it.ebay_item_id) + '</span>' : '';
+    var qty = it.quantity || 1;
+    var lineTot = it.unit_price_cents != null ? money((+it.unit_price_cents) * qty, order.currency) : '';
+    return '<div class="irow">'
+      + img
+      + '<span class="ti">' + esc(it.title || it.ebay_item_id || 'item') + iid + '</span>'
+      + '<span class="q">' + qty + '</span>'
+      + '<span class="tot">' + lineTot + '</span>'
+      + '</div>';
+  }
+
+  // packingSlipHTML(order | [order, order, …]) — a single-order slip, OR a COMBINED slip when passed
+  // several orders for the same buyer (multiple eBay orders shipping together): one ship-to, items
+  // grouped under a per-order sub-header, and a combined total. Everything else (brand + marketing
+  // band) is identical, so a buyer with two orders needs one sheet, not two.
+  LR.packingSlipHTML = function (orderOrOrders) {
+    var orders = (Array.isArray(orderOrOrders) ? orderOrOrders.slice() : [orderOrOrders]).filter(Boolean);
+    if (!orders.length) return slipDOC('Packing slip', '<div class="sheet"></div>');
+    var combined = orders.length > 1;
+    var primary = orders[0];
     var cfg = LR.config || {}, links = cfg.links || {}, disc = cfg.discount || {};
-    var addr = cleanAddressLines(order);
+    var addr = cleanAddressLines(primary);
     var name = addr.length ? addr[0] : '';
     var rest = addr.slice(1);
-    var fn = firstName(order.ship_name || name);
-    var date = niceDate(order.paid_time);
+    var fn = firstName(primary.ship_name || name);
 
-    var rows = (order.items || []).map(function (it) {
-      var box = it.sku ? esc(it.sku) : (it.location ? esc(it.location) : '&mdash;');
-      var img = it.image_url
-        ? '<img class="th" src="' + esc(it.image_url) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
-        : '<span class="th none"></span>';
-      var iid = it.ebay_item_id ? '<span class="iid">#' + esc(it.ebay_item_id) + '</span>' : '';
-      var qty = it.quantity || 1;
-      var lineTot = it.unit_price_cents != null ? money((+it.unit_price_cents) * qty, order.currency) : '';
-      return '<div class="irow">'
-        + '<span class="tick"></span>' + img
-        + '<span class="bx"><span class="sku">' + box + '</span></span>'
-        + '<span class="ti">' + esc(it.title || it.ebay_item_id || 'item') + iid + '</span>'
-        + '<span class="q">' + qty + '</span>'
-        + '<span class="tot">' + lineTot + '</span>'
-        + '</div>';
-    }).join('');
+    // date: single = paid date; combined = range across the orders
+    var ds = orders.map(function (o) { return o.paid_time; }).filter(Boolean).sort();
+    var d0 = ds.length ? niceDate(ds[0]) : '', d1 = ds.length ? niceDate(ds[ds.length - 1]) : '';
+    var dateStr = combined ? (d0 && d1 && d0 !== d1 ? d0 + ' &ndash; ' + d1 : d0) : niceDate(primary.paid_time);
 
-    var meta = [];
-    if (order.order_id) meta.push('Order ' + esc(order.order_id));
-    if (order.sales_record_number) meta.push('Sales #' + esc(order.sales_record_number));
+    // items — combined: group under a per-order sub-header; single: flat
+    var itemsHTML = combined
+      ? orders.map(function (o) {
+        return '<div class="ordhdr"><span>Order ' + esc(o.order_id || '')
+          + (o.sales_record_number ? ' &middot; Sales #' + esc(o.sales_record_number) : '') + '</span>'
+          + '<span class="ordtot">' + esc(money(o.total_cents, o.currency)) + '</span></div>'
+          + (o.items || []).map(function (it) { return slipItemRow(it, o); }).join('');
+      }).join('')
+      : (primary.items || []).map(function (it) { return slipItemRow(it, primary); }).join('');
 
-    var note = order.buyer_note ? '<div class="note"><b>Note from buyer:</b> ' + esc(order.buyer_note) + '</div>' : '';
+    var grandTotal = orders.reduce(function (s, o) { return s + (+o.total_cents || 0); }, 0);
+    var note = primary.buyer_note ? '<div class="note"><b>Note from buyer:</b> ' + esc(primary.buyer_note) + '</div>' : '';
 
     // Marketing QR (fixed URL) — computed here on the host page (where the qrcode lib is loaded) and
     // embedded as static SVG, so the print iframe needs no library. One CTA: the linktree hub.
@@ -370,6 +402,9 @@
       ? '<div class="coupon"><div class="cpn-l">NEXT ORDER</div><div class="cpn-c">' + esc(disc.code) + '</div>'
         + '<div class="cpn-b">' + esc(disc.blurb || '') + (links.shop ? ' at ' + esc(host(links.shop)) : '') + '</div></div>'
       : '';
+
+    var hord = combined ? (orders.length + ' orders') : (primary.order_id ? 'Order ' + esc(primary.order_id) : '');
+    var hsub = combined ? dateStr : [dateStr, (primary.sales_record_number ? 'Sales #' + esc(primary.sales_record_number) : '')].filter(Boolean).join(' &middot; ');
 
     var body = ''
       + '<div class="sheet">'
@@ -381,22 +416,22 @@
       + '<div class="bwrap"><div class="bstore">' + esc(cfg.store || 'Binders Keepers') + '</div>'
       + '<div class="bsub">' + esc((cfg.storeFull || '').replace(cfg.store || '', '').trim() || 'Collectables') + '</div></div>'
       + '</div>'
-      + '<div class="hmeta"><div class="htag">PACKING SLIP</div>'
-      + (order.order_id ? '<div class="hord">Order ' + esc(order.order_id) + '</div>' : '')
-      + '<div class="hsub">' + [date, (order.sales_record_number ? 'Sales #' + esc(order.sales_record_number) : '')].filter(Boolean).join(' &middot; ') + '</div></div>'
+      + '<div class="hmeta"><div class="htag">PACKING SLIP' + (combined ? ' &middot; COMBINED' : '') + '</div>'
+      + (hord ? '<div class="hord">' + hord + '</div>' : '')
+      + '<div class="hsub">' + hsub + '</div></div>'
       + '</header>'
       // ---- thank-you + ship-to ----
       + '<div class="mid">'
-      + '<div class="thanks">Thanks so much for your order' + (fn ? ', <b>' + esc(fn) + '</b>' : '') + '! Hope you love the cards.</div>'
+      + '<div class="thanks">Thanks so much for your order' + (combined ? 's' : '') + (fn ? ', <b>' + esc(fn) + '</b>' : '') + '! Hope you love the cards.</div>'
       + '<section class="shipto"><div class="lbl">SHIP TO</div><div class="nm">' + esc(name) + '</div>'
       + rest.map(function (l) { return '<div class="al">' + esc(l) + '</div>'; }).join('') + '</section>'
       + note
       + '</div>'
       // ---- items ----
-      + '<div class="items"><div class="ihead"><span class="tick-h"></span><span class="im-h"></span>'
-      + '<span class="bx">Box</span><span class="ti">Item</span><span class="q">Qty</span><span class="tot">Total</span></div>'
-      + '<div class="ilist">' + rows + '</div></div>'
-      + '<div class="foot"><div class="ftot"><span>Order total</span><b>' + esc(money(order.total_cents, order.currency)) + '</b></div></div>'
+      + '<div class="items"><div class="ihead"><span class="im-h"></span>'
+      + '<span class="ti">Item</span><span class="q">Qty</span><span class="tot">Total</span></div>'
+      + '<div class="ilist">' + itemsHTML + '</div></div>'
+      + '<div class="foot"><div class="ftot"><span>' + (combined ? 'Combined total &middot; ' + orders.length + ' orders' : 'Order total') + '</span><b>' + esc(money(grandTotal, primary.currency)) + '</b></div></div>'
       // ---- marketing band (bottom-anchored, greyscale) ----
       + '<section class="mkt">'
       + '<div class="mkt-hd"><div class="mkt-t">Loved your cards? There&rsquo;s plenty more.</div>'
@@ -412,7 +447,7 @@
       + '</section>'
       + '</div>';   // .sheet
 
-    return slipDOC('Packing slip ' + (order.order_id || ''), body);
+    return slipDOC('Packing slip ' + (combined ? (orders.length + ' orders for ' + (primary.buyer_username || name)) : (primary.order_id || '')), body);
   };
 
   // A4 shell for the packing slip: greyscale, everything scales with --s so the fit pass can shrink a
@@ -450,11 +485,15 @@
       + '.ihead,.irow{display:flex;align-items:center;gap:calc(6pt*var(--s));}'
       + '.ihead{padding:0 calc(4pt*var(--s)) calc(5pt*var(--s));border-bottom:2px solid #111;font-size:calc(7.5pt*var(--s));letter-spacing:.1em;text-transform:uppercase;color:#777;font-weight:700;}'
       + '.irow{padding:calc(5pt*var(--s)) calc(4pt*var(--s));border-bottom:1px solid #e2e2e2;break-inside:avoid;}'
+      // combined-slip per-order sub-header
+      + '.ordhdr{display:flex;justify-content:space-between;align-items:center;gap:calc(8pt*var(--s));margin-top:calc(9pt*var(--s));padding:calc(3.5pt*var(--s)) calc(6pt*var(--s));background:#eee;border-radius:4px;font-family:"Courier New",monospace;font-weight:700;font-size:calc(9pt*var(--s));color:#333;break-inside:avoid;}'
+      + '.ilist>.ordhdr:first-child{margin-top:0;}'
+      + '.ordtot{color:#111;white-space:nowrap;}'
       + '.tick{width:calc(13px*var(--s));height:calc(13px*var(--s));flex:none;border:1.5px solid #333;border-radius:3px;}'
       + '.tick-h{width:calc(13px*var(--s));flex:none;}'
-      + '.th{width:calc(34px*var(--s));height:calc(47px*var(--s));flex:none;object-fit:cover;border:1px solid #ccc;border-radius:3px;filter:grayscale(1);}'
-      + '.th.none{width:calc(34px*var(--s));height:calc(47px*var(--s));flex:none;display:inline-block;border-radius:3px;background:repeating-linear-gradient(135deg,#eee,#eee 3px,#f7f7f7 3px,#f7f7f7 6px);}'
-      + '.im-h{width:calc(34px*var(--s));flex:none;}'
+      + '.th{width:calc(54px*var(--s));height:calc(75px*var(--s));flex:none;object-fit:cover;border:1px solid #ccc;border-radius:3px;filter:grayscale(1);}'
+      + '.th.none{width:calc(54px*var(--s));height:calc(75px*var(--s));flex:none;display:inline-block;border-radius:3px;background:repeating-linear-gradient(135deg,#eee,#eee 3px,#f7f7f7 3px,#f7f7f7 6px);}'
+      + '.im-h{width:calc(54px*var(--s));flex:none;}'
       + '.bx{width:calc(72px*var(--s));flex:none;}'
       + '.sku{font-family:"Courier New",monospace;font-weight:700;font-size:calc(10pt*var(--s));white-space:nowrap;}'
       + '.ti{flex:1;min-width:0;font-size:calc(10.5pt*var(--s));line-height:1.2;}'
@@ -516,11 +555,17 @@
   }
 
   /* ---------- pick sheet (browser print / PDF — grouped by box, sorted by slot) ---------- */
+  // Seller-side pull list. Grouped + ordered by BOX (the SKU-prefix bin, from buildPickSheet), with a
+  // tick box, a card thumbnail (fast visual match) and the full SKU slot code, so a bin is walked
+  // front-to-back. This carries the box info the customer packing slip no longer does.
   LR.pickSheetHTML = function (groups, meta) {
     meta = meta || {};
     var sections = (groups || []).map(function (g) {
       var rows = g.items.map(function (it) {
-        return '<tr><td class="chk"></td><td class="box">' + esc(it.sku || '') + '</td><td class="qty">' + (it.quantity || 1)
+        var img = it.image_url
+          ? '<img src="' + esc(it.image_url) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
+          : '<span class="pnone"></span>';
+        return '<tr><td class="chk"></td><td class="pim">' + img + '</td><td class="box">' + esc(it.sku || '') + '</td><td class="qty">' + (it.quantity || 1)
           + '</td><td>' + esc(it.title || 'item') + '</td><td class="ord">' + esc(it.order_id || '') + '</td></tr>';
       }).join('');
       return '<h2>' + esc(g.location || 'Unsorted') + ' <span>(' + g.items.length + ')</span></h2>'
@@ -528,7 +573,7 @@
     }).join('');
     var summary = (meta.order_count || 0) + ' orders · ' + (meta.item_count || 0) + ' lines · ' + (meta.unit_count || 0) + ' units';
     return DOC('Pick sheet',
-      '<div class="store">Pick sheet</div><div class="meta">' + esc(summary) + '</div>' + (sections || '<p>Nothing to pick.</p>')
+      '<div class="store">Pick sheet</div><div class="tag">SORTED BY BOX FOR PICKING</div><div class="meta">' + esc(summary) + '</div>' + (sections || '<p>Nothing to pick.</p>')
     );
   };
 

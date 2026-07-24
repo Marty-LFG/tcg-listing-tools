@@ -51,6 +51,8 @@
   .stepper .v{min-width:20px;text-align:center;color:var(--text);font-weight:600;}
   .chk{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--muted);cursor:pointer;user-select:none;}
   .chk input{width:15px;height:15px;accent-color:var(--accent);}
+  th.selcol,td.selcol{width:34px;text-align:center;padding-left:14px;padding-right:0;}
+  .selcol input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;}
   .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px;}
   .card h2{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0;padding:14px 16px 0;font-weight:600;}
   table{width:100%;border-collapse:collapse;font-size:13px;}
@@ -63,6 +65,7 @@
   .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;}
   .pill.shipped{color:var(--green);border-color:rgba(67,214,160,.35);} .pill.unshipped{color:var(--amber);border-color:rgba(240,192,74,.35);}
   .pill.printed{color:var(--blue);border-color:rgba(106,176,255,.4);} .pill.queued{color:var(--muted);}
+  .pill.combo{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);margin-left:6px;}
   .loc{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;margin-left:4px;}
   .loc.none{color:var(--faint);background:rgba(255,255,255,.03);}
   .items{color:var(--text);} .items .sku{color:var(--faint);font-family:var(--mono);font-size:11px;}
@@ -74,6 +77,8 @@
   button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:5px 9px;cursor:pointer;transition:.15s;white-space:nowrap;}
   button.act:hover{border-color:var(--accent);color:var(--text);}
   button.act.ship:hover{border-color:var(--green);color:var(--green);}
+  button.act.combo{color:var(--accent);border-color:rgba(67,214,160,.4);background:var(--accent-soft);}
+  button.act.combo:hover{border-color:var(--accent);color:var(--text);}
   .empty{padding:34px 16px;text-align:center;color:var(--faint);font-family:var(--mono);font-size:12.5px;}
   .status{font-family:var(--mono);font-size:12px;min-height:18px;margin:2px 2px 12px;}
   .status.ok{color:var(--green);} .status.warn{color:var(--amber);} .status.err{color:var(--red);} .status.load{color:var(--muted);}
@@ -147,12 +152,13 @@
 </div>
 
 <script src="/vendor/qrcode.js"></script>
+<script src="/datetime.js"></script>
 <script src="/label-render.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const money = (cents, cur='AUD') => (cur==='AUD'?'A$':cur+' ') + ((Math.round(+cents||0))/100).toFixed(2);
-const when = (t) => t ? String(t).replace('T',' ').replace(/\..*$/,'').slice(0,16) : '—';
+const when = (t) => t ? TZ.dateTime(t) : '—';   // Sydney (AEST/AEDT), via datetime.js
 function setStatus(cls, msg){ const el=$('status'); el.className='status '+cls; el.textContent=msg||' '; }
 async function api(path, opts) {
   const r = await fetch('/api/postsale'+path, opts);
@@ -161,7 +167,7 @@ async function api(path, opts) {
   return j;
 }
 
-let STATE = { config:null, orders:[], counts:{}, tab:'unshipped', density:null, speed:null };
+let STATE = { config:null, orders:[], counts:{}, tab:'unshipped', density:null, speed:null, excluded:new Set() };
 
 /* ---------- banner ---------- */
 function renderBanner() {
@@ -187,17 +193,33 @@ function itemsCell(items) {
     return `<div class="item">${img}<div class="itxt">${esc(it.title||it.ebay_item_id||'item')}${it.quantity>1?` ×${it.quantity}`:''}${loc}${it.sku?`<br><span class="sku">${esc(it.sku)}</span>`:''}</div></div>`;
   }).join('') + '</div>';
 }
+// Group orders that ship together: same buyer AND same ship-to (name + street + postcode). A group
+// of >1 can print one COMBINED packing slip. STATE.groupOf maps an order_id → its sibling orders.
+function shipGroupKey(o){
+  return (o.buyer_username||'').toLowerCase()+'|'+[o.ship_name,o.ship_street1,o.ship_postal].map(s=>String(s||'').trim().toLowerCase()).join('|');
+}
+function computeGroups(rows){
+  const byKey = new Map();
+  rows.forEach(o=>{ const k=shipGroupKey(o); if(!byKey.has(k)) byKey.set(k,[]); byKey.get(k).push(o); });
+  STATE.groupOf = new Map();
+  byKey.forEach(g=>{ if(g.length>1) g.forEach(o=> STATE.groupOf.set(o.order_id, g)); });
+}
 function renderOrders() {
   const rows = STATE.orders;
   if (!rows.length) return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders appear here after the order poll runs (Diagnostics below, or every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min).</span></div>`;
-  return `<table><thead><tr><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
+  computeGroups(rows);
+  return `<table><thead><tr><th class="selcol"><input type="checkbox" id="selAll" checked title="Include all in the pick sheet"></th><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid (Sydney)</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
     + rows.map(o => {
       const loc = [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_postal?` ${o.ship_postal}`:'');
       const statusPill = `<span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>` + (o.label_status==='printed'?' <span class="pill printed">label ✓</span>':'');
       const shipBtn = o.shipped_status==='unshipped' ? `<button class="act ship" data-ship="${esc(o.order_id)}">✓ Mark shipped</button>` : '';
+      const grp = STATE.groupOf && STATE.groupOf.get(o.order_id);
+      const buyerBadge = grp ? ` <span class="pill combo" title="This buyer has ${grp.length} orders to the same address">×${grp.length}</span>` : '';
+      const comboBtn = grp ? `<button class="act combo" data-combined="${esc(o.order_id)}" title="One packing slip for all ${grp.length} of this buyer's orders">🧾 Combined slip (${grp.length})</button>` : '';
       return `<tr>
+        <td class="selcol"><input type="checkbox" class="selbox" data-order="${esc(o.order_id)}" ${STATE.excluded.has(o.order_id)?'':'checked'} title="Include this order in the pick sheet"></td>
         <td class="mono muted">${esc(o.order_id)}${o.sales_record_number?`<br><span class="faint">rec #${esc(o.sales_record_number)}</span>`:''}</td>
-        <td class="mono">@${esc(o.buyer_username||'—')}</td>
+        <td class="mono">@${esc(o.buyer_username||'—')}${buyerBadge}</td>
         <td>${itemsCell(o.items)}</td>
         <td class="num">${money(o.total_cents, o.currency)}</td>
         <td class="muted">${esc(loc||'—')}</td>
@@ -205,6 +227,7 @@ function renderOrders() {
         <td>${statusPill}</td>
         <td><div class="rowbtns">
           <button class="act" data-slip="${esc(o.order_id)}">🧾 Packing slip</button>
+          ${comboBtn}
           <button class="act" data-label="${esc(o.order_id)}">📮 Address label</button>
           ${shipBtn}
         </div></td>
@@ -216,6 +239,7 @@ function renderPanel() {
   $('panel').innerHTML = `<h2>${STATE.tab==='unshipped'?'To pack':'All orders'}</h2>` + renderOrders();
   $('n_unshipped').textContent = STATE.counts.unshipped!=null ? `(${STATE.counts.unshipped})` : '';
   $('n_all').textContent = STATE.counts.all!=null ? `(${STATE.counts.all})` : '';
+  updateSelAll(); updatePickBtn();
 }
 
 async function loadAll() {
@@ -269,14 +293,28 @@ function closePreview(){ $('overlay').classList.remove('open'); }
 // Packing slip + pick sheet are paper documents → browser print dialog (normal printer / Save as PDF),
 // NOT the thermal printer. Only the address label goes to the AUSPRINT.
 function printSlip(id){ const o=orderById(id); if(!o) return; LR.openPrintDoc(LR.packingSlipHTML(o), { selfPrint:true }); setStatus('ok','Packing slip → print dialog (opens once the card images load; pick your printer, or Save as PDF).'); }
+// Combined slip: all of this buyer's same-address orders on one sheet (items grouped per order).
+function printCombinedSlip(id){
+  const grp = (STATE.groupOf && STATE.groupOf.get(id)) || [orderById(id)].filter(Boolean);
+  if (!grp.length) return;
+  const orders = grp.slice().sort((a,b)=> String(a.paid_time||'').localeCompare(String(b.paid_time||'')));
+  LR.openPrintDoc(LR.packingSlipHTML(orders), { selfPrint:true });
+  setStatus('ok',`Combined packing slip for ${orders.length} orders → print dialog (opens once card images load).`);
+}
 function printLabel(id){ const o=orderById(id); if(!o) return; handleJobs([LR.renderAddressLabel(o)], 'address label', id); }
+// Order ids ticked for the pick sheet (all displayed orders minus the ones unticked).
+function selectedOrderIds(){ return STATE.orders.map(o=>o.order_id).filter(id=>!STATE.excluded.has(id)); }
+function updatePickBtn(){ const n=selectedOrderIds().length; const b=$('pickBtn'); if(b) b.textContent = n && n<STATE.orders.length ? `🖨 Pick sheet (${n})` : '🖨 Pick sheet'; }
+function updateSelAll(){ const all=$('selAll'); if(!all) return; const boxes=[...document.querySelectorAll('input.selbox')]; const on=boxes.filter(b=>b.checked).length; all.checked=on===boxes.length; all.indeterminate=on>0&&on<boxes.length; }
 async function printPickSheet(){
+  const ids = selectedOrderIds();
+  if (!ids.length){ setStatus('warn','No orders ticked — select at least one for the pick sheet.'); return; }
   setStatus('load','Building pick sheet…');
   try {
-    const ps = await api('/picksheet?status='+(STATE.tab==='all'?'all':'unshipped'));
-    if (!ps.rows || !ps.rows.length){ setStatus('warn','Nothing to pick — no unshipped orders.'); return; }
+    const ps = await api('/picksheet?ids='+encodeURIComponent(ids.join(',')));
+    if (!ps.rows || !ps.rows.length){ setStatus('warn','Nothing to pick — the selected orders have no matched line items.'); return; }
     LR.openPrintDoc(LR.pickSheetHTML(ps.groups, { order_count:ps.order_count, item_count:ps.item_count, unit_count:ps.unit_count }));
-    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → print dialog.');
+    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → print dialog (sorted by box).');
   } catch(e){ setStatus('err','Pick sheet failed: '+e.message); }
 }
 
@@ -301,7 +339,14 @@ $('tabs').addEventListener('click', (e) => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x===t));
   loadAll();
 });
+$('panel').addEventListener('change', (e) => {
+  const cb = e.target.closest('input.selbox');
+  if (cb){ if(cb.checked) STATE.excluded.delete(cb.dataset.order); else STATE.excluded.add(cb.dataset.order); updateSelAll(); updatePickBtn(); return; }
+  const all = e.target.closest('#selAll');
+  if (all){ document.querySelectorAll('input.selbox').forEach(x=>{ x.checked=all.checked; if(all.checked) STATE.excluded.delete(x.dataset.order); else STATE.excluded.add(x.dataset.order); }); all.indeterminate=false; updatePickBtn(); }
+});
 $('panel').addEventListener('click', (e) => {
+  const combo = e.target.closest('button[data-combined]'); if (combo) return printCombinedSlip(combo.dataset.combined);
   const slip = e.target.closest('button[data-slip]'); if (slip) return printSlip(slip.dataset.slip);
   const label = e.target.closest('button[data-label]'); if (label) return printLabel(label.dataset.label);
   const ship = e.target.closest('button[data-ship]'); if (ship) return markShipped(ship.dataset.ship, ship);

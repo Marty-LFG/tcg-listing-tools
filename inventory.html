@@ -342,6 +342,7 @@
 <!-- shared location autocomplete (populated from existing item locations) -->
 <datalist id="locList"></datalist>
 
+<script src="/datetime.js"></script>
 <script src="/extras.js"></script>
 <script>
 const B='/api/inventory';
@@ -542,13 +543,13 @@ function setView(v){VIEW=v;try{localStorage.setItem('bk_view',v);}catch(e){}
   renderStock();}
 function subRow(sub){
   const overdue=sub.expected_return_at&&sub.status!=='graded'&&sub.expected_return_at< new Date().toISOString().slice(0,10);
-  const eta=sub.expected_return_at?('<span class="pill '+(overdue?'overdue':'')+'">ETA '+esc(sub.expected_return_at)+'</span>'):'';
+  const eta=sub.expected_return_at?('<span class="pill '+(overdue?'overdue':'')+'">ETA '+esc(TZ.date(sub.expected_return_at))+'</span>'):'';
   const canPromote=sub.status!=='graded'||!sub.promoted_item_id;
   return '<div class="card"><div class="row">'
     +'<div style="min-width:200px;flex:1;">'
       +'<div class="nm">'+esc(sub.name)+' <span class="grade-badge">'+esc(sub.grading_company)+(sub.tier?' · '+esc(sub.tier):'')+'</span></div>'
       +'<div class="key">'+esc(GAME_NAMES[sub.game]||sub.game)+(sub.number?' · #'+esc(sub.number):'')+(sub.variant?' · '+esc(sub.variant):'')+'</div>'
-      +'<div class="note">'+(sub.grading_cost_cents!=null?'cost '+centsAud(sub.grading_cost_cents)+' · ':'')+(sub.submitted_at?'sent '+esc(sub.submitted_at)+' · ':'')+eta+(sub.tracking?' · 📦 '+esc(sub.tracking):'')+(sub.result_grade!=null?' · got '+esc(sub.grading_company)+' '+esc(sub.result_grade):'')+'</div>'
+      +'<div class="note">'+(sub.grading_cost_cents!=null?'cost '+centsAud(sub.grading_cost_cents)+' · ':'')+(sub.submitted_at?'sent '+esc(TZ.date(sub.submitted_at))+' · ':'')+eta+(sub.tracking?' · 📦 '+esc(sub.tracking):'')+(sub.result_grade!=null?' · got '+esc(sub.grading_company)+' '+esc(sub.result_grade):'')+'</div>'
     +'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
       +(sub.promoted_item_id?'<span class="pill in_stock">promoted</span>':'')
@@ -567,7 +568,7 @@ async function loadLocations(){
   try{const r=await api('/locations');const dl=document.getElementById('locList');if(dl)dl.innerHTML=(r.locations||[]).map(function(l){return '<option value="'+esc(l)+'"></option>';}).join('');}catch(e){}
 }
 async function load(){
-  document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
+  document.getElementById('updated').textContent='loaded '+TZ.time(new Date())+' '+TZ.abbr();
   loadLocations();
   const params=new URLSearchParams();
   ['game','company','status'].forEach(k=>{const v=document.getElementById('f_'+k).value;if(v)params.set(k,v);});

@@ -120,6 +120,7 @@
   <div class="sec" id="all"></div>
 </div>
 
+<script src="/datetime.js"></script>
 <script src="/extras.js"></script>
 <script>
 const B='/api/tracker';
@@ -161,7 +162,7 @@ function cardRow(card){
   const native=L?usd(L.market,L.currency):'—';
   const a=L?aud(L.market_aud):'—';
   const SRC={pokemontcg:'TCGplayer',scryfall:'Scryfall',swudb:'swu-db',scrydex:'Scrydex',ebay:'eBay fair value',user:'manual',claude:'claude'};
-  const srcMeta=L?('<div style="font-size:10.5px;color:var(--muted);margin-top:3px;"><span style="border:1px solid var(--line);border-radius:5px;padding:0 5px;">'+esc(SRC[L.source]||L.source||'source ?')+'</span>'+(card.count?' · '+card.count+' snapshot'+(card.count>1?'s':''):'')+(L.ts?' · as of '+esc((''+L.ts).slice(0,10)):'')+'</div>'):'';
+  const srcMeta=L?('<div style="font-size:10.5px;color:var(--muted);margin-top:3px;"><span style="border:1px solid var(--line);border-radius:5px;padding:0 5px;">'+esc(SRC[L.source]||L.source||'source ?')+'</span>'+(card.count?' · '+card.count+' snapshot'+(card.count>1?'s':''):'')+(L.ts?' · as of '+esc(TZ.date(L.ts))+' (Sydney)':'')+'</div>'):'';
   const tags=[];
   if(card.source==='claude')tags.push('<span class="tag claude">claude</span>');
   if(card.review_status==='pending')tags.push('<span class="tag pending">pending review</span>');
@@ -188,7 +189,7 @@ function cardRow(card){
 
 function sigBlock(s){
   return '<div class="sig '+s.kind+'"><div class="msg">'+esc(s.message||s.name)+'</div>'
-    +'<div class="meta">'+esc(GAME_NAMES[s.game]||s.game)+' · '+esc(s.identity_key)+' · '+esc(s.ts)
+    +'<div class="meta">'+esc(GAME_NAMES[s.game]||s.game)+' · '+esc(s.identity_key)+' · '+esc(TZ.stamp(s.ts))
     +' <button class="btn sm ghost" style="margin-left:6px;" onclick="ackSig('+s.id+')">dismiss</button></div></div>';
 }
 
@@ -200,7 +201,7 @@ function section(elId,title,items,renderer,emptyMsg){
 
 async function load(){
   try{ CFG=await api('/config'); }catch(e){ CFG=null; }
-  document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
+  document.getElementById('updated').textContent='loaded '+TZ.time(new Date())+' '+TZ.abbr();
   // banner
   let banner='';
   if(CFG&&!CFG.scrydex_enabled) banner='<div class="banner warn">Scrydex key not set — Riftbound cards will track without prices. Add SCRYDEX_API_KEY + SCRYDEX_TEAM_ID to .env.</div>';

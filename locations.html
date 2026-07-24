@@ -166,6 +166,7 @@
 
 <div class="lightbox" id="lightbox" onclick="this.classList.remove('on')"><img id="lightboxImg" alt=""><div id="lightboxCap"></div></div>
 
+<script src="/datetime.js"></script>
 <script>
 const B='/api/sealed';
 function api(path,opts){return fetch(B+path,opts).then(r=>r.ok?r.json():Promise.reject(r));}
@@ -176,7 +177,7 @@ function setV(id,v){const el=document.getElementById(id);if(el)el.value=(v==null
 let LOCS=[], curLocId=null, curLocPhotos=[];
 
 async function load(){
-  document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
+  document.getElementById('updated').textContent='loaded '+TZ.time(new Date())+' '+TZ.abbr();
   try{const r=await api('/locations/cards');LOCS=r.locations||[];render();}
   catch(e){document.getElementById('list').innerHTML='<div class="empty">Failed to load — is the dev server running?</div>';}
 }

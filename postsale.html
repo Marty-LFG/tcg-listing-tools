@@ -154,11 +154,12 @@
   </div>
 </div>
 
+<script src="/datetime.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const money = (cents, cur='AUD') => (cur==='AUD'?'A$':cur+' ') + ((Math.round(+cents||0))/100).toFixed(2);
-const when = (t) => t ? String(t).replace('T',' ').replace(/\..*$/,'').slice(0,16) : '—';
+const when = (t) => t ? TZ.dateTime(t) : '—';   // Sydney (AEST/AEDT), via datetime.js
 async function api(path, opts) {
   const r = await fetch('/api/postsale'+path, opts);
   const j = await r.json().catch(()=>({}));
@@ -180,14 +181,14 @@ function renderBanner() {
   chips.push(`<span class="chip"><span class="dot ${conn?'ok':'err'}"></span>eBay ${conn?'connected':'<a href="/api/repricer/oauth">connect →</a>'}</span>`);
   const tg = c.telegram||{};
   chips.push(`<span class="chip"><span class="dot ${tg.enabled&&tg.chat_configured?'ok':'warn'}"></span>Telegram ${tg.enabled?(tg.chat_configured?'on':'no chat_id'):'off'}</span>`);
-  if (c.activation_watermark) chips.push(`<span class="chip faint">since ${esc(when(c.activation_watermark))}</span>`);
+  if (c.activation_watermark) chips.push(`<span class="chip faint">since ${esc(TZ.stamp(c.activation_watermark))}</span>`);
   $('banner').innerHTML = chips.join('');
 }
 
 function renderMessages() {
   const rows = STATE.messages;
   if (!rows.length) return `<div class="empty">No messages yet. New paid orders create a draft here once the order-poll runs.</div>`;
-  return `<table><thead><tr><th>Status</th><th>Buyer</th><th>Draft</th><th>Total</th><th>Created</th></tr></thead><tbody>`
+  return `<table><thead><tr><th>Status</th><th>Buyer</th><th>Draft</th><th>Total</th><th>Created (Sydney)</th></tr></thead><tbody>`
     + rows.map(m => `<tr class="clickable" data-msg="${m.id}">
         <td><span class="pill ${esc(m.status)}">${esc(m.status)}</span>${m.is_repeat_buyer?' <span class="repeat">⭐</span>':''}</td>
         <td class="mono">@${esc(m.buyer_username||'—')}</td>
@@ -207,7 +208,7 @@ function itemsCell(items) {
 function renderOrders() {
   const rows = STATE.orders;
   if (!rows.length) return `<div class="empty">No orders ingested yet.</div>`;
-  return `<table><thead><tr><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid</th><th>Status</th><th></th></tr></thead><tbody>`
+  return `<table><thead><tr><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid (Sydney)</th><th>Status</th><th></th></tr></thead><tbody>`
     + rows.map(o => {
       const loc = [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_postal?` ${o.ship_postal}`:'');
       return `<tr>
@@ -226,7 +227,7 @@ function renderOrders() {
 function renderBuyers() {
   const rows = STATE.buyers;
   if (!rows.length) return `<div class="empty">No buyers yet.</div>`;
-  return `<table><thead><tr><th>Buyer</th><th>Orders</th><th>Total spent</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>`
+  return `<table><thead><tr><th>Buyer</th><th>Orders</th><th>Total spent</th><th>First seen (Sydney)</th><th>Last seen (Sydney)</th></tr></thead><tbody>`
     + rows.map(b => `<tr>
         <td class="mono">@${esc(b.ebay_username)}${b.order_count>1?' <span class="repeat">⭐</span>':''}</td>
         <td class="num">${b.order_count}</td>

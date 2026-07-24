@@ -329,6 +329,7 @@
 <!-- shared location autocomplete (populated from existing item locations) -->
 <datalist id="locList"></datalist>
 
+<script src="/datetime.js"></script>
 <script src="/extras.js"></script>
 <script>
 const B='/api/sealed';
@@ -601,7 +602,7 @@ async function loadLocations(){
   }catch(e){}
 }
 async function load(){
-  document.getElementById('updated').textContent='loaded '+new Date().toLocaleTimeString();
+  document.getElementById('updated').textContent='loaded '+TZ.time(new Date())+' '+TZ.abbr();
   loadLocations();
   const params=new URLSearchParams();
   const g=val('f_game');if(g)params.set('game',g);
@@ -887,7 +888,7 @@ async function saveSession(btn){
   const st=document.getElementById('scanStatus');st.className='status load';st.textContent='Saving '+rows.length+' row(s)…';
   try{
     for(const bc of remember){try{await api('/barcodes',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(bc)});}catch(e){}}
-    const r=await api('/batches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:'Scan '+new Date().toLocaleString(),rows})});
+    const r=await api('/batches',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:'Scan '+TZ.stamp(new Date()),rows})});
     SCAN=[];renderScan();updateScanCount();load();
     st.className='status ok';st.textContent='✓ saved '+(r.inserted||0)+' new · '+(r.updated||0)+' merged'+((r.errors&&r.errors.length)?' · '+r.errors.length+' error(s)':'');
   }catch(e){st.className='status err';st.textContent='Save failed.';}

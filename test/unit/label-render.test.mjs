@@ -46,3 +46,62 @@ test('qrSVG degrades to empty string when the qrcode lib is absent (no throw)', 
   // `qrcode` global is not defined in this shim → graceful empty, never an exception.
   assert.equal(LR.qrSVG('https://example.com'), '')
 })
+
+const O1 = { order_id: '17-1', sales_record_number: '10', buyer_username: 'archaon', ship_name: 'Sam Lee', ship_street1: '9 King St', ship_city: 'East Maitland', ship_state: 'NSW', ship_postal: '2323', ship_country: 'AU', currency: 'AUD', total_cents: 3050, paid_time: '2026-07-24T05:25:00Z', items: [{ title: 'Scraggy 138/086', quantity: 1, unit_price_cents: 3050, sku: 'AAC-066' }] }
+const O2 = { order_id: '04-2', sales_record_number: '11', buyer_username: 'archaon', ship_name: 'Sam Lee', ship_street1: '9 King St', ship_city: 'East Maitland', ship_state: 'NSW', ship_postal: '2323', ship_country: 'AU', currency: 'AUD', total_cents: 5350, paid_time: '2026-07-24T05:13:00Z', items: [{ title: 'Okidogi 74/64', quantity: 1, unit_price_cents: 5350, sku: 'AAC-077' }, { title: 'Blitzle 114/086', quantity: 2, unit_price_cents: 500, sku: 'AAC-067' }] }
+
+test('packingSlipHTML(single order) — one order id, order total, ship-to', () => {
+  const html = LR.packingSlipHTML(O1)
+  assert.match(html, /Order 17-1/)
+  assert.match(html, /Order total/)
+  assert.match(html, /Sam Lee/)
+  assert.doesNotMatch(html, /htag">PACKING SLIP &middot; COMBINED/)
+  assert.doesNotMatch(html, /<div class="ordhdr"/)   // no per-order sub-header elements on a single slip
+})
+
+test('packing slip is the CUSTOMER copy — no picking tick-box, no internal box/SKU code', () => {
+  const html = LR.packingSlipHTML(O1)
+  assert.doesNotMatch(html, /<span class="tick">/)      // no pick-off checkbox on the customer slip
+  assert.doesNotMatch(html, /<span class="bx">/)        // no box/SKU column
+  assert.doesNotMatch(html, />Box</)                    // no "Box" header cell
+  assert.doesNotMatch(html, /AAC-066/)                  // the internal slot code is not shown to the buyer
+  assert.match(html, /class="th/)                       // the (larger) card image column stays
+})
+
+test('packingSlipHTML([o1,o2]) — combined slip: both orders, one ship-to, combined total', () => {
+  const html = LR.packingSlipHTML([O1, O2])
+  assert.match(html, /htag">PACKING SLIP &middot; COMBINED/)
+  assert.equal((html.match(/<div class="ordhdr"/g) || []).length, 2)   // one sub-header per order
+  assert.match(html, /Order 17-1/)
+  assert.match(html, /Order 04-2/)                      // both order ids appear (as sub-headers)
+  assert.match(html, /2 orders/)
+  assert.match(html, /Combined total/)
+  assert.match(html, /A\$84\.00/)                       // 30.50 + 53.50 = 84.00
+  assert.equal((html.match(/SHIP TO/g) || []).length, 1)   // ship-to printed once
+  assert.equal((html.match(/Sam Lee/g) || []).length, 1)
+  assert.match(html, /Thanks so much for your orders/)  // plural
+})
+
+test('packingSlipHTML([oneOrder]) — a single-item array is NOT treated as combined', () => {
+  const html = LR.packingSlipHTML([O1])
+  assert.doesNotMatch(html, /htag">PACKING SLIP &middot; COMBINED/)
+  assert.match(html, /Order total/)
+})
+
+test('packing slip date is the SYDNEY date (rolls over near UTC midnight)', () => {
+  // 24 Jul 14:30 UTC = 25 Jul 00:30 in Sydney — the slip must print the 25th, not the raw ISO 24th.
+  const html = LR.packingSlipHTML({ ...O1, paid_time: '2026-07-24T14:30:00Z' })
+  assert.match(html, /25 \w+ 2026/)
+  assert.doesNotMatch(html, /hord">Order 17-1<\/div><div class="hsub">24 /)
+})
+
+test('pickSheetHTML — box-grouped seller list: tick box + image + full slot code + order', () => {
+  const groups = [{ location: 'Box AAB', items: [{ sku: 'AAB-012', quantity: 1, title: 'Dreepy 247/217', order_id: '27-1', image_url: 'x.png' }] }]
+  const html = LR.pickSheetHTML(groups, { order_count: 1, item_count: 1, unit_count: 1 })
+  assert.match(html, /Box AAB/)                    // grouped by box
+  assert.match(html, /AAB-012/)                    // the full slot code stays on the pick sheet
+  assert.match(html, /<td class="chk">/)           // pick-off tick box
+  assert.match(html, /class="pim"/)                // card image cell for a fast visual match
+  assert.match(html, /27-1/)                       // order id column
+  assert.match(html, /SORTED BY BOX/)
+})

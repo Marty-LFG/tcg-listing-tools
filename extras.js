@@ -550,7 +550,8 @@
   // ---------- comps "pro" view: inline summary + expandable detail modal ----------
   var _lastComps = null;
   var MONO = 'font-family:ui-monospace,Menlo,Consolas,monospace;';
-  function fmtDate(s){ try { return new Date(s).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
+  // Sydney (AEST/AEDT) — the comps graph plots eBay listing timestamps; show the date in local market time.
+  function fmtDate(s){ try { return new Date(s).toLocaleDateString('en-AU', { timeZone: 'Australia/Sydney', month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
   function confBadge(c){ var col = c.level === 'high' ? '#36d399' : c.level === 'medium' ? '#f0c020' : '#f06262';
     return '<span style="display:inline-block;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:' + col + ';border:1px solid ' + col + ';border-radius:999px;padding:2px 9px;">' + c.level + ' confidence</span>'; }
 

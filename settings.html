@@ -249,7 +249,7 @@
   </section>
 
   <section id="console">
-    <div class="sec-h">Live console <span class="cap">server log stream · scrubbed of secrets</span></div>
+    <div class="sec-h">Live console <span class="cap">server log stream · scrubbed of secrets · times in Sydney (AEST/AEDT)</span></div>
     <div class="console">
       <div class="con-bar">
         <span class="dot3"><i style="background:#f0666e"></i><i style="background:#f0c04a"></i><i style="background:#43d6a0"></i></span>
@@ -276,6 +276,7 @@
 
 <div id="tip"></div>
 
+<script src="/datetime.js"></script>
 <script>
 (function(){
   'use strict';
@@ -285,7 +286,7 @@
   const _ESC=String.fromCharCode(27), _ANSI=new RegExp(_ESC+'\\[[0-9;?]*[A-Za-z]','g');
   const stripAnsi=(s)=>String(s==null?'':s).replace(_ANSI,'').split(_ESC).join('');   // terminal colour codes → readable text
   const fmtAge = (h) => h==null?'—':h<1?Math.round(h*60)+'m':h<48?(Math.round(h*10)/10)+'h':Math.round(h/24)+'d';
-  const fmtTs = (t) => t?String(t).replace('T',' ').slice(0,16):'—';
+  const fmtTs = (t) => t?TZ.stamp(t):'—';   // Sydney date-time + AEST/AEDT (datetime.js)
   function ago(t){ if(!t) return '—'; const s=(Date.now()-new Date(t).getTime())/1000; if(!isFinite(s)) return '—';
     if(s<0) return 'in '+rel(-s); if(s<10) return 'just now'; return rel(s)+' ago'; }
   function rel(s){ if(s<60) return Math.round(s)+'s'; const m=s/60; if(m<60) return Math.round(m)+'m'; const h=m/60; if(h<36) return Math.round(h)+'h'; return Math.round(h/24)+'d'; }
@@ -707,7 +708,7 @@
       if(!r.ok){ $('conStatus').textContent='HTTP '+r.status; return; }
       const j=await r.json();
       renderLogs(j.logs||[]);
-      $('conStatus').textContent='streaming · '+(j.count||0)+' lines · '+new Date().toLocaleTimeString();
+      $('conStatus').textContent='streaming · '+(j.count||0)+' lines · '+TZ.clock(new Date())+' '+TZ.abbr();
     }catch(e){ $('conStatus').textContent='stream error: '+(e&&e.message||e); }
   }
   function renderLogs(logs){
@@ -716,7 +717,7 @@
     const rows=clearBefore?logs.filter(L=>!L.t||L.t>clearBefore):logs;
     if(!rows.length){ body.innerHTML='<div class="con-empty">No log lines'+(logLevel?' at this level':'')+(clearBefore?' since clear':'')+' yet.</div>'; return; }
     body.innerHTML=rows.map(L=>{
-      const lv=(L.level||'info'); const t=L.t?String(L.t).slice(11,19):'';
+      const lv=(L.level||'info'); const t=L.t?TZ.clock(L.t):'';   // Sydney time-of-day HH:MM:SS (datetime.js)
       return '<div class="logline '+esc(lv)+'"><span class="lt">'+esc(t)+'</span><span class="lv '+esc(lv)+'">'+esc(lv)+'</span><span class="lm">'+esc(stripAnsi(L.msg))+'</span></div>';
     }).join('');
     body.scrollTop = stick ? body.scrollHeight : prevTop;   // pin to bottom only if already there; else hold the reader's place
