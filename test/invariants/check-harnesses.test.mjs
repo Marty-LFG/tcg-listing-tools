@@ -16,6 +16,7 @@ const HARNESSES = [
   'check-collectr-graded.mjs',
   'check-collectr-ebay.mjs',
   'check-enumerate.mjs',
+  'check-comps.mjs',
 ];
 
 describe('scripts/check-* harnesses', () => {

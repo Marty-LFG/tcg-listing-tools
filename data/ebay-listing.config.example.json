@@ -1,0 +1,26 @@
+{
+  "_comment": "TEMPLATE for data/ebay-listing.config.json (gitignored — SERVER-OWNED so the settings dashboard's runtime edits never collide with git pulls). lib/listings.mjs seeds it from this file on boot if missing. Holds the STABLE per-account IDs that publishOffer needs (business-policy IDs + merchant location) plus listing defaults. Policy/location IDs are filled in by POST /api/listings/account/bootstrap. Not secret; no tokens live here (Golden Rule 2).",
+  "marketplaceId": "EBAY_AU",
+  "categoryTreeId": "15",
+  "listingDuration": "GTC",
+  "handlingDays": 1,
+  "outOfStockControl": true,
+  "location": {
+    "merchantLocationKey": "tcg-au-1",
+    "name": "TCG AU",
+    "country": "AU",
+    "postalCode": "",
+    "city": "",
+    "stateOrProvince": ""
+  },
+  "policyNames": {
+    "payment": "TCG Managed Payments AU",
+    "return": "TCG 30-day returns AU",
+    "fulfillment": "TCG Free AU Post"
+  },
+  "returns": { "accepted": true, "days": 30, "shippingCostPayer": "BUYER" },
+  "shipping": { "serviceCode": "AU_StandardDelivery", "freeDomestic": true },
+  "policies": { "paymentPolicyId": "", "returnPolicyId": "", "fulfillmentPolicyId": "" },
+  "bestOffer": { "enabled": false, "autoAcceptPct": 95, "autoDeclinePct": 78 },
+  "genericImage": { "enabled": false, "path": "", "eps": "", "expires": "" }
+}

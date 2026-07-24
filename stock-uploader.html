@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eBay Stock Uploader — Pokémon</title>
+<style>
+  :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
+    --text:#eef1fb;--gold:#f0c020;--gold-dim:#8a7016;--field:#0a1230;--green:#36d399;--red:#f06262;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .card h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);font-weight:700;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  input,select{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line);border-radius:9px;color:var(--text);font-size:14px;outline:none;font-family:inherit;}
+  input:focus,select:focus{border-color:var(--gold);}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .setrow{margin-bottom:12px;position:relative;}
+  .lookup{display:flex;gap:10px;margin:10px 0 6px;}
+  .lookup input{flex:1;font-size:20px;font-weight:700;}
+  .lookup button,.bigbtn{padding:0 18px;border:1px solid var(--gold);background:var(--gold);color:#0c1430;border-radius:10px;font-weight:800;cursor:pointer;font-size:14px;}
+  .bigbtn{width:100%;padding:14px;font-size:15px;letter-spacing:.3px;}
+  .bigbtn:disabled{opacity:.45;cursor:not-allowed;}
+  .ghost{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-weight:700;border-radius:9px;padding:10px 14px;cursor:pointer;font-size:13px;}
+  .ghost:hover{background:var(--gold);color:#0c1430;}
+  .status{font-size:12.5px;min-height:18px;margin:6px 0;}
+  .status.ok{color:var(--green);}.status.warn{color:var(--gold);}.status.err{color:var(--red);}.status.load{color:var(--muted);}
+  .cardview{display:flex;gap:14px;align-items:flex-start;}
+  .cardview img{width:104px;border-radius:8px;border:1px solid var(--line);background:#fff;flex:none;}
+  .cardview .nm{font-size:15px;font-weight:700;line-height:1.3;}
+  .cardview .meta{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.6;}
+  .pricebig{font-family:'IBM Plex Mono',monospace;font-size:32px;font-weight:800;color:var(--gold);line-height:1;}
+  .pricein{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;}
+  .comps{font-size:12.5px;color:var(--muted);line-height:1.7;margin-top:8px;}
+  .pill{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:999px;padding:1px 8px;margin-left:4px;}
+  .pill.high{border:1px solid var(--green);color:var(--green);}.pill.medium{border:1px solid var(--gold);color:var(--gold);}.pill.low{border:1px solid var(--red);color:var(--red);}
+  .tog{display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px;}
+  .tog input{width:auto;}
+  .setmenu{display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-height:300px;overflow:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);}
+  .banner{background:#2a1a10;border:1px solid var(--gold-dim);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--gold);margin-bottom:16px;}
+  .banner a{color:var(--gold);font-weight:700;}
+  .muted{color:var(--muted);font-size:11.5px;line-height:1.5;}
+  .photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+  .photos .ph{position:relative;width:64px;height:88px;border-radius:6px;border:1px solid var(--line);object-fit:cover;background:#fff;}
+  .photos .rm{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border:none;border-radius:999px;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:1;}
+  .kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--line);}
+  .kv:last-child{border-bottom:none;}
+  .result{background:var(--panel2);border:1px solid var(--green);border-radius:10px;padding:14px;margin-top:12px;}
+  .result a{color:var(--green);font-weight:700;word-break:break-all;}
+  iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#0c1430;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99;}
+  .toast.show{opacity:1;}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Pokémon TCG</div>
+  <h1>eBay Stock Uploader</h1>
+  <p class="sub">Pick a card, verify the price and offer terms, hit one button — it goes live on your eBay store and into inventory.</p>
+
+  <div class="banner" id="setupBanner" style="display:none;"></div>
+
+  <div class="grid">
+    <!-- LEFT: pick the card + details -->
+    <div>
+      <div class="card">
+        <h3>1 · Pick the card</h3>
+        <div class="setrow"><label>Set <span id="setStatus" class="muted">loading…</span></label>
+          <input id="setCode" autocomplete="off" placeholder="set name or code, e.g. PAR or Paradox Rift">
+          <div id="setMenu" class="setmenu"></div>
+        </div>
+        <label>Card number</label>
+        <div class="lookup"><input id="num" placeholder="e.g. 25  or  199/165" autocomplete="off"><button onclick="doLookup()">Look up</button></div>
+        <div class="status load" id="status">Pick a set, type a number, hit Look up.</div>
+        <div id="cardview" style="display:none;" class="cardview"></div>
+      </div>
+
+      <div class="card" id="detailsCard" style="display:none;">
+        <h3>2 · Details</h3>
+        <div class="row3">
+          <div><label>Quantity</label><input id="qty" type="number" min="1" value="1"></div>
+          <div><label>Finish</label><select id="finish"><option>Holo</option><option>Reverse Holo</option><option>Non-holo</option><option>Foil</option></select></div>
+          <div><label>Condition</label><select id="condSel"><option value="raw">Ungraded</option><option value="graded">Graded</option></select></div>
+        </div>
+        <div id="rawCond" class="row2" style="margin-top:10px;">
+          <div><label>Card condition</label><select id="rawGrade">
+            <option>Near Mint or Better</option><option>Lightly Played (Excellent)</option><option>Moderately Played (Very Good)</option><option>Heavily Played (Poor)</option>
+          </select></div>
+          <div></div>
+        </div>
+        <div id="gradedCond" class="row3" style="margin-top:10px;display:none;">
+          <div><label>Grader</label><select id="grCo"><option>PSA</option><option>BGS</option><option>CGC</option><option>SGC</option><option>TAG</option><option>ARK</option><option>CGA</option></select></div>
+          <div><label>Grade</label><input id="grGrade" placeholder="10"></div>
+          <div><label>Cert #</label><input id="grCert" placeholder="12345678"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: verify price + offers, then list -->
+    <div>
+      <div class="card" id="priceCard" style="display:none;">
+        <h3>3 · Verify price</h3>
+        <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
+          <div>
+            <label>List price (A$)</label>
+            <input id="price" class="pricein" inputmode="decimal" style="width:150px;">
+          </div>
+          <div style="flex:1;min-width:120px;">
+            <div class="muted">Recommended</div>
+            <div class="pricebig" id="recBig">—</div>
+          </div>
+        </div>
+        <div class="comps" id="compsLine">fetching eBay AU comps…</div>
+        <button class="ghost" style="margin-top:10px;" onclick="loadPrice()">↻ Re-check comps</button>
+      </div>
+
+      <div class="card" id="offerCard" style="display:none;">
+        <h3>4 · Best Offer</h3>
+        <label class="tog"><input type="checkbox" id="boEnable"><span>Accept Best Offers</span></label>
+        <div id="boFields" class="row2" style="display:none;">
+          <div><label>Auto-accept at (A$)</label><input id="boAccept" class="pricein" inputmode="decimal"></div>
+          <div><label>Auto-decline below (A$)</label><input id="boDecline" class="pricein" inputmode="decimal"></div>
+        </div>
+        <div class="muted" id="boHint" style="display:none;margin-top:6px;"></div>
+      </div>
+
+      <div class="card" id="photoCard" style="display:none;">
+        <h3>5 · Photos <span class="muted" style="text-transform:none;letter-spacing:0;">— optional, for played cards</span></h3>
+        <div class="muted">Near-mint cards list with the catalog image. For anything below NM, add real front/back photos — they replace the stock image (eBay requires real photos on used cards).</div>
+        <input id="photoInput" type="file" accept="image/*" multiple style="margin-top:10px;">
+        <div class="photos" id="photoThumbs"></div>
+      </div>
+
+      <div class="card" id="listCard" style="display:none;">
+        <h3>6 · List it</h3>
+        <div class="kv"><span>List price</span><span class="pricein" id="sumPrice">—</span></div>
+        <div class="kv"><span>eBay buyer-protection fee</span><span id="sumFee" class="muted">—</span></div>
+        <div class="kv"><span>Buyer pays about</span><span id="sumTotal">—</span></div>
+        <div class="kv"><span>Quantity</span><span id="sumQty">1</span></div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <button class="ghost" id="previewBtn" onclick="doPreview()">Preview</button>
+          <button class="bigbtn" id="listBtn" onclick="doList()" style="flex:1;">List on eBay</button>
+        </div>
+        <div class="status" id="listStatus"></div>
+        <div id="previewBox" style="display:none;margin-top:12px;"></div>
+        <div id="resultBox"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/extras.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const base='/api/pkm';
+let SETS=[], setObj=null, card=null, priceInfo=null, savedItemId=null, savedKey='', photos=[], acctReady=false, connected=false;
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+function stat(el,cls,msg){el.className='status '+cls;el.textContent=msg;}
+function money(a){return a==null?'—':'A$'+(Math.round(a*100)/100).toFixed(2);}
+
+// ---- account readiness banner ----
+async function checkAccount(){
+  try{
+    const cr=await fetch('/api/listings/config').then(r=>r.json()); connected=!!cr.connected;
+    if(!connected){ banner('Your eBay account isn’t connected. <a href="/api/repricer/oauth">Run the consent flow →</a> then reload.'); return; }
+    const st=await fetch('/api/listings/account/status').then(r=>r.json());
+    acctReady=!!st.ready;
+    if(!acctReady) banner('eBay listing isn’t set up yet (business policies + location). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it once.');
+  }catch(e){ banner('Could not reach the listing API — is the dev server running?'); }
+}
+function banner(html){ const b=$('setupBanner'); b.innerHTML=html; b.style.display='block'; }
+
+// ---- set picker ----
+const SETS_CACHE='tcg_uploader_pkm_sets';
+function wireSetCombobox(){ TCG.setCombobox({input:$('setCode'),menu:$('setMenu'),items:()=>SETS,onPick:it=>{setObj=SETS.find(s=>s.value===it.value)||it;$('num').focus();}}); }
+async function loadSets(){
+  // Cache sets in localStorage (like the builder) so a flaky pokemontcg.io moment doesn't leave the
+  // picker empty — show the cache immediately, then refresh in the background.
+  try{ const cached=JSON.parse(localStorage.getItem(SETS_CACHE)||'null'); if(cached&&cached.length){ SETS=cached; $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); } }catch(e){}
+  try{
+    const r=await TCG.fetchJson(base+'/sets?pageSize=500');
+    if(!r.ok) throw new Error('http '+r.status);
+    const j=await r.json();
+    const list=(j.data||[]).map(s=>({value:s.id,label:s.name,code:(s.ptcgoCode||s.id||'').toUpperCase(),icon:(s.images&&s.images.symbol)||'',releaseDate:s.releaseDate}))
+      .sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||''));
+    if(list.length){ SETS=list; try{ localStorage.setItem(SETS_CACHE,JSON.stringify(SETS)); }catch(e){} $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); }
+    else if(!SETS.length){ $('setStatus').textContent='no sets (source flaky) — retry'; }
+  }catch(e){ if(!SETS.length) $('setStatus').textContent='sets failed (source down) — retry'; }
+}
+
+// ---- card lookup (EN, pokemontcg.io) ----
+async function doLookup(){
+  const code=$('setCode').value.trim(), num=$('num').value.trim();
+  if(!setObj){ // let the user type a raw set id
+    setObj=SETS.find(s=>s.code===code.toUpperCase()||s.label.toLowerCase()===code.toLowerCase());
+  }
+  if(!setObj||!num){ stat($('status'),'warn','Pick a set and enter a card number.'); return; }
+  const act=TCG.activity?TCG.activity('Looking up '+setObj.value+'-'+num):null;
+  stat($('status'),'load','Looking up…');
+  try{
+    const r=await TCG.fetchJson(base+'/cards/'+encodeURIComponent(setObj.value+'-'+num.replace(/\s/g,'')),{onRetry:n=>stat($('status'),'load','Looking up… (retry '+n+')')});
+    if(!r.ok){ act&&act.fail(r.status>=500?'source down':'no match'); stat($('status'),'warn',r.status>=500?'pokemontcg.io is flaky right now — hit Look up again.':'No card found. Check the number.'); return; }
+    const j=await r.json();
+    const c=j&&j.data;
+    if(!c||!c.name){ act&&act.fail('no match'); stat($('status'),'warn','No card found. Check the number.'); return; }
+    card={
+      id:c.id, name:c.name, set_name:(c.set&&c.set.name)||setObj.label,
+      number:TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity}),
+      rawNumber:c.number||num, rarity:c.rarity||'', image:(c.images&&(c.images.large||c.images.small))||'',
+      supertype:c.supertype||'', subtypes:(c.subtypes||[]).join(', '), artist:c.artist||'',
+    };
+    // default finish from rarity/name
+    if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
+    else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
+    renderCard();
+    act&&act.done('found');
+    stat($('status'),'ok','Found. Verify the details, price and offers below.');
+    ['detailsCard','priceCard','offerCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
+    savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewBox').style.display='none';
+    loadPrice();
+  }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
+}
+function renderCard(){
+  const v=$('cardview'); v.style.display='';
+  v.innerHTML='<img src="'+(card.image||'')+'" alt=""><div><div class="nm">'+esc(card.name)+'</div>'
+    +'<div class="meta">'+esc(card.set_name)+' · #'+esc(card.number)+(card.rarity?' · '+esc(card.rarity):'')
+    +(card.artist?'<br>Illus. '+esc(card.artist):'')+'</div></div>';
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// ---- condition toggle ----
+$('condSel').addEventListener('change',()=>{const g=$('condSel').value==='graded';$('gradedCond').style.display=g?'':'none';$('rawCond').style.display=g?'none':'';});
+
+// ---- build the row/item payload ----
+function graded(){return $('condSel').value==='graded';}
+function conditionStr(){ return graded()? ($('grCo').value+' '+($('grGrade').value||'')).trim() : ('Ungraded, '+rawCondWord()); }
+function rawCondWord(){ // map the eBay enum back to the tool's condition string
+  return {'Near Mint or Better':'Near Mint','Lightly Played (Excellent)':'Lightly Played','Moderately Played (Very Good)':'Moderately Played','Heavily Played (Poor)':'Heavily Played'}[$('rawGrade').value]||'Near Mint';
+}
+function cardRow(){
+  const r={game:'pokemon',name:card.name,set_name:card.set_name,number:card.number,rarity:card.rarity,
+    language:'EN',finish:$('finish').value,image_url:card.image,identity_key:card.id,
+    illustrator:card.artist||null,card_type:card.supertype||null,stage:/stage\s*2/i.test(card.subtypes)?'Stage 2':/stage\s*1/i.test(card.subtypes)?'Stage 1':/basic/i.test(card.subtypes)?'Basic':null};
+  if(graded()){ r.graded=true; r.grading_company=$('grCo').value; r.grade=parseFloat($('grGrade').value)||null; r.cert_number=$('grCert').value||null; }
+  else { r.condition=conditionStr(); }
+  return r;
+}
+
+// ---- price ----
+async function loadPrice(){
+  if(!card) return;
+  $('compsLine').textContent='fetching eBay AU comps…';
+  try{
+    const out=await fetch('/api/listings/price',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({row:cardRow()})}).then(r=>r.json());
+    priceInfo=out;
+    const c=out.comps||{};
+    if(c.matched){
+      $('recBig').textContent=money(c.recommended);
+      if(!$('price').value) setPrice(c.recommended);
+      const conf=(c.confidence||'low');
+      $('compsLine').innerHTML=c.comparable+' comparable '+(c.mode==='sold'?'sold':'active')+' listings · cluster '+money(c.clusterRange[0])+'–'+money(c.clusterRange[1])
+        +' · fair '+money(c.fair)+'<span class="pill '+conf+'">'+conf+'</span>'+(out.reliable?'':' <span class="pill low">thin</span>');
+    } else {
+      $('recBig').textContent='—';
+      $('compsLine').textContent='No confident comps ('+(c.reason||'no data')+'). Set a price manually.';
+    }
+    refreshSummary();
+  }catch(e){ $('compsLine').textContent='comps unavailable: '+(e&&e.message||e); }
+}
+function setPrice(v){ $('price').value=(Math.round(v*100)/100).toFixed(2); refreshSummary(); }
+$('price').addEventListener('input',refreshSummary);
+$('qty').addEventListener('input',refreshSummary);
+
+// ---- best offer ----
+$('boEnable').addEventListener('change',()=>{ $('boFields').style.display=$('boEnable').checked?'':'none'; $('boHint').style.display=$('boEnable').checked?'':'none'; if($('boEnable').checked) seedOffers(); });
+function seedOffers(){
+  const p=parseFloat($('price').value)||0; if(!p) return;
+  const acc=priceInfo&&priceInfo.bo_accept_pct||95, dec=priceInfo&&priceInfo.bo_decline_pct||78;
+  if(!$('boAccept').value) $('boAccept').value=(Math.round(p*acc)/100).toFixed(2);
+  if(!$('boDecline').value) $('boDecline').value=(Math.round(p*dec)/100).toFixed(2);
+  $('boHint').textContent='Offers at/above the accept price auto-accept; at/below the decline price auto-reject. Everything between pings you.';
+}
+function bestOffer(){
+  if(!$('boEnable').checked) return {enabled:false};
+  const o={enabled:true};
+  const a=parseFloat($('boAccept').value), d=parseFloat($('boDecline').value);
+  if(a>0) o.autoAcceptPct=Math.round(a/(parseFloat($('price').value)||a)*100);
+  if(d>0) o.autoDeclinePct=Math.round(d/(parseFloat($('price').value)||d)*100);
+  return o;
+}
+
+// ---- summary ----
+function refreshSummary(){
+  const p=parseFloat($('price').value)||0;
+  $('sumPrice').textContent=money(p);
+  $('sumQty').textContent=$('qty').value||'1';
+  if(priceInfo&&priceInfo.comps&&priceInfo.comps.matched&&Math.abs((priceInfo.recommended_cents||0)/100-p)<0.005){
+    $('sumFee').textContent=money(priceInfo.fee_aud); $('sumTotal').textContent=money(priceInfo.buyer_total_aud);
+  } else { $('sumFee').textContent='—'; $('sumTotal').textContent='—'; }
+}
+
+// ---- photos (staged client-side as data URLs) ----
+$('photoInput').addEventListener('change',e=>{
+  for(const f of e.target.files){ const rd=new FileReader(); rd.onload=()=>{ photos.push({kind:photos.length===0?'front':photos.length===1?'back':'blemish',dataUrl:rd.result}); renderThumbs(); }; rd.readAsDataURL(f); }
+  e.target.value='';
+});
+function renderThumbs(){
+  $('photoThumbs').innerHTML=photos.map((p,i)=>'<div style="position:relative;"><img class="ph" src="'+p.dataUrl+'"><button class="rm" onclick="rmPhoto('+i+')">×</button></div>').join('');
+}
+function rmPhoto(i){ photos.splice(i,1); renderThumbs(); }
+
+// ---- save the inventory item once, cache its id (re-save if the card/qty/condition changed) ----
+async function ensureItem(){
+  const key=JSON.stringify(cardRow())+'|'+$('qty').value;
+  if(savedItemId&&key===savedKey) return savedItemId;
+  const r=cardRow();
+  const body=Object.assign({},r,{quantity:parseInt($('qty').value)||1,target_price_cents:Math.round((parseFloat($('price').value)||0)*100)});
+  const res=await fetch('/api/inventory/items',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok) throw new Error('could not save to inventory ('+res.status+')');
+  const j=await res.json(); savedItemId=j.id; savedKey=key; photos._uploaded=false;
+  return savedItemId;
+}
+async function uploadPhotos(itemId){
+  if(!photos.length) return;
+  // clear any prior photos for a clean set, then upload the staged ones
+  await fetch('/api/listings/'+itemId+'/photos',{method:'DELETE'});
+  for(const ph of photos){
+    await fetch('/api/listings/photos',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({itemId,kind:ph.kind,dataUrl:ph.dataUrl})});
+  }
+}
+function publishBody(itemId){
+  const r=cardRow();
+  return {itemId,price_cents:Math.round((parseFloat($('price').value)||0)*100),bestOffer:bestOffer(),
+    character:null,card_type:r.card_type,speciality:null,illustrator:r.illustrator,stage:r.stage};
+}
+
+// ---- preview (dry run) ----
+async function doPreview(){
+  if(!guard()) return;
+  const act=TCG.activity?TCG.activity('Building preview…'):null; stat($('listStatus'),'load','Preparing preview…');
+  try{
+    const id=await ensureItem(); await uploadPhotos(id);
+    const out=await fetch('/api/listings/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(publishBody(id))}).then(r=>r.json());
+    if(!out.ok){ act&&act.fail('blocked'); stat($('listStatus'),'err',out.error||'preview failed'); return; }
+    act&&act.done('ready'); stat($('listStatus'),'ok','Preview ready — review, then List on eBay.');
+    const asp=Object.entries(out.aspects||{}).map(([k,v])=>'<div class="kv"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>').join('');
+    const fees=(out.fees&&out.fees[0]&&out.fees[0].fees||[]).map(f=>f.feeType+' '+(f.amount&&f.amount.value)).join(' · ');
+    $('previewBox').style.display='';
+    $('previewBox').innerHTML='<div class="muted" style="margin-bottom:6px;">eBay title ('+(out.title||'').length+'/80)</div><div style="font-weight:700;margin-bottom:10px;">'+esc(out.title)+'</div>'
+      +'<div class="muted" style="margin-bottom:4px;">Item specifics</div>'+asp
+      +(out.imageUrls?'<div class="muted" style="margin-top:8px;">'+out.imageUrls.length+' image(s) hosted on eBay</div>':'')
+      +(fees?'<div class="muted" style="margin-top:6px;">Fees: '+esc(fees)+'</div>':'')
+      +'<iframe style="margin-top:10px;" srcdoc="'+esc(out.descriptionHtml||'').replace(/"/g,'&quot;')+'"></iframe>';
+  }catch(e){ act&&act.fail('error'); stat($('listStatus'),'err',String(e&&e.message||e)); }
+}
+
+// ---- publish ----
+function guard(){
+  if(!card){ toast('Look up a card first'); return false; }
+  if(!(parseFloat($('price').value)>0)){ stat($('listStatus'),'warn','Set a price first.'); return false; }
+  if(!connected){ banner('Connect your eBay account first.'); return false; }
+  if(!acctReady){ banner('Run the one-time eBay listing setup in Settings first.'); return false; }
+  return true;
+}
+async function doList(){
+  if(!guard()) return;
+  $('listBtn').disabled=true;
+  const act=TCG.activity?TCG.activity('Listing on eBay…'):null; stat($('listStatus'),'load','Saving to inventory…');
+  try{
+    const id=await ensureItem();
+    if(photos.length){ stat($('listStatus'),'load','Uploading photos…'); await uploadPhotos(id); }
+    stat($('listStatus'),'load','Publishing to eBay…');
+    const out=await fetch('/api/listings/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(publishBody(id))}).then(r=>r.json());
+    if(!out.ok){ act&&act.fail('failed'); stat($('listStatus'),'err',out.error||'publish failed'); $('listBtn').disabled=false; return; }
+    act&&act.done('live'); stat($('listStatus'),'ok','Live on eBay! SKU '+out.sku); toast('Listed ✓');
+    $('resultBox').innerHTML='<div class="result">Listed as <b>'+esc(out.sku)+'</b>'+(out.url?' — <a href="'+esc(out.url)+'" target="_blank" rel="noopener">view on eBay ↗</a>':'')+'<br><span class="muted">Added to inventory · listing id '+esc(out.listingId||'?')+'</span></div>';
+  }catch(e){ act&&act.fail('error'); stat($('listStatus'),'err',String(e&&e.message||e)); }
+  finally{ $('listBtn').disabled=false; }
+}
+
+// ---- boot ----
+(async function(){ await loadSets(); await checkAccount(); if(window.TCG&&TCG.loadFx) TCG.loadFx(); })();
+</script>
+</body>
+</html>

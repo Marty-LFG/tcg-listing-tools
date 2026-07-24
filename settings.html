@@ -543,6 +543,22 @@
       {p:'min_price_aud',l:'Min price (A$)',t:'number',tip:'Absolute floor for any bulk-listed card.'},
       {p:'market_threshold_aud.default',l:'Market threshold (A$)',t:'number',tip:'At/above this the live market price is used; below it the conservative tier floor applies.'},
     ]}], json:'tiers', jsonTip:'Per-game rarity/finish floor prices (AUD). Advanced — edit as JSON.' },
+    'ebay-listing':{ title:'eBay listing', groups:[
+      {name:null,fields:[
+        {p:'location.postalCode',l:'Warehouse postcode',t:'text',tip:'AU postcode for the merchant inventory location. Required before the first listing (used to create the eBay inventory location).'},
+        {p:'handlingDays',l:'Handling days',t:'number',min:0,max:3,tip:'Dispatch time in days (0–3). Kept ≤3 so Authenticity-Guarantee items stay eligible.'},
+        {p:'returns.days',l:'Return window (days)',t:'number',min:30,max:60,tip:'How long a buyer has to request a return. eBay AU allows only 30 or 60.'},
+      ]},
+      {name:'Best Offer defaults',fields:[
+        {p:'bestOffer.enabled',l:'Best Offer on by default',t:'toggle',tip:'Prefills the Best Offer toggle on the uploader verify screen.'},
+        {p:'bestOffer.autoAcceptPct',l:'Auto-accept %',t:'number',min:1,max:100,tip:'Offers at or above this % of the list price auto-accept.'},
+        {p:'bestOffer.autoDeclinePct',l:'Auto-decline %',t:'number',min:0,max:100,tip:'Offers at or below this % of the list price auto-decline.'},
+      ]},
+      {name:'Generic trailing image',fields:[
+        {p:'genericImage.enabled',l:'Append follow-us image',t:'toggle',tip:'Add a configurable generic image as the LAST photo on every listing (uploaded once to eBay, cached).'},
+        {p:'genericImage.path',l:'Image file path',t:'text',wide:true,tip:'Absolute path on the server to the generic image (JPG/PNG).'},
+      ]},
+    ]},
   };
 
   const getP=(o,p)=>p.split('.').reduce((x,k)=>x==null?x:x[k],o);
@@ -565,8 +581,48 @@
     return {node:cell,wide:f.wide};
   }
 
+  async function renderEbayListingSetup(card){
+    const body=card.querySelector('.ebset-body'); const btn=card.querySelector('.ebset-run'); const note=card.querySelector('.ebset-note');
+    body.innerHTML='<span class="dim">checking…</span>';
+    let st;
+    try{ const r=await fetch('/api/listings/account/status'); st=await r.json(); st._http=r.status; }
+    catch(e){ body.innerHTML='<span style="color:var(--red)">'+esc(String(e&&e.message||e))+'</span>'; return; }
+    if(st._http===409||st.code==='not_connected'){
+      body.innerHTML='<div class="kv"><span class="k">eBay account</span><span class="v">not connected</span></div>'+
+        '<div style="margin-top:8px;"><a href="/api/repricer/oauth">Run the eBay consent flow →</a></div>';
+      btn.disabled=true; return;
+    }
+    const yn=(b)=>b?'<span class="pill ok plain">yes</span>':'<span class="pill err plain">no</span>';
+    const pol=st.policies||{};
+    body.innerHTML=
+      '<div class="kv"><span class="k">Business policies opted in</span><span class="v">'+yn(st.optedIn)+'</span></div>'+
+      '<div class="kv"><span class="k">Subscription</span><span class="v">'+esc(st.subscriptionLevel||'—')+(st.apiListingEntitled?' <span class="pill ok plain">API ok</span>':'')+'</span></div>'+
+      '<div class="kv"><span class="k">Payment policy</span><span class="v">'+(pol.paymentPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
+      '<div class="kv"><span class="k">Return policy</span><span class="v">'+(pol.returnPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
+      '<div class="kv"><span class="k">Fulfilment policy</span><span class="v">'+(pol.fulfillmentPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
+      '<div class="kv"><span class="k">Merchant location</span><span class="v">'+(st.merchantLocationKey?esc(st.merchantLocationKey):yn(false))+'</span></div>'+
+      '<div class="kv"><span class="k">Ready to list</span><span class="v">'+yn(st.ready)+'</span></div>';
+    btn.disabled=false;
+    btn.onclick=async()=>{
+      btn.disabled=true; note.style.color='var(--dim)'; note.textContent='running setup (opt-in + policies + location; may take a moment)…';
+      try{
+        const r=await fetch('/api/listings/account/bootstrap',{method:'POST'});
+        const j=await r.json(); const rep=j.report||{};
+        if(rep.optInPending){ note.style.color='var(--gold)'; note.textContent='Business-policy opt-in submitted — eBay can take up to 24h to activate it. Re-run setup after that.'; }
+        else if(rep.errors&&rep.errors.length){ note.style.color='var(--red)'; note.textContent='Issues: '+rep.errors.join(' · '); }
+        else { note.style.color='var(--green)'; note.textContent='✓ '+(rep.ready?'ready to list':'setup ran')+(rep.warnings&&rep.warnings.length?' · '+rep.warnings.join(' · '):''); }
+      }catch(e){ note.style.color='var(--red)'; note.textContent=String(e&&e.message||e); }
+      finally{ btn.disabled=false; renderEbayListingSetup(card); }
+    };
+  }
+
   function renderSettings(){
     const box=$('settingsBox'); box.innerHTML=''; const files=SETTINGS.files||{};
+    // one-time eBay listing bootstrap (opt-in + business policies + merchant location)
+    const ebCard=el('<div class="card"><h3><span>eBay listing setup</span><span class="h-note">one-time · /api/listings/account</span></h3>'+
+      '<div class="ebset-body"></div>'+
+      '<div class="actions"><span class="savenote ebset-note"></span><button class="btn go ebset-run" disabled>Run eBay listing setup</button></div></div>');
+    box.appendChild(ebCard); renderEbayListingSetup(ebCard);
     for(const [name,spec] of Object.entries(SPEC)){
       const f=files[name]; if(!f||!f.content) continue;
       const c=JSON.parse(JSON.stringify(f.content));

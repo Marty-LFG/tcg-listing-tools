@@ -19,6 +19,7 @@ reports/
 # generated listing CSVs. data/samples/ (test fixtures) stays tracked.
 data/ebay-oauth.json
 data/ebay-*.json
+!data/ebay-listing.config.example.json
 data/exports/
 
 # Generated on-disk caches (not source): PriceCharting scrape results + proxied card images.
@@ -57,3 +58,7 @@ data/refresh.config.json
 # Post-sale automation runtime config — SERVER-OWNED (settings dashboard writes it). Re-seeded from
 # the tracked data/postsale.config.example.json on boot (lib/postsale.mjs ensureConfigSeeded).
 data/postsale.config.json
+# eBay listing config — SERVER-OWNED. Holds the account's stable business-policy IDs + merchant
+# location (filled by POST /api/listings/account/bootstrap) + listing defaults; re-seeded from the
+# tracked data/ebay-listing.config.example.json on boot (lib/listings.mjs ensureConfigSeeded).
+data/ebay-listing.config.json

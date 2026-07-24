@@ -93,6 +93,25 @@ describe('collectr.config.json', () => {
   });
 });
 
+describe('ebay-listing.config.example.json', () => {
+  const c = cfg('ebay-listing.config.example.json');   // gitignored runtime file; validate the tracked template
+  it('AU marketplace, fixed-price GTC, AG-safe handling', () => {
+    assert.equal(c.marketplaceId, 'EBAY_AU');
+    assert.equal(c.categoryTreeId, '15');
+    assert.equal(c.listingDuration, 'GTC');
+    assert.ok(Number.isInteger(c.handlingDays) && c.handlingDays >= 0 && c.handlingDays <= 3, `handlingDays=${c.handlingDays}`);
+  });
+  it('has a merchant location key + the three business-policy names', () => {
+    assert.ok(c.location && c.location.merchantLocationKey, 'location.merchantLocationKey');
+    assert.ok(c.policyNames.payment && c.policyNames.return && c.policyNames.fulfillment, 'policyNames');
+  });
+  it('returns period is 30 or 60 when accepted; best-offer pcts are bounded', () => {
+    if (c.returns.accepted) assert.ok([30, 60].includes(c.returns.days), `returns.days=${c.returns.days}`);
+    assert.ok(c.bestOffer.autoAcceptPct > 0 && c.bestOffer.autoAcceptPct <= 100);
+    assert.ok(c.bestOffer.autoDeclinePct >= 0 && c.bestOffer.autoDeclinePct <= 100);
+  });
+});
+
 describe('grading.config.json (pre-grader tolerances)', () => {
   const c = cfg('grading.config.json');
   it('stays limited to companies with real tolerances (Golden Rule 4)', () => {

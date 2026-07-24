@@ -29,7 +29,9 @@ assert('Features aspect = 1st Edition (no Edition aspect in 183454)', firstEd.as
 assert('raw conditionId 4000', firstEd.conditionId === 4000);
 assert('category 183454 (live-pinned)', firstEd.categoryId === '183454');
 assert('Game aspect present (the one required aspect)', firstEd.aspects['Game'] === 'Pokémon TCG');
-assert('Card Condition aspect enum', firstEd.aspects['Card Condition'] === 'Near Mint or Better');
+assert('grading is NOT an aspect (moved to condition descriptors)', firstEd.aspects['Graded'] === undefined && firstEd.aspects['Card Condition'] === undefined);
+const rawCond = firstEd.conditionDescriptors.find((d) => d.name === 'Card Condition');
+assert('Card Condition is a condition descriptor', rawCond && rawCond.value === 'Near Mint or Better');
 assert('validates clean', validateListing(firstEd, cats).errors.length === 0, JSON.stringify(validateListing(firstEd, cats).errors));
 
 console.log('\n[graded row — PSA 10 GEM - MT]');
@@ -42,9 +44,12 @@ const slab = toEbayListing({
 assert('graded conditionId 2750', slab.conditionId === 2750);
 assert('PSA-style title (PSA 10 GEM MINT)', slab.title.includes('PSA 10 GEM MINT'), slab.title);
 assert('verbatim number in title', slab.title.includes('104'), slab.title);
-assert('Graded=Yes aspect', slab.aspects['Graded'] === 'Yes');
-assert('Professional Grader enum value', slab.aspects['Professional Grader'] === 'Professional Sports Authenticator (PSA)');
-assert('Grade aspect numeric', slab.aspects['Grade'] === '10');
+assert('grading is NOT in aspects', slab.aspects['Graded'] === undefined && slab.aspects['Professional Grader'] === undefined && slab.aspects['Grade'] === undefined);
+const graderD = slab.conditionDescriptors.find((d) => d.name === 'Professional Grader');
+const gradeD = slab.conditionDescriptors.find((d) => d.name === 'Grade');
+assert('Professional Grader condition descriptor = PSA', graderD && graderD.value === 'PSA');
+assert('Grade condition descriptor numeric', gradeD && gradeD.value === '10');
+assert('Professional Grader display name on listing', slab.graderName === 'Professional Sports Authenticator (PSA)');
 assert('slab description swaps the toploader wording', /encapsulated/.test(slab.descriptionHtml) && !/penny sleeve/.test(slab.descriptionHtml));
 assert('validates clean', validateListing(slab, cats).errors.length === 0, JSON.stringify(validateListing(slab, cats).errors));
 

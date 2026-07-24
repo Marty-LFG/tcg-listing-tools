@@ -236,6 +236,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/inventory` | (plugin) | Graded-card **inventory** API (`lib/inventory.mjs`): `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `POST /items/:id/refresh-value` (PriceCharting graded value), `POST /items/:id/value-manual`, `POST /items/:id/fetch-image` (resolve+cache card image), `GET /items/:id/valuations`, `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote`, `GET /summary`, `GET /export`. See §13. |
 | `/api/print` | (middleware) | Streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `POST {jobs, speed?, density?}` — top-level `speed`/`density` (one per batch) are clamped and merged over config before `buildJob`. `GET` returns `{enabled,dpi,ip,page,offXmm,offYmm,speed,density}` so `shipping-label.html` / `pdf-print.html` can enable Print, pick rasterise DPI, and seed the Darkness/Speed steppers. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
 | `/api/repricer` | `repricerPlugin` (`lib/repricer.mjs`) | Store repricer + Telegram. `/config`, `/me`, `/chatid`, `/proposals`, `POST /test-alert`; `/oauth`, `/oauth/start`, `POST /oauth/exchange`, `/oauth/status`, `POST /oauth/test` (eBay user-token consent). Owns `data/repricer.db` + the Telegram long-poll loop. See §15. |
+| `/api/listings` | `listingsPlugin` (`lib/listings.mjs`) | **eBay stock uploader** (Sell Inventory API). `GET /config`; `GET /account/status`, `POST /account/bootstrap` (opt-in business policies + create AU payment/return/fulfilment policies + merchant location), `GET /account/privileges`; `POST /preview` (dry-run: build+validate+resolve descriptors+upload EPS images+listing fees), `POST /publish` (create→offer→publish, idempotent on SKU, writes back `ebay_listing_id`/`ebay_offer_id`/`channel_status` + the `ebay_listings` mirror + a `listing_pushes` audit row), `POST /price` (eBay AU singles comps → suggested list price, own listings excluded), `POST /photos` + `DELETE /:id/photos` (owner photos → eBay EPS, base64), `POST /:id/revise-price`, `POST /:id/withdraw`, `GET /:id`, `GET /reconcile-state`, `POST /reconcile` (DIAG-gated — check our mirrored listings vs eBay, mark ended/out-of-stock drift). UI: `stock-uploader.html`. Config `data/ebay-listing.config.json` (server-owned). See §17. |
 | `/api/status` | `statusPlugin` (`lib/status.mjs`) | System dashboard for `settings.html`. `GET /` = version + key PRESENCE (booleans only, GR2) + source health (passive: `card_cache` recency, `watchlist.last_error`; plus cached probes) + baked-data freshness + DB/subsystem stats. `POST /probe/:source` = one explicit cheapest-call probe through the existing proxy, cached 15 min — **never auto-probed** (Scrydex bills per request). |
 | `/api/settings` | `statusPlugin` (`lib/status.mjs`) | `GET /` lists all `data/*.config.json` (+editability); `GET/PUT /:name` for `tracker`/`repricer`/`bulk-pricing`/`refresh` only — schema-validated (e.g. repricer `never_decrease` must stay true), atomic tmp+rename write, tracker/refresh writes restart their timers live. `.env` is never readable/writable here. |
 
@@ -659,3 +660,75 @@ the PriceCharting fallback **re-resolves by the item's current name** (a stale/w
 longer makes a booster box read a booster PACK's price), and UPCItemDB titles are **de-mojibaked**
 (`PokÃ©mon`→`Pokémon`). Manual values (`value_manual=1`) are never auto-overwritten. State is surfaced at
 `GET /api/sealed/refresh-state` and in `/api/status` `jobs.sealed_value`.
+
+---
+
+## 17. eBay stock uploader (Sell Inventory API) — Pokémon first
+
+Brings the listing builders and the eBay inventory together: pick a card + qty → verify price +
+Best-Offer → one button → the card is **created live on eBay**, and local stock stays in sync as it
+sells. The tool creates listings via the **Sell Inventory API** (`createOrReplaceInventoryItem →
+createOffer → publishOffer`), chosen because it is **SKU-centric** — the `BK-…` SKU is the one join
+key across local stock ↔ eBay (↔ a future Shopify sink beside `lib/channels/ebay-map.mjs`). The
+account already holds `sell.inventory` + `sell.account` (no re-consent) and is on eBay **Pro Basic**
+(AU API access). `lib/ebay-oauth.mjs` `getUserAccessToken` is the single user-token acquirer.
+
+**Pieces (all in `data/tracker.db` via `openDb()`):**
+- `lib/ebay-rest.mjs` — the ONE authenticated JSON transport for the REST Sell APIs (user token,
+  throttle + retry, uniform `{httpStatus, ok, json, errors}`). The REST twin of `tradingCall`.
+- `lib/ebay-account.mjs` + `POST /api/listings/account/bootstrap` — one-time: opt into business
+  policies (`SELLING_POLICY_MANAGEMENT`; up to 24h), find/create the AU payment (`immediatePay`, no
+  offline methods) + return (30/60-day) + fulfilment (free AU post, ≤3-day handling) policies, and
+  the merchant inventory location. IDs cached in `data/ebay-listing.config.json` (server-owned,
+  settings-editable; the "Run eBay listing setup" card in `settings.html`).
+- `lib/channels/ebay-map.mjs` — the single mapping layer (unchanged role). **Grading is NOT an
+  aspect** on category 183454 (verified live): it now emits `conditionDescriptors` (semantic
+  `{name,value}`) — Professional Grader / Grade / Certification Number for graded, Card Condition for
+  raw — and only `Game` stays required. Aspect name ≤40 / value ≤50. Grade/grader value IDs are
+  resolved to eBay's **numeric** ids by `lib/ebay-taxonomy.mjs` (live Metadata `getItemConditionPolicies`
+  via the app token, cached, baked fallback) — an unresolved grade id **blocks** publish, never a
+  guess (GR4).
+- `lib/ebay-media.mjs` — images are **downloaded and re-uploaded to eBay EPS** (Media API
+  `createImageFromFile`, binary, outbound-only) so a listing never depends on the CDN. Optional owner
+  photos for played cards take the same path; a config-toggleable generic "follow us" image is
+  appended last. `UploadSiteHostedPictures` is dead 2026-09-30 — do not use it.
+- `lib/channels/ebay-inventory-api.mjs` — the sink: pure payload builders (`buildInventoryItemPayload`
+  / `buildOfferPayload`; FIXED_PRICE + GTC, no AU tax container, cents→price at the edge, best-offer
+  terms) + the idempotent `publishListing` orchestrator (find-or-create the offer on SKU → revise
+  vs create).
+- `lib/listings.mjs` — the plugin: `runPublish` ties it together (item → validate → resolve
+  descriptors → EPS images → publish/dry-run → write-back) and the `/preview` `/publish`
+  `/revise-price` `/withdraw` `GET /:id` routes.
+
+**New tables** (`lib/db.mjs`): `ebay_listings` (local mirror, one row per SKU+marketplace),
+`listing_pushes` (per-attempt audit/state), `listing_images` (EPS urls + expiry; `item_id NULL` =
+the shared generic image). `inventory_items.ebay_offer_id`/`ebay_listing_id`/`channel_status` are
+lit up on publish — which makes the postsale reconcile `item_id` rung (`buildInventoryLookup`) work.
+
+**Degrades gracefully:** not-connected → 409 `not_connected`; not-bootstrapped → 409 `not_ready`;
+eBay down → the existing File-Exchange CSV path (`lib/channels/ebay-csv.mjs`) still works. Harness
+`node scripts/check-collectr-ebay.mjs` guards the mapping; `node scripts/check-comps.mjs` guards the
+singles-comps mirror (GR9, JUNK_RE byte-identical to extras.js); the pure builders + `runPublish` +
+`applyStockDecrements` + `reconcileListings` are unit- and integration-tested offline (stubbed eBay).
+
+**Sale sync (the read direction, DONE):** `applyStockDecrements(pdb, tdb)` runs on every postsale
+order poll — each matched paid line (SKU or `ebay_item_id` → `ebay_listing_id`) decrements local
+stock idempotently (`order_line_items.stock_applied_at`): a qty-1 slab flips to sold+ended, a bulk lot
+loses N, sealed goes through placements. `reconcileListings` (manual `POST /reconcile`) checks our
+mirrored offers vs eBay and marks ended/out-of-stock drift.
+
+**Test safety:** `openDb()`/`openPostsaleDb()` are process singletons that ignore their path arg after
+the first call — tests MUST use `openDbAt(path)` / `openPostsaleDbAt(path)` (fresh, non-cached) so they
+never write to the real `data/tracker.db` / `data/postsale.db`.
+
+**The UI:** `stock-uploader.html` (linked from `index.html`) is the one-button flow — Pokémon set/card
+picker (reuses `TCG.setCombobox` + `/api/pkm`, sets cached in localStorage against pokemontcg.io
+flakiness) → live eBay-AU price panel (`/price`) → Best-Offer verify → optional photos → **List on
+eBay** (saves to inventory → uploads photos → `/publish`). Degrades: not-connected / not-set-up show a
+banner instead of publishing. Lookup + live price verified end-to-end; the publish leg needs the
+connected account (ALCSERVER) + a completed bootstrap.
+
+**Roadmap:** Phases 0–4 BUILT + tested (Phase 2 `/price` + the Phase-3 lookup/price flow live-verified
+against eBay AU). **Remaining:** an auto-scheduler for `reconcileListings`; the first real publish smoke
+on ALCSERVER (run the Settings bootstrap first); later: incoming-offer response, other games, sealed,
+Shopify (a `shopify` sink beside `ebay-map.mjs`, same SKU key).
