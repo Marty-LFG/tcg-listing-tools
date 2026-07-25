@@ -265,13 +265,28 @@ function orderById(id){ return STATE.orders.find(o => o.order_id === id); }
 
 /* ---------- printing ---------- */
 function printOpts(){ return { density: STATE.density, speed: STATE.speed }; }
+// The print nudge corrects where the AUSPRINT physically lays ink down, so it has to match
+// shipping-label.html or the same address prints in two different spots on the sticker. Mirrors
+// that page's seedNudge() precedence exactly: a value calibrated there (localStorage) wins, else
+// the .env default from GET /api/print. Note this is the ADDRESS-label calibration — pdf-print.html
+// deliberately keeps its own, because a dropped PDF is often full-bleed with no margin to give up.
+function labelNudge(){
+  const pc = STATE.printCfg || {};
+  let sx = null, sy = null;
+  try { sx = localStorage.getItem('ship_offx'); sy = localStorage.getItem('ship_offy'); } catch(e){}
+  if (sx == null && pc.offXmm != null) sx = pc.offXmm;
+  if (sy == null && pc.offYmm != null) sy = pc.offYmm;
+  return { offXmm: parseFloat(sx) || 0, offYmm: parseFloat(sy) || 0 };
+}
 // Send jobs to the printer (or download PNG when unconfigured). Optionally record label-printed.
-async function sendToPrinter(jobs, label, orderId){
+// printJobs (optional) are the nudged rasters that go to the sticker; `jobs` stays unshifted for
+// the PNG fallback, which is headed for some other printer where our nudge means nothing.
+async function sendToPrinter(jobs, label, orderId, printJobs){
   if (!jobs.length) { setStatus('warn','Nothing to print.'); return; }
   if (STATE.printCfg && STATE.printCfg.enabled){
     setStatus('load','Printing '+label+'…');
     try {
-      const res = await LR.printJobs(jobs, printOpts());
+      const res = await LR.printJobs(printJobs || jobs, printOpts());
       if (res && res.ok){
         setStatus('ok','Printed '+label+' ('+res.printed+' label'+(res.printed>1?'s':'')+').');
         if (orderId){ try { await api('/orders/'+encodeURIComponent(orderId)+'/label-printed', { method:'POST' }); } catch(e){} loadAll(); }
@@ -283,14 +298,16 @@ async function sendToPrinter(jobs, label, orderId){
   }
 }
 // Preview modal → confirm-print. When "Preview first" is off, prints straight away.
-function handleJobs(jobs, label, orderId){
+// The preview shows `jobs` (unshifted): the nudge cancels out a printer that lays ink down off
+// its origin, so an unshifted preview is what the finished sticker actually looks like.
+function handleJobs(jobs, label, orderId, printJobs){
   if (!jobs.length){ setStatus('warn','Nothing to print.'); return; }
-  if (!$('previewChk').checked){ sendToPrinter(jobs, label, orderId); return; }
+  if (!$('previewChk').checked){ sendToPrinter(jobs, label, orderId, printJobs); return; }
   const body = $('pv_body'); body.innerHTML='';
   jobs.forEach(j => body.appendChild(LR.jobToCanvas(j)));
   $('pv_title').textContent = 'Preview · '+label+(jobs.length>1?(' ('+jobs.length+' pages)'):'');
   $('overlay').classList.add('open');
-  $('pv_print').onclick = () => { closePreview(); sendToPrinter(jobs, label, orderId); };
+  $('pv_print').onclick = () => { closePreview(); sendToPrinter(jobs, label, orderId, printJobs); };
   $('pv_download').onclick = () => { jobs.forEach((j,i)=>LR.downloadJob(j, label.replace(/[^\w]+/g,'-')+(jobs.length>1?('-'+(i+1)):'')+'.png')); };
 }
 function closePreview(){ $('overlay').classList.remove('open'); }
@@ -306,7 +323,17 @@ function printCombinedSlip(id){
   LR.openPrintDoc(LR.packingSlipHTML(orders), { selfPrint:true });
   setStatus('ok',`Combined packing slip for ${orders.length} orders → print dialog (opens once card images load).`);
 }
-function printLabel(id){ const o=orderById(id); if(!o) return; handleJobs([LR.renderAddressLabel(o)], 'address label', id); }
+// Two rasters when a nudge is set: the plain one for the preview and the PNG fallback, and a
+// shifted one for the AUSPRINT. Without this the dashboard printed every address label at offset
+// 0 while shipping-label.html printed the same address at the calibrated offset — same printer,
+// same stock, two registrations.
+function printLabel(id){
+  const o = orderById(id); if(!o) return;
+  const nud = labelNudge();
+  const jobs = [LR.renderAddressLabel(o)];
+  const printJobs = (nud.offXmm || nud.offYmm) ? [LR.renderAddressLabel(o, nud)] : jobs;
+  handleJobs(jobs, 'address label', id, printJobs);
+}
 // Order ids ticked for the pick sheet (all displayed orders minus the ones unticked).
 function selectedOrderIds(){ return STATE.orders.map(o=>o.order_id).filter(id=>!STATE.excluded.has(id)); }
 function updatePickBtn(){ const n=selectedOrderIds().length; const b=$('pickBtn'); if(b) b.textContent = n && n<STATE.orders.length ? `🖨 Pick sheet (${n})` : '🖨 Pick sheet'; }

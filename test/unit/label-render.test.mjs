@@ -105,3 +105,61 @@ test('pickSheetHTML — box-grouped seller list: tick box + image + full slot co
   assert.match(html, /27-1/)                       // order id column
   assert.match(html, /SORTED BY BOX/)
 })
+
+/* ---------- print nudge (offXmm/offYmm) ----------
+   Both address-label callers depend on this: shipping-label.html passes the calibrated nudge into
+   renderLinesToJob, and orders.html passes the same value into renderAddressLabel so a given
+   address lands in the same place from either page. The shift is applied in rasterizeLayout, which
+   needs a canvas — so re-instantiate the classic script against a recording 2d context and read
+   back the fillText coordinates. dpi 254 makes 1mm exactly 10 dots, so the expected shift is exact
+   and no rounding slack is needed. */
+function loadLRWithCanvas() {
+  const calls = []
+  const ctx = {
+    fillStyle: '', textBaseline: '', font: '', textAlign: '',
+    fillRect() {},
+    measureText: (s) => ({ width: String(s).length * 6 }),
+    fillText: (t, x, y) => calls.push({ t, x, y }),
+    getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+  }
+  const cv = { width: 0, height: 0, getContext: () => ctx }
+  const win = {}
+  new Function('window', 'document', src)(win, { createElement: () => cv })
+  return { LR: win.LR, calls }
+}
+const NUDGE_ORDER = {
+  ship_name: 'Jerilee McLaughlin', ship_street1: '43 Westminster Drive',
+  ship_city: 'Werribee', ship_state: 'VIC', ship_postal: '3030', ship_country: 'AU',
+}
+
+test('print nudge: no offset draws at the layout position', () => {
+  const a = loadLRWithCanvas()
+  a.LR.renderAddressLabel(NUDGE_ORDER, { dpi: 254 })
+  const b = loadLRWithCanvas()
+  b.LR.renderAddressLabel(NUDGE_ORDER, { dpi: 254, offXmm: 0, offYmm: 0 })
+  assert.ok(a.calls.length >= 3, 'expected one draw per address line')
+  assert.deepEqual(a.calls, b.calls)   // an explicit zero nudge is the same as none
+})
+
+test('print nudge: offXmm/offYmm shift every draw by exactly that many mm', () => {
+  const plain = loadLRWithCanvas()
+  plain.LR.renderAddressLabel(NUDGE_ORDER, { dpi: 254 })
+  const nudged = loadLRWithCanvas()
+  nudged.LR.renderAddressLabel(NUDGE_ORDER, { dpi: 254, offXmm: -4, offYmm: 2 })
+
+  assert.equal(nudged.calls.length, plain.calls.length)
+  for (let i = 0; i < plain.calls.length; i++) {
+    assert.equal(nudged.calls[i].t, plain.calls[i].t)        // same text, only moved
+    assert.equal(nudged.calls[i].x, plain.calls[i].x - 40)   // -4mm at 10 dots/mm
+    assert.equal(nudged.calls[i].y, plain.calls[i].y + 20)   // +2mm
+  }
+})
+
+test('print nudge: the job still reports the stock size, so TSPL SIZE is unaffected', () => {
+  const { LR: lr } = loadLRWithCanvas()
+  const job = lr.renderAddressLabel(NUDGE_ORDER, { dpi: 254, offXmm: -4 })
+  assert.equal(job.wmm, 100)
+  assert.equal(job.hmm, 50)
+  assert.equal(job.widthDots, 1000)
+  assert.equal(job.heightDots, 500)
+})
