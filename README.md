@@ -159,7 +159,12 @@ node scripts/labeltest.mjs --lang self  # prints the printer's own config page
 ```
 
 If a printed address sits in the wrong spot, nudge `LABEL_PRINTER_OFFX_MM` /
-`OFFY_MM`; if it's faint, raise `LABEL_PRINTER_DENSITY` or lower `LABEL_PRINTER_SPEED`;
+`OFFY_MM`. That pair calibrates the **address-label** tools only — they draw inside a 5 mm
+margin, so the shift moves text and clips nothing. The **PDF Label Printer** keeps its own
+nudge (per browser, starting at 0) under its Advanced panel, because a dropped PDF is often
+full-bleed and a borrowed nudge would shave real ink off the edge; on a Fit size it scales the
+page down to make room for whatever you set, so nothing is ever cut off.
+If it's faint, raise `LABEL_PRINTER_DENSITY` or lower `LABEL_PRINTER_SPEED`;
 if a barcode won't scan because the ink has bled, lower `LABEL_PRINTER_DENSITY`; if it
 prints as a photo-negative, set `LABEL_PRINTER_INVERT=true`. The printer is on Wi-Fi on the
 same LAN as the dev-server host, so the host does the printing regardless of which

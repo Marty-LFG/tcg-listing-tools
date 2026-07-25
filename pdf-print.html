@@ -75,6 +75,11 @@
   .fitem .x{cursor:pointer;color:var(--muted);font-weight:700;padding:0 4px;}
   .fitem .x:hover{color:#f06262;}
   .hint{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.5;}
+  /* a live print nudge is easy to forget about — Advanced is collapsed, so say it out loud */
+  .nudgechip{margin-top:8px;font-size:11.5px;color:#f0b429;background:#2a2210;border:1px solid #4a3b12;
+    border-radius:8px;padding:6px 10px;line-height:1.5;}
+  .nudgechip b{color:#ffd782;}
+  .nudgechip .clr{color:var(--gold);cursor:pointer;text-decoration:underline;margin-left:6px;}
   .adv{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:0 13px 14px;}
   .adv .full{grid-column:1/3;display:flex;align-items:center;gap:8px;}
   .adv .full input[type=checkbox]{width:auto;}
@@ -123,6 +128,7 @@
       <div style="margin-top:14px;">
         <label>Quick preset</label>
         <button class="btn solid" onclick="applyAusPostPreset()" title="Arm the settings for an Australia Post 100×150 shipping label: fit to 100×150, flip 180°, crisp threshold, no dither. Then drop the eBay PDF and print.">&#127462;&#127482; Australia Post 100 &times; 150</button>
+        <div class="nudgechip" id="nudgechip" style="display:none;"></div>
       </div>
 
       <div class="controls">
@@ -183,14 +189,16 @@
         <div class="adv">
           <div class="full"><input type="checkbox" id="a_dither" onchange="rerenderAll()"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Dither (Floyd&ndash;Steinberg) &mdash; better for photos/gradients, worse for crisp text</label></div>
           <div class="full"><input type="checkbox" id="a_invert" onchange="rerenderAll()"><label style="margin:0;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--text);">Invert (print white-on-black) &mdash; only if output comes out as a photo-negative</label></div>
-          <div><label>Print nudge X (mm)</label><input id="a_offx" type="number" step="0.5" value="0" title="Shift the printed image left/right on the sticker (negative = left)."></div>
-          <div><label>Print nudge Y (mm)</label><input id="a_offy" type="number" step="0.5" value="0" title="Shift the printed image up/down on the sticker (negative = up)."></div>
+          <div><label>Print nudge X (mm)</label><input id="a_offx" type="number" step="0.5" value="0" title="Shift the printed image left/right on the sticker (negative = left). Remembered for this tool only — separate from the address-label calibration in .env. On a Fit size the page is scaled down to make room, so nothing is cut off. You'll see it in the preview: this page previews exactly what prints."></div>
+          <div><label>Print nudge Y (mm)</label><input id="a_offy" type="number" step="0.5" value="0" title="Shift the printed image up/down on the sticker (negative = up). Remembered for this tool only. On a Fit size the page is scaled down to make room, so nothing is cut off. You'll see it in the preview: this page previews exactly what prints."></div>
           <div><label>DPI</label><input id="a_dpi" type="number" step="1" value="300" title="Printer dot density. AUSPRINT PRO = 300, base AUSPRINT = 203. Auto-filled from the printer."></div>
           <div><label>Fit padding (mm)</label><input id="a_pad" type="number" step="0.5" min="0" value="1" title="Only used by the Fit-to-stock modes: white border kept around the scaled page."></div>
         </div>
       </details>
 
-      <div class="hint">Tip: for labels that already come sized correctly (like a 50&times;30 storage tag), keep <b>Use PDF size</b> &mdash; the printer is told the exact page size and prints 1:1. Use <b>Fit</b> only when the PDF page doesn't match your loaded stock.</div>
+      <div class="hint">Tip: for labels that already come sized correctly (like a 50&times;30 storage tag), keep <b>Use PDF size</b> &mdash; the printer is told the exact page size and prints 1:1. Use <b>Fit</b> only when the PDF page doesn't match your loaded stock.<br>
+      If the print lands off-centre on the sticker, set a <b>Print nudge</b> under Advanced. It's saved for this tool alone and starts at zero, because a shipping label has ink right up to the page edge and a nudge borrowed from another stock would shave it off.<br>
+      Not sure whether this printer needs one? Set <b>Fit padding</b> to 5 mm, leave the nudge at 0, print one label and measure the white border. Even all round means no nudge needed. 1 mm on one side and 9 mm on the other means the head sits 4 mm out, so put <b>&minus;4</b> in Print nudge X &mdash; the Fit shrinks the page slightly to make room, so nothing gets cut off.</div>
     </div>
 
     <!-- RIGHT: preview + output -->
@@ -259,13 +267,45 @@ function loadPrintCfg(){
     if(c && typeof c==='object') printCfg = c;
   }).catch(function(){ printCfg = { enabled:false, dpi:300 }; }).then(function(){
     if(printCfg.dpi && $('a_dpi')) $('a_dpi').value = printCfg.dpi;
-    if(printCfg.offXmm!=null && $('a_offx')) $('a_offx').value = printCfg.offXmm;
-    if(printCfg.offYmm!=null && $('a_offy')) $('a_offy').value = printCfg.offYmm;
+    // The nudge is deliberately NOT seeded here — see seedNudge(), which runs synchronously at
+    // init so it never loses a race with this fetch.
     // .env is the source of truth for shop-tuned darkness/speed; seed the steppers from it.
     if(printCfg.density!=null){ density=printCfg.density; if($('densval')) $('densval').firstChild.nodeValue=density; }
     if(printCfg.speed!=null){ speed=printCfg.speed; if($('spdval')) $('spdval').firstChild.nodeValue=speed; }
     updatePrintChrome();
   });
+}
+
+/* ---------- print nudge (this tool's own calibration) ---------- */
+// Deliberately NOT taken from .env. LABEL_PRINTER_OFFX/Y_MM calibrates the ADDRESS-label tools,
+// whose layout keeps a 5mm margin that quietly swallows the shift. PDFs dropped here are routinely
+// full-bleed — an Australia Post shipping label runs its ink to the page edge — so inheriting that
+// nudge sliced real content off every label. This tool calibrates itself instead: remembered per
+// browser, starting at 0, so a fresh drop prints the PDF exactly as drawn. Reads localStorage only,
+// so it runs synchronously at init and is never a frame behind what the preview rasterises.
+function seedNudge(){
+  var sx=null, sy=null;
+  try { sx=localStorage.getItem('pdfprint_offx'); sy=localStorage.getItem('pdfprint_offy'); } catch(e){}
+  if($('a_offx')) $('a_offx').value = (sx==null || sx==='') ? 0 : sx;
+  if($('a_offy')) $('a_offy').value = (sy==null || sy==='') ? 0 : sy;
+  updateNudgeChrome();
+}
+function nudgeMm(){ return { x: parseFloat(($('a_offx')||{}).value)||0, y: parseFloat(($('a_offy')||{}).value)||0 }; }
+// Advanced is a collapsed <details>, so a live nudge is invisible exactly when it matters most.
+// Surface it next to the preset instead, with a one-click way back to zero.
+function updateNudgeChrome(){
+  var n = nudgeMm(), el = $('nudgechip');
+  if(!el) return;
+  if(!n.x && !n.y){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='';
+  el.innerHTML = 'Print nudge on: <b>' + n.x + ' mm</b> across, <b>' + n.y + ' mm</b> down' +
+    ' <span class="clr" onclick="clearNudge()">clear</span>';
+}
+function clearNudge(){
+  if($('a_offx')) $('a_offx').value = 0;
+  if($('a_offy')) $('a_offy').value = 0;
+  try { localStorage.removeItem('pdfprint_offx'); localStorage.removeItem('pdfprint_offy'); } catch(e){}
+  updateNudgeChrome(); rerenderAll();
 }
 function updatePrintChrome(){
   var en = !!printCfg.enabled, n = selectedCount();
@@ -344,11 +384,20 @@ function rasterisePage(p){
     })(), viewport: vp }).promise.then(function(){
     var pageCanvas = p._tmp; p._tmp = null;
 
+    // print nudge (mm -> dots): slides the ink across the sticker to match the printer
+    var nud = nudgeMm();
+    var offX = Math.round(nud.x * pxPerMm), offY = Math.round(nud.y * pxPerMm);
+    var inv = $('a_invert').checked;
+
     // choose the output canvas: native = page size; fit = stock size with the page contained
-    var outCanvas, wmm, hmm;
+    var outCanvas, wmm, hmm, lost = false, shrink = 1;
     if(sizeMode==='native'){
       outCanvas = pageCanvas;
       wmm = pageW / pxPerMm; hmm = pageH / pxPerMm;
+      // 1:1 is the whole point of this mode, so the nudge can't be absorbed by rescaling — it
+      // slides the page across the sticker and whatever crosses an edge is gone. Say so rather
+      // than binning ink quietly.
+      lost = (offX || offY) ? nudgeLosesInk(pageCanvas, offX, offY, threshold(), inv) : false;
     } else {
       var st = STOCK[sizeMode];
       wmm = st.w; hmm = st.h;
@@ -357,16 +406,23 @@ function rasterisePage(p){
       outCanvas = document.createElement('canvas'); outCanvas.width=outW; outCanvas.height=outH;
       var octx = outCanvas.getContext('2d');
       octx.fillStyle='#fff'; octx.fillRect(0,0,outW,outH);
-      var availW = Math.max(1, outW-2*pad), availH = Math.max(1, outH-2*pad);
+      // Reserve room for the nudge: the contain box gives up |off| so that once the shift is
+      // applied the whole page is still on the sticker. Fitting first and shifting afterwards
+      // looked fine on a bordered tag and amputated a full-bleed shipping label.
+      var availW = Math.max(1, outW - 2*pad - Math.abs(offX));
+      var availH = Math.max(1, outH - 2*pad - Math.abs(offY));
       var s = Math.min(availW/pageW, availH/pageH);       // contain
       var dw = pageW*s, dh = pageH*s;
+      // how much of the sticker the reserved room costs — a big nudge is legal but shrinks the
+      // page, and shrinking a carrier label's barcode by a third should never happen quietly
+      var sPlain = Math.min(Math.max(1,outW-2*pad)/pageW, Math.max(1,outH-2*pad)/pageH);
+      shrink = sPlain > 0 ? s/sPlain : 1;
+      // park the reserved box on the side the shift comes FROM, so the shift lands it flush
+      var boxX = pad + Math.max(0, -offX), boxY = pad + Math.max(0, -offY);
       octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
-      octx.drawImage(pageCanvas, (outW-dw)/2, (outH-dh)/2, dw, dh);
+      octx.drawImage(pageCanvas, boxX + (availW-dw)/2, boxY + (availH-dh)/2, dw, dh);
     }
 
-    // print-only nudge (mm -> dots): shift the ink within the label
-    var offX = Math.round(((parseFloat(($('a_offx')||{}).value)||0)) * pxPerMm);
-    var offY = Math.round(((parseFloat(($('a_offy')||{}).value)||0)) * pxPerMm);
     if(offX || offY){
       var w=outCanvas.width, h=outCanvas.height;
       var shifted=document.createElement('canvas'); shifted.width=w; shifted.height=h;
@@ -375,12 +431,37 @@ function rasterisePage(p){
       outCanvas = shifted;
     }
 
-    var r = to1bpp(outCanvas, threshold(), $('a_dither').checked, $('a_invert').checked);
+    var r = to1bpp(outCanvas, threshold(), $('a_dither').checked, inv);
     r.wmm = wmm; r.hmm = hmm;
     p.raster = r;
+    p.lost = lost;
+    p.shrink = shrink;
     p.previewCanvas = bitmapToCanvas(r);
     return r;
   });
+}
+
+// Is there any ink in this slab of canvas? Same ink test as to1bpp, so the answer matches
+// what actually gets printed (including the invert switch).
+function rectHasInk(canvas, x, y, w, h, thresh, invert){
+  x=Math.max(0,Math.floor(x)); y=Math.max(0,Math.floor(y));
+  w=Math.min(canvas.width-x, Math.ceil(w)); h=Math.min(canvas.height-y, Math.ceil(h));
+  if(w<=0 || h<=0) return false;
+  var d=canvas.getContext('2d').getImageData(x,y,w,h).data;
+  for(var i=0;i<d.length;i+=4){
+    var isInk = (d[i+3]<128 ? 255 : (0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])) < thresh;
+    if(invert ? !isInk : isInk) return true;
+  }
+  return false;
+}
+// Would the nudge push real ink off an edge? Only the strips that fall outside can be lost.
+function nudgeLosesInk(canvas, offX, offY, thresh, invert){
+  var w=canvas.width, h=canvas.height;
+  if(offX<0 && rectHasInk(canvas, 0, 0, -offX, h, thresh, invert)) return true;
+  if(offX>0 && rectHasInk(canvas, w-offX, 0, offX, h, thresh, invert)) return true;
+  if(offY<0 && rectHasInk(canvas, 0, 0, w, -offY, thresh, invert)) return true;
+  if(offY>0 && rectHasInk(canvas, 0, h-offY, w, offY, thresh, invert)) return true;
+  return false;
 }
 
 // Canvas -> { bitmap(base64), widthDots, heightDots } (1=ink, MSB-first, rows padded to a
@@ -453,8 +534,16 @@ function rerenderNow(){
   if(!pages.length){ $('pglist').innerHTML=''; $('prevCount').textContent='0 pages'; setStatus('load','Drop a PDF to begin. What you see below is exactly the 1‑bit image sent to the printer.'); return; }
   setStatus('load','Rasterising ' + pages.length + ' page' + (pages.length>1?'s':'') + '…');
   pages.reduce(function(chain,p){ return chain.then(function(){ return rasterisePage(p); }); }, Promise.resolve())
-    .then(function(){ paintPreviews(); var n=selectedCount();
-      setStatus('ok', pages.length + ' page' + (pages.length>1?'s':'') + ' ready · ' + n + ' selected to print'); updatePrintChrome();
+    .then(function(){ paintPreviews(); updateNudgeChrome();
+      var n=selectedCount(), lost=pages.filter(function(p){ return p.lost; }).length;
+      var tight=pages.reduce(function(m,p){ return Math.min(m, p.shrink==null?1:p.shrink); }, 1);
+      var head = pages.length + ' page' + (pages.length>1?'s':'') + ' ready · ' + n + ' selected to print';
+      if(lost) setStatus('warn', head + ' — but the print nudge pushes ink off the edge on ' +
+        lost + ' of them. Pick a Fit size (it makes room for the nudge) or clear the nudge.');
+      else if(tight < 0.9) setStatus('warn', head + ' — the print nudge is big enough to shrink the page to ' +
+        Math.round(tight*100) + '% to make room for it. Check the barcode is still a sensible size.');
+      else setStatus('ok', head);
+      updatePrintChrome();
     })
     .catch(function(e){ setStatus('err','Render failed: ' + ((e&&e.message)||e)); });
 }
@@ -462,7 +551,8 @@ function paintPreviews(){
   var el=$('pglist');
   el.innerHTML = pages.map(function(p){
     var r=p.raster;
-    var meta = r ? ('<b>'+esc(p.docName)+'</b> · p'+p.pageNo+' · '+r.wmm.toFixed(1)+'×'+r.hmm.toFixed(1)+' mm · '+r.widthDots+'×'+r.heightDots+' dots') : esc(p.docName);
+    var meta = r ? ('<b>'+esc(p.docName)+'</b> · p'+p.pageNo+' · '+r.wmm.toFixed(1)+'×'+r.hmm.toFixed(1)+' mm · '+r.widthDots+'×'+r.heightDots+' dots'+
+      (p.lost ? ' · <span style="color:#f0b429;font-weight:700;">ink clipped by the nudge</span>' : '')) : esc(p.docName);
     return '<div class="pgcard'+(p.selected?'':' off')+'" id="pg_'+p.id+'">'+
       '<div class="pghead"><input class="sel" type="checkbox" '+(p.selected?'checked':'')+' onchange="toggleSel('+p.id+',this.checked)">'+
       '<div class="meta">'+meta+'</div></div>'+
@@ -493,8 +583,9 @@ function onThreshInput(){ $('threshval').textContent=threshold(); rerenderAll();
 
 // One-click Australia Post 100×150 shipping label: fit the PDF into the true 100×150 die-cut
 // (native would send SIZE 151.7mm and drift the gap sensor), flip 180° for the vendor app's
-// "Invert Page", crisp threshold, no dither, no white border. Darkness/Speed and the X-origin
-// nudge stay as configured (env-seeded), so shop calibration survives the preset.
+// "Invert Page", crisp threshold, no dither, no white border. Darkness/Speed and this tool's
+// own print nudge stay as configured, so shop calibration survives the preset — the fit now
+// reserves room for the nudge, so leaving one set can no longer clip the label.
 function applyAusPostPreset(){
   setSizeMode('100x150');
   setRotate(180);
@@ -548,6 +639,14 @@ function downloadPreview(){
   // let a PDF be dropped anywhere on the page too
   ['dragover','drop'].forEach(function(ev){ document.addEventListener(ev,function(e){ e.preventDefault(); }); });
   ['a_offx','a_offy','a_dpi','a_pad'].forEach(function(id){ var el=$(id); if(el) el.addEventListener('change', rerenderAll); });
+  // remember this tool's own calibration (shipping-label.html does the same for its stock)
+  ['a_offx','a_offy'].forEach(function(id){ var el=$(id); if(!el) return;
+    el.addEventListener('change', function(){
+      try { localStorage.setItem(id==='a_offx'?'pdfprint_offx':'pdfprint_offy', el.value); } catch(e){}
+      updateNudgeChrome();
+    });
+  });
+  seedNudge();      // synchronous (localStorage) — must land before any raster, so before the fetch
   loadPrintCfg();
 })();
 </script>
