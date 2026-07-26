@@ -64,10 +64,21 @@
   .lr-name{font-family:var(--serif);font-weight:600;font-size:15.5px;letter-spacing:-.01em;min-width:150px;}
   .lr-note{color:var(--faint);font-size:11.5px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;}
   .lr-spacer{flex:1;}
-  .lr-nums{display:flex;gap:14px;align-items:baseline;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;}
-  .lr-nums b{color:var(--text);font-weight:600;}
-  .lr-nums span{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:3px;}
-  .lr-val{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--green);font-variant-numeric:tabular-nums;min-width:92px;text-align:right;}
+  /* Fixed widths so the header row above actually lines up with the numbers below it. */
+  .lr-n{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;width:62px;text-align:right;color:var(--text);font-weight:600;flex:none;}
+  .lr-val{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--green);font-variant-numeric:tabular-nums;width:104px;text-align:right;flex:none;}
+  .lr-val.zero{color:var(--faint);font-weight:400;}
+  .lr-actw{width:104px;display:flex;gap:6px;justify-content:flex-end;flex:none;}
+  /* Header row — same flex skeleton as a location row, so the columns sit over their numbers. */
+  /* Transparent side borders so the columns sit exactly over the rows, which carry a 1px border. */
+  .lochead{display:flex;align-items:flex-end;gap:12px;padding:2px 14px 7px;margin-bottom:7px;
+    border:1px solid transparent;border-bottom-color:var(--line);}
+  .lochead .h{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none;transition:color .12s;white-space:nowrap;}
+  .lochead .h:hover{color:var(--text);}
+  .lochead .h.on{color:var(--gold);}
+  .lochead .h .car{opacity:0;font-size:9px;margin-left:3px;}
+  .lochead .h:hover .car{opacity:.45;} .lochead .h.on .car{opacity:1;}
+  .lochead .cap{display:block;font-size:9px;letter-spacing:.04em;color:var(--faint);font-weight:400;text-transform:none;margin-top:1px;}
   .lr-acts{display:flex;gap:6px;}
   .lr-body{border-top:1px solid var(--line);padding:10px 14px 13px 36px;}
   .manifest{width:100%;border-collapse:collapse;font-size:12.5px;}
@@ -163,13 +174,7 @@
       <button id="vGrid" onclick="setLocView('grid')" title="Cards with photos">▦ Cards</button>
     </span>
     <button class="btn sm ghost" id="expandAll" onclick="toggleAll()" style="margin-left:8px;">Expand all</button>
-    <select id="f_sort" onchange="render()" style="margin-left:auto;" title="Sort">
-      <option value="custom">Custom order</option>
-      <option value="name">Name A–Z</option>
-      <option value="items">Most items</option>
-      <option value="units">Most units</option>
-      <option value="photos">Most photos</option>
-    </select>
+    <span style="margin-left:auto;font-size:11px;color:var(--faint);">sort by clicking a column</span>
   </div>
   <div id="list"></div>
 </div>
@@ -237,19 +242,49 @@ async function load(){
   }
   catch(e){document.getElementById('list').innerHTML='<div class="empty">Failed to load — is the dev server running?</div>';}
 }
+// What the stock in a location is worth at asking, in AUD. Only AUD lines are added up — mixing
+// currencies into one number would be a lie, so a non-AUD line is left out rather than fudged.
+function locValueCents(l){
+  let t=0,any=false;
+  for(const it of contentsFor(l)) if(it.unit_value_cents!=null&&(it.value_currency||'AUD')==='AUD'){t+=it.unit_value_cents*(it.qty||0);any=true;}
+  return any?t:null;
+}
+let LSORT=(function(){try{return JSON.parse(localStorage.getItem('bk_locsort'))||{k:'custom',dir:1};}catch(e){return {k:'custom',dir:1};}})();
+function setSort(k){
+  LSORT = (LSORT.k===k) ? {k,dir:-LSORT.dir} : {k,dir:(k==='name'||k==='custom')?1:-1};   // counts open high-first
+  try{localStorage.setItem('bk_locsort',JSON.stringify(LSORT));}catch(e){}
+  render();
+}
 function sortLocs(arr){
-  const key=(document.getElementById('f_sort')||{}).value||'custom';
-  const a=arr.slice();
-  const num=(f)=>(x,y)=>f(y)-f(x);
-  var nat=(x,y)=>String(x||'').localeCompare(String(y||''),'en',{numeric:true,sensitivity:'base'});   // 1,2,…10,11 not 1,10,11,2
-  switch(key){
-    case 'name': a.sort((x,y)=>nat(x.name,y.name)); break;
-    case 'items': a.sort(num(l=>l.item_count||0)); break;
-    case 'units': a.sort(num(l=>l.unit_count||0)); break;
-    case 'photos': a.sort(num(l=>l.photo_count||0)); break;
-    default: a.sort((x,y)=>(x.sort_order-y.sort_order)||nat(x.name,y.name)); break;
+  const a=arr.slice(), {k,dir}=LSORT;
+  const nat=(x,y)=>String(x||'').localeCompare(String(y||''),'en',{numeric:true,sensitivity:'base'});   // 1,2,…10,11 not 1,10,11,2
+  const by=(f)=>(x,y)=>{const A=f(x),B=f(y);
+    if(A==null&&B==null) return nat(x.name,y.name);
+    if(A==null) return 1; if(B==null) return -1;                 // nothing-to-value always sinks
+    return (A<B?-1:A>B?1:nat(x.name,y.name))*dir;};
+  switch(k){
+    case 'name': a.sort((x,y)=>nat(x.name,y.name)*dir); break;
+    case 'items': a.sort(by(l=>l.item_count||0)); break;
+    case 'units': a.sort(by(l=>l.unit_count||0)); break;
+    case 'value': a.sort(by(l=>locValueCents(l))); break;
+    default: a.sort((x,y)=>((x.sort_order-y.sort_order)||nat(x.name,y.name))*dir); break;
   }
   return a;
+}
+function headHtml(){
+  // Single quotes inside the attribute: JSON.stringify emits DOUBLE quotes, which terminate the
+  // onclick="" attribute and silently leave the header unclickable. Keys here are known literals.
+  const h=(k,label,cap)=>'<span class="h'+(LSORT.k===k?' on':'')+'" onclick="setSort(\''+k+'\')">'+label
+    +'<span class="car">'+(LSORT.k===k?(LSORT.dir===1?'▲':'▼'):'▼')+'</span>'+(cap?'<span class="cap">'+cap+'</span>':'')+'</span>';
+  return '<div class="lochead">'
+    +'<span style="width:10px;flex:none;"></span><span style="width:34px;flex:none;"></span>'
+    +h('name','Location')
+    +'<span class="lr-spacer"></span>'
+    +'<span class="lr-n" style="text-align:right;">'+h('items','Items')+'</span>'
+    +'<span class="lr-n" style="text-align:right;">'+h('units','Units')+'</span>'
+    +'<span class="lr-val" style="color:inherit;font-weight:400;">'+h('value','Value','at asking')+'</span>'
+    +'<span class="lr-actw">'+h('custom','Custom')+'</span>'
+  +'</div>';
 }
 function locCard(l){
   const notes=l.notes?('<div class="notes">'+esc(l.notes)+'</div>'):'<div class="notes empty-note">No notes yet.</div>';
@@ -282,9 +317,8 @@ const audc=c=>c==null?'—':'A$'+(c/100).toFixed(2);
 function locRow(l){
   const items=contentsFor(l), open=OPEN.has(String(l.name).toLowerCase());
   const q=val('f_q').toLowerCase();
-  // Value at asking, so a spot answers "what is sitting in this crate" in money as well as units.
-  let val_=0, haveVal=false;
-  for(const it of items) if(it.unit_value_cents!=null&&(it.value_currency||'AUD')==='AUD'){ val_+=it.unit_value_cents*(it.qty||0); haveVal=true; }
+  // Value at asking — same function the Value column sorts on, so the two can never disagree.
+  const val_=locValueCents(l), haveVal=val_!=null;
   const rows=items.map(it=>'<tr>'
     +'<td class="m-q">×'+(it.qty||0)+'</td>'
     +'<td class="m-img">'+(it.image_url?'<img src="'+esc(it.image_url)+'" loading="lazy" alt="">':'')+'</td>'
@@ -300,10 +334,10 @@ function locRow(l){
       +(l.notes?'<span class="lr-note">'+esc(l.notes)+'</span>':'')
       +(l.has_record?'':'<span class="chip warn" title="Used on stock but no info/photos saved yet">unconfigured</span>')
       +'<span class="lr-spacer"></span>'
-      +'<span class="lr-nums"><b>'+(l.item_count||0)+'</b><span>items</span><b>'+(l.unit_count||0)+'</b><span>units</span>'
-        +(l.photo_count?'<b>'+l.photo_count+'</b><span>photos</span>':'')+'</span>'
-      +'<span class="lr-val">'+(haveVal?audc(val_):'')+'</span>'
-      +'<span class="lr-acts" onclick="event.stopPropagation()">'
+      +'<span class="lr-n">'+(l.item_count||0)+'</span>'
+      +'<span class="lr-n">'+(l.unit_count||0)+'</span>'
+      +'<span class="lr-val'+(haveVal&&val_?'':' zero')+'">'+(haveVal?audc(val_):'—')+'</span>'
+      +'<span class="lr-actw" onclick="event.stopPropagation()">'
         +'<button class="btn sm" onclick="openLocByName('+JSON.stringify(esc(l.name)).replace(/"/g,'&quot;')+')">Edit</button>'
         +(l.has_record?'<button class="btn sm danger" onclick="removeLoc('+l.id+',\''+esc(l.name).replace(/'/g,"\\'")+'\')">✕</button>':'')
       +'</span>'
@@ -324,7 +358,7 @@ function render(){
   if(!arr.length){el.className='';el.innerHTML='<div class="empty">'+(LOCS.length?'No locations match “'+esc(q)+'”.':'No locations yet. Add one, or assign a storage location to a sealed item.')+'</div>';return;}
   const sorted=sortLocs(arr);
   if(LOCVIEW==='grid'){ el.className='grid'; el.innerHTML=sorted.map(locCard).join(''); return; }
-  el.className='loclist'; el.innerHTML=sorted.map(locRow).join('');
+  el.className='loclist'; el.innerHTML=headHtml()+sorted.map(locRow).join('');
 }
 
 // ---- modal ----
