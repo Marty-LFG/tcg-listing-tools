@@ -196,12 +196,14 @@ async function loadSets(){
   // picker empty — show the cache immediately, then refresh in the background.
   try{ const cached=JSON.parse(localStorage.getItem(SETS_CACHE)||'null'); if(cached&&cached.length){ SETS=cached; $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); } }catch(e){}
   try{
-    const r=await TCG.fetchJson(base+'/sets?pageSize=500');
+    const r=await TCG.fetchJson(base+'/sets?pageSize=500',{onRetry:n=>{ if(!SETS.length) $('setStatus').textContent='loading sets… (retry '+n+')'; }});
     if(!r.ok) throw new Error('http '+r.status);
     const j=await r.json();
     const list=(j.data||[]).map(s=>({value:s.id,label:s.name,code:(s.ptcgoCode||s.id||'').toUpperCase(),icon:(s.images&&s.images.symbol)||'',releaseDate:s.releaseDate}))
       .sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||''));
-    if(list.length){ SETS=list; try{ localStorage.setItem(SETS_CACHE,JSON.stringify(SETS)); }catch(e){} $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); }
+    // j.stale: the server served its cached copy because pokemontcg.io was down. Say so — a silently
+    // stale picker is how a brand-new set looks like a missing card.
+    if(list.length){ SETS=list; try{ localStorage.setItem(SETS_CACHE,JSON.stringify(SETS)); }catch(e){} $('setStatus').textContent=SETS.length+' sets'+(j.stale?' (cached — source down)':''); wireSetCombobox(); }
     else if(!SETS.length){ $('setStatus').textContent='no sets (source flaky) — retry'; }
   }catch(e){ if(!SETS.length) $('setStatus').textContent='sets failed (source down) — retry'; }
 }

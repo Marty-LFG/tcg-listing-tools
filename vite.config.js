@@ -12,6 +12,7 @@ import { postsalePlugin } from './lib/postsale.mjs'
 import { listingsPlugin } from './lib/listings.mjs'
 import { statusPlugin } from './lib/status.mjs'
 import { catalogPlugin } from './lib/catalog.mjs'
+import { pkmSetsPlugin } from './lib/pkm-sets-cache.mjs'
 import { lookup as pcLookup, enumerateConsole as pcEnumerate, listPokemonConsoles as pcConsoles } from './lib/pricecharting.mjs'
 import { certLookup, certProviders } from './lib/certlookup.mjs'
 import { analyzeCard } from './lib/grader.mjs'
@@ -347,7 +348,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,
@@ -422,7 +423,15 @@ export default defineConfig(({ mode }) => {
             proxy.on('proxyRes', (proxyRes, req) => {
               if (proxyRes.statusCode >= 400) console.warn('[api/pkm]', proxyRes.statusCode, req.url)
             })
-            proxy.on('error', (err, req) => console.warn('[api/pkm] proxy error', req.url, err.message))
+            // Own the response on a transport failure. Vite's default handler emits a BODYLESS 500,
+            // which is indistinguishable from pokemontcg.io's own 500s — the client then can't tell
+            // "we never reached them" from "they answered badly". 502 + a reason says which.
+            proxy.on('error', (err, req, res) => {
+              console.warn('[api/pkm] proxy error', req.url, err.message)
+              if (!res || res.headersSent || typeof res.writeHead !== 'function') return
+              res.writeHead(502, { 'content-type': 'application/json' })
+              res.end(JSON.stringify({ error: 'pokemontcg.io unreachable', code: 'upstream_unreachable', detail: err.message }))
+            })
           },
         },
         // Pokemon JP/CN/KO -> TCGdex (community REST, KEYLESS, multilingual). English stays on
