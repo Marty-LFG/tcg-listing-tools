@@ -57,6 +57,13 @@
   .result{background:var(--panel2);border:1px solid var(--green);border-radius:10px;padding:14px;margin-top:12px;}
   .result a{color:var(--green);font-weight:700;word-break:break-all;}
   iframe{width:100%;height:420px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+  /* Preview is full-width under the grid — 18 item specifics read as columns, not a squeezed list. */
+  #previewCard h3{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+  #previewCard .h-note{color:var(--muted);font-size:11px;letter-spacing:0;text-transform:none;font-weight:400;}
+  .pv-title{font-size:15px;font-weight:700;margin:2px 0 14px;}
+  .pv-specs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0 28px;margin-bottom:6px;}
+  #previewCard iframe{height:620px;margin-top:10px;}
+  .pv-foot{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#0c1430;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99;}
   .toast.show{opacity:1;}
 </style>
@@ -159,10 +166,15 @@
           <button class="bigbtn" id="listBtn" onclick="doList()" style="flex:1;">List on eBay</button>
         </div>
         <div class="status" id="listStatus"></div>
-        <div id="previewBox" style="display:none;margin-top:12px;"></div>
         <div id="resultBox"></div>
       </div>
     </div>
+  </div>
+  <!-- Preview lives OUTSIDE the two-column grid: 18 item specifics and a rendered description have no
+       business being squeezed into a half-width column. -->
+  <div class="card" id="previewCard" style="display:none;margin-top:18px;">
+    <h3><span>Preview</span><span class="h-note" id="previewNote"></span></h3>
+    <div id="previewBox"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -242,7 +254,7 @@ async function doLookup(){
     act&&act.done('found');
     stat($('status'),'ok','Found. Verify the details, price and offers below.');
     ['detailsCard','priceCard','offerCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
-    savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewBox').style.display='none';
+    savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
     priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
     loadPrice();
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
@@ -411,14 +423,21 @@ async function doPreview(){
     const out=await fetch('/api/listings/preview',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(publishBody(id))}).then(r=>r.json());
     if(!out.ok){ act&&act.fail('blocked'); stat($('listStatus'),'err',out.error||'preview failed'); return; }
     act&&act.done('ready'); stat($('listStatus'),'ok','Preview ready — review, then List on eBay.');
-    const asp=Object.entries(out.aspects||{}).map(([k,v])=>'<div class="kv"><span>'+esc(k)+'</span><span>'+esc(v)+'</span></div>').join('');
+    // Character and Features are multi-value aspects, so a value can be an array.
+    const aspects=Object.entries(out.aspects||{});
+    const asp=aspects.map(([k,v])=>'<div class="kv"><span>'+esc(k)+'</span><span>'+esc(Array.isArray(v)?v.join(', '):v)+'</span></div>').join('');
     const fees=(out.fees&&out.fees[0]&&out.fees[0].fees||[]).map(f=>f.feeType+' '+(f.amount&&f.amount.value)).join(' · ');
-    $('previewBox').style.display='';
-    $('previewBox').innerHTML='<div class="muted" style="margin-bottom:6px;">eBay title ('+(out.title||'').length+'/80)</div><div style="font-weight:700;margin-bottom:10px;">'+esc(out.title)+'</div>'
-      +'<div class="muted" style="margin-bottom:4px;">Item specifics</div>'+asp
-      +(out.imageUrls?'<div class="muted" style="margin-top:8px;">'+out.imageUrls.length+' image(s) hosted on eBay</div>':'')
-      +(fees?'<div class="muted" style="margin-top:6px;">Fees: '+esc(fees)+'</div>':'')
-      +'<iframe style="margin-top:10px;" srcdoc="'+esc(out.descriptionHtml||'').replace(/"/g,'&quot;')+'"></iframe>';
+    const charged=(out.fees&&out.fees[0]&&out.fees[0].fees||[]).filter(f=>+(f.amount&&f.amount.value)>0)
+      .map(f=>f.feeType+' A$'+(f.amount&&f.amount.value)).join(' · ');
+    $('previewCard').style.display='';
+    $('previewNote').textContent=aspects.length+' item specifics · '+((out.descriptionHtml||'').length)+' char description';
+    $('previewBox').innerHTML='<div class="muted">eBay title ('+(out.title||'').length+'/80)</div><div class="pv-title">'+esc(out.title)+'</div>'
+      +'<div class="muted" style="margin-bottom:4px;">Item specifics</div><div class="pv-specs">'+asp+'</div>'
+      +'<div class="pv-foot">'
+        +(out.imageUrls?'<span class="muted">'+out.imageUrls.length+' image(s) hosted on eBay</span>':'')
+        +(charged?'<span class="muted">Fees: '+esc(charged)+'</span>':(fees?'<span class="muted">No listing fees</span>':''))
+      +'</div>'
+      +'<iframe srcdoc="'+esc(out.descriptionHtml||'').replace(/"/g,'&quot;')+'"></iframe>';
   }catch(e){ act&&act.fail('error'); stat($('listStatus'),'err',String(e&&e.message||e)); }
 }
 
