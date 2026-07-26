@@ -3,7 +3,7 @@
 // PriceCharting console name, and title -> product_type classification. Offline / no DB.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore, naturalCompare } from '../../lib/sealed.mjs';
+import { summarizeSealed, normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore, naturalCompare } from '../../lib/sealed.mjs';
 
 describe('naturalCompare (locations)', () => {
   it('sorts numeric suffixes 1,2,…10,11 — not 1,10,11,2', () => {
@@ -174,5 +174,50 @@ describe('inferProductType', () => {
     for (const t of ['Booster Box', 'Booster Pack', 'Tin', 'Bundle']) {
       assert.ok(PRODUCT_TYPES.includes(inferProductType(t, 'pokemon')));
     }
+  });
+});
+
+describe('summarizeSealed — cost is PER UNIT, like value', () => {
+  // The bug this pins: cost was summed unscaled while value was multiplied by quantity, so a row of
+  // 14 booster boxes bought at A$300 each contributed A$300 of cost against A$4,608 of value and
+  // reported A$4,308 of profit that did not exist.
+  const upcMap = new Map([['196214154186', { value_cents: 32915, currency: 'AUD' }]]);
+  const boxes = { status: 'in_stock', game: 'pokemon', product_type: 'booster_box', quantity: 14,
+    cost_cents: 30000, acq_fees_cents: 0, upc: '196214154186', value_manual: 0, row_value: null, row_cur: null };
+
+  it('scales cost by quantity', () => {
+    const s = summarizeSealed([boxes], upcMap);
+    assert.equal(s.totalCostCents, 30000 * 14, '14 boxes at A$300 each cost A$4,200');
+    assert.equal(s.valueByCurrency.AUD, 32915 * 14);
+    assert.equal(s.units, 14);
+    const profit = s.valueByCurrency.AUD - s.totalCostCents;
+    assert.equal(profit, 40810, 'A$408.10, not the A$4,308 the old maths reported');
+  });
+
+  it('counts acquisition fees per unit too', () => {
+    assert.equal(summarizeSealed([{ ...boxes, acq_fees_cents: 500 }], upcMap).totalCostCents, (30000 + 500) * 14);
+  });
+
+  it('a single-unit row is unchanged by the fix', () => {
+    const s = summarizeSealed([{ ...boxes, quantity: 1 }], upcMap);
+    assert.equal(s.totalCostCents, 30000);
+    assert.equal(s.valueByCurrency.AUD, 32915);
+  });
+
+  it('realized P/L on a sold row also scales cost by quantity', () => {
+    // Sold 3 boxes bought at A$300 each for A$1,200 with A$100 of fees: 1200 - 100 - 900 = A$200.
+    const s = summarizeSealed([{ ...boxes, status: 'sold', quantity: 3, sale_price_cents: 120000, sale_fees_cents: 10000 }], upcMap);
+    assert.equal(s.realizedPlCents, 120000 - 10000 - 30000 * 3);
+    assert.equal(s.units, 0, 'sold stock is not held stock');
+  });
+
+  it('a sold row with no quantity recorded is treated as one unit, not zero', () => {
+    const s = summarizeSealed([{ ...boxes, status: 'sold', quantity: null, sale_price_cents: 40000, sale_fees_cents: 0 }], upcMap);
+    assert.equal(s.realizedPlCents, 40000 - 30000);
+  });
+
+  it('a manual value overrides the shared per-UPC price, still × quantity', () => {
+    const s = summarizeSealed([{ ...boxes, value_manual: 1, row_value: 20000, row_cur: 'AUD' }], upcMap);
+    assert.equal(s.valueByCurrency.AUD, 20000 * 14);
   });
 });

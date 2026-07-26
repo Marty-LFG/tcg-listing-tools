@@ -51,6 +51,35 @@
   .empty{color:var(--muted);font-size:13px;padding:26px;text-align:center;border:1px dashed var(--line);border-radius:14px;background:rgba(255,255,255,.012);}
   /* location cards */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+  /* ---- list view: a storage manifest, not a wall of cards. One row per spot, contents on demand. */
+  .loclist{display:flex;flex-direction:column;gap:7px;}
+  .locrow{border:1px solid var(--line);border-radius:12px;background:var(--panel);transition:border-color .15s,background .15s;animation:rise .35s both;}
+  .locrow:hover{border-color:var(--line2);}
+  .locrow.open{border-color:var(--gold-soft);background:linear-gradient(180deg,var(--panel2),var(--panel));}
+  .lr-head{display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer;user-select:none;}
+  .lr-tw{color:var(--faint);font-size:10px;width:10px;flex:none;transition:transform .16s;}
+  .locrow.open .lr-tw{transform:rotate(90deg);color:var(--gold);}
+  .lr-thumb{width:34px;height:34px;border-radius:8px;object-fit:cover;background:var(--ink);border:1px solid var(--line);flex:none;}
+  .lr-thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:15px;}
+  .lr-name{font-family:var(--serif);font-weight:600;font-size:15.5px;letter-spacing:-.01em;min-width:150px;}
+  .lr-note{color:var(--faint);font-size:11.5px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;}
+  .lr-spacer{flex:1;}
+  .lr-nums{display:flex;gap:14px;align-items:baseline;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;}
+  .lr-nums b{color:var(--text);font-weight:600;}
+  .lr-nums span{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-left:3px;}
+  .lr-val{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--green);font-variant-numeric:tabular-nums;min-width:92px;text-align:right;}
+  .lr-acts{display:flex;gap:6px;}
+  .lr-body{border-top:1px solid var(--line);padding:10px 14px 13px 36px;}
+  .manifest{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .manifest td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  .manifest tr:last-child td{border-bottom:none;}
+  .manifest .m-q{font-family:var(--mono);color:var(--gold);width:42px;font-variant-numeric:tabular-nums;}
+  .manifest .m-sku{font-family:var(--mono);font-size:11px;color:var(--faint);width:150px;}
+  .manifest .m-v{font-family:var(--mono);text-align:right;width:104px;font-variant-numeric:tabular-nums;color:var(--muted);}
+  .manifest .m-img{width:26px;} .manifest .m-img img{width:22px;height:30px;object-fit:contain;border-radius:3px;background:var(--ink);}
+  .vtoggle{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;}
+  .vtoggle button{background:transparent;border:none;color:var(--muted);padding:6px 11px;cursor:pointer;font-size:12px;font-family:var(--sans);}
+  .vtoggle button.on{background:var(--gold);color:var(--ink);font-weight:600;}
   .loccard{position:relative;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 16px 13px;box-shadow:var(--shadow);transition:.18s ease;animation:rise .45s both;display:flex;flex-direction:column;gap:11px;}
   .loccard:hover{border-color:var(--line2);transform:translateY(-2px);}
   .loccard .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
@@ -128,7 +157,12 @@
 
   <div class="filters">
     <span class="sec-h">Storage</span>
-    <input id="f_q" placeholder="search name / notes" style="width:200px;" oninput="render()">
+    <input id="f_q" placeholder="search name, notes or contents" style="width:230px;" oninput="render()">
+    <span class="vtoggle" style="margin-left:10px;">
+      <button id="vList" onclick="setLocView('list')" title="List with contents">☰ List</button>
+      <button id="vGrid" onclick="setLocView('grid')" title="Cards with photos">▦ Cards</button>
+    </span>
+    <button class="btn sm ghost" id="expandAll" onclick="toggleAll()" style="margin-left:8px;">Expand all</button>
     <select id="f_sort" onchange="render()" style="margin-left:auto;" title="Sort">
       <option value="custom">Custom order</option>
       <option value="name">Name A–Z</option>
@@ -176,9 +210,31 @@ function setV(id,v){const el=document.getElementById(id);if(el)el.value=(v==null
 
 let LOCS=[], curLocId=null, curLocPhotos=[];
 
+let CONTENTS={}, OPEN=new Set();
+let LOCVIEW=(function(){try{return localStorage.getItem('bk_locview')||'list';}catch(e){return 'list';}})();
+function setLocView(v){LOCVIEW=v;try{localStorage.setItem('bk_locview',v);}catch(e){}
+  document.getElementById('vList').classList.toggle('on',v==='list');
+  document.getElementById('vGrid').classList.toggle('on',v==='grid');
+  document.getElementById('expandAll').style.display=v==='list'?'':'none';
+  render();}
+function contentsFor(l){return CONTENTS[String(l.name||'').toLowerCase()]||[];}
+function toggleAll(){
+  const shown=sortLocs(filtered()).map(l=>l.name.toLowerCase());
+  const allOpen=shown.length&&shown.every(n=>OPEN.has(n));
+  if(allOpen) OPEN.clear(); else for(const n of shown) OPEN.add(n);
+  document.getElementById('expandAll').textContent=allOpen?'Expand all':'Collapse all';
+  render();
+}
+
 async function load(){
   document.getElementById('updated').textContent='loaded '+TZ.time(new Date())+' '+TZ.abbr();
-  try{const r=await api('/locations/cards');LOCS=r.locations||[];render();}
+  try{
+    // Contents come down with the page: a few hundred placements is one round trip, and it makes the
+    // search box able to find "which crate is the Chaos Rising box in".
+    const [r,c]=await Promise.all([api('/locations/cards'),api('/locations/contents').catch(()=>({contents:{}}))]);
+    LOCS=r.locations||[]; CONTENTS=c.contents||{};
+    setLocView(LOCVIEW);
+  }
   catch(e){document.getElementById('list').innerHTML='<div class="empty">Failed to load — is the dev server running?</div>';}
 }
 function sortLocs(arr){
@@ -212,12 +268,63 @@ function locCard(l){
       +(l.has_record?'<button class="btn sm danger" style="margin-left:auto;" onclick="removeLoc('+l.id+',\''+esc(l.name).replace(/'/g,"\\'")+'\')">✕</button>':'')
     +'</div></div>';
 }
+// Search covers what is INSIDE a location too — "where is the Chaos Rising box" is the question this
+// page exists to answer, and the answer is not in the location's own name.
+function filtered(){
+  const q=val('f_q').toLowerCase();
+  if(!q) return LOCS;
+  return LOCS.filter(l=>{
+    if((String(l.name||'')+' '+String(l.notes||'')).toLowerCase().includes(q)) return true;
+    return contentsFor(l).some(it=>((it.name||'')+' '+(it.sku||'')).toLowerCase().includes(q));
+  });
+}
+const audc=c=>c==null?'—':'A$'+(c/100).toFixed(2);
+function locRow(l){
+  const items=contentsFor(l), open=OPEN.has(String(l.name).toLowerCase());
+  const q=val('f_q').toLowerCase();
+  // Value at asking, so a spot answers "what is sitting in this crate" in money as well as units.
+  let val_=0, haveVal=false;
+  for(const it of items) if(it.unit_value_cents!=null&&(it.value_currency||'AUD')==='AUD'){ val_+=it.unit_value_cents*(it.qty||0); haveVal=true; }
+  const rows=items.map(it=>'<tr>'
+    +'<td class="m-q">×'+(it.qty||0)+'</td>'
+    +'<td class="m-img">'+(it.image_url?'<img src="'+esc(it.image_url)+'" loading="lazy" alt="">':'')+'</td>'
+    +'<td>'+esc(it.name||'—')+(it.status&&it.status!=='in_stock'?' <span class="chip" style="font-size:9px;">'+esc(it.status)+'</span>':'')+'</td>'
+    +'<td class="m-sku">'+esc(it.sku||'')+'</td>'
+    +'<td class="m-v">'+(it.unit_value_cents!=null?audc(it.unit_value_cents*(it.qty||0)):'—')+'</td>'
+    +'</tr>').join('');
+  return '<div class="locrow'+(open?' open':'')+'">'
+    +'<div class="lr-head" onclick="toggleLoc('+JSON.stringify(l.name).replace(/"/g,'&quot;')+')">'
+      +'<span class="lr-tw">▶</span>'
+      +(l.thumb?'<img class="lr-thumb" src="'+esc(l.thumb)+'" alt="">':'<span class="lr-thumb ph">📍</span>')
+      +'<span class="lr-name">'+esc(l.name)+'</span>'
+      +(l.notes?'<span class="lr-note">'+esc(l.notes)+'</span>':'')
+      +(l.has_record?'':'<span class="chip warn" title="Used on stock but no info/photos saved yet">unconfigured</span>')
+      +'<span class="lr-spacer"></span>'
+      +'<span class="lr-nums"><b>'+(l.item_count||0)+'</b><span>items</span><b>'+(l.unit_count||0)+'</b><span>units</span>'
+        +(l.photo_count?'<b>'+l.photo_count+'</b><span>photos</span>':'')+'</span>'
+      +'<span class="lr-val">'+(haveVal?audc(val_):'')+'</span>'
+      +'<span class="lr-acts" onclick="event.stopPropagation()">'
+        +'<button class="btn sm" onclick="openLocByName('+JSON.stringify(esc(l.name)).replace(/"/g,'&quot;')+')">Edit</button>'
+        +(l.has_record?'<button class="btn sm danger" onclick="removeLoc('+l.id+',\''+esc(l.name).replace(/'/g,"\\'")+'\')">✕</button>':'')
+      +'</span>'
+    +'</div>'
+    +(open?'<div class="lr-body">'+(items.length
+        ? '<table class="manifest">'+rows+'</table>'
+        : '<div class="empty" style="padding:6px 2px;font-size:12.5px;">Nothing is stored here yet.</div>')+'</div>':'')
+  +'</div>';
+}
+function toggleLoc(name){
+  const k=String(name).toLowerCase();
+  if(OPEN.has(k))OPEN.delete(k);else OPEN.add(k);
+  render();
+}
 function render(){
   const el=document.getElementById('list');const q=val('f_q').toLowerCase();
-  let arr=LOCS;
-  if(q)arr=arr.filter(l=>(String(l.name||'')+' '+String(l.notes||'')).toLowerCase().includes(q));
+  const arr=filtered();
   if(!arr.length){el.className='';el.innerHTML='<div class="empty">'+(LOCS.length?'No locations match “'+esc(q)+'”.':'No locations yet. Add one, or assign a storage location to a sealed item.')+'</div>';return;}
-  el.className='grid';el.innerHTML=sortLocs(arr).map(locCard).join('');
+  const sorted=sortLocs(arr);
+  if(LOCVIEW==='grid'){ el.className='grid'; el.innerHTML=sorted.map(locCard).join(''); return; }
+  el.className='loclist'; el.innerHTML=sorted.map(locRow).join('');
 }
 
 // ---- modal ----

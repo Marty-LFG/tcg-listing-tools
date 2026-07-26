@@ -399,7 +399,11 @@ function prefillSuggested(cents,currency){
   relabelCur('m','AUD');
   setV('m_value', a!=null?(Math.round(a*100)/100).toFixed(2):'');
 }
-function costAud(it){return ((it.cost_cents||0)+(it.acq_fees_cents||0))/100;}
+// Cost paid is PER UNIT, exactly like value — "Cost paid" next to a Quantity box means what one of
+// them cost. Treating it as a row total made a 14-box row of A$300 boxes read as A$300 total against
+// A$4608 of value, i.e. A$4308 of imaginary profit.
+function unitCostAud(it){return ((it.cost_cents||0)+(it.acq_fees_cents||0))/100;}
+function costAud(it){return unitCostAud(it)*(it.quantity||1);}   // the row's total outlay
 // where a stored value came from + how fresh it is (eBay AU = your market, green; PriceCharting = blue).
 function valSrcLabel(s){return {ebay:'eBay AU',pricecharting:'PriceCharting','upcitemdb+pricecharting':'PriceCharting',manual:'manual'}[s]||(s||'');}
 function agoStr(ts){if(!ts)return '';var d=(Date.now()-new Date(String(ts).replace(' ','T')+'Z').getTime())/86400000;if(!isFinite(d)||d<0)return '';if(d<1)return 'today';if(d<2)return 'yesterday';return Math.round(d)+'d ago';}
@@ -407,9 +411,11 @@ function valSrcHtml(it){if(it.value_cents==null||!it.value_source)return '';var 
 // value is the per-UNIT market value (per-UPC, shared); a row's total value = unit value × quantity.
 function totalValueAud(it){const v=valueAud(it);return v==null?null:v*(it.quantity||1);}
 function unrealized(it){const tv=totalValueAud(it);if(tv==null)return null;return tv-costAud(it);}
-function blendedUnitCost(it){const q=it.quantity||1;return q?costAud(it)/q:null;}
+function blendedUnitCost(it){return unitCostAud(it);}   // already per unit
+// Sale price and sale fees are what the SALE brought in and cost, as entered. Cost is per unit, so it
+// scales with how many units the row covers.
 function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
-  return (it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100;}
+  return (it.sale_price_cents-(it.sale_fees_cents||0))/100-costAud(it);}
 function plBadge(d){if(d==null)return '<span class="badge flat">—</span>';
   const cls=d>0.005?'up':d<-0.005?'down':'flat';const s=d>0?'+':'';return '<span class="badge '+cls+'">'+s+aud(d)+'</span>';}
 
@@ -461,7 +467,7 @@ function itemRow(it){
       +'<div class="money">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+(it.quantity>1?' <span style="font-size:11px;color:var(--muted);font-weight:400;">/unit</span>':'')+vnative+'</div>'
       +valSrcHtml(it)
       +(it.quantity>1&&v!=null?'<div style="font-size:11px;color:var(--muted);margin-top:1px;">×'+esc(it.quantity)+' = '+aud(totalValueAud(it))+'</div>':'')
-      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+(it.quantity>1?' · '+aud(blendedUnitCost(it))+'/unit':'')+'</div>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+aud(costAud(it))+(it.quantity>1?' <span style="color:var(--faint);">('+aud(unitCostAud(it))+' ea)</span>':'')+'</div>'
       +'<div style="margin-top:5px;">'+plBadge(pl)+' <span style="font-size:10px;color:var(--muted);">'+plLbl+'</span></div>'
     +'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
