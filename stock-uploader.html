@@ -64,6 +64,15 @@
   .pv-specs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0 28px;margin-bottom:6px;}
   #previewCard iframe{height:620px;margin-top:10px;}
   .pv-foot{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;}
+  .stkwrap{margin-top:12px;border:1px solid var(--gold-dim);border-radius:10px;padding:10px 12px;background:var(--panel2);}
+  .stk-head{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);font-weight:700;margin:2px 0 6px;}
+  .stk-head.dim{color:var(--muted);margin-top:10px;}
+  .stk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--line);}
+  .stk:last-of-type{border-bottom:none;}
+  .stk.hit .stk-sku{color:var(--gold);}
+  .stk-sku{font-weight:700;font-family:ui-monospace,Consolas,monospace;letter-spacing:.5px;}
+  .stk-meta{color:var(--muted);flex:1;min-width:140px;}
+  .stk-add{padding:4px 10px;font-size:12px;}
   .storecats{margin-top:10px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;}
   .scat{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line);}
   .scat:last-child{border-bottom:none;}
@@ -100,6 +109,7 @@
         <div class="lookup"><input id="num" placeholder="e.g. 25  or  199/165" autocomplete="off"><button onclick="doLookup()">Look up</button></div>
         <div class="status load" id="status">Pick a set, type a number, hit Look up.</div>
         <div id="cardview" style="display:none;" class="cardview"></div>
+        <div id="stockBox" style="display:none;"></div>
       </div>
 
       <div class="card" id="detailsCard" style="display:none;">
@@ -271,7 +281,7 @@ async function doLookup(){
     loadStoreCats();
     savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
     priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
-    loadPrice();
+    loadPrice(); checkStock();
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
 function renderCard(){
@@ -283,7 +293,10 @@ function renderCard(){
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 
 // ---- condition toggle ----
-$('condSel').addEventListener('change',()=>{const g=$('condSel').value==='graded';$('gradedCond').style.display=g?'':'none';$('rawCond').style.display=g?'none':'';});
+$('condSel').addEventListener('change',()=>{const g=$('condSel').value==='graded';$('gradedCond').style.display=g?'':'none';$('rawCond').style.display=g?'none':'';checkStock();});
+// The match key includes finish and condition, so changing either asks a different question of the
+// shelf: a Reverse Holo or a Lightly Played copy is separate stock, not the same item.
+for(const id of ['finish','rawGrade','grCo','grGrade']) $(id).addEventListener('change',checkStock);
 
 // ---- build the row/item payload ----
 function graded(){return $('condSel').value==='graded';}
@@ -297,7 +310,9 @@ function cardRow(){
     illustrator:card.artist||null,card_type:card.supertype||null,stage:/stage\s*2/i.test(card.subtypes)?'Stage 2':/stage\s*1/i.test(card.subtypes)?'Stage 1':/basic/i.test(card.subtypes)?'Basic':null,
     // 'finish' is NOT an inventory_items column, so it was silently dropped on save and the Finish
     // dropdown did nothing. 'variant' is the column that persists it.
-    variant:(function(v){return /reverse/i.test(v)?'Reverse Holo':/holo/i.test(v)?'Holo':/foil/i.test(v)?'Foil':'Base';})($('finish').value),
+    // "Non-holo" contains "holo", so it MUST be tested before the holo branch or a plain card is
+    // stored (and listed) as Holo.
+    variant:(function(v){return /reverse/i.test(v)?'Reverse Holo':/non[-\s]?(holo|foil)/i.test(v)?'Base':/holo/i.test(v)?'Holo':/foil/i.test(v)?'Foil':'Base';})($('finish').value),
     // Everything the lookup found, persisted with the item. A later republish that carries no
     // overrides (revise-price, a repricer apply) would otherwise strip the item specifics back off:
     // createOrReplaceInventoryItem is a full replace, not a patch.
@@ -332,6 +347,76 @@ async function loadPrice(){
     refreshSummary();
   }catch(e){ $('compsLine').textContent='comps unavailable: '+(e&&e.message||e); }
   syncEbayLinks();
+}
+
+// ---- do we already hold this card? ----
+// Condition and finish are part of the identity: a Lightly Played copy is separate stock from a Near
+// Mint one and gets its own listing. An EXACT match is the same physical thing, so the usual answer
+// is "add one to that" rather than a second listing competing with itself.
+let stockMatch=null;
+async function checkStock(){
+  const box=$('stockBox');
+  if(!card){ box.style.display='none'; return; }
+  const r=cardRow();
+  const qs=new URLSearchParams({game:'pokemon',identity_key:card.id,name:card.name,variant:r.variant||'',
+    language:'EN',condition:r.condition||'',graded:graded()?'1':'0',
+    grading_company:r.grading_company||'',grade:r.grade!=null?String(r.grade):''});
+  try{
+    stockMatch=await fetch('/api/inventory/match?'+qs).then(x=>x.json());
+    renderStock();
+  }catch(e){ box.style.display='none'; }
+}
+function condWord(it){
+  if(it.graded) return (it.grading_company||'')+' '+(it.grade!=null?it.grade:'');
+  return (it.condition||'').replace(/^ungraded,\s*/i,'');
+}
+function renderStock(){
+  const box=$('stockBox'), m=stockMatch;
+  if(!m||(!m.exact.length&&!m.near.length)){ box.style.display='none'; return; }
+  box.style.display='';
+  const line=(it,exact)=>'<div class="stk'+(exact?' hit':'')+'">'
+    +'<span class="stk-sku">'+esc(it.sku||'—')+'</span>'
+    +'<span class="stk-meta">'+esc(condWord(it))+(it.variant?' · '+esc(it.variant):'')
+      +' · qty '+it.quantity+(it.location?' · '+esc(it.location):'')+'</span>'
+    +'<span class="stk-state">'+(it.ebay_listing_id
+        ? '<a href="'+esc(it.listingUrl)+'" target="_blank" rel="noopener">listed ↗</a>'
+        : '<span class="muted">in stock, not listed</span>')+'</span>'
+    +(exact?'<button class="ghost stk-add" data-id="'+it.id+'" data-qty="'+it.quantity+'" data-ours="'+(it.ours?1:0)+'">+1 to this</button>':'')
+    +'</div>';
+  box.innerHTML='<div class="stkwrap">'
+    +(m.exact.length
+      ? '<div class="stk-head">You already have this one</div>'+m.exact.map(it=>line(it,true)).join('')
+      : '<div class="stk-head dim">Not this exact card, but you hold:</div>')
+    +(m.near.length?'<div class="stk-head dim">Other copies on the shelf</div>'+m.near.map(it=>line(it,false)).join(''):'')
+    +'<div class="status" id="stkStatus"></div></div>';
+  for(const b of box.querySelectorAll('.stk-add')) b.onclick=()=>bumpQty(+b.dataset.id,+b.dataset.qty,b.dataset.ours==='1');
+}
+// Adding stock is the natural moment to re-check what the card is worth — the last price could be
+// months old. So bump the quantity, then re-run comps and say plainly whether the price has moved.
+async function bumpQty(id,qty,ours){
+  const st=$('stkStatus'), next=qty+1;
+  stat(st,'load','Adding one to '+next+'…');
+  try{
+    const r=await fetch('/api/inventory/items/'+id,{method:'PATCH',headers:{'content-type':'application/json'},
+      body:JSON.stringify({quantity:next})});
+    if(!r.ok) throw new Error('inventory update failed ('+r.status+')');
+    if(!ours){
+      stat(st,'warn','Stock is now '+next+'. That listing was made by hand on eBay, so this tool can’t change its quantity — update it in Seller Hub.');
+    } else {
+      stat(st,'load','Stock is now '+next+'. Pushing the new quantity to eBay…');
+      const out=await fetch('/api/listings/publish',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({itemId:id})}).then(x=>x.json());
+      if(!out.ok) stat(st,'err','Stock is now '+next+', but eBay said: '+(out.error||'publish failed'));
+      else stat(st,'ok','Stock is now '+next+' and the listing is updated.');
+    }
+    await checkStock();
+    await loadPrice();
+    const c=priceInfo&&priceInfo.comps;
+    if(c&&c.matched){
+      const now=Math.round(c.recommended*100), was=Math.round((parseFloat($('price').value)||0)*100);
+      if(was&&Math.abs(now-was)/was>=0.1) toast('Comps have moved: '+money(c.recommended)+' now');
+    }
+  }catch(e){ stat(st,'err',String(e&&e.message||e)); }
 }
 
 // ---- store departments (eBay store categories) ----

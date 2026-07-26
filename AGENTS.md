@@ -663,6 +663,51 @@ longer makes a booster box read a booster PACK's price), and UPCItemDB titles ar
 
 ---
 
+## 16b. Stock labels — the `AAA-001` series (eBay "Custom label")
+
+The owner's **physical** filing system, and the SKU eBay shows as *Custom label*. It predates this
+tool: the ~163 hand-made Seller Hub listings already carry these, and `AAC-084` was the highest when
+the tool learned about them. `lib/sku-labels.mjs` owns the scheme, `lib/inventory.mjs` owns the
+counter.
+
+**The format.** Three letters, a dash, a number **001–099**:
+
+```
+AAA-001 … AAA-099 → AAB-001 … AAB-099 → AAC-001 … AAC-099 → … → ZZZ-099
+```
+
+**Ninety-nine per block, not 999** — the block rolls at `099` and the letters advance like an
+odometer (`AAZ` → `ABA`). That is 1,739,925 labels, so the ceiling is theoretical.
+
+**Numbers are never reused.** Sell the card and the label retires with it; allocation is a monotonic
+counter, never "find the first free slot". A recycled label would point at a card that is no longer
+in that slot, which is worse than a gap in the series. `seedStockLabels()` therefore takes
+`MAX(existing, new)` — the counter can be pushed forward but never rewound, and `nextStockLabel()`
+additionally skips any label already present in `inventory_items.sku`.
+
+**Seeding is required before first use.** The counter starts absent, not at zero, and while it is
+absent `nextSku()` falls back to the old `BK-<GAME>-######` form. That is deliberate: an unseeded
+counter would issue `AAA-001`, which is already on a shelf. Seed it with
+`POST /api/inventory/labels/seed {"label":"AAC-084"}` (or `{"seq":282}`); read the current position
+with `GET /api/inventory/labels`. Because the pre-existing labels live only on eBay and not in our
+DB, the true maximum has to come from the owner or from a read of their live listings.
+
+**What uses it:** singles, i.e. `nextSku()` — the uploader's `POST /api/inventory/items` and the
+grading-submission flow. **Bulk lots** (`nextBulkSku`, `BK-RAW-…`) and **sealed**
+(`lib/sealed.mjs`'s own `nextSku`, `BK-SLD-…`) keep their own namespaces, because a 50-card lot or a
+booster box is one object rather than a slot on the singles shelf. The two formats coexist: `sku` is
+`UNIQUE NOT NULL` and nothing renames an existing row, since a live eBay listing is bound to its SKU
+for life.
+
+**Stock identity** (`stockKey()` in `lib/inventory.mjs`) is `game | identity_key | finish | language
+| condition-or-grade`. Condition and finish are part of the identity on purpose — a Lightly Played
+copy is separate stock from a Near Mint one and gets its own label and its own listing. The
+uploader's `GET /api/inventory/match` uses this to offer "+1 to this" instead of a second competing
+listing, and adding stock re-runs comps, because a card whose price was set months ago is worth
+re-checking. Note that only a listing **we** published (one with an `ebay_offer_id`) can have its
+quantity revised through the Inventory API — a hand-made Seller Hub listing is invisible to it, so
+the UI says so rather than failing silently.
+
 ## 17. eBay stock uploader (Sell Inventory API) — Pokémon first
 
 Brings the listing builders and the eBay inventory together: pick a card + qty → verify price +
