@@ -3,7 +3,7 @@
 // fixed-price, best-offer terms, condition enum, and that grading rides as numeric descriptors).
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInventoryItemPayload, buildOfferPayload, publishListing } from '../../lib/channels/ebay-inventory-api.mjs';
+import { buildInventoryItemPayload, buildOfferPayload, publishListing, fitDescription } from '../../lib/channels/ebay-inventory-api.mjs';
 import { toEbayListing, loadEbayCategories } from '../../lib/channels/ebay-map.mjs';
 import { resolveConditionDescriptorIds, parseConditionPolicies, __test } from '../../lib/ebay-taxonomy.mjs';
 
@@ -31,6 +31,45 @@ describe('buildInventoryItemPayload', () => {
     assert.equal(b.conditionDescriptors.length, 3);
     assert.deepEqual(b.conditionDescriptors[0], { name: '27501', values: ['275010'] });
     assert.deepEqual(b.conditionDescriptors[2], { name: '27503', additionalInfo: '12345678' });
+  });
+});
+
+describe('description length — the 4000 vs 500000 split', () => {
+  // Live failure 2026-07-26: "[25718] Invalid value for description. The length should be between 1
+  // and 4000 characters." eBay caps product.description at 4000 but offer.listingDescription at
+  // 500000, and the offer's is the one buyers see. Rich copy on the offer, safe copy on the item.
+  const rich = '<div style="max-width:760px">' + Array.from({ length: 60 }, (_, i) =>
+    `<div style="padding:9px 12px;color:#1a1a22;font-weight:600;">row ${i} ${'x'.repeat(60)}</div>`).join('') + '</div>';
+
+  it('leaves a description that already fits completely alone', () => {
+    const short = '<div>hello</div>';
+    assert.equal(fitDescription(short), short);
+  });
+
+  it('cuts an over-long description at a completed block, never mid-tag', () => {
+    const out = fitDescription(rich, 4000);
+    assert.ok(out.length <= 4000, out.length + ' chars');
+    assert.equal((out.match(/<div/g) || []).length, (out.match(/<\/div>/g) || []).length, 'div tags must balance');
+    assert.match(out, /<\/div>$/);
+    assert.doesNotMatch(out, /<div[^>]*$/, 'must not end inside an open tag');
+  });
+
+  it('whitespace-minifies before it resorts to cutting anything', () => {
+    const padded = '<div>\n    ' + 'y'.repeat(90) + '\n    </div>';   // 111 raw, 103 minified
+    const out = fitDescription(padded, 105);
+    assert.ok(out.length <= 105, out.length + ' chars');
+    assert.match(out, /y{90}/, 'no content lost when whitespace alone gets it under the cap');
+  });
+
+  it('the item payload is capped and the offer carries the full copy', () => {
+    const listing = { ...rawListing, descriptionHtml: rich };
+    const item = buildInventoryItemPayload(listing, { imageUrls: ['https://eps/1.jpg'] });
+    assert.ok(item.product.description.length <= 4000, 'inventory item must respect eBay\'s 4000 cap');
+    assert.equal(buildOfferPayload(listing, CFG, {}).listingDescription, rich, 'the offer gets it untrimmed');
+  });
+
+  it('an empty description does not become the string "undefined" on the offer', () => {
+    assert.equal(buildOfferPayload({ ...rawListing, descriptionHtml: '' }, CFG, {}).listingDescription, undefined);
   });
 });
 
