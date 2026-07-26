@@ -134,6 +134,29 @@
   .slab .slab-win img{width:100%;height:100%;object-fit:cover;display:block;}
   .slab .slab-win.noimg::after{content:"no image";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8a93a3;font-size:9px;font-family:var(--mono);letter-spacing:.05em;}
   /* view toggle + grid */
+  /* ---- true columns for the list view: every cell fixed-width so the header above actually sits
+     over its numbers. The thumb cell keeps its width even on a raw card with no slab, otherwise
+     every row with a slab would be offset from every row without one. ---- */
+  .lrow{display:flex;align-items:flex-start;gap:14px;}
+  .c-thumb{width:62px;flex:none;}
+  .c-main{flex:1;min-width:0;}
+  .c-spark{width:96px;flex:none;display:flex;justify-content:flex-end;}
+  .c-num{width:104px;flex:none;text-align:right;font-variant-numeric:tabular-nums;}
+  .c-act{width:198px;flex:none;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+  .c-sub{font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .c-sub .ea{color:var(--faint);}
+  /* Mirrors .card's box exactly — 1px border plus 17px/20px padding — or every column sits a few
+     pixels off its own numbers. Transparent sides so only the underline shows. */
+  .colhead{display:flex;align-items:flex-end;gap:14px;margin:0 0 8px;
+    padding:0 17px 7px 20px;border:1px solid transparent;border-bottom-color:var(--line);}
+  .colhead .h{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none;transition:color .12s;white-space:nowrap;}
+  .colhead .h:hover{color:var(--text);}
+  .colhead .h.on{color:var(--gold);}
+  .colhead .h .car{opacity:0;font-size:9px;margin-left:3px;}
+  .colhead .h:hover .car{opacity:.45;} .colhead .h.on .car{opacity:1;}
+  /* One sort control at a time: the column header where it fits, the compact bar when it does not. */
+  @media(max-width:900px){.c-spark{display:none;} .colhead{display:none;}}
+  @media(min-width:901px){#sortbar{display:none;}}
   /* clickable sort headers — same idiom as listings.html, locations.html and sealed.html */
   .sortbar{display:inline-flex;align-items:center;gap:2px;flex-wrap:wrap;}
   .sortbar .sb-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);margin-right:6px;}
@@ -474,9 +497,9 @@ function itemRow(it){
   const vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?' <small style="color:var(--muted);font-weight:600;">· '+esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2)+'</small>':'';
   const pl=it.status==='sold'?realized(it):unrealized(it);
   const plLbl=it.status==='sold'?'realized':'unrealized';
-  return '<div class="card"><div class="row">'
-    +slab
-    +'<div style="min-width:180px;flex:1;">'
+  return '<div class="card"><div class="lrow">'
+    +'<div class="c-thumb">'+slab+'</div>'
+    +'<div class="c-main">'
       +'<div class="nm">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+listedPill(it)+(q>1?' <span class="pill" style="color:var(--muted);border-color:var(--line2);">×'+q+'</span>':'')+'</div>'
       +'<div class="key">'+esc(GAME_NAMES[it.game]||it.game)+(it.set_name?' · '+esc(it.set_name):'')+(it.number?' · #'+esc(it.number):'')+(it.language&&it.language!=='EN'?' · '+esc(it.language):'')+(it.variant?' · '+esc(it.variant):'')+(it.cert_number?' · cert '+esc(it.cert_number):'')+'</div>'
       +'<div class="sku">'+esc(it.sku)+(it.location?' · 📍 '+esc(it.location):'')+'</div>'
@@ -484,13 +507,14 @@ function itemRow(it){
       +(it.notes?'<div class="note">'+esc(it.notes)+'</div>':'')
       +'<div class="compbox" id="comp'+it.id+'"></div><div class="status" id="cs'+it.id+'"></div>'
     +'</div>'
-    +sparkHtml(it)
-    +'<div style="text-align:right;min-width:150px;">'
-      +'<div class="money">'+(vlot!=null?aud(vlot):(it.value_cents!=null?esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2):'—'))+vnative+'</div>'
-      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+centsAud(((it.cost_cents||0)+(it.acq_fees_cents||0))*q)+(q>1?' <span style="color:var(--faint);">('+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+' ea)</span>':'')+'</div>'
-      +'<div style="margin-top:5px;">'+plBadge(pl)+' <span style="font-size:10px;color:var(--muted);">'+plLbl+'</span></div>'
-    +'</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
+    +'<div class="c-spark">'+sparkHtml(it)+'</div>'
+    +'<div class="c-num">'+q+'</div>'
+    +'<div class="c-num"><div class="money" style="font-size:13px;">'+centsAud(((it.cost_cents||0)+(it.acq_fees_cents||0))*q)+'</div>'
+      +(q>1?'<div class="c-sub"><span class="ea">'+centsAud((it.cost_cents||0)+(it.acq_fees_cents||0))+' ea</span></div>':'')+'</div>'
+    +'<div class="c-num"><div class="money">'+(vlot!=null?aud(vlot):(it.value_cents!=null?esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2):'—'))+'</div>'
+      +(vnative?'<div class="c-sub">'+vnative+'</div>':'')+'</div>'
+    +'<div class="c-num">'+plBadge(pl)+'<div class="c-sub">'+plLbl+'</div></div>'
+    +'<div class="c-act">'
       +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
       +'<button class="btn sm blue" title="eBay graded comps" onclick="comps('+it.id+')">eBay</button>'
       +imgBtn(it)
@@ -569,7 +593,23 @@ function renderStock(){
   if(!CURRENT||!CURRENT.length){el.className='';el.innerHTML='<div class="empty">No cards yet. Click “＋ Add card”, or use “Add to inventory” from a listing builder or the pre-grader.</div>';return;}
   const items=sortItems(CURRENT);
   if(VIEW==='grid'){el.className='grid-view';el.innerHTML=items.map(gridCard).join('');}
-  else{el.className='';el.innerHTML=items.map(itemRow).join('');}
+  else{el.className='';el.innerHTML=colHead()+items.map(itemRow).join('');}
+}
+// The header for the list view. Same cell widths as a row, so a label sits over its own numbers —
+// and the same setSort the bar uses, so the two controls can never disagree.
+function colHead(){
+  const h=(k,label)=>'<span class="h'+(SSORT.k===k?' on':'')+'" onclick="setSort(\''+k+'\')">'+label
+    +'<span class="car">'+(SSORT.k===k?(SSORT.dir===1?'▲':'▼'):'▼')+'</span></span>';
+  return '<div class="colhead">'
+    +'<span class="c-thumb">'+h('grade','Grade')+'</span>'
+    +'<span class="c-main">'+h('name','Item')+'</span>'
+    +'<span class="c-spark"></span>'
+    +'<span class="c-num">'+h('qty','Qty')+'</span>'
+    +'<span class="c-num">'+h('cost','Cost')+'</span>'
+    +'<span class="c-num">'+h('value','Value')+'</span>'
+    +'<span class="c-num">'+h('pl','Gain/loss')+'</span>'
+    +'<span class="c-act">'+h('added','Added')+'</span>'
+  +'</div>';
 }
 function setView(v){VIEW=v;try{localStorage.setItem('bk_view',v);}catch(e){}
   var l=document.getElementById('viewList'),g=document.getElementById('viewGrid');

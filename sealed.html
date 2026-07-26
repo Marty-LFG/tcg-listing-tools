@@ -158,6 +158,28 @@
   .placehead .tot{font-family:var(--mono);color:var(--muted);font-size:11.5px;}
   .placehead .tot strong{color:var(--text);font-weight:700;}
   /* view toggle + grid */
+  /* ---- true columns for the list view, so the header sits over its own numbers. The thumb cell
+     keeps its width even when a product has no image. ---- */
+  .lrow{display:flex;align-items:flex-start;gap:14px;}
+  .c-thumb{width:62px;flex:none;}
+  .c-main{flex:1;min-width:0;}
+  .c-spark{width:96px;flex:none;display:flex;justify-content:flex-end;}
+  .c-num{width:112px;flex:none;text-align:right;font-variant-numeric:tabular-nums;}
+  .c-act{width:172px;flex:none;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+  .c-sub{font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .c-sub .ea{color:var(--faint);}
+  /* Mirrors .card's box exactly — 1px border plus 17px/20px padding — or every column sits a few
+     pixels off its own numbers. Transparent sides so only the underline shows. */
+  .colhead{display:flex;align-items:flex-end;gap:14px;margin:0 0 8px;
+    padding:0 17px 7px 20px;border:1px solid transparent;border-bottom-color:var(--line);}
+  .colhead .h{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;cursor:pointer;user-select:none;transition:color .12s;white-space:nowrap;}
+  .colhead .h:hover{color:var(--text);}
+  .colhead .h.on{color:var(--gold);}
+  .colhead .h .car{opacity:0;font-size:9px;margin-left:3px;}
+  .colhead .h:hover .car{opacity:.45;} .colhead .h.on .car{opacity:1;}
+  /* One sort control at a time: the column header where it fits, the compact bar when it does not. */
+  @media(max-width:900px){.c-spark{display:none;} .colhead{display:none;}}
+  @media(min-width:901px){#sortbar{display:none;}}
   /* clickable sort headers — same idiom as listings.html and locations.html */
   .sortbar{display:inline-flex;align-items:center;gap:2px;flex-wrap:wrap;}
   .sortbar .sb-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);margin-right:6px;}
@@ -456,24 +478,24 @@ function itemRow(it){
   const pl=it.status==='sold'?realized(it):unrealized(it);
   const plLbl=it.status==='sold'?'realized':'unrealized';
   const key=[esc(GAME_NAMES[it.game]||it.game),it.set_name?esc(it.set_name):'',typeLabel(it.product_type),(it.condition&&it.condition!=='sealed')?esc(it.condition):'',(it.language&&it.language!=='EN')?esc(it.language):''].filter(Boolean).join(' · ');
-  return '<div class="card"><div class="row">'
-    +thumb(it,false)
-    +'<div style="min-width:180px;flex:1;">'
+  return '<div class="card"><div class="lrow">'
+    +'<div class="c-thumb">'+thumb(it,false)+'</div>'
+    +'<div class="c-main">'
       +'<div class="nm"><span class="gbadge '+esc(it.game)+'">'+esc((it.game||'').slice(0,3).toUpperCase())+'</span>'+esc(it.name)+' <span class="typepill">'+typeLabel(it.product_type)+'</span> <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
       +'<div class="key">'+key+(it.pack_count?' · '+esc(it.pack_count)+' packs':'')+(it.units_per_case?' · '+esc(it.units_per_case)+'/case':'')+'</div>'
       +'<div class="sku">'+esc(it.sku)+(locLine?' · '+locLine:'')+(it.upc?' · '+esc(it.upc):'')+(it.quantity>1?' · ×'+esc(it.quantity):'')+'</div>'
       +(it.notes?'<div class="note">'+esc(it.notes)+'</div>':'')
       +'<div class="compbox" id="comp'+it.id+'"></div><div class="status" id="cs'+it.id+'"></div>'
     +'</div>'
-    +sparkHtml(it)
-    +'<div style="text-align:right;min-width:150px;">'
-      +'<div class="money">'+(v!=null?aud(v):(it.value_cents!=null?esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2):'—'))+(it.quantity>1?' <span style="font-size:11px;color:var(--muted);font-weight:400;">/unit</span>':'')+vnative+'</div>'
-      +valSrcHtml(it)
-      +(it.quantity>1&&v!=null?'<div style="font-size:11px;color:var(--muted);margin-top:1px;">×'+esc(it.quantity)+' = '+aud(totalValueAud(it))+'</div>':'')
-      +'<div style="font-size:11px;color:var(--muted);margin-top:2px;">cost '+aud(costAud(it))+(it.quantity>1?' <span style="color:var(--faint);">('+aud(unitCostAud(it))+' ea)</span>':'')+'</div>'
-      +'<div style="margin-top:5px;">'+plBadge(pl)+' <span style="font-size:10px;color:var(--muted);">'+plLbl+'</span></div>'
-    +'</div>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
+    +'<div class="c-spark">'+sparkHtml(it)+'</div>'
+    +'<div class="c-num">'+esc(it.quantity==null?1:it.quantity)+'</div>'
+    +'<div class="c-num"><div class="money" style="font-size:13px;">'+aud(costAud(it))+'</div>'
+      +(it.quantity>1?'<div class="c-sub"><span class="ea">'+aud(unitCostAud(it))+' ea</span></div>':'')+'</div>'
+    +'<div class="c-num"><div class="money">'+(totalValueAud(it)!=null?aud(totalValueAud(it)):(it.value_cents!=null?esc(it.value_currency)+' '+((it.value_cents/100)*(it.quantity||1)).toFixed(2):'—'))+vnative+'</div>'
+      +(it.quantity>1&&v!=null?'<div class="c-sub"><span class="ea">'+aud(v)+' ea</span></div>':'')
+      +valSrcHtml(it)+'</div>'
+    +'<div class="c-num">'+plBadge(pl)+'<div class="c-sub">'+plLbl+'</div></div>'
+    +'<div class="c-act">'
       +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
       +'<button class="btn sm blue" title="eBay sold comps" onclick="comps('+it.id+')">eBay</button>'
       +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
@@ -549,7 +571,23 @@ function renderStock(){
   const items=sortItems(CURRENT);
   if(VIEW==='grouped'){el.className='';el.innerHTML=renderGrouped(sortGroups(groupItems(CURRENT)));}
   else if(VIEW==='grid'){el.className='grid-view';el.innerHTML=items.map(gridCard).join('');}
-  else{el.className='';el.innerHTML=items.map(itemRow).join('');}
+  else{el.className='';el.innerHTML=colHead()+items.map(itemRow).join('');}
+}
+// The list-view header. Same cell widths as a row, and the same setSort the compact bar uses, so the
+// two controls can never disagree about what is sorted.
+function colHead(){
+  const h=(k,label)=>'<span class="h'+(SSORT.k===k?' on':'')+'" onclick="setSort(\''+k+'\')">'+label
+    +'<span class="car">'+(SSORT.k===k?(SSORT.dir===1?'▲':'▼'):'▼')+'</span></span>';
+  return '<div class="colhead">'
+    +'<span class="c-thumb"></span>'
+    +'<span class="c-main">'+h('name','Product')+'</span>'
+    +'<span class="c-spark"></span>'
+    +'<span class="c-num">'+h('qty','Units')+'</span>'
+    +'<span class="c-num">'+h('cost','Cost')+'</span>'
+    +'<span class="c-num">'+h('value','Value')+'</span>'
+    +'<span class="c-num">'+h('pl','Gain/loss')+'</span>'
+    +'<span class="c-act">'+h('added','Added')+'</span>'
+  +'</div>';
 }
 function setView(v){VIEW=v;try{localStorage.setItem('bk_sealed_view',v);}catch(e){}
   [['viewList','list'],['viewGrid','grid'],['viewGroup','grouped']].forEach(function(p){var b=document.getElementById(p[0]);if(b)b.classList.toggle('on',v===p[1]);});
