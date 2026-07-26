@@ -102,6 +102,44 @@ describe('bootstrapAccount — reuses existing policies (idempotent re-run)', ()
   });
 });
 
+describe('bootstrapAccount — duplicate policy (eBay allows one per category type)', () => {
+  it('adopts the duplicatePolicyId eBay returns when our name is not on any existing policy', async () => {
+    // Live failure 2026-07-26: create returned [20400] Duplicate policy (duplicatePolicyId=266339227012)
+    // while the account's policy carried an unrelated name, so the name-based re-list found nothing.
+    stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'eBay default payment', paymentPolicyId: '266339227012' }] } }),
+      'POST /payment_policy': () => ({ status: 400, json: { errors: [{ errorId: 20400, message: 'Duplicate policy', parameters: [{ name: 'duplicatePolicyId', value: '266339227012' }] }] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: [{ name: 'Post AU', fulfillmentPolicyId: 'FUL-EXIST' }] } }),
+      'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
+    });
+    const report = await bootstrapAccount(ENV, CFG);
+    assert.equal(report.policies.paymentPolicyId, '266339227012');
+    assert.deepEqual(report.errors, []);
+    assert.equal(report.ready, true);
+    assert.ok(report.warnings.some((w) => /payment policy: reusing/.test(w)), 'adopting a foreign policy must warn');
+    assert.ok(report.warnings.some((w) => /eBay default payment/.test(w)), 'warning names the adopted policy');
+  });
+});
+
+describe('bootstrapAccount — missing warehouse postcode', () => {
+  it('reports the location error pointing at the settings field, without blocking the policies', async () => {
+    stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: [{ name: 'Post AU', fulfillmentPolicyId: 'FUL-EXIST' }] } }),
+      'GET /inventory/v1/location/': () => ({ status: 404, json: { errors: [{ errorId: 25802, message: 'not found' }] } }),
+    });
+    const report = await bootstrapAccount(ENV, { ...CFG, location: { merchantLocationKey: 'tcg-au-1', country: 'AU', postalCode: '' } });
+    assert.equal(report.policies.paymentPolicyId, 'PAY-EXIST');
+    assert.equal(report.location, null);
+    assert.equal(report.ready, false);
+    assert.ok(report.errors.some((e) => /Warehouse postcode/i.test(e)));
+  });
+});
+
 describe('accountStatus — read-only readiness', () => {
   it('reports ready when opted-in + all IDs cached', async () => {
     stubFetch({

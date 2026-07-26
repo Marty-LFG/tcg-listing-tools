@@ -610,7 +610,7 @@
         const r=await fetch('/api/listings/account/bootstrap',{method:'POST'});
         const j=await r.json(); const rep=j.report||{};
         if(rep.optInPending){ note.style.color='var(--gold)'; note.textContent='Business-policy opt-in submitted — eBay can take up to 24h to activate it. Re-run setup after that.'; }
-        else if(rep.errors&&rep.errors.length){ note.style.color='var(--red)'; note.textContent='Issues: '+rep.errors.join(' · '); }
+        else if(rep.errors&&rep.errors.length){ note.style.color='var(--red)'; note.textContent='Issues: '+rep.errors.join(' · ')+(rep.warnings&&rep.warnings.length?' — note: '+rep.warnings.join(' · '):''); }
         else { note.style.color='var(--green)'; note.textContent='✓ '+(rep.ready?'ready to list':'setup ran')+(rep.warnings&&rep.warnings.length?' · '+rep.warnings.join(' · '):''); }
       }catch(e){ note.style.color='var(--red)'; note.textContent=String(e&&e.message||e); }
       finally{ btn.disabled=false; renderEbayListingSetup(card); }

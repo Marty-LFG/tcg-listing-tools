@@ -62,6 +62,11 @@ describe('fulfillmentBody (free AU post)', () => {
     assert.equal(svc.shippingServiceCode, 'AU_StandardDelivery');
     assert.equal(svc.freeShipping, true);
   });
+  it('ships to the ISO country code, never the country name', () => {
+    // live 2026-07-26: regionName 'Australia' → [20400] Invalid request (Invalid Location(s)=Australia)
+    assert.deepEqual(b.shipToLocations.regionIncluded, [{ regionName: 'AU' }]);
+    assert.deepEqual(fulfillmentBody({ ...CFG, location: { country: 'NZ' } }).shipToLocations.regionIncluded, [{ regionName: 'NZ' }]);
+  });
   it('clamps a too-long handling time to 3 days', () => {
     assert.equal(fulfillmentBody({ ...CFG, handlingDays: 10 }).handlingTime.value, 3);
   });
