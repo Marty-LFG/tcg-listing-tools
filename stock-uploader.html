@@ -31,6 +31,7 @@
   .bigbtn:disabled{opacity:.45;cursor:not-allowed;}
   .ghost{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-weight:700;border-radius:9px;padding:10px 14px;cursor:pointer;font-size:13px;}
   .ghost:hover{background:var(--gold);color:#0c1430;}
+  a.ghost{display:inline-block;text-decoration:none;line-height:1;}
   .status{font-size:12.5px;min-height:18px;margin:6px 0;}
   .status.ok{color:var(--green);}.status.warn{color:var(--gold);}.status.err{color:var(--red);}.status.load{color:var(--muted);}
   .cardview{display:flex;gap:14px;align-items:flex-start;}
@@ -123,7 +124,11 @@
           </div>
         </div>
         <div class="comps" id="compsLine">fetching eBay AU comps…</div>
-        <button class="ghost" style="margin-top:10px;" onclick="loadPrice()">↻ Re-check comps</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+          <button class="ghost" onclick="loadPrice()">↻ Re-check comps</button>
+          <a class="ghost" id="ebayActive" href="#" target="_blank" rel="noopener">Active BIN ↗</a>
+          <a class="ghost" id="ebaySold" href="#" target="_blank" rel="noopener">Sold ↗</a>
+        </div>
       </div>
 
       <div class="card" id="offerCard" style="display:none;">
@@ -230,6 +235,7 @@ async function doLookup(){
     stat($('status'),'ok','Found. Verify the details, price and offers below.');
     ['detailsCard','priceCard','offerCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
     savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewBox').style.display='none';
+    priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
     loadPrice();
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
@@ -279,6 +285,31 @@ async function loadPrice(){
     }
     refreshSummary();
   }catch(e){ $('compsLine').textContent='comps unavailable: '+(e&&e.message||e); }
+  syncEbayLinks();
+}
+
+// ---- eBay search shortcuts ----
+// Open the same population the recommendation was built from: the server echoes back the exact query
+// it searched (/price → .query), so these never drift from the comps line above them. Fixed-price
+// only, matching the comps filter (buyingOptions:{FIXED_PRICE}); no location filter, because eBay AU
+// comps include international sellers shipping here.
+function compsQuery(){
+  if(priceInfo&&priceInfo.query) return priceInfo.query;
+  if(!card) return '';
+  return ['Pokemon',card.name,card.number,card.set_name].filter(Boolean).join(' ');   // same parts the server joins
+}
+function ebaySearchUrl(q,sold){
+  const p=new URLSearchParams({_nkw:q,LH_BIN:'1',_sop:sold?'13':'16'});   // 13 ended recently · 16 price+post lowest
+  if(sold){ p.set('LH_Sold','1'); p.set('LH_Complete','1'); }
+  return 'https://www.ebay.com.au/sch/i.html?'+p.toString();
+}
+function syncEbayLinks(){
+  const q=compsQuery(), a=$('ebayActive'), s=$('ebaySold');
+  if(!a||!s) return;
+  a.href=q?ebaySearchUrl(q,false):'#'; s.href=q?ebaySearchUrl(q,true):'#';
+  a.title=q?'Active Buy It Now on eBay AU, cheapest first — "'+q+'"':'';
+  s.title=q?'Sold in the last 90 days on eBay AU, most recent first — "'+q+'"':'';
+  a.style.opacity=s.style.opacity=q?'':'.5';
 }
 function setPrice(v){ $('price').value=(Math.round(v*100)/100).toFixed(2); refreshSummary(); }
 $('price').addEventListener('input',refreshSummary);
