@@ -18,9 +18,10 @@
     "return": "TCG 30-day returns AU",
     "fulfillment": "TCG Free AU Post"
   },
-  "returns": { "accepted": true, "days": 30, "shippingCostPayer": "BUYER" },
-  "shipping": { "serviceCode": "AU_StandardDelivery", "freeDomestic": true },
+  "returns": { "accepted": false, "days": 30, "shippingCostPayer": "BUYER" },
+  "shipping": { "serviceCode": "AU_AusPostStandardLetter", "freeDomestic": true },
   "policies": { "paymentPolicyId": "", "returnPolicyId": "", "fulfillmentPolicyId": "" },
+  "store": { "defaultCategory": "", "categoryByGame": {} },
   "bestOffer": { "enabled": false, "autoAcceptPct": 95, "autoDeclinePct": 78 },
   "genericImage": { "enabled": false, "path": "", "eps": "", "expires": "" }
 }

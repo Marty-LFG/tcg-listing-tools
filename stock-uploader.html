@@ -228,6 +228,12 @@ async function doLookup(){
       number:TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity}),
       rawNumber:c.number||num, rarity:c.rarity||'', image:(c.images&&(c.images.large||c.images.small))||'',
       supertype:c.supertype||'', subtypes:(c.subtypes||[]).join(', '), artist:c.artist||'',
+      // SEO payload the uploader used to throw away. Each of these feeds a real eBay AU 183454 item
+      // specific or a CARD DETAILS row that already exists in listing-copy (both verified live).
+      subtypeList:c.subtypes||[], types:c.types||[], hp:(c.hp!=null?String(c.hp):''),
+      pokedex:(c.nationalPokedexNumbers||[]), regMark:c.regulationMark||'', evolvesFrom:c.evolvesFrom||'',
+      setSeries:(c.set&&c.set.series)||'', setCode:((c.set&&c.set.ptcgoCode)||setObj.code||''),
+      setRelease:(c.set&&c.set.releaseDate)||'', printedTotal:(c.set&&c.set.printedTotal)||null,
     };
     // default finish from rarity/name
     if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
@@ -261,7 +267,17 @@ function rawCondWord(){ // map the eBay enum back to the tool's condition string
 function cardRow(){
   const r={game:'pokemon',name:card.name,set_name:card.set_name,number:card.number,rarity:card.rarity,
     language:'EN',finish:$('finish').value,image_url:card.image,identity_key:card.id,
-    illustrator:card.artist||null,card_type:card.supertype||null,stage:/stage\s*2/i.test(card.subtypes)?'Stage 2':/stage\s*1/i.test(card.subtypes)?'Stage 1':/basic/i.test(card.subtypes)?'Basic':null};
+    illustrator:card.artist||null,card_type:card.supertype||null,stage:/stage\s*2/i.test(card.subtypes)?'Stage 2':/stage\s*1/i.test(card.subtypes)?'Stage 1':/basic/i.test(card.subtypes)?'Basic':null,
+    // 'finish' is NOT an inventory_items column, so it was silently dropped on save and the Finish
+    // dropdown did nothing. 'variant' is the column that persists it.
+    variant:(function(v){return /reverse/i.test(v)?'Reverse Holo':/holo/i.test(v)?'Holo':/foil/i.test(v)?'Foil':'Base';})($('finish').value),
+    // Everything the lookup found, persisted with the item. A later republish that carries no
+    // overrides (revise-price, a repricer apply) would otherwise strip the item specifics back off:
+    // createOrReplaceInventoryItem is a full replace, not a patch.
+    card_facts:JSON.stringify({hp:card.hp,pokedex:card.pokedex,regulation_mark:card.regMark,
+      evolves_from:card.evolvesFrom,set_series:card.setSeries,set_code:card.setCode,
+      set_release_date:card.setRelease,printed_total:card.printedTotal,types:card.types,
+      subtypes:card.subtypeList,supertype:card.supertype})};
   if(graded()){ r.graded=true; r.grading_company=$('grCo').value; r.grade=parseFloat($('grGrade').value)||null; r.cert_number=$('grCert').value||null; }
   else { r.condition=conditionStr(); }
   return r;
@@ -376,8 +392,14 @@ async function uploadPhotos(itemId){
 }
 function publishBody(itemId){
   const r=cardRow();
+  // character + speciality are deliberately absent: the server derives them (ebayCharacters from the
+  // dex numbers, ebaySpeciality from the subtypes) and sending null would just look like data.
   return {itemId,price_cents:Math.round((parseFloat($('price').value)||0)*100),bestOffer:bestOffer(),
-    character:null,card_type:r.card_type,speciality:null,illustrator:r.illustrator,stage:r.stage};
+    card_type:r.card_type,stage:r.stage,illustrator:r.illustrator,finish:r.finish,
+    supertype:card.supertype,subtypes:card.subtypeList,types:card.types,hp:card.hp,
+    pokedex_numbers:card.pokedex,regulation_mark:card.regMark,set_code:card.setCode,
+    set_series:card.setSeries,set_release_date:card.setRelease,printed_total:card.printedTotal,
+    evolves_from:card.evolvesFrom};
 }
 
 // ---- preview (dry run) ----

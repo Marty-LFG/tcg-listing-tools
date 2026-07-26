@@ -25,7 +25,8 @@ const firstEd = toEbayListing({
 }, null, cats);
 assert('title carries 1st Edition', firstEd.title.includes('1st Edition'), firstEd.title);
 assert('title ≤ 80', firstEd.title.length <= 80, firstEd.title.length + ' chars');
-assert('Features aspect = 1st Edition (no Edition aspect in 183454)', firstEd.aspects['Features'] === '1st Edition');
+// Features is MULTI-cardinality on 183454 (verified live 2026-07-26), so its value is an ARRAY.
+assert('Features aspect = [1st Edition] (no Edition aspect in 183454)', JSON.stringify(firstEd.aspects['Features']) === '["1st Edition"]', JSON.stringify(firstEd.aspects['Features']));
 assert('raw conditionId 4000', firstEd.conditionId === 4000);
 assert('category 183454 (live-pinned)', firstEd.categoryId === '183454');
 assert('Game aspect present (the one required aspect)', firstEd.aspects['Game'] === 'Pokémon TCG');
@@ -62,7 +63,12 @@ assert('unsupported game FAILS validation (no category)', validateListing(unsupp
 console.log('\n[verbatim numbers + Set aspect fallback]');
 const secret = toEbayListing({ sku: 'Z', game: 'pokemon', name: 'Magikarp', set_name: 'Paldea Evolved', number: '203/193', rarity: 'Illustration Rare', variant: 'Holo', condition: 'Near Mint', quantity: 1, target_price_cents: 61799, finish: 'Holofoil' }, null, cats);
 assert('203/193 verbatim in title', secret.title.includes('203/193'), secret.title);
-assert('Collectr set name verbatim in Set aspect', secret.aspects['Set'] === 'Paldea Evolved');
+// The Set aspect is FREE_TEXT, but only an EXACT match to eBay's enum earns the buyer-facing Set
+// filter. 'Paldea Evolved' is listed by eBay under its series prefix, so we rewrite it; a set eBay has
+// no entry for must still pass through VERBATIM rather than gain an invented prefix (GR4).
+assert('known set name rewritten to eBay\'s enum spelling', secret.aspects['Set'] === 'Scarlet & Violet - Paldea Evolved', secret.aspects['Set']);
+const unmappedSet = toEbayListing({ sku: 'Z2', game: 'pokemon', name: 'Pikachu ex', set_name: 'Surging Sparks', number: '247/191', rarity: 'Special Illustration Rare', condition: 'Near Mint', quantity: 1, target_price_cents: 40000 }, null, cats);
+assert('unmapped set name stays verbatim in the Set aspect', unmappedSet.aspects['Set'] === 'Surging Sparks', unmappedSet.aspects['Set']);
 
 console.log('\n[CSV serialisation]');
 {

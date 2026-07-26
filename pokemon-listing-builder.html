@@ -234,12 +234,13 @@ function buildHTML(f){
   if(f.setSymbol) rows.push(['Set Symbol',f.setSymbol]);
   rows.push(['Card number',f.num]);
   rows.push(['Rarity',rarDisplay(f.rarity)]);
-  rows.push(['Pokémon',f.poke]);
-  rows.push(['Stage',f.stage]);
+  if(f.poke) rows.push(['Pokémon',f.poke]);
+  if(f.stage) rows.push(['Stage',f.stage]);
   if(f.type) rows.push(['Type',f.type]);
   if(f.hp) rows.push(['HP',f.hp]);
   if(f.illustrator) rows.push(['Illustrator',f.illustrator]);
   if(f.regMark) rows.push(['Regulation mark',f.regMark]);
+  if(f.edition) rows.push(['Edition',f.edition]);
   rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
   if(f.releaseYear) rows.push(['Released',f.releaseYear]);
   if(f.enSet) rows.push(['English set',f.enSet]);

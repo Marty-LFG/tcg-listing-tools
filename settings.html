@@ -548,7 +548,29 @@
       {name:null,fields:[
         {p:'location.postalCode',l:'Warehouse postcode',t:'text',tip:'AU postcode for the merchant inventory location. Required before the first listing (used to create the eBay inventory location).'},
         {p:'handlingDays',l:'Handling days',t:'number',min:0,max:3,tip:'Dispatch time in days (0–3). Kept ≤3 so Authenticity-Guarantee items stay eligible.'},
-        {p:'returns.days',l:'Return window (days)',t:'number',min:30,max:60,tip:'How long a buyer has to request a return. eBay AU allows only 30 or 60.'},
+        {p:'returns.days',l:'Return window (days)',t:'number',min:30,max:60,tip:'How long a buyer has to request a return. eBay AU allows only 30 or 60. Only used when the tool has to <b>create</b> a return policy.'},
+        {p:'shipping.serviceCode',l:'Postage service',t:'select',wide:true,
+         opts:[{v:'AU_AusPostStandardLetter',l:'Australia Post Domestic Regular Letter Untracked (2–8 days)'},
+               {v:'AU_AusPostStandardLetterWithTracking',l:'Australia Post Domestic Regular Letter With Tracking (2–7 days)'},
+               {v:'AU_AusPostPriorityLetter',l:'Australia Post Domestic Priority Letter (2–6 days)'},
+               {v:'AU_AusPostPriorityLetterWithTracking',l:'Australia Post Domestic Priority Letter With Tracking (1–5 days)'},
+               {v:'AU_AusPostExpressLetter',l:'Australia Post Domestic Express Letter (1–2 days)'},
+               {v:'AU_StandardDelivery',l:'Standard Parcel Delivery (1–6 days)'},
+               {v:'AU_Express',l:'Australia Post Express Post (1–3 days)'}],
+         tip:'How a single card actually ships. Codes read live from eBay AU on 2026-07-26. The letter services cap at 500&nbsp;g and 2&nbsp;cm thick, which a sleeved card in a rigid mailer fits. Only used when the tool has to <b>create</b> a postage policy — a policy picked below always wins.'},
+      ]},
+      {name:'Business policies',fields:[
+        {p:'policies.paymentPolicyId',l:'Payment policy',t:'select',src:'/api/listings/account/policies',kind:'payment',wide:true,
+         tip:'Pick the policy you already use on eBay — <b>its</b> terms are what buyers see. “Let setup manage it” lets the tool create and keep its own instead, which is what put 30-day returns and parcel post on the first API listing.'},
+        {p:'policies.returnPolicyId',l:'Return policy',t:'select',src:'/api/listings/account/policies',kind:'return',wide:true,
+         tip:'Your hand-made listings say “No returns accepted”. Pick that same policy here so the tool’s listings match.'},
+        {p:'policies.fulfillmentPolicyId',l:'Postage policy',t:'select',src:'/api/listings/account/policies',kind:'fulfillment',wide:true,
+         tip:'Pick the policy that posts by Australia Post untracked letter. Each option shows the eBay service code it actually uses.'},
+        {p:'returns.accepted',l:'Accept returns',t:'toggle',tip:'Only used when the tool has to <b>create</b> its own return policy. Off = “No returns accepted”. A policy picked above always wins over this.'},
+      ]},
+      {name:'Store category',fields:[
+        {p:'store.defaultCategory',l:'Default store category',t:'text',wide:true,
+         tip:'Full path of the storefront department, e.g. <b>/Trading Card Games</b>. Leave blank and eBay files every listing under “Other” — which is where the first API listing landed, the only one of 163 items outside Trading Card Games.'},
       ]},
       {name:'Best Offer defaults',fields:[
         {p:'bestOffer.enabled',l:'Best Offer on by default',t:'toggle',tip:'Prefills the Best Offer toggle on the uploader verify screen.'},
@@ -574,7 +596,23 @@
     }
     const cell=el('<div class="field'+(f.wide?' wide':'')+'"><label>'+esc(f.l)+inf(f.tip)+'</label></div>');
     let input;
-    if(f.t==='select'){ input=document.createElement('select'); for(const o of f.opts){const op=document.createElement('option');op.value=o;op.textContent=o;input.appendChild(op);} input.value=cur??f.opts[0]; inputs[f.p]=()=>input.value; }
+    if(f.t==='select'){
+      input=document.createElement('select');
+      const addOpt=(v,l)=>{const op=document.createElement('option');op.value=v;op.textContent=l;input.appendChild(op);return op;};
+      if(f.src){
+        // Options come from a live eBay read. Always seed with the CURRENT value first so a failed
+        // fetch can never blank a live pin — the saved value has to survive a flaky lookup.
+        addOpt(cur??'',cur?('current: '+cur):'— let setup manage it —');
+        fetch(f.src).then(r=>r.json()).then(j=>{
+          const k=(j.kinds||{})[f.kind]; if(!k||!k.rows) return;
+          input.innerHTML=''; addOpt('','— let setup manage it —');
+          for(const row of k.rows) addOpt(row.id,row.name+(row.summary?'  ·  '+row.summary:''));
+          if(k.missing&&k.selectedId) addOpt(k.selectedId,'⚠ '+k.selectedId+' is no longer on eBay');
+          input.value=cur??'';
+        }).catch(()=>{});
+      } else { for(const o of f.opts){const oo=(o&&o.v!==undefined)?o:{v:o,l:o};addOpt(oo.v,oo.l);} input.value=cur??(f.opts[0]&&f.opts[0].v!==undefined?f.opts[0].v:f.opts[0]); }
+      inputs[f.p]=()=>input.value;
+    }
     else if(f.t==='textarea'){ input=document.createElement('textarea'); input.value=cur??''; inputs[f.p]=()=>input.value; }
     else if(f.t==='number'){ input=document.createElement('input'); input.type='number'; input.step='any'; if(f.min!=null)input.min=f.min; if(f.max!=null)input.max=f.max; input.value=cur??''; inputs[f.p]=()=>input.value===''?null:+input.value; }
     else { input=document.createElement('input'); input.type='text'; input.value=cur??''; inputs[f.p]=()=>input.value; }
@@ -593,7 +631,7 @@
         '<div style="margin-top:8px;"><a href="/api/repricer/oauth">Run the eBay consent flow →</a></div>';
       btn.disabled=true; return;
     }
-    const yn=(b)=>b?'<span class="pill ok plain">yes</span>':'<span class="pill err plain">no</span>';
+    const yn=(b)=>b?'<span class="pill ok plain">yes</span>':'<span class="pill bad plain">no</span>';   // 'pill err' is not a defined class — every "no" here rendered unstyled
     const pol=st.policies||{};
     body.innerHTML=
       '<div class="kv"><span class="k">Business policies opted in</span><span class="v">'+yn(st.optedIn)+'</span></div>'+
@@ -602,7 +640,21 @@
       '<div class="kv"><span class="k">Return policy</span><span class="v">'+(pol.returnPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Fulfilment policy</span><span class="v">'+(pol.fulfillmentPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Merchant location</span><span class="v">'+(st.merchantLocationKey?esc(st.merchantLocationKey):yn(false))+'</span></div>'+
-      '<div class="kv"><span class="k">Ready to list</span><span class="v">'+yn(st.ready)+'</span></div>';
+      '<div class="kv"><span class="k">Ready to list</span><span class="v">'+yn(st.ready)+'</span></div>'+
+      '<div class="kv"><span class="k">Listing as</span><span class="v" id="ebIdentity">checking…</span></div>'+
+      '<div class="kv"><span class="k">Store category</span><span class="v" id="ebStoreCat">checking…</span></div>';
+    // Which eBay identity the token actually posts under, and where in the storefront listings land.
+    // Both were invisible until the first API listing turned up under a bare username in "Other".
+    fetch('/api/repricer/oauth/test',{method:'POST'}).then(r=>r.json()).then(j=>{
+      const n=$('ebIdentity'); if(!n) return;
+      n.innerHTML=j&&j.ok?esc(j.userId||'?')+(j.storeOwner?' <span class="pill ok plain">store</span>'+(j.storeUrl?' <a href="'+esc(j.storeUrl)+'" target="_blank" rel="noopener">visit ↗</a>':''):' <span class="pill plain">no store</span>'):'unknown';
+    }).catch(()=>{const n=$('ebIdentity'); if(n) n.textContent='unknown';});
+    fetch('/api/listings/config').then(r=>r.json()).then(j=>{
+      const n=$('ebStoreCat'); if(!n) return;
+      const s=(j&&j.config&&j.config.store)||{}, byGame=Object.values(s.categoryByGame||{}).filter(Boolean);
+      const set=s.defaultCategory||byGame[0]||'';
+      n.innerHTML=set?esc(set)+(byGame.length?' <span class="dim">(+per-game)</span>':''):'<span class="pill bad plain">not set</span> <span class="dim">listings file under “Other”</span>';
+    }).catch(()=>{const n=$('ebStoreCat'); if(n) n.textContent='unknown';});
     btn.disabled=false;
     btn.onclick=async()=>{
       btn.disabled=true; note.style.color='var(--dim)'; note.textContent='running setup (opt-in + policies + location; may take a moment)…';
