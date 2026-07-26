@@ -649,6 +649,34 @@
     };
   }
 
+  // Listings made by hand in Seller Hub are invisible to the Sell Inventory API, so importing them is
+  // the only way this tool knows they exist. Read-only against eBay and safe to re-run.
+  async function renderMirrorRow(){
+    const n=$('ebMirror'); if(!n) return;
+    let j; try{ j=await fetch('/api/listings/mirror?limit=1').then(r=>r.json()); }catch(e){ n.textContent='unknown'; return; }
+    const c=(j.counts||[]), sum=(f)=>c.filter(f).reduce((a,x)=>a+x.n,0);
+    const active=sum(x=>x.state==='active'), manual=sum(x=>x.created_via==='manual'), total=sum(()=>true);
+    n.innerHTML=(total
+      ? '<b>'+active+'</b> active <span class="dim">of '+total+' seen · '+manual+' made by hand'
+        +(j.unlinkedActive?' · '+j.unlinkedActive+' not linked to stock':'')+'</span>'
+      : '<span class="pill bad plain">none</span> <span class="dim">hand-made listings are invisible until imported</span>')
+      +'<button class="btn sm mir-run" style="margin-left:8px;">Import from eBay</button>'
+      +'<div class="savenote mir-note" style="margin-top:4px;"></div>';
+    n.querySelector('.mir-run').onclick=async(e)=>{
+      const b=e.currentTarget; b.disabled=true; b.textContent='importing…';
+      try{
+        const r=await fetch('/api/listings/import',{method:'POST'}).then(x=>x.json());
+        await renderMirrorRow();
+        const note=$('ebMirror')&&$('ebMirror').querySelector('.mir-note'); if(!note) return;
+        note.style.color=r.ok?'var(--green)':'var(--red)';
+        note.textContent=r.ok
+          ? '✓ '+r.imported+' listings ('+r.manual+' made by hand) · '+r.linked+' matched a stock label'
+            +(r.ended?' · '+r.ended+' no longer on eBay':'')+(r.truncated?' · partial scan, nothing marked ended':'')
+          : (r.error||'import failed');
+      }catch(err){ b.disabled=false; b.textContent='Import from eBay'; }
+    };
+  }
+
   async function renderEbayListingSetup(card){
     const body=card.querySelector('.ebset-body'); const btn=card.querySelector('.ebset-run'); const note=card.querySelector('.ebset-note');
     body.innerHTML='<span class="dim">checking…</span>';
@@ -672,10 +700,12 @@
       '<div class="kv"><span class="k">Ready to list</span><span class="v">'+yn(st.ready)+'</span></div>'+
       '<div class="kv"><span class="k">Listing as</span><span class="v" id="ebIdentity">checking…</span></div>'+
       '<div class="kv"><span class="k">Store category</span><span class="v" id="ebStoreCat">checking…</span></div>'+
-      '<div class="kv"><span class="k">Next stock label</span><span class="v" id="ebLabel">checking…</span></div>';
+      '<div class="kv"><span class="k">Next stock label</span><span class="v" id="ebLabel">checking…</span></div>'+
+      '<div class="kv"><span class="k">eBay listings mirrored</span><span class="v" id="ebMirror">checking…</span></div>';
     // The AAA-001 series (AGENTS.md 16b). Until it is seeded, new items keep the old BK-* labels —
     // starting at AAA-001 would re-issue a label that is already on a shelf.
     renderLabelRow();
+    renderMirrorRow();
     // Which eBay identity the token actually posts under, and where in the storefront listings land.
     // Both were invisible until the first API listing turned up under a bare username in "Other".
     fetch('/api/repricer/oauth/test',{method:'POST'}).then(r=>r.json()).then(j=>{

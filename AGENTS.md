@@ -708,6 +708,25 @@ re-checking. Note that only a listing **we** published (one with an `ebay_offer_
 quantity revised through the Inventory API — a hand-made Seller Hub listing is invisible to it, so
 the UI says so rather than failing silently.
 
+## 16c. The two kinds of eBay listing (and why the tool needs both mirrors)
+
+There are two populations on the account and they do not talk to each other:
+
+| | made by this tool | made by hand in Seller Hub |
+|---|---|---|
+| model | Sell Inventory API (SKU-centric) | Trading (ItemID-centric) |
+| mirror table | `ebay_listings` (has `offer_id`) | `ebay_seller_listings` (keyed on ItemID) |
+| kept fresh by | `reconcileListings`, every 30 min | `importSellerListings`, on demand |
+| quantity/price revisable by the tool | yes | **no** |
+
+The Sell Inventory API **cannot see a Trading listing at all** ([KB 5210](https://developer.ebay.com/support/kb-article?KBid=5210)) — `getOffer`/`getOffers` return nothing for one — so `reconcileListings` is structurally blind to the hand-made listings and always will be. `POST /api/listings/import` is the other half: it pages `GetMyeBaySelling` (active + sold + unsold) and mirrors **every** listing into `ebay_seller_listings`, read-only, safe to re-run, with a button in Settings.
+
+Keyed on the eBay **ItemID**, not the SKU, because a Trading listing's Custom label is optional and eBay allows the same one on several listings unless `InventoryTrackingMethod=SKU` is set. Where a Custom label does match an `inventory_items.sku`, the row is linked (`item_id`); resolving a card identity out of a listing *title* is a separate job and is deliberately not attempted.
+
+**The ended sweep compares IDs, never timestamps.** A listing we held as `active` that this scan did not see has ended. The first version tested `last_seen_at < startedAt`, which marked the entire shop as ended on the first import: SQLite's `datetime('now')` writes `YYYY-MM-DD HH:MM:SS` and the space sorts before the `T` in a JS ISO string, so every row it had just written looked older than the scan. A truncated scan skips the sweep entirely, because "not seen" then only means "not reached".
+
+Sold and unsold history reaches back about 90 days, so the mirror is complete for active listings and partial for history. Migrating the hand-made listings into the Inventory model (`bulkMigrateListing`) would collapse this into one population, but it is **one-way** — Trading `Revise*` is permanently blocked afterwards — so it is a deliberate decision, not a default.
+
 ## 17. eBay stock uploader (Sell Inventory API) — Pokémon first
 
 Brings the listing builders and the eBay inventory together: pick a card + qty → verify price +
