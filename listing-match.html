@@ -4,23 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Match eBay listings to cards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--gold:#f0c020;--gold-dim:rgba(240,192,32,.35);--green:#43d6a0;--red:#f0666e;
-    --bg:#080b16;--panel:#0f1424;--panel2:#141a2e;--line:#1e2740;--text:#e8ecf7;--muted:#7f8aa8;--mono:ui-monospace,Consolas,monospace;}
-  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:28px 22px 80px;}
+  /* Shares inventory.html / catalog.html's tokens and type — same family of stock-management pages. */
+  :root{
+    --bg:#0a0b0f;--panel:#14171f;--panel2:#171b24;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-dim:rgba(212,176,114,.35);--green:#43d6a0;--red:#f0666e;
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);margin:0;padding:28px 22px 80px;-webkit-font-smoothing:antialiased;}
   .wrap{max-width:1180px;margin:0 auto;}
-  h1{font-size:24px;margin:2px 0 4px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin:2px 0 4px;line-height:1.05;}
   .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
   .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
-  .btn{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-weight:700;border-radius:9px;padding:9px 14px;cursor:pointer;font-size:13px;}
-  .btn:hover{background:var(--gold);color:#0c1430;}
-  .btn.go{background:var(--gold);color:#0c1430;border-color:var(--gold);}
+  .btn{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-family:var(--mono);font-weight:600;border-radius:9px;padding:9px 14px;cursor:pointer;font-size:12.5px;transition:background .13s,color .13s,border-color .13s;}
+  .btn:hover{background:var(--gold);color:var(--ink);}
+  .btn.go{background:var(--gold);color:var(--ink);border-color:var(--gold);}
+  tbody tr{transition:background .12s;} tbody tr:hover{background:rgba(255,255,255,.022);}
+  thead th{position:sticky;top:0;z-index:2;background:linear-gradient(180deg,var(--bg) 82%,rgba(10,11,15,0));}
   .btn:disabled{opacity:.5;cursor:default;}
   .count{font-family:var(--mono);font-size:12px;color:var(--muted);}
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--line);}
   td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
-  tr.on{background:rgba(240,192,32,.05);}
+  tr.on{background:var(--gold-soft,rgba(212,176,114,.1));}
   .ttl{color:var(--text);}
   .lbl{font-family:var(--mono);font-size:11.5px;color:var(--gold);}
   .card{font-weight:600;}

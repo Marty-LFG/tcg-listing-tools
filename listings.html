@@ -4,34 +4,64 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>eBay listings — Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--gold:#f0c020;--gold-dim:rgba(240,192,32,.35);--green:#43d6a0;--red:#f0666e;--violet:#a082f0;
-    --bg:#080b16;--panel:#0f1424;--panel2:#141a2e;--line:#1e2740;--line2:#2b3552;--text:#e8ecf7;
-    --muted:#7f8aa8;--faint:#5a6480;--mono:ui-monospace,Consolas,monospace;}
+  /* Tokens and type are inventory.html / catalog.html's, not a third set: this page sits between
+     those two in the workflow and links straight into them. */
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#171b24;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-dim:rgba(212,176,114,.35);--gold-soft:rgba(212,176,114,.14);
+    --green:#43d6a0;--amber:#f0c04a;--red:#f0666e;--violet:#d9a4ff;
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
   *{box-sizing:border-box;}
-  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:26px 22px 80px;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);margin:0;padding:26px 22px 80px;-webkit-font-smoothing:antialiased;}
   .wrap{max-width:1280px;margin:0 auto;}
   a{color:var(--green);}
-  h1{font-size:24px;margin:2px 0 4px;}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin:2px 0 4px;line-height:1.05;}
   .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
   .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 18px;}
-  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
-  .tile .k{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;}
-  .tile .v{font-size:22px;font-weight:700;margin-top:4px;font-family:var(--mono);}
-  .tile .v small{font-size:11px;color:var(--muted);font-weight:500;font-family:inherit;}
+  /* A hairline of gold along the top edge ties these to the section headers without shouting. */
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;position:relative;overflow:hidden;}
+  .tile::before{content:"";position:absolute;inset:0 0 auto;height:1px;background:linear-gradient(90deg,var(--gold-dim),transparent 70%);}
+  .tile .k{font-size:10px;text-transform:uppercase;letter-spacing:1.1px;color:var(--muted);font-weight:700;}
+  .tile .v{font-size:23px;font-weight:700;margin-top:5px;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.5px;}
+  .tile .v small{font-size:11px;color:var(--muted);font-weight:500;font-family:inherit;letter-spacing:0;}
+  .tog{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;}
+  .tog input{accent-color:var(--gold);width:14px;height:14px;cursor:pointer;}
+  .tog:hover{color:var(--text);}
   .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
-  .chip{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;}
-  .chip.on{background:var(--gold);border-color:var(--gold);color:#0c1430;font-weight:700;}
-  .btn{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-weight:700;border-radius:9px;padding:8px 13px;cursor:pointer;font-size:12.5px;}
-  .btn:hover{background:var(--gold);color:#0c1430;}
+  .chip{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:var(--sans);}
+  .chip:hover{color:var(--text);border-color:var(--gold-dim);}
+  .chip.on{background:var(--gold);border-color:var(--gold);color:var(--ink);font-weight:600;}
+  .btn{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-family:var(--mono);font-weight:600;border-radius:9px;padding:8px 13px;cursor:pointer;font-size:12px;}
+  .btn:hover{background:var(--gold);color:var(--ink);}
   .btn:disabled{opacity:.5;cursor:default;}
-  input[type=search]{background:var(--panel);border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:8px 12px;font-size:13px;min-width:230px;}
+  input[type=search]{background:var(--panel);border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:8px 12px;font-size:13px;min-width:230px;font-family:var(--sans);}
+  thead th{background:linear-gradient(180deg,var(--bg) 82%,rgba(10,11,15,0));}
   table{width:100%;border-collapse:collapse;font-size:13px;}
-  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  thead th{position:sticky;top:0;z-index:2;background:linear-gradient(180deg,var(--bg) 82%,rgba(8,11,22,0));}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;padding:10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  th.s{cursor:pointer;user-select:none;transition:color .12s;}
+  th.s:hover{color:var(--text);}
+  th.s.on{color:var(--gold);}
+  th .car{opacity:0;margin-left:4px;font-size:9px;}
+  th.s:hover .car{opacity:.45;} th.s.on .car{opacity:1;}
   td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
-  .lbl{font-family:var(--mono);font-size:11.5px;color:var(--gold);white-space:nowrap;}
+  tbody tr{transition:background .12s;}
+  tbody tr:hover{background:rgba(255,255,255,.022);}
+  /* Completed listings are context, not the job — legible but visibly out of the running. */
+  tbody tr.done{opacity:.42;}
+  tbody tr.done:hover{opacity:.72;}
+  .lbl{font-family:var(--mono);font-size:11.5px;color:var(--gold);white-space:nowrap;letter-spacing:.4px;}
   .meta{color:var(--muted);font-size:11px;font-family:var(--mono);}
-  .money{font-family:var(--mono);font-weight:600;white-space:nowrap;}
+  .money{font-family:var(--mono);font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  .chip,.btn,.mini{transition:background .13s,border-color .13s,color .13s;}
+  input[type=search]:focus,.btn:focus-visible,.chip:focus-visible{outline:none;border-color:var(--gold);}
   .st{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.05em;border-radius:5px;padding:2px 6px;border:1px solid;white-space:nowrap;}
   .st.active{color:var(--green);border-color:rgba(67,214,160,.4);}
   .st.ended{color:var(--muted);border-color:var(--line2);}
@@ -68,6 +98,7 @@
     <button class="chip on" data-f="link" data-v="">Either</button>
     <button class="chip" data-f="link" data-v="linked">Linked</button>
     <button class="chip" data-f="link" data-v="unlinked">Not linked</button>
+    <label class="tog"><input type="checkbox" id="showDone"> show completed, greyed</label>
     <span style="flex:1;"></span>
     <input type="search" id="q" placeholder="title, label or item id">
     <button class="btn" id="import">Import from eBay</button>
@@ -75,8 +106,13 @@
   <div class="status" id="status">loading…</div>
 
   <table><thead><tr>
-    <th style="width:96px;">Label</th><th>Listing</th><th style="width:90px;">Price</th>
-    <th style="width:52px;">Qty</th><th style="width:74px;">State</th><th style="width:112px;">Stock</th><th style="width:150px;"></th>
+    <th class="s" data-s="sku" style="width:100px;">Label<span class="car">▼</span></th>
+    <th class="s" data-s="title">Listing<span class="car">▼</span></th>
+    <th class="s" data-s="price_cents" style="width:96px;">Price<span class="car">▼</span></th>
+    <th class="s" data-s="qty" style="width:58px;">Qty<span class="car">▼</span></th>
+    <th class="s" data-s="state" style="width:80px;">State<span class="car">▼</span></th>
+    <th class="s" data-s="stock" style="width:112px;">Stock<span class="car">▼</span></th>
+    <th style="width:150px;"></th>
   </tr></thead><tbody id="rows"></tbody></table>
 </div>
 <script>
@@ -84,6 +120,41 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const aud=c=>c==null?'—':'A$'+(c/100).toFixed(2);
 let ALL=[], F={state:'active',via:'',link:''};
+// Default sort is the shelf order, because that is the order the cards physically sit in.
+let SORT=(function(){try{return JSON.parse(localStorage.getItem('bk_listings_sort'))||{k:'sku',dir:1};}catch(e){return {k:'sku',dir:1};}})();
+let SHOW_DONE=(function(){try{return localStorage.getItem('bk_listings_done')==='1';}catch(e){return false;}})();
+
+// Sort labels by their place in the SERIES, not asciibetically: AAA-060 → AAB-001 → AAC-090, with
+// off-scheme labels (BK-PKM-…, EBAY-…) after the series rather than interleaved with it.
+// Mirrors seqForLabel in lib/sku-labels.mjs (99 per block, three-letter base-26 odometer) — if the
+// scheme ever changes, both move together.
+const LBL=/^([A-Z]{3})-(\d{1,3})$/;
+function labelRank(sku){
+  const m=LBL.exec(String(sku||'').trim().toUpperCase());
+  if(!m) return null;
+  const b=(m[1].charCodeAt(0)-65)*676+(m[1].charCodeAt(1)-65)*26+(m[1].charCodeAt(2)-65);
+  return b*99+parseInt(m[2],10);
+}
+const STATE_ORDER={active:0,unsold:1,ended:2,sold:3};
+function sortVal(l,k){
+  if(k==='sku'){ const r=labelRank(l.sku); return r==null?[1,String(l.sku||'~').toUpperCase()]:[0,r]; }
+  if(k==='qty') return [0,l.available_qty!=null?l.available_qty:(l.quantity!=null?l.quantity:-1)];
+  if(k==='price_cents') return [0,l.price_cents==null?-1:l.price_cents];
+  if(k==='state') return [0,STATE_ORDER[l.state]!=null?STATE_ORDER[l.state]:9];
+  if(k==='stock') return [0,l.item_id?0:1];
+  return [0,String(l[k]||'').toLowerCase()];
+}
+function sortRows(rows){
+  const {k,dir}=SORT;
+  return rows.slice().sort((a,b)=>{
+    const A=sortVal(a,k), B=sortVal(b,k);
+    if(A[0]!==B[0]) return A[0]-B[0];                       // off-scheme labels always last
+    if(A[1]<B[1]) return -1*dir; if(A[1]>B[1]) return 1*dir;
+    // Stable tie-break on the shelf label so equal rows never shuffle between renders.
+    const ra=labelRank(a.sku), rb=labelRank(b.sku);
+    return (ra==null?1e9:ra)-(rb==null?1e9:rb);
+  });
+}
 
 async function load(){
   $('status').className='status'; $('status').textContent='loading…';
@@ -106,27 +177,37 @@ function tiles(){
   $('tiles').innerHTML=t('Active',active.length,'listings')+t('Shelf value',aud(val),'at asking')
     +t('Made by hand',manual,'of '+ALL.length)+t('Not linked',unlinked,'to stock');
 }
+const isDone=l=>l.state==='ended'||l.state==='sold'||l.state==='unsold';
 function render(){
   const q=$('q').value.trim().toLowerCase();
-  const rows=ALL.filter(l=>{
-    if(F.state&&l.state!==F.state) return false;
+  const rows=sortRows(ALL.filter(l=>{
+    // "Show completed" widens an ACTIVE view to include the finished ones, greyed. It does nothing
+    // when you have explicitly asked for a single state — you already said what you wanted to see.
+    if(F.state){ if(l.state!==F.state && !(SHOW_DONE&&F.state==='active'&&isDone(l))) return false; }
     if(F.via&&l.created_via!==F.via) return false;
     if(F.link==='linked'&&!l.item_id) return false;
     if(F.link==='unlinked'&&l.item_id) return false;
     if(q&&!((l.title||'')+' '+(l.sku||'')+' '+l.listing_id).toLowerCase().includes(q)) return false;
     return true;
-  });
+  }));
+  for(const th of document.querySelectorAll('th.s')){
+    const on=th.dataset.s===SORT.k;
+    th.classList.toggle('on',on);
+    th.querySelector('.car').textContent=on?(SORT.dir===1?'▲':'▼'):'▼';
+  }
   if(!rows.length){ $('rows').innerHTML='<tr><td colspan="7" class="empty">Nothing matches those filters.</td></tr>'; return; }
   $('rows').innerHTML=rows.map(l=>{
     // Only a listing WE published can be revised through the Inventory API — a hand-made one is
     // invisible to it, so we offer eBay rather than a button that cannot work.
     const ours=l.created_via==='tool'&&l.item_id;
-    return '<tr>'
+    // eBay's Item.Quantity is available + sold; available_qty is the buyable figure.
+    const avail=l.available_qty!=null?l.available_qty:(l.quantity!=null&&l.sold_qty!=null?l.quantity-l.sold_qty:l.quantity);
+    return '<tr'+(isDone(l)?' class="done"':'')+'>'
       +'<td class="lbl">'+esc(l.sku||'—')+'</td>'
       +'<td><div>'+esc(l.title||'(no title)')+'</div>'
         +'<div class="meta">'+esc(l.listing_id)+' · <span class="via">'+(l.created_via==='tool'?'listed here':'made by hand')+'</span></div></td>'
       +'<td class="money">'+aud(l.price_cents)+'</td>'
-      +'<td class="money">'+(l.quantity==null?'—':l.quantity)+(l.sold_qty?'<div class="meta">'+l.sold_qty+' sold</div>':'')+'</td>'
+      +'<td class="money">'+(avail==null?'—':avail)+(l.sold_qty?'<div class="meta">'+l.sold_qty+' sold</div>':'')+'</td>'
       +'<td><span class="st '+esc(l.state||'')+'">'+esc(String(l.state||'?').toUpperCase())+'</span></td>'
       +'<td>'+(l.item_id?'<a href="/inventory.html">#'+l.item_id+'</a>':'<a href="/listing-match.html">match it</a>')+'</td>'
       +'<td><div class="rowact">'
@@ -159,6 +240,15 @@ $('import').onclick=async(e)=>{
   }catch(err){ $('status').className='status err'; $('status').textContent=String(err&&err.message||err); }
   finally{ b.disabled=false; b.textContent='Import from eBay'; }
 };
+for(const th of document.querySelectorAll('th.s')) th.onclick=()=>{
+  const k=th.dataset.s;
+  SORT = SORT.k===k ? {k,dir:-SORT.dir} : {k,dir:1};
+  try{localStorage.setItem('bk_listings_sort',JSON.stringify(SORT));}catch(e){}
+  render();
+};
+$('showDone').checked=SHOW_DONE;
+$('showDone').onchange=()=>{ SHOW_DONE=$('showDone').checked;
+  try{localStorage.setItem('bk_listings_done',SHOW_DONE?'1':'0');}catch(e){} render(); };
 for(const c of document.querySelectorAll('.chip')) c.onclick=()=>{
   F[c.dataset.f]=c.dataset.v;
   for(const o of document.querySelectorAll('.chip[data-f="'+c.dataset.f+'"]')) o.classList.toggle('on',o===c);
