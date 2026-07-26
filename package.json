@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --disable-warning=ExperimentalWarning --test \"test/unit/*.test.mjs\" \"test/invariants/*.test.mjs\" \"test/data/*.test.mjs\"",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/unit/*.test.mjs\" \"test/invariants/*.test.mjs\" \"test/data/*.test.mjs\" \"test/integration/*.test.mjs\"",
     "test:watch": "node --disable-warning=ExperimentalWarning --test --watch \"test/unit/*.test.mjs\" \"test/invariants/*.test.mjs\" \"test/data/*.test.mjs\"",
     "test:integration": "node --disable-warning=ExperimentalWarning --test \"test/integration/*.test.mjs\"",
     "verify": "pnpm test && pnpm test:integration"

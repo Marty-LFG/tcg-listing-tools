@@ -74,6 +74,16 @@
   .rowact{display:flex;gap:6px;justify-content:flex-end;}
   .mini{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:7px;padding:3px 8px;font-size:11px;cursor:pointer;}
   .mini:hover{border-color:var(--gold);color:var(--gold);}
+  .mini:disabled,.btn:disabled{opacity:.45;cursor:default;}
+  tr.editrow td{background:var(--panel2);border-bottom:1px solid var(--line);}
+  .editbox{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:2px 0;}
+  .editbox label{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);display:flex;gap:7px;align-items:center;}
+  .editbox input{background:var(--bg);border:1px solid var(--line2);color:var(--text);border-radius:7px;padding:6px 9px;
+    font-family:var(--mono);font-size:12.5px;width:104px;font-variant-numeric:tabular-nums;}
+  .editbox input:focus{outline:none;border-color:var(--gold);}
+  .btn.sm{padding:6px 11px;font-size:11.5px;}
+  .editnote{font-size:11.5px;color:var(--muted);font-family:var(--mono);}
+  .editnote.ok{color:var(--green);} .editnote.err{color:var(--red);}
 </style>
 </head>
 <body>
@@ -213,9 +223,52 @@ function render(){
       +'<td><div class="rowact">'
         +(l.listing_url?'<a class="mini" href="'+esc(l.listing_url)+'" target="_blank" rel="noopener">eBay ↗</a>':'')
         +(ours?'<button class="mini" data-recheck="'+l.item_id+'">Re-check</button>':'')
-      +'</div></td></tr>';
+        // Hand-made and still live: Trading can revise it. Ours cannot be revised this way at all.
+        +(!ours&&l.state==='active'&&l.created_via==='manual'?'<button class="mini" data-edit="'+esc(l.listing_id)+'">Edit</button>':'')
+      +'</div></td></tr>'
+      +'<tr class="editrow" id="ed-'+esc(l.listing_id)+'" hidden><td colspan="7">'
+        +'<div class="editbox">'
+          +'<label>Price A$ <input type="number" step="0.01" min="0" data-f="price" value="'+(l.price_cents!=null?(l.price_cents/100).toFixed(2):'')+'"></label>'
+          +'<label>Available <input type="number" step="1" min="1" data-f="qty" value="'+(avail!=null?avail:'')+'"></label>'
+          +'<button class="btn sm" data-save="'+esc(l.listing_id)+'">Send to eBay</button>'
+          +'<button class="mini" data-cancel="'+esc(l.listing_id)+'">Cancel</button>'
+          +'<span class="editnote"></span>'
+        +'</div></td></tr>';
   }).join('');
   for(const b of $('rows').querySelectorAll('[data-recheck]')) b.onclick=()=>recheck(+b.dataset.recheck,b);
+  for(const b of $('rows').querySelectorAll('[data-edit]')) b.onclick=()=>{
+    const row=$('ed-'+b.dataset.edit); row.hidden=!row.hidden;
+    if(!row.hidden) row.querySelector('[data-f="price"]').focus();
+  };
+  for(const b of $('rows').querySelectorAll('[data-cancel]')) b.onclick=()=>{ $('ed-'+b.dataset.cancel).hidden=true; };
+  for(const b of $('rows').querySelectorAll('[data-save]')) b.onclick=()=>saveRevise(b.dataset.save,b);
+}
+// Send a price/quantity change to a hand-made listing. The server preflights against eBay and can
+// refuse (auction, ended, quantity 0, a price more than 5x away) — a refusal is shown, not retried.
+async function saveRevise(listingId,btn,force){
+  const box=btn.closest('.editbox'), note=box.querySelector('.editnote');
+  const price=box.querySelector('[data-f="price"]').value.trim();
+  const qty=box.querySelector('[data-f="qty"]').value.trim();
+  const body={};
+  if(price!=='') body.priceCents=Math.round(parseFloat(price)*100);
+  if(qty!=='') body.availableQty=parseInt(qty,10);
+  if(force) body.force=true;
+  if(body.priceCents==null&&body.availableQty==null){ note.className='editnote err'; note.textContent='nothing to change'; return; }
+  btn.disabled=true; note.className='editnote'; note.textContent='sending to eBay…';
+  try{
+    const r=await fetch('/api/listings/mirror/'+encodeURIComponent(listingId)+'/revise',
+      {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json());
+    if(r.ok){
+      note.className='editnote ok';
+      note.textContent='✓ eBay now shows '+aud(r.after&&r.after.price_cents)+' · '+((r.after&&r.after.available_qty)??'?')+' available';
+      setTimeout(load,900);
+    } else if(r.code==='price_sanity'){
+      note.className='editnote err';
+      note.innerHTML=esc(r.error)+' <button class="mini" id="force-'+esc(listingId)+'">Yes, I mean it</button>';
+      note.querySelector('button').onclick=()=>saveRevise(listingId,btn,true);
+      btn.disabled=false;
+    } else { note.className='editnote err'; note.textContent=r.error||'eBay refused it'; btn.disabled=false; }
+  }catch(e){ note.className='editnote err'; note.textContent=String(e&&e.message||e); btn.disabled=false; }
 }
 async function recheck(itemId,btn){
   btn.disabled=true; btn.textContent='…';
