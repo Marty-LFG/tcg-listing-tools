@@ -91,6 +91,7 @@
   .kv .k{color:var(--muted);display:flex;align-items:center;gap:6px;}
   .kv .v{font-family:var(--mono);font-size:12px;text-align:right;color:var(--text);}
   .kv .v.ok{color:var(--green);} .kv .v.bad{color:var(--red);} .kv .v.warn{color:var(--amber);} .kv .v.dim{color:var(--faint);}
+  .dim{color:var(--faint);}   /* utility: the rule above only matches a .v that is ITSELF .dim, so a nested note went unstyled */
 
   /* systems table */
   .systable{width:100%;border-collapse:collapse;font-size:12.5px;}
@@ -620,6 +621,33 @@
     return {node:cell,wide:f.wide};
   }
 
+  // The physical stock-label series. Unseeded is the interesting state: it means new items are still
+  // getting BK-* labels, because AAA-001 is already on a shelf somewhere and re-issuing it would
+  // point a label at the wrong card. Reading eBay is the one-click way to continue the series.
+  async function renderLabelRow(){
+    const n=$('ebLabel'); if(!n) return;
+    let st; try{ st=await fetch('/api/inventory/labels').then(r=>r.json()); }catch(e){ n.textContent='unknown'; return; }
+    n.innerHTML=(st.seeded
+      ? '<b>'+esc(st.next)+'</b> <span class="dim">(last issued '+esc(st.current)+')</span>'
+      : '<span class="pill bad plain">not set</span> <span class="dim">new items still get BK-… labels</span>')
+      +'<button class="btn sm lbl-seed" style="margin-left:8px;">Read from eBay</button>'
+      +'<div class="savenote lbl-note" style="margin-top:4px;"></div>';
+    const note=n.querySelector('.lbl-note');
+    n.querySelector('.lbl-seed').onclick=async(e)=>{
+      const b=e.currentTarget; b.disabled=true; b.textContent='reading eBay…'; note.textContent='';
+      try{
+        const j=await fetch('/api/listings/labels/seed-from-ebay',{method:'POST'}).then(r=>r.json());
+        await renderLabelRow();
+        const n2=$('ebLabel'), note2=n2&&n2.querySelector('.lbl-note'); if(!note2) return;
+        note2.style.color=j.ok?'var(--green)':'var(--gold)';
+        note2.textContent=j.ok
+          ? '✓ highest on eBay '+j.highestOnEbay+' across '+j.scanned+' labels — next is '+j.next
+            +(j.truncated?' · only the first pages were scanned':'')
+          : (j.error||j.note||'no labels found');
+      }catch(err){ note.style.color='var(--red)'; note.textContent=String(err&&err.message||err); b.disabled=false; b.textContent='Read from eBay'; }
+    };
+  }
+
   async function renderEbayListingSetup(card){
     const body=card.querySelector('.ebset-body'); const btn=card.querySelector('.ebset-run'); const note=card.querySelector('.ebset-note');
     body.innerHTML='<span class="dim">checking…</span>';
@@ -642,7 +670,11 @@
       '<div class="kv"><span class="k">Merchant location</span><span class="v">'+(st.merchantLocationKey?esc(st.merchantLocationKey):yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Ready to list</span><span class="v">'+yn(st.ready)+'</span></div>'+
       '<div class="kv"><span class="k">Listing as</span><span class="v" id="ebIdentity">checking…</span></div>'+
-      '<div class="kv"><span class="k">Store category</span><span class="v" id="ebStoreCat">checking…</span></div>';
+      '<div class="kv"><span class="k">Store category</span><span class="v" id="ebStoreCat">checking…</span></div>'+
+      '<div class="kv"><span class="k">Next stock label</span><span class="v" id="ebLabel">checking…</span></div>';
+    // The AAA-001 series (AGENTS.md 16b). Until it is seeded, new items keep the old BK-* labels —
+    // starting at AAA-001 would re-issue a label that is already on a shelf.
+    renderLabelRow();
     // Which eBay identity the token actually posts under, and where in the storefront listings land.
     // Both were invisible until the first API listing turned up under a bare username in "Other".
     fetch('/api/repricer/oauth/test',{method:'POST'}).then(r=>r.json()).then(j=>{
