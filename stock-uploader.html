@@ -299,7 +299,7 @@ function compsQuery(){
   return ['Pokemon',card.name,card.number,card.set_name].filter(Boolean).join(' ');   // same parts the server joins
 }
 function ebaySearchUrl(q,sold){
-  const p=new URLSearchParams({_nkw:q,LH_BIN:'1',_sop:sold?'13':'16'});   // 13 ended recently · 16 price+post lowest
+  const p=new URLSearchParams({_nkw:q,LH_BIN:'1',_sop:sold?'13':'15'});   // 13 ended recently · 15 price+post lowest
   if(sold){ p.set('LH_Sold','1'); p.set('LH_Complete','1'); }
   return 'https://www.ebay.com.au/sch/i.html?'+p.toString();
 }
