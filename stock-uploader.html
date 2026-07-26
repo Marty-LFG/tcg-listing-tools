@@ -366,6 +366,16 @@ async function checkStock(){
     renderStock();
   }catch(e){ box.style.display='none'; }
 }
+// Only channel_status 'active' means the listing is actually live. A listing id alone proves it was
+// listed ONCE — the row keeps it after the listing ends — so showing "listed ↗" off the id makes the
+// app claim stock is for sale when it is not. The reconcile job is what moves 'active' to 'ended'.
+function stockStateHtml(it){
+  const link=it.listingUrl?' <a href="'+esc(it.listingUrl)+'" target="_blank" rel="noopener">view ↗</a>':'';
+  if(String(it.status||'')==='sold') return '<span class="muted">sold</span>'+link;
+  if(it.channel_status==='active') return '<span style="color:var(--green)">live on eBay</span>'+link;
+  if(it.channel_status==='ended'||it.ebay_listing_id) return '<span class="muted">ended</span>'+link;
+  return '<span class="muted">in stock, not listed</span>';
+}
 function condWord(it){
   if(it.graded) return (it.grading_company||'')+' '+(it.grade!=null?it.grade:'');
   return (it.condition||'').replace(/^ungraded,\s*/i,'');
@@ -378,9 +388,7 @@ function renderStock(){
     +'<span class="stk-sku">'+esc(it.sku||'—')+'</span>'
     +'<span class="stk-meta">'+esc(condWord(it))+(it.variant?' · '+esc(it.variant):'')
       +' · qty '+it.quantity+(it.location?' · '+esc(it.location):'')+'</span>'
-    +'<span class="stk-state">'+(it.ebay_listing_id
-        ? '<a href="'+esc(it.listingUrl)+'" target="_blank" rel="noopener">listed ↗</a>'
-        : '<span class="muted">in stock, not listed</span>')+'</span>'
+    +'<span class="stk-state">'+stockStateHtml(it)+'</span>'
     +(exact?'<button class="ghost stk-add" data-id="'+it.id+'" data-qty="'+it.quantity+'" data-ours="'+(it.ours?1:0)+'">+1 to this</button>':'')
     +'</div>';
   box.innerHTML='<div class="stkwrap">'

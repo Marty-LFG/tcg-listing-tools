@@ -141,6 +141,14 @@
   .ownrow .on{font-size:12.5px;color:#fff;font-weight:500;}
   .ownrow .om{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px;}
   .ownrow .og{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--gold);border:1px solid rgba(212,176,114,.25);border-radius:6px;padding:3px 8px;white-space:nowrap;}
+  /* Listing state, so a row can never just say "owned" and leave you guessing whether it is live. */
+  .ostate{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.06em;border-radius:5px;padding:2px 6px;white-space:nowrap;border:1px solid transparent;}
+  .ostate.live{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.08);}
+  .ostate.ended{color:var(--muted);border-color:var(--line2);}
+  .ostate.sold{color:var(--violet);border-color:rgba(160,130,240,.35);}
+  .ostate.unlisted{color:var(--faint);border-color:var(--line);}
+  .ownrow a.olink{color:var(--green);text-decoration:none;font-size:10.5px;font-family:var(--mono);}
+  .ownfilt{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 11px;}
   .spin{display:inline-block;width:15px;height:15px;border:2px solid var(--line2);border-top-color:var(--gold);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-3px;}
   @keyframes rot{to{transform:rotate(360deg);}}
   .dw-cardhead{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:2px 0 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:9px;}
@@ -516,20 +524,56 @@ function wireEditForm(set,isNew){
 async function reloadIntl(){PKM_INTL=null;state.intlAge='';await renderGrid();}
 let _flashT;
 function flash(msg,cls){let el=$('flash');if(!el){el=document.createElement('div');el.id='flash';el.className='flash';document.body.appendChild(el);}el.textContent=msg;el.className='flash '+(cls||'')+' show';clearTimeout(_flashT);_flashT=setTimeout(()=>{el.className='flash '+(cls||'');},3200);}
+// What a stock row is actually doing on eBay. channel_status is written by publish ('active') and by
+// the reconcile job ('ended'), so a row that was ended on eBay reads 'ended' — provided reconcile has
+// run. status 'sold' wins over everything: the card has left the building.
+function ownState(it){
+  if(String(it.status||'')==='sold') return {k:'sold',label:'SOLD'};
+  const ch=String(it.channel_status||'');
+  if(ch==='active') return {k:'live',label:'LIVE'};
+  if(ch==='ended') return {k:'ended',label:'ENDED'};
+  if(it.ebay_listing_id) return {k:'ended',label:'WAS LISTED'};
+  return {k:'unlisted',label:'IN STOCK'};
+}
+const OWNFILTERS=[['all','All'],['live','On eBay'],['unlisted','Not listed'],['sold','Sold']];
+let ownFilter=(function(){try{return localStorage.getItem('tcg_catalog_ownfilter')||'all';}catch(e){return 'all';}})();
+
 function ownedBlock(own){
   const wrap=document.createElement('div');wrap.className='dw-owned';
-  const rows=[];
-  for(const it of own.graded)rows.push(
-    '<div class="ownrow">'+(it.image_url?'<img class="oi" src="'+esc(it.image_url)+'" loading="lazy" alt="">':'<span class="oi"></span>')+
-    '<div><div class="on">'+esc(it.name||'Card')+(it.number?' · #'+esc(it.number):'')+'</div>'+
-    '<div class="om">'+esc(it.set_name||'')+(it.sku?' · '+esc(it.sku):'')+'</div></div>'+
-    '<span class="og">'+esc((it.grading_company||'')+(it.grade!=null?' '+it.grade:''))+'</span></div>');
-  for(const it of own.sealed)rows.push(
-    '<div class="ownrow">'+(it.image_url?'<img class="oi" src="'+esc(it.image_url)+'" loading="lazy" alt="">':'<span class="oi"></span>')+
-    '<div><div class="on">'+esc(it.name||'Sealed')+'</div>'+
-    '<div class="om">'+esc(it.product_type||'sealed')+(it.set_name?' · '+esc(it.set_name):'')+'</div></div>'+
-    '<span class="og">SEALED</span></div>');
-  wrap.innerHTML='<div class="dw-sechead">In your collection · '+rows.length+'</div>'+rows.join('');
+  const render=()=>{
+    const rows=[];
+    const keep=(st)=>ownFilter==='all'||(ownFilter==='live'&&st.k==='live')
+      ||(ownFilter==='unlisted'&&(st.k==='unlisted'||st.k==='ended'))||(ownFilter==='sold'&&st.k==='sold');
+    let hidden=0;
+    for(const it of own.graded){
+      const st=ownState(it);
+      if(!keep(st)){hidden++;continue;}
+      rows.push('<div class="ownrow">'+(it.image_url?'<img class="oi" src="'+esc(it.image_url)+'" loading="lazy" alt="">':'<span class="oi"></span>')+
+        '<div style="min-width:0;flex:1;"><div class="on">'+esc(it.name||'Card')+(it.number?' · #'+esc(it.number):'')+'</div>'+
+        '<div class="om">'+esc(it.sku||'')+(it.condition?' · '+esc(String(it.condition).replace(/^ungraded,\s*/i,'')):'')+
+          (it.variant?' · '+esc(it.variant):'')+(it.quantity>1?' · qty '+it.quantity:'')+'</div></div>'+
+        (it.ebay_listing_id?'<a class="olink" href="https://www.ebay.com.au/itm/'+esc(it.ebay_listing_id)+'" target="_blank" rel="noopener">view ↗</a>':'')+
+        '<span class="ostate '+st.k+'">'+st.label+'</span>'+
+        ((it.grading_company)?'<span class="og">'+esc(it.grading_company+(it.grade!=null?' '+it.grade:''))+'</span>':'')+'</div>');
+    }
+    for(const it of own.sealed){
+      const st=ownState(it);
+      if(!keep(st)){hidden++;continue;}
+      rows.push('<div class="ownrow">'+(it.image_url?'<img class="oi" src="'+esc(it.image_url)+'" loading="lazy" alt="">':'<span class="oi"></span>')+
+        '<div style="min-width:0;flex:1;"><div class="on">'+esc(it.name||'Sealed')+'</div>'+
+        '<div class="om">'+esc(it.sku||it.product_type||'sealed')+'</div></div>'+
+        '<span class="ostate '+st.k+'">'+st.label+'</span><span class="og">SEALED</span></div>');
+    }
+    const total=own.graded.length+own.sealed.length;
+    wrap.innerHTML='<div class="dw-sechead">In your collection · '+rows.length+(hidden?' of '+total:'')+'</div>'
+      +'<div class="ownfilt">'+OWNFILTERS.map(([k,l])=>'<button class="chip'+(ownFilter===k?' on':'')+'" data-f="'+k+'">'+l+'</button>').join('')+'</div>'
+      +(rows.length?rows.join(''):'<div class="om" style="padding:6px 2px;">Nothing here matches that filter.</div>');
+    for(const b of wrap.querySelectorAll('.ownfilt .chip')) b.onclick=()=>{
+      ownFilter=b.dataset.f; try{localStorage.setItem('tcg_catalog_ownfilter',ownFilter);}catch(e){}
+      render();
+    };
+  };
+  render();
   return wrap;
 }
 function closeDrawer(){$('scrim').classList.remove('open');$('drawer').classList.remove('open');$('drawer').setAttribute('aria-hidden','true');_openRid=null;}
