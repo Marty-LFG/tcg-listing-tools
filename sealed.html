@@ -158,6 +158,15 @@
   .placehead .tot{font-family:var(--mono);color:var(--muted);font-size:11.5px;}
   .placehead .tot strong{color:var(--text);font-weight:700;}
   /* view toggle + grid */
+  /* clickable sort headers — same idiom as listings.html and locations.html */
+  .sortbar{display:inline-flex;align-items:center;gap:2px;flex-wrap:wrap;}
+  .sortbar .sb-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);margin-right:6px;}
+  .sortbar .sb{background:transparent;border:none;color:var(--muted);font-family:var(--sans);font-size:11px;
+    text-transform:uppercase;letter-spacing:.08em;font-weight:700;padding:5px 7px;border-radius:7px;cursor:pointer;transition:color .12s,background .12s;}
+  .sortbar .sb:hover{color:var(--text);background:rgba(255,255,255,.04);}
+  .sortbar .sb.on{color:var(--gold);}
+  .sortbar .sb .car{opacity:0;font-size:8px;margin-left:3px;}
+  .sortbar .sb:hover .car{opacity:.45;} .sortbar .sb.on .car{opacity:1;}
   .viewtog{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;}
   .vbtn{background:transparent;border:none;color:var(--muted);padding:7px 12px;cursor:pointer;font-size:15px;line-height:1;transition:.15s;}
   .vbtn:hover{color:var(--text);}
@@ -245,13 +254,7 @@
       <select id="f_location" onchange="load()" title="Filter by storage location"><option value="">All locations</option></select>
       <select id="f_status" onchange="load()"><option value="">All status</option><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select>
       <input id="f_q" placeholder="search name / SKU / UPC" style="width:190px;" oninput="debouncedLoad()">
-      <select id="f_sort" onchange="renderStock()" title="Sort" style="margin-left:auto;">
-        <option value="added">Newest first</option>
-        <option value="name">Name A–Z</option>
-        <option value="value_desc">Value: high → low</option>
-        <option value="value_asc">Value: low → high</option>
-        <option value="pl_desc">Gain/loss: high → low</option>
-      </select>
+      <span class="sortbar" id="sortbar" style="margin-left:auto;"></span>
       <div class="viewtog" role="group" aria-label="View">
         <button id="viewList" class="vbtn on" onclick="setView('list')" title="List view" aria-label="List view">☰</button>
         <button id="viewGrid" class="vbtn" onclick="setView('grid')" title="Grid view" aria-label="Grid view">▦</button>
@@ -503,19 +506,40 @@ function gridCard(it){
     +'</div>'
   +'</div>';
 }
+// Clickable sort headers, same idiom as the listings and locations pages: click a column, click it
+// again to reverse, choice remembered. Money columns are right-aligned so they sit over the money
+// block in each card.
+const SORT_COLS=[['name','Name'],['qty','Units'],['cost','Cost'],['value','Value'],['pl','Gain/loss'],['added','Added']];
+let SSORT=(function(){try{return JSON.parse(localStorage.getItem('bk_sealed_sort'))||{k:'added',dir:-1};}catch(e){return {k:'added',dir:-1};}})();
+function setSort(k){
+  SSORT = (SSORT.k===k) ? {k,dir:-SSORT.dir} : {k,dir:(k==='name')?1:-1};   // numbers open high-first
+  try{localStorage.setItem('bk_sealed_sort',JSON.stringify(SSORT));}catch(e){}
+  renderSortBar();renderStock();
+}
+function renderSortBar(){
+  const el=document.getElementById('sortbar');if(!el)return;
+  el.innerHTML='<span class="sb-lbl">sort</span>'+SORT_COLS.map(function(c){
+    const on=SSORT.k===c[0];
+    return '<button class="sb'+(on?' on':'')+'" onclick="setSort(\''+c[0]+'\')">'+c[1]
+      +'<span class="car">'+(on?(SSORT.dir===1?'▲':'▼'):'▼')+'</span></button>';}).join('');
+}
 function sortItems(items){
-  const key=(document.getElementById('f_sort')||{}).value||'added';
+  const {k,dir}=SSORT;
   const vof=it=>{const a=totalValueAud(it);return a!=null?a:(it.value_cents!=null?(it.value_cents/100)*(it.quantity||1):null);};
   const plof=it=>it.status==='sold'?realized(it):unrealized(it);
   const arr=items.slice();
-  const numDesc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return y-x;};
-  const numAsc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return x-y;};
-  switch(key){
-    case 'name': arr.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))); break;
-    case 'value_desc': arr.sort(numDesc(vof)); break;
-    case 'value_asc': arr.sort(numAsc(vof)); break;
-    case 'pl_desc': arr.sort(numDesc(plof)); break;
-    default: break;
+  // Unknowns always sink, whichever way the arrow points — an ascending sort should not open with
+  // the rows we know nothing about.
+  const by=(f)=>(a,b)=>{const x=f(a),y=f(b);
+    if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
+    return (x<y?-1:x>y?1:0)*dir;};
+  switch(k){
+    case 'name': arr.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))*dir); break;
+    case 'qty': arr.sort(by(it=>it.quantity==null?null:it.quantity)); break;
+    case 'cost': arr.sort(by(it=>costAud(it))); break;
+    case 'value': arr.sort(by(vof)); break;
+    case 'pl': arr.sort(by(plof)); break;
+    default: if(dir===1) arr.reverse(); break;                 // 'added' — the API already returns newest first
   }
   return arr;
 }
@@ -553,15 +577,21 @@ function groupItems(items){
       blendedUnit:totalQty?totalCost/totalQty:null,pl:totalVal!=null?totalVal-totalCost:null,nItems:grp.items.length});
   });
 }
+// The grouped view honours the same header choice as the flat list, so switching view does not
+// silently re-sort. (This read the old f_sort select, which no longer exists.)
 function sortGroups(groups){
-  const key=(document.getElementById('f_sort')||{}).value||'added';
+  const {k,dir}=SSORT;
   const g=groups.slice();
-  switch(key){
-    case 'name':g.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));break;
-    case 'value_desc':g.sort((a,b)=>(b.totalVal||0)-(a.totalVal||0));break;
-    case 'value_asc':g.sort((a,b)=>(a.totalVal||0)-(b.totalVal||0));break;
-    case 'pl_desc':g.sort((a,b)=>(b.pl==null?-1e15:b.pl)-(a.pl==null?-1e15:a.pl));break;
-    default:g.sort((a,b)=>(b.totalVal||0)-(a.totalVal||0));break;
+  const by=(f)=>(a,b)=>{const x=f(a),y=f(b);
+    if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
+    return (x<y?-1:x>y?1:0)*dir;};
+  switch(k){
+    case 'name':g.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))*dir);break;
+    case 'qty':g.sort(by(x=>x.totalQty));break;
+    case 'cost':g.sort(by(x=>x.totalCost));break;
+    case 'value':g.sort(by(x=>x.totalVal));break;
+    case 'pl':g.sort(by(x=>x.pl));break;
+    default:g.sort((a,b)=>(b.totalVal||0)-(a.totalVal||0));break;   // 'added' has no meaning for a group
   }
   return g;
 }
@@ -907,8 +937,14 @@ async function saveSession(btn){
   fillFilterTypes();fillTypeSelect('m_type','pokemon');
   try{const pt=await fetch('/api/sealed/product-types').then(r=>r.json());if(pt&&pt.by_game)TYPES_BY_GAME=pt.by_game;}catch(e){}
   [['viewList','list'],['viewGrid','grid'],['viewGroup','grouped']].forEach(function(p){var b=document.getElementById(p[0]);if(b)b.classList.toggle('on',VIEW===p[1]);});
+  renderSortBar();
   if(window.TCG&&TCG.loadFx)await TCG.loadFx();
-  load();focusScan();
+  await load();
+  // ?edit=<id> opens that item's editor straight away — how the Locations manifest links to a card
+  // sitting in a crate, so "which box is this in" and "fix this row" are one click apart.
+  const wanted=parseInt(new URLSearchParams(location.search).get('edit')||'',10);
+  if(Number.isFinite(wanted)&&CURRENT.some(x=>x.id===wanted)) editItem(wanted);
+  focusScan();
 })();
 </script>
 </body>

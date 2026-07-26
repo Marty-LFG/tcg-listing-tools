@@ -134,6 +134,15 @@
   .slab .slab-win img{width:100%;height:100%;object-fit:cover;display:block;}
   .slab .slab-win.noimg::after{content:"no image";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8a93a3;font-size:9px;font-family:var(--mono);letter-spacing:.05em;}
   /* view toggle + grid */
+  /* clickable sort headers — same idiom as listings.html, locations.html and sealed.html */
+  .sortbar{display:inline-flex;align-items:center;gap:2px;flex-wrap:wrap;}
+  .sortbar .sb-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);margin-right:6px;}
+  .sortbar .sb{background:transparent;border:none;color:var(--muted);font-family:var(--sans);font-size:11px;
+    text-transform:uppercase;letter-spacing:.08em;font-weight:700;padding:5px 7px;border-radius:7px;cursor:pointer;transition:color .12s,background .12s;}
+  .sortbar .sb:hover{color:var(--text);background:rgba(255,255,255,.04);}
+  .sortbar .sb.on{color:var(--gold);}
+  .sortbar .sb .car{opacity:0;font-size:8px;margin-left:3px;}
+  .sortbar .sb:hover .car{opacity:.45;} .sortbar .sb.on .car{opacity:1;}
   .viewtog{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;}
   .vbtn{background:transparent;border:none;color:var(--muted);padding:7px 12px;cursor:pointer;font-size:15px;line-height:1;transition:.15s;}
   .vbtn:hover{color:var(--text);}
@@ -193,14 +202,7 @@
       <select id="f_company" onchange="load()"><option value="">All companies</option></select>
       <select id="f_status" onchange="load()"><option value="">All status</option><option value="in_stock">In stock</option><option value="listed">Listed</option><option value="sold">Sold</option></select>
       <input id="f_q" placeholder="search name / SKU / cert" style="width:190px;" oninput="debouncedLoad()">
-      <select id="f_sort" onchange="renderStock()" title="Sort" style="margin-left:auto;">
-        <option value="added">Newest first</option>
-        <option value="name">Name A–Z</option>
-        <option value="value_desc">Value: high → low</option>
-        <option value="value_asc">Value: low → high</option>
-        <option value="grade_desc">Grade: high → low</option>
-        <option value="pl_desc">Gain/loss: high → low</option>
-      </select>
+      <span class="sortbar" id="sortbar" style="margin-left:auto;"></span>
       <div class="viewtog" role="group" aria-label="View">
         <button id="viewList" class="vbtn on" onclick="setView('list')" title="List view" aria-label="List view">☰</button>
         <button id="viewGrid" class="vbtn" onclick="setView('grid')" title="Grid view" aria-label="Grid view">▦</button>
@@ -524,20 +526,40 @@ function gridCard(it){
   +'</div>';
 }
 // Client-side sort of the loaded items (value = AUD-converted; nulls sink to the bottom).
+// Clickable sort headers, same idiom as the listings, locations and sealed pages: click a column,
+// click again to reverse, choice remembered.
+const SORT_COLS=[['name','Name'],['qty','Qty'],['cost','Cost'],['value','Value'],['pl','Gain/loss'],['grade','Grade'],['added','Added']];
+let SSORT=(function(){try{return JSON.parse(localStorage.getItem('bk_inv_sort'))||{k:'added',dir:-1};}catch(e){return {k:'added',dir:-1};}})();
+function setSort(k){
+  SSORT = (SSORT.k===k) ? {k,dir:-SSORT.dir} : {k,dir:(k==='name')?1:-1};   // numbers open high-first
+  try{localStorage.setItem('bk_inv_sort',JSON.stringify(SSORT));}catch(e){}
+  renderSortBar();renderStock();
+}
+function renderSortBar(){
+  const el=document.getElementById('sortbar');if(!el)return;
+  el.innerHTML='<span class="sb-lbl">sort</span>'+SORT_COLS.map(function(c){
+    const on=SSORT.k===c[0];
+    return '<button class="sb'+(on?' on':'')+'" onclick="setSort(\''+c[0]+'\')">'+c[1]
+      +'<span class="car">'+(on?(SSORT.dir===1?'▲':'▼'):'▼')+'</span></button>';}).join('');
+}
 function sortItems(items){
-  const key=(document.getElementById('f_sort')||{}).value||'added';
+  const {k,dir}=SSORT;
   const vof=it=>{const a=valueAud(it),q=qtyOf(it);return a!=null?a*q:(it.value_cents!=null?(it.value_cents/100)*q:null);};
+  const cof=it=>{const q=qtyOf(it);return ((it.cost_cents||0)+(it.acq_fees_cents||0))*q/100;};
   const plof=it=>it.status==='sold'?realized(it):unrealized(it);
   const arr=items.slice();
-  const numDesc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return y-x;};
-  const numAsc=(f)=>(a,b)=>{const x=f(a),y=f(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return x-y;};
-  switch(key){
-    case 'name': arr.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))); break;
-    case 'value_desc': arr.sort(numDesc(vof)); break;
-    case 'value_asc': arr.sort(numAsc(vof)); break;
-    case 'grade_desc': arr.sort(numDesc(it=>it.grade)); break;
-    case 'pl_desc': arr.sort(numDesc(plof)); break;
-    default: break;   // 'added' — keep server order (created_at DESC)
+  // Unknowns always sink, whichever way the arrow points.
+  const by=(f)=>(a,b)=>{const x=f(a),y=f(b);
+    if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
+    return (x<y?-1:x>y?1:0)*dir;};
+  switch(k){
+    case 'name': arr.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))*dir); break;
+    case 'qty': arr.sort(by(it=>qtyOf(it))); break;
+    case 'cost': arr.sort(by(cof)); break;
+    case 'value': arr.sort(by(vof)); break;
+    case 'pl': arr.sort(by(plof)); break;
+    case 'grade': arr.sort(by(it=>it.grade)); break;
+    default: if(dir===1) arr.reverse(); break;   // 'added' — server order is created_at DESC
   }
   return arr;
 }
@@ -772,6 +794,7 @@ async function removeItem(id){if(!confirm('Delete this inventory item? (cannot b
   updateCertHint();fillTiers();
   var vl=document.getElementById('viewList'),vg=document.getElementById('viewGrid');   // sync toggle to saved view
   if(vl)vl.classList.toggle('on',VIEW==='list');if(vg)vg.classList.toggle('on',VIEW==='grid');
+  renderSortBar();
   if(window.TCG&&TCG.loadFx)await TCG.loadFx();
   load();
 })();

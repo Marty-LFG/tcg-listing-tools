@@ -80,14 +80,22 @@
   .lochead .h:hover .car{opacity:.45;} .lochead .h.on .car{opacity:1;}
   .lochead .cap{display:block;font-size:9px;letter-spacing:.04em;color:var(--faint);font-weight:400;text-transform:none;margin-top:1px;}
   .lr-acts{display:flex;gap:6px;}
-  .lr-body{border-top:1px solid var(--line);padding:10px 14px 13px 36px;}
-  .manifest{width:100%;border-collapse:collapse;font-size:12.5px;}
-  .manifest td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
-  .manifest tr:last-child td{border-bottom:none;}
-  .manifest .m-q{font-family:var(--mono);color:var(--gold);width:42px;font-variant-numeric:tabular-nums;}
-  .manifest .m-sku{font-family:var(--mono);font-size:11px;color:var(--faint);width:150px;}
-  .manifest .m-v{font-family:var(--mono);text-align:right;width:104px;font-variant-numeric:tabular-nums;color:var(--muted);}
-  .manifest .m-img{width:26px;} .manifest .m-img img{width:22px;height:30px;object-fit:contain;border-radius:3px;background:var(--ink);}
+  .lr-body{border-top:1px solid var(--line);padding:6px 14px 10px;}
+  /* A contents line uses the SAME flex skeleton as the location row above it, so its quantity sits
+     under UNITS and its value under VALUE. Anything else invites reading the wrong column. */
+  .mrow{display:flex;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid var(--line);
+    text-decoration:none;color:inherit;cursor:pointer;transition:background .12s;}
+  .mrow:last-child{border-bottom:none;}
+  .mrow:hover{background:rgba(255,255,255,.03);}
+  .mrow:hover .m-name{color:var(--gold);}
+  .m-ind{width:10px;flex:none;}
+  .m-thumb{width:34px;height:34px;flex:none;border-radius:6px;object-fit:contain;background:var(--ink);border:1px solid var(--line);}
+  .m-thumb.ph{display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px;}
+  .m-name{font-size:12.5px;transition:color .12s;}
+  .m-sku{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:1px;}
+  .m-q{font-family:var(--mono);font-size:12px;color:var(--gold);font-variant-numeric:tabular-nums;}
+  .m-open{font-size:10px;color:var(--faint);opacity:0;transition:opacity .12s;}
+  .mrow:hover .m-open{opacity:1;}
   .vtoggle{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;}
   .vtoggle button{background:transparent;border:none;color:var(--muted);padding:6px 11px;cursor:pointer;font-size:12px;font-family:var(--sans);}
   .vtoggle button.on{background:var(--gold);color:var(--ink);font-weight:600;}
@@ -319,13 +327,21 @@ function locRow(l){
   const q=val('f_q').toLowerCase();
   // Value at asking — same function the Value column sorts on, so the two can never disagree.
   const val_=locValueCents(l), haveVal=val_!=null;
-  const rows=items.map(it=>'<tr>'
-    +'<td class="m-q">×'+(it.qty||0)+'</td>'
-    +'<td class="m-img">'+(it.image_url?'<img src="'+esc(it.image_url)+'" loading="lazy" alt="">':'')+'</td>'
-    +'<td>'+esc(it.name||'—')+(it.status&&it.status!=='in_stock'?' <span class="chip" style="font-size:9px;">'+esc(it.status)+'</span>':'')+'</td>'
-    +'<td class="m-sku">'+esc(it.sku||'')+'</td>'
-    +'<td class="m-v">'+(it.unit_value_cents!=null?audc(it.unit_value_cents*(it.qty||0)):'—')+'</td>'
-    +'</tr>').join('');
+  // Each line is a link into that item's editor in the sealed tool — finding a card in a crate and
+  // fixing its details should not be a two-page hunt.
+  const rows=items.map(it=>'<a class="mrow" href="/sealed.html?edit='+it.id+'" title="Open this item in Sealed">'
+    +'<span class="m-ind"></span>'
+    +(it.image_url?'<img class="m-thumb" src="'+esc(it.image_url)+'" loading="lazy" alt="">':'<span class="m-thumb ph">📦</span>')
+    +'<span style="min-width:0;"><span class="m-name">'+esc(it.name||'—')
+      +(it.status&&it.status!=='in_stock'?' <span class="chip" style="font-size:9px;">'+esc(it.status)+'</span>':'')+'</span>'
+      +'<div class="m-sku">'+esc(it.sku||'')+'</div></span>'
+    +'<span class="m-open">edit ↗</span>'
+    +'<span class="lr-spacer"></span>'
+    +'<span class="lr-n"></span>'
+    +'<span class="lr-n m-q">×'+(it.qty||0)+'</span>'
+    +'<span class="lr-val" style="color:var(--muted);font-weight:400;">'+(it.unit_value_cents!=null?audc(it.unit_value_cents*(it.qty||0)):'—')+'</span>'
+    +'<span class="lr-actw"></span>'
+  +'</a>').join('');
   return '<div class="locrow'+(open?' open':'')+'">'
     +'<div class="lr-head" onclick="toggleLoc('+JSON.stringify(l.name).replace(/"/g,'&quot;')+')">'
       +'<span class="lr-tw">▶</span>'
@@ -343,7 +359,7 @@ function locRow(l){
       +'</span>'
     +'</div>'
     +(open?'<div class="lr-body">'+(items.length
-        ? '<table class="manifest">'+rows+'</table>'
+        ? rows
         : '<div class="empty" style="padding:6px 2px;font-size:12.5px;">Nothing is stored here yet.</div>')+'</div>':'')
   +'</div>';
 }
