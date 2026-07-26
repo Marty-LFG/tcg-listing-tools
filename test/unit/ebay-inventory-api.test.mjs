@@ -3,7 +3,7 @@
 // fixed-price, best-offer terms, condition enum, and that grading rides as numeric descriptors).
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInventoryItemPayload, buildOfferPayload } from '../../lib/channels/ebay-inventory-api.mjs';
+import { buildInventoryItemPayload, buildOfferPayload, publishListing } from '../../lib/channels/ebay-inventory-api.mjs';
 import { toEbayListing, loadEbayCategories } from '../../lib/channels/ebay-map.mjs';
 import { resolveConditionDescriptorIds, parseConditionPolicies, __test } from '../../lib/ebay-taxonomy.mjs';
 
@@ -76,6 +76,51 @@ describe('resolveConditionDescriptorIds (baked fallback, no network)', () => {
   it('an unbaked grade with no live data is reported unresolved (never guessed)', async () => {
     const out = await resolveConditionDescriptorIds({}, [{ name: 'Professional Grader', value: 'PSA' }, { name: 'Grade', value: '9.5' }], { graded: true });
     assert.ok(out.unresolved.some((u) => /Grade/.test(u)), 'grade 9.5 has no baked id → unresolved');
+  });
+});
+
+describe('resolveConditionDescriptorIds (live metadata beats the baked table)', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+  const resp = (json, status = 200) => ({ ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(json) });
+
+  it("matches eBay's sentence-case value name against our title-case enum", async () => {
+    // Regression: the lookup was an exact key hit, so 'Near Mint or Better' never matched eBay's
+    // 'Near mint or better'. Live data could never win and every listing silently shipped baked ids.
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('/identity/v1/oauth2/token')) return resp({ access_token: 'tok', expires_in: 7200 });
+      if (u.includes('get_item_condition_policies')) {
+        return resp({ itemConditionPolicies: [{ categoryId: '183050', itemConditions: [
+          { conditionId: '4000', conditionDescriptors: [{ name: '40001', conditionDescriptorValues: [
+            { conditionDescriptorValueId: '400099', conditionDescriptorValueName: 'Near mint or better' }] }] }] }] });
+      }
+      return resp({}, 404);
+    };
+    const out = await resolveConditionDescriptorIds({ EBAY_APP_ID: 'PRD-x', EBAY_CERT_ID: 'PRD-y' },
+      [{ name: 'Card Condition', value: 'Near Mint or Better' }], { graded: false, categoryId: '183050' });
+    assert.deepEqual(out.descriptors[0], { name: '40001', value: ['400099'] }, 'live id, not the baked 400010');
+    assert.equal(out.source, 'live');
+  });
+
+  it('an unknown descriptor name is reported unresolved, never silently dropped', async () => {
+    const out = await resolveConditionDescriptorIds({}, [{ name: 'Sparkliness', value: 'high' }], { graded: false });
+    assert.deepEqual(out.descriptors, []);
+    assert.ok(out.unresolved.some((u) => /Sparkliness/.test(u)), 'must block publish rather than ship a bare condition');
+  });
+});
+
+describe('publishListing guards', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+  it('refuses a trading-card condition with no resolved descriptors, without calling eBay', async () => {
+    let called = false;
+    globalThis.fetch = async () => { called = true; throw new Error('must not reach eBay'); };
+    const res = await publishListing({}, { listing: rawListing, cfg: CFG, imageUrls: ['https://eps/1.jpg'], conditionDescriptors: [] });
+    assert.equal(res.ok, false);
+    assert.match(res.error, /requires conditionDescriptors/);
+    assert.equal(called, false, 'the guard must fire before the PUT');
+    assert.ok(res.requestBody, 'the rejected body is returned for diagnosis');
   });
 });
 

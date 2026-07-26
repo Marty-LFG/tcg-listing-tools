@@ -415,11 +415,32 @@ async function doList(){
     if(photos.length){ stat($('listStatus'),'load','Uploading photos…'); await uploadPhotos(id); }
     stat($('listStatus'),'load','Publishing to eBay…');
     const out=await fetch('/api/listings/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(publishBody(id))}).then(r=>r.json());
-    if(!out.ok){ act&&act.fail('failed'); stat($('listStatus'),'err',out.error||'publish failed'); $('listBtn').disabled=false; return; }
+    if(!out.ok){ act&&act.fail('failed'); stat($('listStatus'),'err',out.error||'publish failed'); showFailureDetail(out); $('listBtn').disabled=false; return; }
     act&&act.done('live'); stat($('listStatus'),'ok','Live on eBay! SKU '+out.sku); toast('Listed ✓');
     $('resultBox').innerHTML='<div class="result">Listed as <b>'+esc(out.sku)+'</b>'+(out.url?' — <a href="'+esc(out.url)+'" target="_blank" rel="noopener">view on eBay ↗</a>':'')+'<br><span class="muted">Added to inventory · listing id '+esc(out.listingId||'?')+'</span></div>';
   }catch(e){ act&&act.fail('error'); stat($('listStatus'),'err',String(e&&e.message||e)); }
   finally{ $('listBtn').disabled=false; }
+}
+
+// Render what eBay actually said. A bare red line ("[25001] A system error has occurred") is not
+// enough to act on: the HTTP status says whether it is our payload (4xx) or eBay's backend (5xx), and
+// the rlogid is the only id eBay Support can trace. Collapsed by default — this is for a bad day.
+function showFailureDetail(out){
+  const box=$('resultBox'); if(!box) return;
+  const steps=Array.isArray(out.steps)?out.steps:[];
+  if(!steps.length&&!out.rawResponse){ box.innerHTML=''; return; }
+  const failed=steps.filter(s=>!s.ok);
+  const rows=steps.map(s=>'<div>'+(s.ok?'✓':'✗')+' '+esc(s.step)
+    +(s.httpStatus?' · HTTP '+esc(s.httpStatus):'')
+    +(s.attempts>1?' · '+esc(s.attempts)+' attempts':'')
+    +(s.requestId?' · rlogid '+esc(s.requestId):'')
+    +(s.error?'<br><span class="muted">'+esc(s.error)+'</span>':'')+'</div>').join('');
+  const raw=out.rawResponse?'<pre style="white-space:pre-wrap;font-size:11px;margin-top:8px;">'+esc(JSON.stringify(out.rawResponse,null,2)).slice(0,4000)+'</pre>':'';
+  const hint=failed.some(s=>s.httpStatus>=500)
+    ? 'HTTP 5xx is eBay’s own backend — already retried 4 times. Worth one more try in a few minutes before changing anything.'
+    : failed.some(s=>s.httpStatus>=400) ? 'HTTP 4xx means eBay rejected what we sent — the payload needs a change, retrying will not help.' : '';
+  box.innerHTML='<details style="margin-top:10px;"><summary class="muted" style="cursor:pointer;">What eBay said</summary>'
+    +'<div class="comps" style="margin-top:8px;">'+rows+(hint?'<div style="margin-top:8px;">'+esc(hint)+'</div>':'')+raw+'</div></details>';
 }
 
 // ---- boot ----

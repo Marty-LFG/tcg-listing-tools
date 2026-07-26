@@ -89,6 +89,18 @@ describe('restErrors / firstErrorText', () => {
     assert.match(firstErrorText(json), /25709/);
     assert.match(firstErrorText(json), /Invalid value for Condition/);
   });
+  it('joins every error so a generic wrapper cannot hide the specific one', () => {
+    // eBay pairs [25001] "Core Inventory Service internal error" with the error that names the real
+    // problem. Reporting only errors[0] is what made a live publish failure undiagnosable.
+    const json = { errors: [
+      { errorId: 25001, message: 'A system error has occurred', longMessage: 'Core Inventory Service internal error' },
+      { errorId: 25604, message: 'Product not found', parameters: [{ name: 'sku', value: 'BK-PKM-1' }] },
+    ] };
+    const t = firstErrorText(json);
+    assert.match(t, /25001/);
+    assert.match(t, /25604/);
+    assert.match(t, /sku=BK-PKM-1/);
+  });
   it('empty on a clean body', () => {
     assert.deepEqual(restErrors({}), []);
     assert.equal(firstErrorText({}), null);
