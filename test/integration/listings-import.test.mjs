@@ -141,6 +141,21 @@ describe('importSellerListings', () => {
     assert.equal(db.prepare('SELECT COUNT(*) c FROM inventory_items').get().c, before);
   });
 
+  it('never issues a label that is on an eBay listing but not in stock', async () => {
+    // Most of this seller's labels live ONLY on hand-made listings. A stock-only check happily
+    // re-issued one that was on a live listing — which is how AAC-088 came up as "next" while a
+    // hand-made listing already carried it.
+    const { nextStockLabel, seedStockLabels, labelTaken } = await import('../../lib/inventory.mjs');
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,sku,title,state,created_via)
+                VALUES ('3001','AAC-088','Pokemon Fan Rotom 250/217 Ascended Heroes',' active','manual')`).run();
+    assert.equal(labelTaken(db, 'AAC-088'), true, 'a label on an eBay listing is taken');
+    assert.equal(labelTaken(db, 'AAC-999'), false);
+    seedStockLabels(db, 285);                       // last issued AAC-087, so AAC-088 is next in line
+    const issued = nextStockLabel(db);
+    assert.notEqual(issued, 'AAC-088', 'must skip the label that is on a live eBay listing');
+    assert.equal(labelTaken(db, issued), false, 'and whatever it does issue must be free: ' + issued);
+  });
+
   it('reports an eBay failure without touching the mirror', async () => {
     const before = db.prepare('SELECT COUNT(*) c FROM ebay_seller_listings').get().c;
     globalThis.fetch = async (u) => String(u).includes('/oauth2/token')

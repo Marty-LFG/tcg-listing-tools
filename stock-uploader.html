@@ -73,6 +73,8 @@
   .stk-sku{font-weight:700;font-family:ui-monospace,Consolas,monospace;letter-spacing:.5px;}
   .stk-meta{color:var(--muted);flex:1;min-width:140px;}
   .stk-add{padding:4px 10px;font-size:12px;}
+  .stk-warn{background:rgba(240,102,110,.09);border:1px solid rgba(240,102,110,.4);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12.5px;color:var(--red);line-height:1.5;}
+  .stk-warn a{color:var(--red);font-weight:700;}
   .storecats{margin-top:10px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;}
   .scat{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line);}
   .scat:last-child{border-bottom:none;}
@@ -118,6 +120,11 @@
           <div><label>Quantity</label><input id="qty" type="number" min="1" value="1"></div>
           <div><label>Finish</label><select id="finish"><option>Holo</option><option>Reverse Holo</option><option>Non-holo</option><option>Foil</option></select></div>
           <div><label>Condition</label><select id="condSel"><option value="raw">Ungraded</option><option value="graded">Graded</option></select></div>
+        </div>
+        <div class="row2" style="margin-top:10px;">
+          <div><label>Custom label <span class="muted" id="lblHint" style="text-transform:none;letter-spacing:0;"></span></label>
+            <input id="stockLabel" autocomplete="off" placeholder="AAC-088"></div>
+          <div></div>
         </div>
         <div id="rawCond" class="row2" style="margin-top:10px;">
           <div><label>Card condition</label><select id="rawGrade">
@@ -281,7 +288,7 @@ async function doLookup(){
     loadStoreCats();
     savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
     priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
-    loadPrice(); checkStock();
+    loadPrice(); checkStock(); loadNextLabel();
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
 function renderCard(){
@@ -349,6 +356,37 @@ async function loadPrice(){
   syncEbayLinks();
 }
 
+// ---- the custom label (eBay calls it Custom label; it is the shelf slot) ----
+// Shown BEFORE listing because there is no way to change it afterwards: the label is bound to the
+// listing for its life. Left blank, the server allocates the next one in the AAA-001 series.
+let LABEL_NEXT=null;
+async function loadNextLabel(){
+  try{
+    const j=await fetch('/api/inventory/labels').then(r=>r.json());
+    LABEL_NEXT=j.next||null;
+    $('lblHint').textContent=j.seeded
+      ? '— next is '+j.next+', leave blank to take it'
+      : '— series not set up yet, so this gets a BK-… label (fix in Settings)';
+    $('stockLabel').placeholder=j.next||'BK-PKM-…';
+  }catch(e){ $('lblHint').textContent=''; }
+}
+// A typed label must look like the series and must not already be in use. Checked as you type so the
+// answer arrives before the listing does, not as a 500 afterwards.
+async function checkLabel(){
+  const v=$('stockLabel').value.trim().toUpperCase();
+  const hint=$('lblHint');
+  if(!v){ loadNextLabel(); return true; }
+  if(!/^[A-Z]{3}-\d{1,3}$/.test(v)){ hint.textContent='— needs the AAA-001 shape'; hint.style.color='var(--red)'; return false; }
+  try{
+    const j=await fetch('/api/inventory/items?q='+encodeURIComponent(v)).then(r=>r.json());
+    const taken=(j.items||[]).some(i=>String(i.sku||'').toUpperCase()===v);
+    hint.textContent=taken?'— already used by another card':'— will use '+v;
+    hint.style.color=taken?'var(--red)':'var(--green)';
+    return !taken;
+  }catch(e){ hint.textContent=''; return true; }
+}
+$('stockLabel').addEventListener('input',()=>{clearTimeout(window._lblT);window._lblT=setTimeout(checkLabel,350);});
+
 // ---- do we already hold this card? ----
 // Condition and finish are part of the identity: a Lightly Played copy is separate stock from a Near
 // Mint one and gets its own listing. An EXACT match is the same physical thing, so the usual answer
@@ -382,7 +420,7 @@ function condWord(it){
 }
 function renderStock(){
   const box=$('stockBox'), m=stockMatch;
-  if(!m||(!m.exact.length&&!m.near.length)){ box.style.display='none'; return; }
+  if(!m||(!m.exact.length&&!m.near.length&&!(m.onEbay||[]).length)){ box.style.display='none'; return; }
   box.style.display='';
   const line=(it,exact)=>'<div class="stk'+(exact?' hit':'')+'">'
     +'<span class="stk-sku">'+esc(it.sku||'—')+'</span>'
@@ -391,10 +429,18 @@ function renderStock(){
     +'<span class="stk-state">'+stockStateHtml(it)+'</span>'
     +(exact?'<button class="ghost stk-add" data-id="'+it.id+'" data-qty="'+it.quantity+'" data-ours="'+(it.ours?1:0)+'">+1 to this</button>':'')
     +'</div>';
-  box.innerHTML='<div class="stkwrap">'
+  // eBay refuses a second listing for an item you already have up, and says so only AFTER you press
+  // List. Warn here instead, and include hand-made listings — those are not in stock at all, which is
+  // how [25002] got hit in the first place.
+  const live=(m.onEbay||[]).filter(l=>l.state==='active');
+  const dupe=live.length?'<div class="stk-warn">Already on eBay — '+live.map(l=>
+      '<a href="'+esc(l.listing_url||('https://www.ebay.com.au/itm/'+l.listing_id))+'" target="_blank" rel="noopener">'
+      +esc(l.sku||l.listing_id)+' ↗</a>'+(l.created_via==='manual'?' <span class="muted">(made by hand)</span>':'')).join(', ')
+    +'. eBay won’t take a second listing for the same card, so add to that one instead of making a new one.</div>':'';
+  box.innerHTML='<div class="stkwrap">'+dupe
     +(m.exact.length
       ? '<div class="stk-head">You already have this one</div>'+m.exact.map(it=>line(it,true)).join('')
-      : '<div class="stk-head dim">Not this exact card, but you hold:</div>')
+      : (m.near.length ? '<div class="stk-head dim">Not this exact card, but you hold:</div>' : ''))
     +(m.near.length?'<div class="stk-head dim">Other copies on the shelf</div>'+m.near.map(it=>line(it,false)).join(''):'')
     +'<div class="status" id="stkStatus"></div></div>';
   for(const b of box.querySelectorAll('.stk-add')) b.onclick=()=>bumpQty(+b.dataset.id,+b.dataset.qty,b.dataset.ours==='1');
@@ -543,9 +589,13 @@ async function ensureItem(){
   if(savedItemId&&key===savedKey) return savedItemId;
   const r=cardRow();
   const body=Object.assign({},r,{quantity:parseInt($('qty').value)||1,target_price_cents:Math.round((parseFloat($('price').value)||0)*100)});
+  const typed=$('stockLabel').value.trim().toUpperCase();
+  if(typed) body.sku=typed;                       // owner-chosen shelf slot wins over the series
   const res=await fetch('/api/inventory/items',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
   if(!res.ok) throw new Error('could not save to inventory ('+res.status+')');
   const j=await res.json(); savedItemId=j.id; savedKey=key; photos._uploaded=false;
+  // Show the label that was actually allocated — it is now bound to this listing for good.
+  if(j.sku){ $('stockLabel').value=j.sku; $('lblHint').textContent='— saved as '+j.sku; $('lblHint').style.color='var(--gold)'; }
   return savedItemId;
 }
 async function uploadPhotos(itemId){
