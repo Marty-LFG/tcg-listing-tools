@@ -453,6 +453,18 @@ function sparkHtml(it){
   if(s.length<2)return '<div class="spark" style="color:var(--muted);font-size:11px;">no value history</div>';
   return '<div class="spark">'+(window.TCG?TCG.lineGraph(s):'')+'</div>';
 }
+// Is this card on eBay right now? channel_status is set to 'active' by publish and moved to 'ended'
+// by the reconcile job. A listing id ALONE proves only that it was listed once — the row keeps it
+// after the listing ends — so it must never be read as "live". Nothing renders for stock that has
+// never been listed, which keeps the common case quiet.
+function listedPill(it){
+  const url=it.ebay_listing_id?'https://www.ebay.com.au/itm/'+esc(it.ebay_listing_id):null;
+  const wrap=(cls,txt)=>' <span class="pill '+cls+'" style="'+(cls==='listed-live'?'color:var(--green);border-color:rgba(67,214,160,.45);':'color:var(--muted);border-color:var(--line2);')+'">'
+    +(url?'<a href="'+url+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">'+txt+' ↗</a>':txt)+'</span>';
+  if(it.channel_status==='active') return wrap('listed-live','on eBay');
+  if(it.channel_status==='ended'||it.ebay_listing_id) return wrap('listed-ended','ended');
+  return '';
+}
 function itemRow(it){
   const slab=it.grading_company?('<div style="flex:0 0 auto;" title="'+esc(it.grading_company+(it.grade!=null?' '+it.grade:''))+'">'+slabHtml({company:it.grading_company,grade:it.grade,gradeLabel:it.grade_label,image:it.image_url,width:62})+'</div>'):'';
   const sgTxt=(function(){try{if(!it.subgrades)return '';var o=JSON.parse(it.subgrades);var pr=[];if(o.centering!=null)pr.push('Ctr '+o.centering);if(o.corners!=null)pr.push('C '+o.corners);if(o.edges!=null)pr.push('E '+o.edges);if(o.surface!=null)pr.push('S '+o.surface);return pr.length?'<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">'+pr.join(' · ')+'</div>':'';}catch(e){return '';}})();
@@ -463,7 +475,7 @@ function itemRow(it){
   return '<div class="card"><div class="row">'
     +slab
     +'<div style="min-width:180px;flex:1;">'
-      +'<div class="nm">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+(q>1?' <span class="pill" style="color:var(--muted);border-color:var(--line2);">×'+q+'</span>':'')+'</div>'
+      +'<div class="nm">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+listedPill(it)+(q>1?' <span class="pill" style="color:var(--muted);border-color:var(--line2);">×'+q+'</span>':'')+'</div>'
       +'<div class="key">'+esc(GAME_NAMES[it.game]||it.game)+(it.set_name?' · '+esc(it.set_name):'')+(it.number?' · #'+esc(it.number):'')+(it.language&&it.language!=='EN'?' · '+esc(it.language):'')+(it.variant?' · '+esc(it.variant):'')+(it.cert_number?' · cert '+esc(it.cert_number):'')+'</div>'
       +'<div class="sku">'+esc(it.sku)+(it.location?' · 📍 '+esc(it.location):'')+'</div>'
       +sgTxt
@@ -496,7 +508,7 @@ function gridCard(it){
   return '<div class="gtile">'
     +'<div class="g-slab" title="'+esc(it.grading_company?(it.grading_company+(it.grade!=null?' '+it.grade:'')):'raw')+'">'+slab+'</div>'
     +'<div class="g-body">'
-      +'<div class="g-name" title="'+esc(it.name)+'">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+(q>1?' <span class="pill" style="color:var(--muted);border-color:var(--line2);">×'+q+'</span>':'')+'</div>'
+      +'<div class="g-name" title="'+esc(it.name)+'">'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+listedPill(it)+(q>1?' <span class="pill" style="color:var(--muted);border-color:var(--line2);">×'+q+'</span>':'')+'</div>'
       +(setLine?'<div class="g-set">'+setLine+'</div>':'')
       +'<div class="g-set">'+esc(it.sku)+(it.variant?' · '+esc(it.variant):'')+'</div>'
       +'<div class="g-price">'+(vlot!=null?aud(vlot):(it.value_cents!=null?esc(it.value_currency)+' '+((it.value_cents/100)*q).toFixed(2):'—'))+'</div>'+vnative

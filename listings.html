@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>eBay listings — Binders Keepers</title>
+<style>
+  :root{--gold:#f0c020;--gold-dim:rgba(240,192,32,.35);--green:#43d6a0;--red:#f0666e;--violet:#a082f0;
+    --bg:#080b16;--panel:#0f1424;--panel2:#141a2e;--line:#1e2740;--line2:#2b3552;--text:#e8ecf7;
+    --muted:#7f8aa8;--faint:#5a6480;--mono:ui-monospace,Consolas,monospace;}
+  *{box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:26px 22px 80px;}
+  .wrap{max-width:1280px;margin:0 auto;}
+  a{color:var(--green);}
+  h1{font-size:24px;margin:2px 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 18px;}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
+  .tile .k{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;}
+  .tile .v{font-size:22px;font-weight:700;margin-top:4px;font-family:var(--mono);}
+  .tile .v small{font-size:11px;color:var(--muted);font-weight:500;font-family:inherit;}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+  .chip{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;}
+  .chip.on{background:var(--gold);border-color:var(--gold);color:#0c1430;font-weight:700;}
+  .btn{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-weight:700;border-radius:9px;padding:8px 13px;cursor:pointer;font-size:12.5px;}
+  .btn:hover{background:var(--gold);color:#0c1430;}
+  .btn:disabled{opacity:.5;cursor:default;}
+  input[type=search]{background:var(--panel);border:1px solid var(--line2);color:var(--text);border-radius:9px;padding:8px 12px;font-size:13px;min-width:230px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  .lbl{font-family:var(--mono);font-size:11.5px;color:var(--gold);white-space:nowrap;}
+  .meta{color:var(--muted);font-size:11px;font-family:var(--mono);}
+  .money{font-family:var(--mono);font-weight:600;white-space:nowrap;}
+  .st{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.05em;border-radius:5px;padding:2px 6px;border:1px solid;white-space:nowrap;}
+  .st.active{color:var(--green);border-color:rgba(67,214,160,.4);}
+  .st.ended{color:var(--muted);border-color:var(--line2);}
+  .st.sold{color:var(--violet);border-color:rgba(160,130,240,.35);}
+  .st.unsold{color:var(--faint);border-color:var(--line);}
+  .via{font-size:10px;color:var(--faint);font-family:var(--mono);}
+  .empty{color:var(--muted);padding:26px 4px;font-size:13px;}
+  .status{font-size:12.5px;min-height:18px;margin:8px 0;color:var(--muted);}
+  .status.ok{color:var(--green);} .status.err{color:var(--red);}
+  .rowact{display:flex;gap:6px;justify-content:flex-end;}
+  .mini{background:transparent;border:1px solid var(--line2);color:var(--muted);border-radius:7px;padding:3px 8px;font-size:11px;cursor:pointer;}
+  .mini:hover{border-color:var(--gold);color:var(--gold);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="font-size:12px;">← All tools</a>
+  <h1>eBay listings</h1>
+  <div class="sub">Everything on your eBay account, as eBay reports it — the ones this tool published and the ones you made by hand.</div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="bar">
+    <span class="meta">STATE</span>
+    <button class="chip" data-f="state" data-v="">All</button>
+    <button class="chip on" data-f="state" data-v="active">Active</button>
+    <button class="chip" data-f="state" data-v="ended">Ended</button>
+    <button class="chip" data-f="state" data-v="sold">Sold</button>
+    <span class="meta" style="margin-left:10px;">MADE</span>
+    <button class="chip on" data-f="via" data-v="">Either</button>
+    <button class="chip" data-f="via" data-v="tool">Here</button>
+    <button class="chip" data-f="via" data-v="manual">By hand</button>
+    <span class="meta" style="margin-left:10px;">STOCK</span>
+    <button class="chip on" data-f="link" data-v="">Either</button>
+    <button class="chip" data-f="link" data-v="linked">Linked</button>
+    <button class="chip" data-f="link" data-v="unlinked">Not linked</button>
+    <span style="flex:1;"></span>
+    <input type="search" id="q" placeholder="title, label or item id">
+    <button class="btn" id="import">Import from eBay</button>
+  </div>
+  <div class="status" id="status">loading…</div>
+
+  <table><thead><tr>
+    <th style="width:96px;">Label</th><th>Listing</th><th style="width:90px;">Price</th>
+    <th style="width:52px;">Qty</th><th style="width:74px;">State</th><th style="width:112px;">Stock</th><th style="width:150px;"></th>
+  </tr></thead><tbody id="rows"></tbody></table>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const aud=c=>c==null?'—':'A$'+(c/100).toFixed(2);
+let ALL=[], F={state:'active',via:'',link:''};
+
+async function load(){
+  $('status').className='status'; $('status').textContent='loading…';
+  try{
+    const j=await fetch('/api/listings/mirror?limit=1000').then(r=>r.json());
+    ALL=j.listings||[];
+    const li=j.lastImport;
+    $('status').textContent=ALL.length
+      ? (li&&li.at?'Last import '+new Date(li.at).toLocaleString():'Never imported — press Import from eBay')
+      : 'Nothing mirrored yet. Press Import from eBay to pull your listings in.';
+    tiles(); render();
+  }catch(e){ $('status').className='status err'; $('status').textContent=String(e&&e.message||e); }
+}
+function tiles(){
+  const active=ALL.filter(l=>l.state==='active');
+  const val=active.reduce((a,l)=>a+((l.price_cents||0)*(l.quantity||1)),0);
+  const manual=ALL.filter(l=>l.created_via==='manual').length;
+  const unlinked=active.filter(l=>!l.item_id).length;
+  const t=(k,v,note)=>'<div class="tile"><div class="k">'+k+'</div><div class="v">'+v+(note?' <small>'+note+'</small>':'')+'</div></div>';
+  $('tiles').innerHTML=t('Active',active.length,'listings')+t('Shelf value',aud(val),'at asking')
+    +t('Made by hand',manual,'of '+ALL.length)+t('Not linked',unlinked,'to stock');
+}
+function render(){
+  const q=$('q').value.trim().toLowerCase();
+  const rows=ALL.filter(l=>{
+    if(F.state&&l.state!==F.state) return false;
+    if(F.via&&l.created_via!==F.via) return false;
+    if(F.link==='linked'&&!l.item_id) return false;
+    if(F.link==='unlinked'&&l.item_id) return false;
+    if(q&&!((l.title||'')+' '+(l.sku||'')+' '+l.listing_id).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if(!rows.length){ $('rows').innerHTML='<tr><td colspan="7" class="empty">Nothing matches those filters.</td></tr>'; return; }
+  $('rows').innerHTML=rows.map(l=>{
+    // Only a listing WE published can be revised through the Inventory API — a hand-made one is
+    // invisible to it, so we offer eBay rather than a button that cannot work.
+    const ours=l.created_via==='tool'&&l.item_id;
+    return '<tr>'
+      +'<td class="lbl">'+esc(l.sku||'—')+'</td>'
+      +'<td><div>'+esc(l.title||'(no title)')+'</div>'
+        +'<div class="meta">'+esc(l.listing_id)+' · <span class="via">'+(l.created_via==='tool'?'listed here':'made by hand')+'</span></div></td>'
+      +'<td class="money">'+aud(l.price_cents)+'</td>'
+      +'<td class="money">'+(l.quantity==null?'—':l.quantity)+(l.sold_qty?'<div class="meta">'+l.sold_qty+' sold</div>':'')+'</td>'
+      +'<td><span class="st '+esc(l.state||'')+'">'+esc(String(l.state||'?').toUpperCase())+'</span></td>'
+      +'<td>'+(l.item_id?'<a href="/inventory.html">#'+l.item_id+'</a>':'<a href="/listing-match.html">match it</a>')+'</td>'
+      +'<td><div class="rowact">'
+        +(l.listing_url?'<a class="mini" href="'+esc(l.listing_url)+'" target="_blank" rel="noopener">eBay ↗</a>':'')
+        +(ours?'<button class="mini" data-recheck="'+l.item_id+'">Re-check</button>':'')
+      +'</div></td></tr>';
+  }).join('');
+  for(const b of $('rows').querySelectorAll('[data-recheck]')) b.onclick=()=>recheck(+b.dataset.recheck,b);
+}
+async function recheck(itemId,btn){
+  btn.disabled=true; btn.textContent='…';
+  try{
+    const j=await fetch('/api/listings/'+itemId+'/recheck',{method:'POST'}).then(r=>r.json());
+    $('status').className='status '+(j.ok?'ok':'err');
+    $('status').textContent=j.ok
+      ? (j.checked?('eBay says '+(j.listingStatus||'?')+(j.ended?' — marked ended here':'')):j.note)
+      : (j.error||'re-check failed');
+    await load();
+  }catch(e){ $('status').className='status err'; $('status').textContent=String(e&&e.message||e); btn.disabled=false; btn.textContent='Re-check'; }
+}
+$('import').onclick=async(e)=>{
+  const b=e.currentTarget; b.disabled=true; b.textContent='importing…';
+  try{
+    const r=await fetch('/api/listings/import',{method:'POST'}).then(x=>x.json());
+    $('status').className='status '+(r.ok?'ok':'err');
+    $('status').textContent=r.ok
+      ? '✓ '+r.imported+' listings ('+r.manual+' made by hand) · '+r.linked+' matched a stock label'+(r.ended?' · '+r.ended+' no longer on eBay':'')
+      : (r.error||'import failed');
+    await load();
+  }catch(err){ $('status').className='status err'; $('status').textContent=String(err&&err.message||err); }
+  finally{ b.disabled=false; b.textContent='Import from eBay'; }
+};
+for(const c of document.querySelectorAll('.chip')) c.onclick=()=>{
+  F[c.dataset.f]=c.dataset.v;
+  for(const o of document.querySelectorAll('.chip[data-f="'+c.dataset.f+'"]')) o.classList.toggle('on',o===c);
+  render();
+};
+$('q').addEventListener('input',render);
+load();
+</script>
+</body>
+</html>
