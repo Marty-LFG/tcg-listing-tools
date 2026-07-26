@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Match eBay listings to cards</title>
+<style>
+  :root{--gold:#f0c020;--gold-dim:rgba(240,192,32,.35);--green:#43d6a0;--red:#f0666e;
+    --bg:#080b16;--panel:#0f1424;--panel2:#141a2e;--line:#1e2740;--text:#e8ecf7;--muted:#7f8aa8;--mono:ui-monospace,Consolas,monospace;}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:28px 22px 80px;}
+  .wrap{max-width:1180px;margin:0 auto;}
+  h1{font-size:24px;margin:2px 0 4px;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+  .btn{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-weight:700;border-radius:9px;padding:9px 14px;cursor:pointer;font-size:13px;}
+  .btn:hover{background:var(--gold);color:#0c1430;}
+  .btn.go{background:var(--gold);color:#0c1430;border-color:var(--gold);}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .count{font-family:var(--mono);font-size:12px;color:var(--muted);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--line);}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tr.on{background:rgba(240,192,32,.05);}
+  .ttl{color:var(--text);}
+  .lbl{font-family:var(--mono);font-size:11.5px;color:var(--gold);}
+  .card{font-weight:600;}
+  .meta{color:var(--muted);font-size:11.5px;font-family:var(--mono);}
+  .conf{font-family:var(--mono);font-size:10px;font-weight:700;border-radius:5px;padding:2px 6px;border:1px solid;}
+  .conf.high{color:var(--green);border-color:rgba(67,214,160,.4);}
+  .conf.medium{color:var(--gold);border-color:var(--gold-dim);}
+  .conf.low,.conf.none{color:var(--muted);border-color:var(--line);}
+  .note{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--muted);font-size:12.5px;margin-bottom:16px;line-height:1.6;}
+  .status{font-size:13px;min-height:20px;margin:10px 0;}
+  .ok{color:var(--green);} .err{color:var(--red);}
+  a{color:var(--green);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="font-size:12px;">← All tools</a>
+  <h1>Match eBay listings to cards</h1>
+  <div class="sub">Your hand-made listings live only on eBay. This reads each title and proposes which card it is, so the catalog can show them.</div>
+
+  <div class="note">
+    Nothing is written until you press Apply. A proposal marked <b>high</b> matched on its custom label,
+    which is the label itself telling us — those are safe. <b>Medium</b> read the set and number out of
+    the title. Anything lower could not find both, and is left for you to sort out on eBay.
+  </div>
+
+  <div class="bar">
+    <button class="btn" id="reload">Reload proposals</button>
+    <button class="btn" id="pickHigh">Tick high + medium</button>
+    <button class="btn" id="pickNone">Untick all</button>
+    <span class="count" id="counts"></span>
+    <span style="flex:1;"></span>
+    <button class="btn go" id="apply" disabled>Apply <span id="applyN">0</span></button>
+  </div>
+  <div class="status" id="status">loading…</div>
+  <table id="tbl"><thead><tr>
+    <th style="width:28px;"></th><th>eBay listing</th><th>Reads as</th><th style="width:90px;">Confidence</th><th style="width:80px;">State</th>
+  </tr></thead><tbody id="rows"></tbody></table>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let PROPS=[], picked=new Set();
+
+async function load(){
+  $('status').textContent='reading your mirrored listings…'; $('status').className='status';
+  try{
+    const j=await fetch('/api/listings/mirror/resolve?limit=500').then(r=>r.json());
+    if(!j.ok){ $('status').className='status err'; $('status').textContent=j.note||'could not resolve'; PROPS=[]; render(); return; }
+    PROPS=j.proposals||[]; picked=new Set();
+    $('counts').textContent=(j.counts?('high '+j.counts.high+' · medium '+j.counts.medium+' · low '+j.counts.low+' · unreadable '+j.counts.none):'');
+    $('status').textContent=PROPS.length?PROPS.length+' listings are not linked to a card yet.':'Every mirrored listing is already linked to a card.';
+    render();
+  }catch(e){ $('status').className='status err'; $('status').textContent=String(e&&e.message||e); }
+}
+function render(){
+  $('rows').innerHTML=PROPS.map((p,i)=>{
+    const pa=p.parsed||{}, can=!!(p.existingItemId||pa.identityGuess);
+    return '<tr class="'+(picked.has(p.listing_id)?'on':'')+'">'
+      +'<td>'+(can?'<input type="checkbox" data-i="'+i+'"'+(picked.has(p.listing_id)?' checked':'')+'>':'')+'</td>'
+      +'<td><div class="ttl">'+esc(p.title||'(no title)')+'</div>'
+        +'<div class="meta">'+esc(p.sku||'no custom label')+' · '
+        +(p.listing_url?'<a href="'+esc(p.listing_url)+'" target="_blank" rel="noopener">'+esc(p.listing_id)+' ↗</a>':esc(p.listing_id))+'</div></td>'
+      +'<td>'+(p.existingItemId
+          ? '<div class="card">already in stock as '+esc(p.sku)+'</div><div class="meta">links to that row</div>'
+          : pa.identityGuess
+            ? '<div class="card">'+esc(pa.name||'?')+'</div><div class="meta">'+esc(pa.setName||'?')+' · #'+esc(pa.number||'?')+' · '+esc(pa.identityGuess)+(pa.finish?' · '+esc(pa.finish):'')+'</div>'
+            : '<div class="meta">could not read'+(pa.missing&&pa.missing.length?' ('+esc(pa.missing.join(', '))+')':'')+'</div>')+'</td>'
+      +'<td><span class="conf '+esc(p.confidence)+'">'+esc(String(p.confidence).toUpperCase())+'</span></td>'
+      +'<td class="meta">'+esc(p.state||'')+'</td></tr>';
+  }).join('');
+  for(const cb of $('rows').querySelectorAll('input[data-i]')) cb.onchange=()=>{
+    const p=PROPS[+cb.dataset.i];
+    if(cb.checked) picked.add(p.listing_id); else picked.delete(p.listing_id);
+    render();
+  };
+  $('applyN').textContent=picked.size; $('apply').disabled=!picked.size;
+}
+$('reload').onclick=load;
+$('pickHigh').onclick=()=>{ picked=new Set(PROPS.filter(p=>p.confidence==='high'||p.confidence==='medium').map(p=>p.listing_id)); render(); };
+$('pickNone').onclick=()=>{ picked=new Set(); render(); };
+$('apply').onclick=async()=>{
+  const links=PROPS.filter(p=>picked.has(p.listing_id)).map(p=>({listing_id:p.listing_id,itemId:p.existingItemId||undefined}));
+  $('apply').disabled=true; $('status').className='status'; $('status').textContent='applying '+links.length+'…';
+  try{
+    const r=await fetch('/api/listings/mirror/link',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({links})}).then(x=>x.json());
+    $('status').className='status ok';
+    $('status').textContent='✓ linked '+r.linked+(r.created?' · created '+r.created+' stock rows':'')
+      +(r.skipped&&r.skipped.length?' · skipped '+r.skipped.length:'');
+    await load();
+  }catch(e){ $('status').className='status err'; $('status').textContent=String(e&&e.message||e); $('apply').disabled=false; }
+};
+load();
+</script>
+</body>
+</html>

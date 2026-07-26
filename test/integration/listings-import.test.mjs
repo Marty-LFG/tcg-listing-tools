@@ -14,7 +14,7 @@ const DB_PATH = path.join(os.tmpdir(), 'tcg-import-test-' + process.pid + '.db')
 process.env.TCG_TRACKER_DB = DB_PATH;
 
 const { openDb } = await import('../../lib/db.mjs');
-const { importSellerListings } = await import('../../lib/listings.mjs');
+const { importSellerListings, linkMirrorListings } = await import('../../lib/listings.mjs');
 
 const ENV = { EBAY_APP_ID: 'PRD-x', EBAY_CERT_ID: 'PRD-y', EBAY_REFRESH_TOKEN: 'fake' };
 const realFetch = globalThis.fetch;
@@ -90,6 +90,55 @@ describe('importSellerListings', () => {
     const r = await importSellerListings(ENV, db);
     assert.equal(r.truncated, true);
     assert.equal(r.ended, 0, 'a partial scan must not mass-end the shop');
+  });
+
+  it('links a mirrored listing to a card read out of its title, and refuses the unreadable ones', async () => {
+    // The route version of this shipped a bug — SQLite reads a double-quoted empty string as an
+    // IDENTIFIER, so every create threw while the UI still reported success. Hence a test.
+    const SETS = [{ id: 'sv9', name: 'Journey Together' }, { id: 'swsh11', name: 'Lost Origin' }];
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,sku,title,quantity,state,created_via)
+                VALUES ('2001','AAC-084','Pokemon Wailord 162/159 Journey Together Illustration Rare Holo EN M/NM',1,'active','manual')`).run();
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,sku,title,quantity,state,created_via)
+                VALUES ('2002','AAC-090','Pokemon Radiant Gardevoir 069/196 Lost Origin Radiant Rare Holo EN M/NM',1,'active','manual')`).run();
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,sku,title,quantity,state,created_via)
+                VALUES ('2003','AAC-091','Bulk lot of 100 assorted cards',1,'active','manual')`).run();
+
+    const r = linkMirrorListings(db, [{ listing_id: '2001' }, { listing_id: '2002' }, { listing_id: '2003' }, { listing_id: 'nope' }], SETS);
+    assert.equal(r.linked, 2);
+    assert.equal(r.created, 1, 'only 2002 is new — 2001 carries a label that already exists in stock');
+
+    // 2001's label matched a stock row that predates identity_key, so it links to THAT row rather
+    // than minting a duplicate, and the identity is backfilled onto it.
+    const wailord = db.prepare("SELECT * FROM inventory_items WHERE sku = 'AAC-084'").get();
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM inventory_items WHERE sku = 'AAC-084'").get().c, 1, 'no duplicate row');
+    assert.equal(wailord.identity_key, 'sv9-162', 'identity backfilled from the title');
+    assert.equal(db.prepare("SELECT item_id FROM ebay_seller_listings WHERE listing_id='2001'").get().item_id, wailord.id);
+    assert.equal(r.skipped.length, 2);
+    assert.ok(r.skipped.some((s) => s.listing_id === '2003' && /identity/.test(s.why)), 'an unreadable title is refused, not guessed');
+    assert.ok(r.skipped.some((s) => s.listing_id === 'nope' && /mirror/.test(s.why)));
+
+    const made = db.prepare("SELECT * FROM inventory_items WHERE identity_key = 'swsh11-69'").get();
+    assert.equal(made.name, 'Radiant Gardevoir');
+    assert.equal(made.set_name, 'Lost Origin');
+    assert.equal(made.number, '069/196');
+    assert.equal(made.sku, 'AAC-090', 'the eBay custom label becomes the stock label');
+    assert.equal(made.channel_status, 'active');
+    assert.equal(made.ebay_listing_id, '2002');
+    assert.equal(db.prepare("SELECT item_id FROM ebay_seller_listings WHERE listing_id='2002'").get().item_id, made.id);
+  });
+
+  it('a listing with no custom label still gets a usable stock label', () => {
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,sku,title,quantity,state,created_via)
+                VALUES ('2004',NULL,'Pokemon Wailord 162/159 Journey Together Holo EN M/NM',1,'active','manual')`).run();
+    linkMirrorListings(db, [{ listing_id: '2004' }], [{ id: 'sv9', name: 'Journey Together' }]);
+    const made = db.prepare("SELECT sku FROM inventory_items WHERE ebay_listing_id = '2004'").get();
+    assert.equal(made.sku, 'EBAY-2004', 'sku is NOT NULL, so it falls back to the eBay item id');
+  });
+
+  it('linking the same listing twice does not create a second stock row', () => {
+    const before = db.prepare('SELECT COUNT(*) c FROM inventory_items').get().c;
+    linkMirrorListings(db, [{ listing_id: '2002' }], [{ id: 'swsh11', name: 'Lost Origin' }]);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM inventory_items').get().c, before);
   });
 
   it('reports an eBay failure without touching the mirror', async () => {
