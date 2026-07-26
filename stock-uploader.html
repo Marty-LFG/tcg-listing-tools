@@ -64,6 +64,13 @@
   .pv-specs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0 28px;margin-bottom:6px;}
   #previewCard iframe{height:620px;margin-top:10px;}
   .pv-foot{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;}
+  .storecats{margin-top:10px;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;}
+  .scat{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line);}
+  .scat:last-child{border-bottom:none;}
+  .scat input{width:auto;margin:0;}
+  .scat.on{background:rgba(240,192,32,.08);color:var(--gold);font-weight:600;}
+  .scat.parent{cursor:default;color:var(--muted);}
+  .scat-dash{opacity:.4;}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#0c1430;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99;}
   .toast.show{opacity:1;}
 </style>
@@ -148,15 +155,22 @@
         <div class="muted" id="boHint" style="display:none;margin-top:6px;"></div>
       </div>
 
+      <div class="card" id="storeCard" style="display:none;">
+        <h3>5 · Store department <span class="muted" id="storeCount" style="text-transform:none;letter-spacing:0;"></span></h3>
+        <div class="muted">Where this card sits in your eBay shop. eBay allows two, and only bottom-level
+          departments can hold items — a department with sub-departments is shown greyed out.</div>
+        <div id="storeCats" class="storecats">loading your store departments…</div>
+      </div>
+
       <div class="card" id="photoCard" style="display:none;">
-        <h3>5 · Photos <span class="muted" style="text-transform:none;letter-spacing:0;">— optional, for played cards</span></h3>
+        <h3>6 · Photos <span class="muted" style="text-transform:none;letter-spacing:0;">— optional, for played cards</span></h3>
         <div class="muted">Near-mint cards list with the catalog image. For anything below NM, add real front/back photos — they replace the stock image (eBay requires real photos on used cards).</div>
         <input id="photoInput" type="file" accept="image/*" multiple style="margin-top:10px;">
         <div class="photos" id="photoThumbs"></div>
       </div>
 
       <div class="card" id="listCard" style="display:none;">
-        <h3>6 · List it</h3>
+        <h3>7 · List it</h3>
         <div class="kv"><span>List price</span><span class="pricein" id="sumPrice">—</span></div>
         <div class="kv"><span>eBay buyer-protection fee</span><span id="sumFee" class="muted">—</span></div>
         <div class="kv"><span>Buyer pays about</span><span id="sumTotal">—</span></div>
@@ -253,7 +267,8 @@ async function doLookup(){
     renderCard();
     act&&act.done('found');
     stat($('status'),'ok','Found. Verify the details, price and offers below.');
-    ['detailsCard','priceCard','offerCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
+    ['detailsCard','priceCard','offerCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
+    loadStoreCats();
     savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
     priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
     loadPrice();
@@ -286,6 +301,7 @@ function cardRow(){
     // Everything the lookup found, persisted with the item. A later republish that carries no
     // overrides (revise-price, a repricer apply) would otherwise strip the item specifics back off:
     // createOrReplaceInventoryItem is a full replace, not a patch.
+    store_categories:storePick.slice(0,STORE_MAX),
     card_facts:JSON.stringify({hp:card.hp,pokedex:card.pokedex,regulation_mark:card.regMark,
       evolves_from:card.evolvesFrom,set_series:card.setSeries,set_code:card.setCode,
       set_release_date:card.setRelease,printed_total:card.printedTotal,types:card.types,
@@ -316,6 +332,51 @@ async function loadPrice(){
     refreshSummary();
   }catch(e){ $('compsLine').textContent='comps unavailable: '+(e&&e.message||e); }
   syncEbayLinks();
+}
+
+// ---- store departments (eBay store categories) ----
+// eBay allows a listing in at most TWO store categories, and only in BOTTOM-LEVEL ones: filing
+// against a department that has sub-departments makes eBay quietly drop the listing into "Other".
+// So parents render disabled, and the cap is enforced here rather than silently truncated server-side.
+const STORE_CATS_KEY='tcg_uploader_store_cats';
+let STORE_CATS=[], STORE_MAX=2, storePick=[];
+function storePickKey(){ return STORE_CATS_KEY+':'+(setObj?setObj.value:'')+':pokemon'; }
+async function loadStoreCats(){
+  const box=$('storeCats');
+  if(STORE_CATS.length){ renderStoreCats(); return; }
+  try{
+    const j=await fetch('/api/listings/store/categories').then(r=>r.json());
+    if(!j.ok||!Array.isArray(j.categories)||!j.categories.length){
+      box.innerHTML='<span class="muted">'+esc(j.error||'no store departments found — listings will go to “Other”')+'</span>'; return;
+    }
+    STORE_CATS=j.categories; STORE_MAX=j.max||2;
+    // Reuse the last pick for this set, else fall back to whatever Settings configured.
+    let seed=[]; try{ seed=JSON.parse(localStorage.getItem(storePickKey())||'null')||[]; }catch(e){}
+    if(!seed.length){ try{ const c=await fetch('/api/listings/config').then(r=>r.json()); const s=(c.config&&c.config.store)||{};
+      const d=(s.categoryByGame&&s.categoryByGame.pokemon)||s.defaultCategory||''; if(d) seed=Array.isArray(d)?d:[d]; }catch(e){} }
+    const leaves=new Set(STORE_CATS.filter(c=>c.leaf).map(c=>c.path));
+    storePick=seed.filter(p=>leaves.has(p)).slice(0,STORE_MAX);
+    renderStoreCats();
+  }catch(e){ box.innerHTML='<span class="muted">could not read your store departments: '+esc(String(e&&e.message||e))+'</span>'; }
+}
+function renderStoreCats(){
+  const box=$('storeCats'), full=storePick.length>=STORE_MAX;
+  box.innerHTML=STORE_CATS.map((c,i)=>{
+    const on=storePick.includes(c.path);
+    return '<label class="scat'+(c.leaf?'':' parent')+(on?' on':'')+'" style="padding-left:'+(8+(c.depth-1)*16)+'px;">'
+      +(c.leaf?'<input type="checkbox" data-i="'+i+'"'+(on?' checked':'')+(!on&&full?' disabled':'')+'>':'<span class="scat-dash">└</span>')
+      +'<span>'+esc(c.name)+'</span>'+(c.leaf?'':'<span class="muted"> — holds sub-departments</span>')+'</label>';
+  }).join('');
+  for(const cb of box.querySelectorAll('input[data-i]')){
+    cb.onchange=()=>{
+      const c=STORE_CATS[+cb.dataset.i];
+      if(cb.checked){ if(storePick.length>=STORE_MAX){ cb.checked=false; return; } storePick.push(c.path); }
+      else storePick=storePick.filter(p=>p!==c.path);
+      try{ localStorage.setItem(storePickKey(),JSON.stringify(storePick)); }catch(e){}
+      renderStoreCats();
+    };
+  }
+  $('storeCount').textContent=storePick.length?'— '+storePick.length+' of '+STORE_MAX+' chosen'+(full?', untick one to change':''):'— none chosen, this goes to “Other”';
 }
 
 // ---- eBay search shortcuts ----
@@ -411,7 +472,7 @@ function publishBody(itemId){
     supertype:card.supertype,subtypes:card.subtypeList,types:card.types,hp:card.hp,
     pokedex_numbers:card.pokedex,regulation_mark:card.regMark,set_code:card.setCode,
     set_series:card.setSeries,set_release_date:card.setRelease,printed_total:card.printedTotal,
-    evolves_from:card.evolvesFrom};
+    evolves_from:card.evolvesFrom,store_categories:storePick.slice(0,STORE_MAX)};
 }
 
 // ---- preview (dry run) ----
@@ -434,6 +495,9 @@ async function doPreview(){
     $('previewBox').innerHTML='<div class="muted">eBay title ('+(out.title||'').length+'/80)</div><div class="pv-title">'+esc(out.title)+'</div>'
       +'<div class="muted" style="margin-bottom:4px;">Item specifics</div><div class="pv-specs">'+asp+'</div>'
       +'<div class="pv-foot">'
+        +'<span class="muted">Store department: '+((out.storeCategoryNames||[]).length
+            ? esc(out.storeCategoryNames.join('  ·  '))
+            : '<span style="color:var(--red)">none — this will land in “Other”</span>')+'</span>'
         +(out.imageUrls?'<span class="muted">'+out.imageUrls.length+' image(s) hosted on eBay</span>':'')
         +(charged?'<span class="muted">Fees: '+esc(charged)+'</span>':(fees?'<span class="muted">No listing fees</span>':''))
       +'</div>'
