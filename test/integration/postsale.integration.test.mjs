@@ -118,6 +118,58 @@ describe('postsale — order ingest + CRM', () => {
   });
 });
 
+// "Picked" = pulled off the shelf and packed, but not yet posted (a weekend of orders that all go out
+// on Monday). It must NOT touch shipped_status — the order still has to be dispatched — it only drops
+// off the pull list so a re-printed pick sheet doesn't send you hunting for cards already in a satchel.
+describe('postsale — picked (pulled + packed, still to post)', () => {
+  const picksheet = (q = '') => get('/api/postsale/picksheet' + q);
+  const orderIds = (ps) => [...new Set(ps.json.rows.map((r) => r.order_id))];
+
+  it('starts with the unshipped order on the pull list', async () => {
+    const ps = await picksheet();
+    assert.deepEqual(orderIds(ps), ['T-2']);   // T-1 was marked shipped above
+  });
+
+  it('POST /orders/picked stamps picked_at without shipping the order', async () => {
+    const r = await postJson('/api/postsale/orders/picked', { ids: ['T-2'], picked: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.updated, 1);
+    assert.deepEqual(r.json.missing, []);
+    const o = (await get('/api/postsale/orders')).json.orders.find((x) => x.order_id === 'T-2');
+    assert.ok(o.picked_at, 'picked_at stamped');
+    assert.equal(o.shipped_status, 'unshipped', 'picking must not dispatch the order');
+  });
+
+  it('drops the picked order off the default pull list, keeps it under include_picked/explicit ids', async () => {
+    assert.deepEqual(orderIds(await picksheet()), []);
+    assert.deepEqual(orderIds(await picksheet('?include_picked=1')), ['T-2']);
+    assert.deepEqual(orderIds(await picksheet('?ids=T-2')), ['T-2'], 'a hand-ticked order is a deliberate re-print');
+  });
+
+  it('GET /orders?picked= filters both ways', async () => {
+    const yes = await get('/api/postsale/orders?picked=1');
+    assert.deepEqual(yes.json.orders.map((o) => o.order_id), ['T-2']);
+    const no = await get('/api/postsale/orders?picked=0');
+    assert.ok(!no.json.orders.some((o) => o.order_id === 'T-2'));
+  });
+
+  it('picked:false puts it back on the pull list', async () => {
+    const r = await postJson('/api/postsale/orders/picked', { ids: ['T-2'], picked: false });
+    assert.equal(r.json.updated, 1);
+    const o = (await get('/api/postsale/orders')).json.orders.find((x) => x.order_id === 'T-2');
+    assert.equal(o.picked_at, null);
+    assert.deepEqual(orderIds(await picksheet()), ['T-2']);
+  });
+
+  it('reports unknown ids instead of failing the batch', async () => {
+    const r = await postJson('/api/postsale/orders/picked', { ids: ['T-2', 'NOPE'], picked: true });
+    assert.equal(r.json.updated, 1);
+    assert.deepEqual(r.json.missing, ['NOPE']);
+    assert.equal((await postJson('/api/postsale/orders/picked', { ids: [] })).status, 400);
+    await postJson('/api/postsale/orders/picked', { ids: ['T-2'], picked: false });   // leave the queue as we found it
+  });
+});
+
 describe('postsale — safety', () => {
   it('GET /config exposes state but never a secret', async () => {
     const { status, json, text } = await get('/api/postsale/config');

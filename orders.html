@@ -65,6 +65,7 @@
   .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;}
   .pill.shipped{color:var(--green);border-color:rgba(67,214,160,.35);} .pill.unshipped{color:var(--amber);border-color:rgba(240,192,74,.35);}
   .pill.printed{color:var(--blue);border-color:rgba(106,176,255,.4);} .pill.queued{color:var(--muted);}
+  .pill.picked{color:var(--purple);border-color:rgba(199,155,255,.4);}
   .pill.combo{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);margin-left:6px;}
   .loc{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;margin-left:4px;}
   .loc.none{color:var(--faint);background:rgba(255,255,255,.03);}
@@ -77,6 +78,9 @@
   button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:5px 9px;cursor:pointer;transition:.15s;white-space:nowrap;}
   button.act:hover{border-color:var(--accent);color:var(--text);}
   button.act.ship:hover{border-color:var(--green);color:var(--green);}
+  button.act.pick:hover{border-color:var(--purple);color:var(--purple);}
+  tr.ispicked td{background:rgba(199,155,255,.045);}
+  tr.ispicked .items,tr.ispicked .cardthumb{opacity:.62;}
   button.act.combo{color:var(--accent);border-color:rgba(67,214,160,.4);background:var(--accent-soft);}
   button.act.combo:hover{border-color:var(--accent);color:var(--text);}
   .empty{padding:34px 16px;text-align:center;color:var(--faint);font-family:var(--mono);font-size:12.5px;}
@@ -118,10 +122,12 @@
       <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
     </div>
     <span class="chk" title="Show a preview before sending to the printer"><input type="checkbox" id="previewChk"> Preview first</span>
+    <span class="chk" title="Orders already pulled off the shelf and packed — they still need posting, they're just off the pull list"><input type="checkbox" id="hidePickedChk"> <span id="hidePickedLbl">Hide picked</span></span>
     <div class="spacer"></div>
     <span class="stepper" title="Darkness (TSPL DENSITY)">Dark <button class="s" id="densDn">&minus;</button><span class="v" id="densV">–</span><button class="s" id="densUp">+</button></span>
     <span class="stepper" title="Print speed (TSPL SPEED)">Spd <button class="s" id="spdDn">&minus;</button><span class="v" id="spdV">–</span><button class="s" id="spdUp">+</button></span>
     <button class="btn solid" id="pickBtn">🖨 Pick sheet</button>
+    <button class="btn" id="pickedBtn" title="Mark the ticked orders as pulled + packed — they drop off the pull list but stay here to dispatch">✓ Mark picked</button>
     <button class="btn" id="refreshBtn" title="Reload orders">↻</button>
   </div>
 
@@ -167,7 +173,9 @@ async function api(path, opts) {
   return j;
 }
 
-let STATE = { config:null, orders:[], counts:{}, tab:'unshipped', density:null, speed:null, excluded:new Set() };
+// excluded = rows the user unticked by hand; included = picked rows they deliberately ticked BACK on
+// (picked orders start unticked, so a plain "not excluded" test isn't enough to remember that choice).
+let STATE = { config:null, orders:[], counts:{}, tab:'unshipped', density:null, speed:null, excluded:new Set(), included:new Set(), hidePicked:false };
 
 /* ---------- banner ---------- */
 function renderBanner() {
@@ -210,19 +218,28 @@ function computeGroups(rows){
   byKey.forEach(g=>{ if(g.length>1) g.forEach(o=> STATE.groupOf.set(o.order_id, g)); });
 }
 function renderOrders() {
-  const rows = STATE.orders;
-  if (!rows.length) return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders appear here after the order poll runs (Diagnostics below, or every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min).</span></div>`;
-  computeGroups(rows);
+  computeGroups(STATE.orders);   // group across every loaded order, even ones hidden by "Hide picked"
+  const rows = visibleOrders();
+  if (!rows.length) {
+    if (STATE.orders.length) return `<div class="empty">Everything here is picked and packed. ✅<br><span class="faint">Untick “Hide picked” to see the ${STATE.orders.length} order${STATE.orders.length===1?'':'s'} waiting to be posted.</span></div>`;
+    return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders appear here after the order poll runs (Diagnostics below, or every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min).</span></div>`;
+  }
   return `<table><thead><tr><th class="selcol"><input type="checkbox" id="selAll" checked title="Include all in the pick sheet"></th><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid (Sydney)</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
     + rows.map(o => {
       const loc = [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_postal?` ${o.ship_postal}`:'');
-      const statusPill = `<span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>` + (o.label_status==='printed'?' <span class="pill printed">label ✓</span>':'');
+      const statusPill = `<span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>`
+        + (o.picked_at?` <span class="pill picked" title="Pulled + packed ${esc(when(o.picked_at))}">picked ✓</span>`:'')
+        + (o.label_status==='printed'?' <span class="pill printed">label ✓</span>':'');
       const shipBtn = o.shipped_status==='unshipped' ? `<button class="act ship" data-ship="${esc(o.order_id)}">✓ Mark shipped</button>` : '';
+      // Picked = pulled off the shelf and packed, still waiting to be posted. Local only — no eBay write.
+      const pickBtn = o.picked_at
+        ? `<button class="act pick" data-unpick="${esc(o.order_id)}" title="Put this back on the pull list">↺ Unpick</button>`
+        : (o.shipped_status==='unshipped' ? `<button class="act pick" data-pick="${esc(o.order_id)}" title="Pulled + packed — drop it off the pull list, keep it here to dispatch">✓ Picked</button>` : '');
       const grp = STATE.groupOf && STATE.groupOf.get(o.order_id);
       const buyerBadge = grp ? ` <span class="pill combo" title="This buyer has ${grp.length} orders to the same address">×${grp.length}</span>` : '';
       const comboBtn = grp ? `<button class="act combo" data-combined="${esc(o.order_id)}" title="One packing slip for all ${grp.length} of this buyer's orders">🧾 Combined slip (${grp.length})</button>` : '';
-      return `<tr>
-        <td class="selcol"><input type="checkbox" class="selbox" data-order="${esc(o.order_id)}" ${STATE.excluded.has(o.order_id)?'':'checked'} title="Include this order in the pick sheet"></td>
+      return `<tr class="${o.picked_at?'ispicked':''}">
+        <td class="selcol"><input type="checkbox" class="selbox" data-order="${esc(o.order_id)}" ${isSelected(o)?'checked':''} title="Include this order in the pick sheet"></td>
         <td class="mono muted">${esc(o.order_id)}${o.sales_record_number?`<br><span class="faint">rec #${esc(o.sales_record_number)}</span>`:''}</td>
         <td class="mono">@${esc(o.buyer_username||'—')}${buyerBadge}</td>
         <td>${itemsCell(o.items)}</td>
@@ -234,6 +251,7 @@ function renderOrders() {
           <button class="act" data-slip="${esc(o.order_id)}">🧾 Packing slip</button>
           ${comboBtn}
           <button class="act" data-label="${esc(o.order_id)}">📮 Address label</button>
+          ${pickBtn}
           ${shipBtn}
         </div></td>
       </tr>`;
@@ -241,9 +259,11 @@ function renderOrders() {
     + `</tbody></table>`;
 }
 function renderPanel() {
-  $('panel').innerHTML = `<h2>${STATE.tab==='unshipped'?'To pack':'All orders'}</h2>` + renderOrders();
+  const picked = STATE.orders.filter(o=>o.picked_at).length;
+  $('panel').innerHTML = `<h2>${STATE.tab==='unshipped'?'To pack':'All orders'}${picked?` · ${picked} picked`:''}</h2>` + renderOrders();
   $('n_unshipped').textContent = STATE.counts.unshipped!=null ? `(${STATE.counts.unshipped})` : '';
   $('n_all').textContent = STATE.counts.all!=null ? `(${STATE.counts.all})` : '';
+  $('hidePickedLbl').textContent = picked ? `Hide picked (${picked})` : 'Hide picked';
   updateSelAll(); updatePickBtn();
 }
 
@@ -334,9 +354,18 @@ function printLabel(id){
   const printJobs = (nud.offXmm || nud.offYmm) ? [LR.renderAddressLabel(o, nud)] : jobs;
   handleJobs(jobs, 'address label', id, printJobs);
 }
+// Rows on screen: "Hide picked" clears the packed-and-waiting orders out of the way.
+function visibleOrders(){ return STATE.hidePicked ? STATE.orders.filter(o=>!o.picked_at) : STATE.orders; }
+// A picked order starts UNTICKED — it's already in the satchel, so it has no business on the next
+// pull list — unless the user deliberately ticks it back on.
+function isSelected(o){ return STATE.included.has(o.order_id) || (!STATE.excluded.has(o.order_id) && !o.picked_at); }
 // Order ids ticked for the pick sheet (all displayed orders minus the ones unticked).
-function selectedOrderIds(){ return STATE.orders.map(o=>o.order_id).filter(id=>!STATE.excluded.has(id)); }
-function updatePickBtn(){ const n=selectedOrderIds().length; const b=$('pickBtn'); if(b) b.textContent = n && n<STATE.orders.length ? `🖨 Pick sheet (${n})` : '🖨 Pick sheet'; }
+function selectedOrderIds(){ return visibleOrders().filter(isSelected).map(o=>o.order_id); }
+function updatePickBtn(){
+  const n=selectedOrderIds().length, total=visibleOrders().length;
+  const b=$('pickBtn'); if(b) b.textContent = n && n<total ? `🖨 Pick sheet (${n})` : '🖨 Pick sheet';
+  const pb=$('pickedBtn'); if(pb){ pb.textContent = n ? `✓ Mark picked (${n})` : '✓ Mark picked'; pb.disabled = !n; }
+}
 function updateSelAll(){ const all=$('selAll'); if(!all) return; const boxes=[...document.querySelectorAll('input.selbox')]; const on=boxes.filter(b=>b.checked).length; all.checked=on===boxes.length; all.indeterminate=on>0&&on<boxes.length; }
 async function printPickSheet(){
   const ids = selectedOrderIds();
@@ -346,8 +375,28 @@ async function printPickSheet(){
     const ps = await api('/picksheet?ids='+encodeURIComponent(ids.join(',')));
     if (!ps.rows || !ps.rows.length){ setStatus('warn','Nothing to pick — the selected orders have no matched line items.'); return; }
     LR.openPrintDoc(LR.pickSheetHTML(ps.groups, { order_count:ps.order_count, item_count:ps.item_count, unit_count:ps.unit_count }));
-    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → print dialog (sorted by box).');
+    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → print dialog (sorted by box). Once they\'re pulled and packed, hit “Mark picked”.');
   } catch(e){ setStatus('err','Pick sheet failed: '+e.message); }
+}
+
+// Mark pulled + packed (or undo). Local bookkeeping only — nothing is sent to eBay and the order
+// stays in the pack queue for dispatch; it just stops appearing on the pull list.
+async function markPicked(ids, picked, btn){
+  if (!ids.length) return;
+  const orig = btn && btn.textContent;
+  if (btn){ btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await api('/orders/picked', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ids, picked }) });
+    // A picked order drops out of the default selection; clear any stale manual tick/untick for it.
+    ids.forEach(id => { STATE.included.delete(id); STATE.excluded.delete(id); });
+    setStatus('ok', picked
+      ? `${r.updated} order${r.updated===1?'':'s'} marked picked — off the pull list, still here to dispatch.`
+      : `${r.updated} order${r.updated===1?'':'s'} back on the pull list.`);
+    loadAll();
+  } catch(e){
+    if (btn){ btn.disabled = false; btn.textContent = orig || '✓ Picked'; }
+    setStatus('err', 'Could not update the picked state: '+e.message);
+  }
 }
 
 async function markShipped(id, btn){
@@ -371,19 +420,24 @@ $('tabs').addEventListener('click', (e) => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x===t));
   loadAll();
 });
+function setSelected(id, on){ if(on){ STATE.excluded.delete(id); STATE.included.add(id); } else { STATE.included.delete(id); STATE.excluded.add(id); } }
 $('panel').addEventListener('change', (e) => {
   const cb = e.target.closest('input.selbox');
-  if (cb){ if(cb.checked) STATE.excluded.delete(cb.dataset.order); else STATE.excluded.add(cb.dataset.order); updateSelAll(); updatePickBtn(); return; }
+  if (cb){ setSelected(cb.dataset.order, cb.checked); updateSelAll(); updatePickBtn(); return; }
   const all = e.target.closest('#selAll');
-  if (all){ document.querySelectorAll('input.selbox').forEach(x=>{ x.checked=all.checked; if(all.checked) STATE.excluded.delete(x.dataset.order); else STATE.excluded.add(x.dataset.order); }); all.indeterminate=false; updatePickBtn(); }
+  if (all){ document.querySelectorAll('input.selbox').forEach(x=>{ x.checked=all.checked; setSelected(x.dataset.order, all.checked); }); all.indeterminate=false; updatePickBtn(); }
 });
 $('panel').addEventListener('click', (e) => {
   const combo = e.target.closest('button[data-combined]'); if (combo) return printCombinedSlip(combo.dataset.combined);
   const slip = e.target.closest('button[data-slip]'); if (slip) return printSlip(slip.dataset.slip);
   const label = e.target.closest('button[data-label]'); if (label) return printLabel(label.dataset.label);
+  const pick = e.target.closest('button[data-pick]'); if (pick) return markPicked([pick.dataset.pick], true, pick);
+  const unpick = e.target.closest('button[data-unpick]'); if (unpick) return markPicked([unpick.dataset.unpick], false, unpick);
   const ship = e.target.closest('button[data-ship]'); if (ship) return markShipped(ship.dataset.ship, ship);
 });
 $('pickBtn').addEventListener('click', printPickSheet);
+$('pickedBtn').addEventListener('click', () => markPicked(selectedOrderIds(), true, $('pickedBtn')));
+$('hidePickedChk').addEventListener('change', () => { STATE.hidePicked = $('hidePickedChk').checked; try{localStorage.setItem('ff_hide_picked', STATE.hidePicked?'1':'');}catch(e){} renderPanel(); });
 $('refreshBtn').addEventListener('click', loadAll);
 $('pv_close').addEventListener('click', closePreview);
 $('pv_cancel').addEventListener('click', closePreview);
@@ -430,6 +484,8 @@ $('btnBackfill').addEventListener('click', async () => {
   STATE.printCfg = await LR.loadPrintCfg();
   try { const d=localStorage.getItem('ff_density'); const s=localStorage.getItem('ff_speed'); STATE.density = d!=null?+d:(STATE.printCfg.density??10); STATE.speed = s!=null?+s:(STATE.printCfg.speed??2); } catch(e){ STATE.density=10; STATE.speed=2; }
   $('densV').textContent = STATE.density; $('spdV').textContent = STATE.speed;
+  try { STATE.hidePicked = localStorage.getItem('ff_hide_picked')==='1'; } catch(e){}
+  $('hidePickedChk').checked = STATE.hidePicked;
   await loadAll();
   setInterval(loadAll, 60000);
 })();
