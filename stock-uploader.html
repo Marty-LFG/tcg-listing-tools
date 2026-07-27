@@ -693,8 +693,31 @@ function showFailureDetail(out){
     +'<div class="comps" style="margin-top:8px;">'+rows+(hint?'<div style="margin-top:8px;">'+esc(hint)+'</div>':'')+raw+'</div></details>';
 }
 
+// ---- deep link ----
+// /stock-uploader.html?set=sv3&num=125&cond=Lightly%20Played&finish=Holo — the Batch Runner hands
+// a played card over here, because a sub-NM card cannot be listed with the catalog image (eBay
+// bans stock photos on used items) and needs real front/back photos.
+const RAW_COND={'Near Mint':'Near Mint or Better','Lightly Played':'Lightly Played (Excellent)',
+  'Moderately Played':'Moderately Played (Very Good)','Heavily Played':'Heavily Played (Poor)'};
+async function applyDeepLink(){
+  const q=new URLSearchParams(location.search);
+  const wantSet=q.get('set'), wantNum=q.get('num');
+  if(!wantSet||!wantNum) return;
+  const s=SETS.find(x=>x.value===wantSet||x.code===wantSet.toUpperCase()||x.label.toLowerCase()===wantSet.toLowerCase());
+  if(!s){ stat($('status'),'warn','Could not find the set “'+esc(wantSet)+'” — pick it by hand.'); return; }
+  setObj=s; $('setCode').value=s.label; $('num').value=wantNum;
+  // Condition before the lookup: doLookup runs checkStock(), and condition is part of stock identity.
+  const c=q.get('cond'); if(c&&RAW_COND[c]){ $('condSel').value='raw'; $('gradedCond').style.display='none'; $('rawCond').style.display=''; $('rawGrade').value=RAW_COND[c]; }
+  await doLookup();
+  // Finish AFTER: doLookup derives it from rarity, so an explicit choice has to land on top of that.
+  const f=q.get('finish');
+  if(f&&card){ const opt=[...$('finish').options].find(o=>o.value.toLowerCase()===f.toLowerCase()||o.value.replace(/foil/i,'').trim().toLowerCase()===f.replace(/foil/i,'').trim().toLowerCase());
+    if(opt&&$('finish').value!==opt.value){ $('finish').value=opt.value; checkStock(); loadPrice(); } }
+  if(card&&c&&!/near\s*mint/i.test(c)) stat($('status'),'warn','Handed over from the Batch Runner — a '+esc(c)+' card needs real front and back photos before it can go live.');
+}
+
 // ---- boot ----
-(async function(){ await loadSets(); await checkAccount(); if(window.TCG&&TCG.loadFx) TCG.loadFx(); })();
+(async function(){ await loadSets(); await checkAccount(); if(window.TCG&&TCG.loadFx) TCG.loadFx(); await applyDeepLink(); })();
 </script>
 </body>
 </html>

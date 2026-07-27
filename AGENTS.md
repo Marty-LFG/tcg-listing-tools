@@ -814,3 +814,226 @@ connected account (ALCSERVER) + a completed bootstrap.
 against eBay AU). **Remaining:** an auto-scheduler for `reconcileListings`; the first real publish smoke
 on ALCSERVER (run the Settings bootstrap first); later: incoming-offer response, other games, sealed,
 Shopify (a `shopify` sink beside `ebay-map.mjs`, same SKU key).
+
+---
+
+## 18. Batch Runner (`stock-runner.html`) — many listings in one sitting
+
+§17's uploader is one card at a time. The Runner is the batch surface over the **same** endpoints:
+the two things that actually cost time are **finding/entering the card** and **verifying the price**,
+so it removes the network from the typing loop and turns price checking into one column scan.
+
+**The one structural move.** Picking a set PAGES `/api/pkm/cards?q=set.id:X&pageSize=250&page=N`
+until `totalCount` (looping, exactly as `lib/enumerate.mjs:75` does — one request truncates any set
+over 250, and Paldea Evolved is 279) and keeps a trimmed index resident in a
+`Map(setId → {byNum, byName, cards})`. Several sets stay resident at once, so a mixed shoebox costs
+one prefetch per set and 0 ms after that. **That index is both entry modes**: the pile mode looks a
+number up in it, the set-list mode renders it as a tick list. There is no second data path, which is
+why the box break costs no extra fetch. A trimmed copy is cached per set in `localStorage` (never the
+raw payloads — 1–2 MB against a ~5 MB quota shared with the set list), so a repeat pile works with
+pokemontcg.io down (GR7).
+
+**The catch line.** `125` + Enter is the whole common case; everything else is optional and
+order-free: `r|h|n` printing, `x3` quantity, `@12.50` price, `nm|lp|mp|hp` condition, `*name` search,
+and a bare set code to switch sets mid-pile. **`hp` is parsed before `h`** or "heavily played"
+silently becomes "holofoil". Resolution happens BEFORE Enter (a ghost strip), so a mistype is caught
+rather than corrected.
+
+**One label per LISTING, quantity N on it.** A repeat of the same card bumps quantity instead of
+making a second row — the only behaviour that avoids eBay `[25002]`, and the reason 5 copies take one
+`AAD-001` rather than five labels. Identity is `rowKey()`, mirroring `stockKey()` (`lib/inventory.mjs:85`):
+condition and printing are part of it, so an LP copy is separate stock from an NM one.
+
+**Printings come from DATA, never a rarity regex (GR5).** The matrix is read off the card's
+`tcgplayer.prices` keys through `PRINTING_TO_FINISH`/`PRINTING_TO_EDITION`/`variantToken`
+(`lib/listing-copy.mjs:40-77`) — the same source `ENUMERATORS.pokemon` uses. The uploader's rarity
+regex (`stock-uploader.html:282`) matches a plain `Rare` and returns Holo; a wrong finish feeds
+`finishHint()` into the comps search and returns a **confident price for a card you do not own**. It
+survives only as the fallback for a card with no price object at all, and such a row is chipped
+`from rarity`.
+
+**Triage.** Comps run behind the typing in a 3-wide client pool against the EXISTING
+`POST /api/listings/price`, which already accepts an inline `{row:{…}}` with no connect gate
+(`lib/listings.mjs:840`, `priceItem` at `:301`). Bands live in **`lib/runner-core.mjs`**
+(`deriveState`/`flagsFor`) — pure, browser-safe, imported by the page AND by
+`test/unit/runner-core.test.mjs`, so a rule cannot drift between the grid and the tests:
+`READY · PRICING · EYES · CHECK · HELD · CHECKED · STAGED · LIVE · FAILED`. Nothing publishes but
+`READY` and `CHECKED`.
+
+- **EYES** — no confident comps. The ask cell stays **EMPTY**; an empty cell is the only presentation
+  that cannot be mistaken for an answer (GR4).
+- **CHECK** — over **A$150**, or over **4× the batch median**, under A$1.20, a title at 80 chars, a
+  duplicate, a hand-typed price with no comps, or the disagreement detector. Released **per row**.
+- **HELD** — sub-NM. Batch uses catalog art and eBay bans stock photos on used items, so a played
+  card cannot be ticked at all; `o` hands it to `/stock-uploader.html?set=&num=&cond=&finish=`.
+
+**The disagreement detector is the load-bearing one.** eBay AU >2.5× or <0.4× the TCGplayer market
+(both figures already on the row, so it is free) is the only independent second opinion available,
+and it catches the one failure an intra-batch median rule structurally cannot: **a comps query that
+hooked the wrong card**. Verified live 2026-07-27: a US$0.30 Shuckle came back at **A$18.08 off 165
+ASKING listings**, reported by the engine as `confidence: medium, reliable: true`. Marketplace
+Insights (real SOLD prices) soft-403s often, and the fallback to asking prices is a quiet quality
+drop, so the footer says **"N of M priced from asking listings, not sold prices"** out loud, and a
+row with asking-only comps AND no market figure — nothing corroborating it at all — is flagged
+`unverified`.
+
+**Stage uses `POST /api/inventory/items` with `batch_id` NULL, NOT `/batches`.** Pinned by
+`test/integration/runner-stage.test.mjs`, because it is easy to "tidy" into the wrong one:
+`/batches` hands out `BK-RAW-*` via `nextBulkSku` instead of a shelf label, **drops `card_facts` and
+`store_categories`** (both in `ITEM_INSERT_COLS` but absent from its `pick({…})` literal at
+`lib/inventory.mjs:866`), which would strip the item specifics off every batch listing, and SKIPS a
+matched row that is not `in_stock` (`:861`), so re-listing a card you once sold would silently do
+nothing. Staging is a separately confirmed step naming the exact permanent label range — labels are
+monotonic and never reused (`lib/sku-labels.mjs`).
+
+### Phase 2 — the batch route, and the rules a reload cannot bypass (BUILT)
+
+**`POST /api/listings/batch { item_ids[], overrides_by_id?, bestOffer?, released_ids[] }` → NDJSON**
+(`runBatchPublish`). A loop, not a second pipeline: every row goes through `runPublish` **unchanged**,
+in the per-row try/catch shape `runSealedRefresh` / `linkMirrorListings` / `importSellerListings`
+already use. Streams `{start}` → `{row}`… → `{summary}`. **No inter-row sleep** — `lib/ebay-rest.mjs:22`
+already serialises every Sell-API call app-wide at 120 ms + jitter and honours `Retry-After`, so a
+second gate would only double the wall-clock. `guardConnected` / `accountReadyGuard` run **once**
+before the loop, not per row: they fail identically for all N, so a disconnected account costs one
+sentence rather than a hundred copies of it. `ndjsonStart` moved out of `lib/bulk.mjs` (where it was
+module-private) into **`lib/ndjson.mjs`**, so listings does not depend backwards on bulk.
+
+**The refusals, in `lib/runner-core.mjs` `refuseRow()` — the same module and the same constants the
+grid flags on**, so client and server can never drift to different numbers. Nothing equivalent
+existed before: `validateListing` only errors at `price_cents <= 0`, and `PRICE_SANITY_MULTIPLE`
+lives in `reviseTradingListing` (the hand-made Trading path) and never runs on `runPublish`.
+
+| Refusal | Releasable? |
+|---|---|
+| `no_price` | no |
+| `over_ceiling` — above **A$150** | yes, per row via `released_ids[]` |
+| `over_median` — above **4×** the batch's own median, computed server-side from the prices actually about to be sent | yes |
+| `under_floor` — below A$1.20 | yes |
+| `sub_nm_no_photos` | **no** — eBay bans stock catalog images on used items, and `runPublish:231` downloads catalog art whenever `listing_images` is empty *regardless of condition*. A policy breach is not a judgement call. |
+| `graded_no_photos` | **no** — a slab under the card's catalog scan hides the label and cert number the buyer is paying for. |
+
+Release is **per row**, never per batch. A refused row still writes a `listing_pushes` audit row with
+`status='skipped'` (a value `db.mjs:526` already documents) — a batch that silently declined half its
+rows is not reconstructable later from an empty table. Each run also writes one `channel_exports` row
+with `channel='ebay-inventory-api'`, which the table was pre-declared for and had never seen.
+
+**Abort on the first descriptor failure.** An unresolved condition descriptor is *environmental*
+(eBay Metadata unreachable), so it will fail identically for every remaining card at a round trip
+each. The batch stops, the rest come back `skipped`, and `summary.aborted` says why.
+
+**`GET /api/listings/batch/preflight?item_ids=…&released_ids=…`** — `itemToListing` + `validateListing`
++ the refusals, **zero eBay calls**, so the client gates the publish button on the server's own
+verdict for free. Deliberately not a dry-run publish: `runPublish(dryRun:true)` still PUTs a real
+inventory item, creates a real offer and uploads to EPS, and there is **no `deleteOffer` anywhere in
+`lib/channels/`** to clean up after it. Id parsing goes through `parseIdList` — `+'' === 0` and
+`Number.isFinite(0)` is true, so a naive finite check turns `?item_ids=` into a lookup for item 0.
+
+The publish modal prints the **resolved** store department names (from the server's
+`resolveStoreCategoryNames`, not the paths the page ticked) and the Best-Offer auto-accept in
+**dollars at both ends of the batch** — `resolveBestOffer` works from percentages, and one wrong
+number auto-accepts every lowball in the run at once.
+
+### Phase 3 — verification depth (BUILT)
+
+**The batch sanity strip.** One line above the grid, all of it aggregate truth that is invisible row
+by row: total ask, median, dearest-with-name, *"N of M at the mechanical undercut"*, *"N priced from
+asking listings, not sold prices"*, *"N with no confident comps"*, and *"N disagree with TCGplayer by
+more than 2.5×"* (clickable, filters to exactly those). The undercut figure is a **real invariant**,
+not decoration: `recommendedFromCluster` always lands at `cheapestInCluster − 1c`, so any row not
+sitting there was moved by hand or by an override.
+
+**Verify mode** (`V`, or the button). Hides every row that needs no decision — `READY`, `CHECKED`,
+`LIVE`, `STAGED` — so the count *shrinks as you work*. Leaving approved rows on screen would mean
+the worklist never moved and the mode bought nothing. An open drawer always stays visible.
+
+**The drawer** (click a row). `tr[data-why]`, the `listings.html` inline-edit idiom: the
+server-echoed comps query with both ↗ links, quick-price chips (`cheapest −1c` / `fair` / `+10%` /
+`TCGplayer`), a per-row condition override, a per-row store department (`pickOverrides` already
+honours `store_categories`, so no server change), and the `+N to that one instead` action when the
+row is a duplicate. **Best Offer stays batch-wide** — `runBatchPublish` takes one spec — which is
+why the publish modal prints it in resolved dollars.
+
+⚠ **A row is TWO `<tr>`s** — the row (`data-uid`) and its reason/drawer row (`data-why`). Resolving a
+delegated event with `closest('tr[data-uid]')` alone silently drops every click and change inside
+the drawer. `rowFromEvent()` matches both; the row-body-opens-drawer branch is scoped to
+`tr[data-uid]` only, or clicking the drawer's own whitespace slams it shut mid-edit.
+
+**The micro price-scale** (`scaleGeometry`, `lib/runner-core.mjs`). The obvious version is broken and
+worth naming: `clusterValue` returns `cheapestInCluster` and `clusterLo` as literally the same
+expression (`cluster[0]`, `lib/comps.mjs`), so a cheapest→hi rail with a lo→hi band draws one
+identical picture on every unedited row. What actually varies, and is therefore drawn: the domain
+spans the cluster **and** the ask (a hand-typed price outside the band stays on screen instead of
+clipping), the band is the cluster, the tick is `fair` — the cluster **median**, which genuinely
+moves — and the rail goes amber past the same `hi/lo ≥ 4` ratio `comps-singles` calls unreliable. An
+unedited caret hard left is correct: it means "we mechanically undercut".
+
+**`POST /api/inventory/match/batch { keys: [...] }`** — the same duplicate answer, for many cards in
+two SQL statements instead of N round trips. Semantics unchanged (full `stockKey`, warning not
+block). POST rather than the planned `GET ?keys=`: a hundred keys is several KB and does not belong
+in a URL. Matches on `identity_key` only — the Runner always has one, and a name fallback would cost
+a statement per distinct name, which is the round trip this endpoint exists to remove.
+
+**`POST /api/listings/batch/preflight/canary`** — a REAL dry run over at most four rows chosen by
+`pickCanaries`: the first, the dearest, then one per distinct finish × language × condition (where
+the payload actually varies). Not all rows, because a dry run still PUTs an inventory item, creates
+a real offer and uploads to EPS, and **there is no `deleteOffer` anywhere in `lib/channels/`** — each
+canary leaves an unpublished offer nothing here can remove. The UI says so.
+
+**Stale-mirror warning.** `GET /config` now carries `lastImport`. Over ~24h old (or never), a bar
+offers a one-click `POST /import` and re-runs the duplicate check on every queued row afterwards —
+a stale mirror is exactly how a hand-made Seller Hub listing slips past the check and turns into
+eBay `[25002]` at publish time, after a shelf label has been spent.
+
+**`cachedEps` fix** (`lib/ebay-media.mjs`). It keyed on `(item_id, source_url)`, so a batch holding
+two copies of one card — or an NM and an LP, which are two stock rows by design — pushed identical
+bytes to eBay twice. Catalog art is now shared on `source_url` alone (nothing reads those rows back
+per item: `runPublish` only selects `kind IN ('front','back','blemish','slab')`). **Owner photos stay
+item-scoped**, or one card's photo would land on another card's listing.
+
+### Phase 4 — the detached job (BUILT)
+
+A hundred-card run takes minutes, and holding it inside one HTTP request meant a closed tab, a
+dropped connection or a Vite restart (which this repo's own notes say to expect mid-session) stopped
+it. **The run now lives on `globalThis.__listingsBatchJob`** — HMR-safe, the same reason
+`startReconcileJob` keeps its timers there — and every request is only a **view** onto it.
+
+- **`startBatchJob`** takes a **re-entrancy lock** (the `_svRunning` shape from `sealed.mjs`). A
+  second start is refused with `409 job_running` **and the running id**, so the caller attaches
+  instead of interleaving two sets of eBay writes.
+- **`jobEmit`** is the single place that records an event and updates the counters, so
+  `runBatchPublish` needs no knowledge of the wrapper. Every event carries a monotonic `seq` into a
+  **ring buffer** (`RING_MAX = 2000` — the 500-row cap × ~1 event each, so replay never truncates a
+  real run).
+- **`POST /batch`** starts the job and then streams it, opening with a `{job:{id, resumed_from}}`
+  record. Dropping that response does not stop the run.
+- **`GET /batch/:id/stream?from=<seq>`** replays the ring buffer past `from`, then follows live —
+  a reconnect loses nothing, and several viewers can watch at once.
+  **`GET /batch/state`** (checked *before* `/batch/:id`, or it gets swallowed by the id pattern) is
+  how a reopened tab discovers a run in progress. **`GET /batch/:id`** is counters-only.
+- **`POST /batch/:id/cancel`** sets a flag checked **between rows**, labelled *"stopping after the
+  current card"*. That is the only safe point: there is no way to un-send `publishOffer`, and
+  stopping between `createOffer` and `publishOffer` would strand an offer nothing here can delete.
+- **Resume is DERIVED, never stored** (`pendingBatchIds`): pending = `ebay_listing_id IS NULL OR
+  channel_status <> 'active'`. A saved pointer goes stale the moment the 30-minute reconcile job
+  marks a listing ended — that row genuinely needs publishing again. Correctness does not depend on
+  the skip either way: `publishListing` is idempotent on SKU, so a re-run is a no-op revise at worst.
+- **`pruneListingPushes`** runs when a batch finishes (`cfg.auditRetentionDays`, default 90).
+  `listing_pushes` stores the exact request *and* eBay's exact reply on every attempt — which is what
+  makes a bad day diagnosable, and what makes it grow without bound now batches are the normal path.
+- Registered as `jobs.listing_batch` in `/api/status` beside `listing_reconcile` and `sealed_value`.
+
+**The UI says so plainly.** The publish modal states the run continues if you close the page; a red
+**Stop** appears while it runs; losing the stream shows *"the run itself is still going"* with a
+**Re-attach** button; and `beforeunload` deliberately no longer guards on a run being active — only
+on unstaged queue rows, because closing the tab now costs the view, not the work.
+
+**Validation:** `test/integration/listings-batch-job.test.mjs` — outlives its request, one-run-at-a-time,
+replay from a seq, two concurrent viewers, a viewer leaving mid-run, cancel leaving finished cards
+listed and the DB agreeing with the counters, derived resume (incl. the ENDED case a stored cursor
+gets wrong), and retention.
+
+**Validation:** `test/unit/runner-core.mjs` (rules + refusals, incl. a client/server same-numbers
+check) · `test/unit/runner-ndjson.test.mjs` (the page's real `consumeNdjson`, pulled out with
+`extract-inline`, against split/byte-wise/malformed chunks) · `test/integration/listings-batch.test.mjs`
+(partial failure, refusals, release semantics, abort, audit rows, preflight) ·
+`test/integration/runner-stage.test.mjs` (the stage contract + the routes). All wrapped by `pnpm verify`.

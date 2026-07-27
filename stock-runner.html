@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Batch Runner — Pokémon</title>
+<style>
+  :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
+    --text:#eef1fb;--gold:#f0c020;--gold-dim:#8a7016;--field:#0a1230;--green:#36d399;--red:#f06262;--amber:#f0c04a;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1560px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .card h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);font-weight:700;
+    display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+  .card h3 .h-note{color:var(--muted);font-size:11px;letter-spacing:0;text-transform:none;font-weight:400;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  input,select{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line);border-radius:9px;color:var(--text);font-size:14px;outline:none;font-family:inherit;}
+  input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(240,192,32,.12);}
+  input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:17px;height:17px;min-width:17px;padding:0;margin:0;
+    border:1.5px solid var(--muted);border-radius:5px;background:var(--field);cursor:pointer;position:relative;vertical-align:middle;display:inline-block;box-shadow:none;}
+  input[type="checkbox"]:hover{border-color:var(--gold);}
+  input[type="checkbox"]:checked{background:var(--gold);border-color:var(--gold);}
+  input[type="checkbox"]:checked::after{content:'';position:absolute;left:4.5px;top:1px;width:4.5px;height:9px;border:solid #0c1430;border-width:0 2.5px 2.5px 0;transform:rotate(43deg);}
+  input[type="checkbox"]:indeterminate{background:var(--gold);border-color:var(--gold);}
+  input[type="checkbox"]:indeterminate::after{content:'';position:absolute;left:3px;top:6.5px;width:9px;height:2.5px;border-radius:2px;background:#0c1430;transform:none;border:0;}
+  input[type="checkbox"]:disabled{opacity:.35;cursor:not-allowed;}
+  .btn{padding:8px 14px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;font:inherit;font-size:13px;cursor:pointer;}
+  .btn:hover{border-color:var(--gold);}
+  .btn.primary{background:var(--gold);border-color:var(--gold);color:#0c1430;font-weight:800;}
+  .btn.danger{border-color:var(--red);color:var(--red);} .btn.danger:hover{background:var(--red);color:#0c1430;}
+  .btn.sm{padding:3px 9px;font-size:12px;border-radius:7px;}
+  .btn:disabled{opacity:.42;cursor:not-allowed;}
+  .ghost{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-weight:700;border-radius:9px;padding:8px 13px;cursor:pointer;font-size:13px;}
+  .ghost:hover{background:var(--gold);color:#0c1430;}
+  .status{font-size:12.5px;min-height:18px;margin:6px 0;}
+  .status.ok{color:var(--green);}.status.warn{color:var(--gold);}.status.err{color:var(--red);}.status.load{color:var(--muted);}
+  .muted{color:var(--muted);font-size:11.5px;line-height:1.5;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;}
+  .banner{background:#2a1a10;border:1px solid var(--gold-dim);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--gold);margin-bottom:16px;}
+  .banner a{color:var(--gold);font-weight:700;}
+  .setmenu{display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-height:300px;overflow:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);}
+
+  /* ---------- source / catch line ---------- */
+  .srcgrid{display:grid;grid-template-columns:minmax(240px,340px) 1fr;gap:16px;align-items:start;}
+  @media(max-width:900px){.srcgrid{grid-template-columns:1fr;}}
+  .setrow{position:relative;}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:10px;}
+  .seg button{background:var(--panel2);border:0;color:var(--muted);padding:7px 15px;font:inherit;font-size:13px;cursor:pointer;}
+  .seg button.on{background:var(--gold);color:#0c1430;font-weight:700;}
+  .catchwrap{position:relative;}
+  #catch{font-size:22px;font-weight:700;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;padding:12px 14px;letter-spacing:1px;}
+  .ghoststrip{margin-top:8px;min-height:44px;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px dashed var(--line);border-radius:9px;background:var(--field);}
+  .ghoststrip img{width:28px;height:39px;object-fit:cover;border-radius:4px;background:#fff;flex:none;}
+  .ghoststrip .g-none{color:var(--muted);font-size:12.5px;}
+  .ghoststrip .g-nm{font-weight:700;font-size:13.5px;}
+  .ghoststrip .g-meta{color:var(--muted);font-size:11.5px;}
+  .ghoststrip.bad{border-color:rgba(240,102,110,.5);}
+  .grammar{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;}
+  .grammar span{font-size:11px;color:var(--muted);}
+  .grammar b{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;color:var(--gold);font-weight:600;}
+
+  /* ---------- set-list tick mode ---------- */
+  .ticklist{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:10px;}
+  .tickrow{display:flex;align-items:center;gap:10px;padding:5px 10px;border-bottom:1px solid var(--line);cursor:pointer;
+    content-visibility:auto;contain-intrinsic-size:auto 38px;}
+  .tickrow:last-child{border-bottom:none;}
+  .tickrow:hover{background:rgba(240,192,32,.05);}
+  .tickrow.on{background:rgba(240,192,32,.09);}
+  .tickrow img{width:24px;height:33px;object-fit:cover;border-radius:3px;background:#fff;flex:none;}
+  .tickrow .t-num{width:66px;font-size:12px;color:var(--muted);flex:none;}
+  .tickrow .t-nm{flex:1;font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tickrow .t-pr{width:80px;text-align:right;font-size:12px;color:var(--muted);flex:none;}
+  .tickrow .t-mkt{width:86px;text-align:right;font-size:12px;flex:none;}
+  .filterbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--field);}
+  .filterbar input,.filterbar select{width:auto;padding:5px 8px;font-size:12.5px;background:var(--panel2);}
+  .filterbar .flab{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);}
+
+  /* ---------- queue grid ---------- */
+  .gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;}
+  table.grid{width:100%;border-collapse:collapse;font-size:13px;min-width:1240px;}
+  table.grid th{position:sticky;top:0;z-index:2;background:var(--panel2);text-align:left;font-size:10px;letter-spacing:.8px;
+    text-transform:uppercase;color:var(--muted);font-weight:700;padding:8px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.grid th.s{cursor:pointer;user-select:none;}
+  table.grid th.s:hover{color:var(--gold);}
+  table.grid th .car{opacity:0;font-size:9px;margin-left:3px;}
+  table.grid th.s.on{color:var(--gold);} table.grid th.s.on .car{opacity:1;}
+  table.grid td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.045);vertical-align:middle;}
+  table.grid tr:last-child td{border-bottom:none;}
+  table.grid tr.cur td{background:rgba(240,192,32,.07);}
+  table.grid tr.sel td{background:rgba(54,211,153,.045);}
+  table.grid tr.cur.sel td{background:rgba(240,192,32,.07);}
+  table.grid tr.st-HELD td,table.grid tr.st-LIVE td{opacity:.62;}
+  td.c-thumb img{width:30px;height:42px;object-fit:cover;border-radius:3px;background:#fff;display:block;}
+  td.c-card .nm{font-weight:600;line-height:1.25;}
+  td.c-card .sm{color:var(--muted);font-size:11px;}
+  input.cell{width:74px;padding:4px 7px;font-size:13px;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;text-align:right;}
+  input.cell.qty{width:50px;}
+  input.cell.ovr{border-color:var(--gold);color:var(--gold);}
+  .chip{display:inline-block;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;letter-spacing:.3px;}
+  .chip.dim{background:#242b46;color:var(--muted);}
+  .chip.amber{background:#3a3117;color:var(--amber);}
+  .chip.gold{background:#3a3117;color:var(--gold);}
+  .st{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.5px;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;}
+  .st .dot{width:7px;height:7px;border-radius:50%;flex:none;}
+  .st.READY{color:var(--green);}      .st.READY .dot{background:var(--green);}
+  .st.CHECKED{color:var(--green);}    .st.CHECKED .dot{background:var(--green);}
+  .st.PRICING{color:var(--muted);}    .st.PRICING .dot{background:var(--muted);}
+  .st.EYES{color:var(--amber);}       .st.EYES .dot{background:var(--amber);}
+  .st.CHECK{color:var(--red);}        .st.CHECK .dot{background:var(--red);}
+  .st.HELD{color:var(--amber);}       .st.HELD .dot{background:var(--amber);}
+  .st.STAGED{color:var(--gold);}      .st.STAGED .dot{background:var(--gold);}
+  .st.LIVE{color:var(--green);}       .st.LIVE .dot{background:var(--green);}
+  .st.FAILED{color:var(--red);}       .st.FAILED .dot{background:var(--red);}
+  tr.st-CHECK td.c-ebay,tr.st-EYES td.c-ebay{border-left:2px solid var(--amber);}
+  tr.st-CHECK td.c-ebay{border-left-color:var(--red);}
+  .pill{display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:999px;padding:0 6px;margin-left:4px;}
+  .pill.high{border:1px solid var(--green);color:var(--green);}
+  .pill.medium{border:1px solid var(--gold);color:var(--gold);}
+  .pill.low{border:1px solid var(--red);color:var(--red);}
+  .pill.over{border:1px solid var(--red);color:var(--red);}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+  .counts{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12px;}
+  .foot{display:flex;gap:20px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--muted);}
+  .foot b{color:var(--text);font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;}
+  .why{padding:6px 10px 10px 40px;font-size:12px;color:var(--amber);line-height:1.6;}
+  .why .w-x{color:var(--red);}
+
+  /* ---------- batch sanity strip ---------- */
+  .sanity{display:flex;gap:8px 20px;flex-wrap:wrap;align-items:center;padding:9px 12px;margin-bottom:10px;
+    border:1px solid var(--line);border-radius:10px;background:var(--field);font-size:12.5px;color:var(--muted);}
+  .sanity b{color:var(--text);font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;}
+  .sanity .s-warn{color:var(--amber);}
+  .sanity .s-bad{color:var(--red);}
+  .sanity button.slink{background:none;border:0;padding:0;font:inherit;color:var(--gold);cursor:pointer;text-decoration:underline;}
+
+  /* ---------- micro price-scale ---------- */
+  /* Domain spans the cluster AND the ask, so the caret is always on screen; the filled band is the
+     cluster itself. An unedited ask sits 1c below the band by construction (recommendedFromCluster
+     = cheapestInCluster − 1c), so what the eye is scanning for is a caret that has MOVED. */
+  .scale{position:relative;height:14px;margin-top:3px;}
+  .scale .rail{position:absolute;left:0;right:0;top:6px;height:2px;background:var(--line);border-radius:2px;}
+  .scale .band{position:absolute;top:5px;height:4px;border-radius:2px;background:rgba(54,211,153,.42);}
+  .scale .band.wide{background:rgba(240,192,74,.42);}
+  .scale .tick{position:absolute;top:2px;width:1px;height:10px;background:var(--muted);}
+  .scale .caret{position:absolute;top:0;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
+    border-top:6px solid var(--green);transform:translateX(-4px);}
+  .scale .caret.out{border-top-color:var(--amber);}
+
+  /* ---------- flagged-row drawer ---------- */
+  .drawer{padding:10px 12px 12px 40px;background:rgba(255,255,255,.02);border-top:1px solid var(--line);}
+  .drawer .d-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;align-items:start;}
+  .drawer h5{margin:0 0 5px;font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);font-weight:700;}
+  .drawer .q{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--text);
+    background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 7px;word-break:break-word;}
+  .drawer .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+  .drawer .chips button{padding:2px 9px;font-size:11.5px;}
+  .drawer select,.drawer input{font-size:12.5px;padding:5px 8px;}
+  .empty{padding:26px;text-align:center;color:var(--muted);font-size:13px;}
+  .linkbtn{color:var(--gold);text-decoration:none;font-size:12px;font-weight:700;}
+  .linkbtn:hover{text-decoration:underline;}
+
+  /* ---------- modal ---------- */
+  .modal{position:fixed;inset:0;background:rgba(4,7,20,.78);display:none;align-items:center;justify-content:center;z-index:80;padding:20px;}
+  .modal.on{display:flex;}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:560px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.6);}
+  .modal h4{margin:0 0 10px;font-size:14px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;}
+  .modal .kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);}
+  .modal .kv:last-of-type{border-bottom:none;}
+  .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;}
+  .result{background:var(--panel2);border:1px solid var(--green);border-radius:10px;padding:14px;margin-top:12px;font-size:13px;}
+  .result a{color:var(--green);font-weight:700;word-break:break-all;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#0c1430;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99;}
+  .toast.show{opacity:1;}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
+  <div class="tag">Pokémon TCG</div>
+  <h1>Batch Runner</h1>
+  <p class="sub">Work a pile card by card, or tick off a box break — prices fill in behind you, you scan one column, then publish the lot.</p>
+
+  <div class="banner" id="setupBanner" style="display:none;"></div>
+  <div class="banner" id="restoreBar" style="display:none;"></div>
+  <div class="banner" id="mirrorBar" style="display:none;"></div>
+
+  <!-- ============================ SOURCE ============================ -->
+  <div class="card">
+    <h3>1 &middot; Add cards <span class="h-note" id="idxNote"></span></h3>
+    <div class="srcgrid">
+      <div>
+        <div class="setrow">
+          <label for="setCode">Set</label>
+          <input id="setCode" placeholder="Type a set name or code…" autocomplete="off">
+          <div class="setmenu" id="setMenu"></div>
+          <div class="status" id="setStatus">loading sets…</div>
+        </div>
+        <div class="muted" id="residentNote"></div>
+      </div>
+      <div>
+        <div class="seg" id="modeSeg">
+          <button data-mode="pile" class="on">⌨ Pile</button>
+          <button data-mode="set">☑ Set list</button>
+        </div>
+
+        <div id="pileMode">
+          <div class="catchwrap">
+            <label for="catch">Card number — type and press Enter</label>
+            <input id="catch" autocomplete="off" spellcheck="false" placeholder="125" disabled>
+          </div>
+          <div class="ghoststrip" id="ghost"><span class="g-none">Pick a set to start.</span></div>
+          <div class="grammar">
+            <span><b>125</b> number</span><span><b>r h n</b> printing</span><span><b>x3</b> quantity</span>
+            <span><b>@12.50</b> price</span><span><b>lp mp hp</b> condition</span><span><b>*name</b> search</span>
+            <span><b>obf</b> switch set</span>
+          </div>
+          <div class="muted" style="margin-top:6px;">↑ ↓ move the row cursor · <b>Del</b> drop it · <b>+ −</b> quantity · <b>o</b> open a played card in the single uploader · <b>Ctrl+Z</b> undo the last add</div>
+        </div>
+
+        <div id="setMode" style="display:none;">
+          <div class="filterbar">
+            <span class="flab">Filter</span>
+            <input id="tq" placeholder="name or number" style="min-width:150px;">
+            <select id="trar"><option value="">all rarities</option><option value="common">common</option><option value="uncommon">uncommon</option><option value="rare_plus">rare and up</option></select>
+            <span class="flab">Min market</span>
+            <input id="tmin" class="mono" style="width:74px;" value="2.00">
+            <button class="btn sm" id="tAdd">Add ticked</button>
+            <span class="muted" id="tCount"></span>
+          </div>
+          <div class="ticklist" id="tickList"><div class="empty">Pick a set to see its cards.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ BATCH SETTINGS ============================ -->
+  <div class="card">
+    <h3>2 &middot; Settings for the whole batch <span class="h-note">these apply to every row — per-row overrides live in the grid</span></h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;align-items:start;">
+      <div>
+        <label for="defCond">Default condition</label>
+        <select id="defCond">
+          <option>Near Mint</option><option>Lightly Played</option><option>Moderately Played</option><option>Heavily Played</option>
+        </select>
+        <div class="muted" style="margin-top:5px;">Batch listings use the catalog image, and eBay bans stock photos on used items — so anything below Near Mint is held back and handed to the single uploader.</div>
+      </div>
+      <div>
+        <label>Best Offer</label>
+        <label style="display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);cursor:pointer;">
+          <input type="checkbox" id="boEnable"> Accept offers on every listing
+        </label>
+        <div id="boFields" style="display:none;margin-top:8px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div><label for="boAcc">Auto-accept %</label><input id="boAcc" class="mono" value="95"></div>
+            <div><label for="boDec">Auto-decline %</label><input id="boDec" class="mono" value="78"></div>
+          </div>
+          <div class="muted" id="boHint" style="margin-top:6px;"></div>
+        </div>
+      </div>
+      <div>
+        <label>Store department <span id="storeCount" class="muted"></span></label>
+        <div id="storeCats" class="muted" style="max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:6px 8px;">loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ QUEUE ============================ -->
+  <div class="card">
+    <h3>3 &middot; Review &amp; publish <span class="h-note" id="qNote">nothing queued yet</span></h3>
+    <div class="sanity" id="sanity" style="display:none;"></div>
+    <div class="toolbar">
+      <button class="btn sm" id="selReady">Tick ready</button>
+      <button class="btn sm" id="selNone">Untick all</button>
+      <button class="btn sm" id="verifyBtn" title="Show only the rows that need a decision (V)">🔍 Verify</button>
+      <button class="btn sm" id="clearQ">Clear queue</button>
+      <span style="flex:1;"></span>
+      <div class="counts" id="counts"></div>
+      <button class="btn sm" id="canaryBtn" disabled title="Dry-run a few representative rows against eBay before sending the lot">Canary</button>
+      <button class="btn" id="stageBtn" disabled>Stage to inventory</button>
+      <button class="btn primary" id="pubBtn" disabled>Publish</button>
+      <button class="btn danger" id="stopBtn" style="display:none;" title="Stops after the card currently being sent">■ Stop</button>
+    </div>
+    <div class="status" id="runStatus"></div>
+    <div class="gridwrap">
+      <table class="grid">
+        <thead><tr>
+          <th style="width:28px;"><input type="checkbox" id="hdrChk"></th>
+          <th class="s" data-s="state" style="width:92px;">State<span class="car">▼</span></th>
+          <th style="width:38px;"></th>
+          <th class="s" data-s="name">Card<span class="car">▼</span></th>
+          <th class="s" data-s="num" style="width:82px;">No.<span class="car">▼</span></th>
+          <th style="width:132px;">Printing</th>
+          <th style="width:96px;">Cond</th>
+          <th style="width:58px;">Qty</th>
+          <th class="s" data-s="mkt" style="width:100px;">MKT<span class="car">▼</span></th>
+          <th class="s" data-s="ebay" style="width:168px;">eBay AU<span class="car">▼</span></th>
+          <th class="s" data-s="ask" style="width:92px;">Ask A$<span class="car">▼</span></th>
+          <th>Title</th>
+          <th style="width:84px;">Label</th>
+          <th style="width:96px;"></th>
+        </tr></thead>
+        <tbody id="qBody"><tr><td colspan="14"><div class="empty">Nothing queued yet — pick a set and start typing numbers.</div></td></tr></tbody>
+      </table>
+    </div>
+    <div class="foot" id="foot"></div>
+    <div id="resultBox"></div>
+  </div>
+</div>
+
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="/extras.js"></script>
+<script type="module">
+import { buildTitle, rowToFields } from '/lib/listing-copy.mjs';
+import { feeAU } from '/lib/fees.mjs';
+import {
+  numKeys, numRank, cmpRank, printingsFor, finishFromRarity, pickPrinting, parseCatch,
+  isNearMint, medianOf, flagsFor, deriveState, isPublishable, rowKey,
+  scaleGeometry, atMechanicalUndercut,
+  PRICE_CEILING_AUD, MEDIAN_MULT, DISAGREE_HI, DISAGREE_LO,
+} from '/lib/runner-core.mjs';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const money = (a) => (a == null || !isFinite(a)) ? '—' : 'A$' + (Math.round(a * 100) / 100).toFixed(2);
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+function stat(el, cls, msg) { el.className = 'status ' + cls; el.innerHTML = msg; }
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const INDEX = new Map();          // setId -> {set, cards[], byNum:Map, byName:[]}  — several sets stay resident
+let SETS = [], setObj = null, QUEUE = [], cursor = -1, mode = 'pile';
+let connected = false, acctReady = false, uid = 1, undoStack = [];
+let STORE_CATS = [], STORE_MAX = 2, storePick = [];
+let SORT = { k: '', dir: 1 }, VERIFY = false, DISAGREE_ONLY = false;
+let labelNext = null, labelSeeded = false;
+const ROWEL = new Map();          // uid -> <tr>, so a row is patched in place instead of re-rendered
+
+const IDX_KEY = 'tcg_runner_idx1:';
+const Q_KEY = 'tcg_runner_queue1';
+const STORE_KEY = 'tcg_runner_store';
+const SETS_CACHE = 'tcg_uploader_pkm_sets';   // shared with the single uploader on purpose
+
+// ---------------------------------------------------------------------------
+// Account readiness
+// ---------------------------------------------------------------------------
+function banner(html) { const b = $('setupBanner'); b.innerHTML = html; b.style.display = 'block'; }
+async function checkAccount() {
+  try {
+    const cr = await fetch('/api/listings/config').then((r) => r.json());
+    connected = !!cr.connected;
+    lastImport = cr.lastImport || null;
+    if (!connected) { banner('Your eBay account isn’t connected. <a href="/api/repricer/oauth">Run the consent flow →</a> then reload.'); return; }
+    renderMirrorBar();
+    const st = await fetch('/api/listings/account/status').then((r) => r.json());
+    acctReady = !!st.ready;
+    if (!acctReady) banner('eBay listing isn’t set up yet (business policies + location). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it once.');
+  } catch (e) { banner('Could not reach the listing API — is the dev server running?'); }
+}
+// The duplicate check is only as fresh as the last mirror import. A hand-made Seller Hub listing is
+// invisible to the Inventory API (KB 5210), so if the mirror is stale, eBay's [25002] turns up at
+// publish time instead of at Stage — after a shelf label has already been spent on the row.
+let lastImport = null;
+const MIRROR_STALE_H = 24;
+function renderMirrorBar() {
+  const bar = $('mirrorBar');
+  const ageH = lastImport ? (Date.now() - Date.parse(lastImport)) / 3.6e6 : Infinity;
+  if (isFinite(ageH) && ageH < MIRROR_STALE_H) { bar.style.display = 'none'; return; }
+  bar.innerHTML = (lastImport
+    ? 'Your eBay listing mirror was last imported <b>' + Math.round(ageH) + ' hours</b> ago.'
+    : 'Your eBay listing mirror has <b>never been imported</b>.')
+    + ' Hand-made Seller Hub listings are invisible to the API, so the duplicate check can miss one until publish time. '
+    + '<button class="btn sm" id="mImport" style="margin-left:6px;">Import now</button>';
+  bar.style.display = 'block';
+  $('mImport').addEventListener('click', async () => {
+    const b = $('mImport'); b.disabled = true; b.textContent = 'Importing…';
+    const act = TCG.activity ? TCG.activity('Importing eBay listings') : null;
+    try {
+      const j = await fetch('/api/listings/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((x) => x.json());
+      if (j.error) throw new Error(j.error);
+      lastImport = new Date().toISOString();
+      act && act.done((j.seen ?? j.imported ?? '') + ' listings');
+      renderMirrorBar();
+      // Re-ask the shelf about every queued row now that the mirror knows more.
+      for (const r of QUEUE) if (!r.staged && !r.published) enqueueDupe(r);
+    } catch (e) {
+      act && act.fail('failed');
+      b.disabled = false; b.textContent = 'Import now';
+      stat($('runStatus'), 'err', 'Mirror import failed: ' + esc(String(e && e.message || e)));
+    }
+  });
+}
+
+async function loadLabelState() {
+  try {
+    const j = await fetch('/api/inventory/labels').then((r) => r.json());
+    labelSeeded = !!j.seeded; labelNext = j.next || null;
+  } catch (e) { /* GR7: a missing label series never blocks entry */ }
+}
+
+// ---------------------------------------------------------------------------
+// Sets
+// ---------------------------------------------------------------------------
+function wireSetCombobox() {
+  TCG.setCombobox({
+    input: $('setCode'), menu: $('setMenu'), items: () => SETS,
+    onPick: (it) => { const s = SETS.find((x) => x.value === it.value) || it; selectSet(s); },
+  });
+}
+async function loadSets() {
+  try { const c = JSON.parse(localStorage.getItem(SETS_CACHE) || 'null'); if (c && c.length) { SETS = c; $('setStatus').textContent = SETS.length + ' sets'; wireSetCombobox(); } } catch (e) {}
+  try {
+    const r = await TCG.fetchJson('/api/pkm/sets?pageSize=500', { onRetry: (n) => { if (!SETS.length) $('setStatus').textContent = 'loading sets… (retry ' + n + ')'; } });
+    if (!r.ok) throw new Error('http ' + r.status);
+    const j = await r.json();
+    const list = (j.data || []).map((s) => ({ value: s.id, label: s.name, code: (s.ptcgoCode || s.id || '').toUpperCase(), icon: (s.images && s.images.symbol) || '', releaseDate: s.releaseDate }))
+      .sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || ''));
+    if (list.length) {
+      SETS = list; try { localStorage.setItem(SETS_CACHE, JSON.stringify(SETS)); } catch (e) {}
+      $('setStatus').textContent = SETS.length + ' sets' + (j.stale ? ' (cached — source down)' : ''); wireSetCombobox();
+    } else if (!SETS.length) $('setStatus').textContent = 'no sets (source flaky) — retry';
+  } catch (e) { if (!SETS.length) $('setStatus').textContent = 'sets failed (source down) — retry'; }
+}
+function setCodes() { return new Set(SETS.map((s) => s.code).filter(Boolean)); }
+
+// ---------------------------------------------------------------------------
+// The set index — the one structural move: no network inside the typing loop.
+//
+// Both entry modes read this SAME index. The pile mode looks a number up in it; the set-list
+// mode renders it as a tick list. That is why the box break costs no extra fetch.
+// ---------------------------------------------------------------------------
+
+// Only the fields rowFor()/publishBodyFor() actually need. The raw pokemontcg.io payload for a
+// big set is 1–2 MB, against a ~5 MB origin quota already shared with the set list.
+function trimCard(c) {
+  const p = (c.tcgplayer && c.tcgplayer.prices) || null;
+  let prices = null;
+  if (p) { prices = {}; for (const k of Object.keys(p)) { const v = p[k] || {}; prices[k] = { market: v.market ?? null, mid: v.mid ?? null, low: v.low ?? null }; } }
+  return {
+    id: c.id, name: c.name, number: c.number, rarity: c.rarity || '', artist: c.artist || '',
+    supertype: c.supertype || '', subtypes: c.subtypes || [], types: c.types || [], hp: c.hp != null ? String(c.hp) : '',
+    nationalPokedexNumbers: c.nationalPokedexNumbers || [], regulationMark: c.regulationMark || '', evolvesFrom: c.evolvesFrom || '',
+    images: { small: (c.images && c.images.small) || '', large: (c.images && c.images.large) || '' },
+    set: c.set ? { id: c.set.id, name: c.set.name, series: c.set.series || '', ptcgoCode: c.set.ptcgoCode || '', releaseDate: c.set.releaseDate || '', printedTotal: c.set.printedTotal ?? null } : {},
+    tcgplayer: prices ? { prices } : null,
+  };
+}
+function buildIndex(setMeta, cards) {
+  const byNum = new Map(), byName = [];
+  for (const c of cards) {
+    for (const k of numKeys(c.number)) { if (!byNum.has(k)) byNum.set(k, []); byNum.get(k).push(c); }
+    byName.push({ q: String(c.name || '').toLowerCase(), c });
+  }
+  return { set: setMeta, cards, byNum, byName };
+}
+function cacheIndex(setId, cards) {
+  try { localStorage.setItem(IDX_KEY + setId, JSON.stringify({ v: 1, at: Date.now(), cards })); }
+  catch (e) {
+    // Quota: drop every other cached index and try once more. Losing the cache costs a refetch,
+    // never correctness.
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith(IDX_KEY) && k !== IDX_KEY + setId) localStorage.removeItem(k); localStorage.setItem(IDX_KEY + setId, JSON.stringify({ v: 1, at: Date.now(), cards })); } catch (e2) {}
+  }
+}
+async function loadSetIndex(setMeta) {
+  const setId = setMeta.value;
+  if (INDEX.has(setId)) return INDEX.get(setId);
+  // Cache first, so a repeat pile works even with pokemontcg.io down (GR7).
+  try {
+    const c = JSON.parse(localStorage.getItem(IDX_KEY + setId) || 'null');
+    if (c && Array.isArray(c.cards) && c.cards.length) { const ix = buildIndex(setMeta, c.cards); INDEX.set(setId, ix); refreshIdxNote(); }
+  } catch (e) {}
+  const act = TCG.activity ? TCG.activity('Loading ' + setMeta.label) : null;
+  try {
+    // PAGED, because one request truncates any set over 250 cards — lib/enumerate.mjs:75 loops for
+    // exactly this reason and Paldea Evolved (279) would silently lose its last 29 cards.
+    let page = 1, all = [], total = Infinity;
+    while (all.length < total && page <= 20) {
+      const r = await TCG.fetchJson('/api/pkm/cards?q=' + encodeURIComponent('set.id:' + setId) + '&pageSize=250&page=' + page + '&orderBy=number',
+        { onRetry: (n) => act && act.update('retry ' + n) });
+      if (!r.ok) throw new Error('http ' + r.status);
+      const j = await r.json();
+      const batch = (j.data || []).map(trimCard);
+      if (!batch.length) break;
+      all = all.concat(batch);
+      total = typeof j.totalCount === 'number' ? j.totalCount : all.length;
+      act && act.update(all.length + (isFinite(total) ? ' / ' + total : '') + ' cards');
+      page++;
+    }
+    if (!all.length) throw new Error('no cards returned');
+    const ix = buildIndex(setMeta, all);
+    INDEX.set(setId, ix); cacheIndex(setId, all);
+    act && act.done(all.length + ' cards');
+    return ix;
+  } catch (e) {
+    act && act.fail('source down');
+    if (INDEX.has(setId)) { stat($('setStatus'), 'warn', 'Using the cached copy of this set — pokemontcg.io is not answering.'); return INDEX.get(setId); }
+    stat($('setStatus'), 'err', 'Could not load this set: ' + esc(String(e && e.message || e)) + ' — try again.');
+    return null;
+  } finally { refreshIdxNote(); }
+}
+function refreshIdxNote() {
+  const n = INDEX.size;
+  $('idxNote').textContent = n ? (n + ' set' + (n > 1 ? 's' : '') + ' loaded · ' + [...INDEX.values()].reduce((a, ix) => a + ix.cards.length, 0) + ' cards in memory') : '';
+  $('residentNote').innerHTML = n > 1 ? 'Loaded: ' + [...INDEX.values()].map((ix) => '<b class="mono">' + esc((ix.set.code || ix.set.value)) + '</b>').join(' · ') + '<br>Type a set code in the card box to switch without leaving the keyboard.' : '';
+}
+async function selectSet(s) {
+  setObj = s; $('setCode').value = s.label;
+  stat($('setStatus'), 'load', 'Loading ' + esc(s.label) + '…');
+  const ix = await loadSetIndex(s);
+  if (!ix) return;
+  stat($('setStatus'), 'ok', ix.cards.length + ' cards ready — no lookup delay from here.');
+  $('catch').disabled = false; renderGhost(); focusCatch();
+  if (mode === 'set') renderTickList();
+}
+
+// ---------------------------------------------------------------------------
+// Resolving a typed entry
+// ---------------------------------------------------------------------------
+function resolveEntry(parsed) {
+  const ixId = parsed.setCode ? (SETS.find((s) => s.code === parsed.setCode) || {}).value : (setObj && setObj.value);
+  const ix = ixId ? INDEX.get(ixId) : null;
+  if (!ix) return { error: parsed.setCode ? 'set ' + parsed.setCode + ' is not loaded yet' : 'pick a set first' };
+  if (parsed.nameQuery) {
+    const q = parsed.nameQuery.toLowerCase();
+    const hits = ix.byName.filter((e) => e.q.startsWith(q));
+    const all = hits.length ? hits : ix.byName.filter((e) => e.q.includes(q));
+    if (!all.length) return { error: 'no card called “' + parsed.nameQuery + '” in ' + ix.set.label };
+    if (all.length > 1 && !parsed.num) return { error: all.length + ' cards match “' + parsed.nameQuery + '” — add a number', candidates: all.slice(0, 6).map((e) => e.c) };
+    return { ix, card: all[0].c };
+  }
+  if (!parsed.num) return { error: null };
+  for (const k of numKeys(parsed.num)) {
+    const hit = ix.byNum.get(k);
+    if (hit && hit.length) return { ix, card: hit[0] };
+  }
+  return { error: 'no card ' + parsed.num + ' in ' + ix.set.label };
+}
+
+// A row's printing comes from the card's price keys; the rarity regex is only for a card with no
+// price object at all, and such a row is chipped so the guess is never invisible (GR5).
+function printingFor(card, token) {
+  const ps = printingsFor(card);
+  if (ps.length) return { p: pickPrinting(ps, token), all: ps, fromRarity: false };
+  const f = finishFromRarity(card.rarity);
+  return { p: { key: null, finish: f.finish, edition: '', variant: f.variant, marketUsd: null }, all: [], fromRarity: true };
+}
+
+function makeRow(card, ix, parsed) {
+  const pk = printingFor(card, parsed.printing);
+  const r = {
+    uid: uid++, setId: ix.set.value, setCode: ix.set.code, setLabel: ix.set.label, card,
+    cardId: card.id, rawNumber: card.number, identityKey: card.id,
+    printingKey: pk.p.key, printings: pk.all, fromRarity: pk.fromRarity,
+    finish: pk.p.finish, variant: pk.p.variant, edition: pk.p.edition,
+    mktUsd: pk.p.marketUsd, mktAud: null,
+    cond: parsed.cond || $('defCond').value, qty: parsed.qty || 1, language: 'EN',
+    askAud: parsed.askAud != null ? parsed.askAud : null, manual: parsed.askAud != null,
+    comps: null, priceInfo: null, pricing: false, noComps: false,
+    dupe: null, released: false, inc: true,
+    itemId: null, sku: null, listingUrl: null, staged: false, failed: null, published: false,
+  };
+  r.title = titleFor(r);
+  r.mktAud = mktToAud(r);
+  return r;
+}
+function mktToAud(r) {
+  if (r.mktUsd == null) return null;
+  const a = (window.TCG && TCG.toAUD) ? TCG.toAUD(r.mktUsd, 'USD') : null;
+  return (a != null && isFinite(a)) ? a : null;
+}
+function titleFor(r) {
+  try { return buildTitle('pokemon', rowToFields(invRow(r)), 80); } catch (e) { return r.card.name || ''; }
+}
+function stageOf(c) {
+  const s = (c.subtypes || []).join(', ');
+  return /stage\s*2/i.test(s) ? 'Stage 2' : /stage\s*1/i.test(s) ? 'Stage 1' : /basic/i.test(s) ? 'Basic' : null;
+}
+// The canonical inventory row — a verbatim port of stock-uploader.html cardRow() (line 314),
+// including the card_facts blob, so a batch listing carries exactly the same item specifics a
+// hand-made one does.
+function invRow(r) {
+  const c = r.card;
+  return {
+    game: 'pokemon', name: c.name, set_name: (c.set && c.set.name) || r.setLabel, rarity: c.rarity || '',
+    number: TCG.formatCardNumber(c.number, c.set || {}, { source: 'ptcg', rarity: c.rarity }),
+    language: 'EN', finish: r.finish, image_url: c.images.large || c.images.small, identity_key: c.id,
+    illustrator: c.artist || null, card_type: c.supertype || null, stage: stageOf(c),
+    variant: r.variant, edition: r.edition || undefined,
+    condition: isNearMint(r.cond) ? 'Ungraded, Near Mint' : 'Ungraded, ' + r.cond,
+    store_categories: storePick.slice(0, STORE_MAX),
+    card_facts: JSON.stringify({
+      hp: c.hp, pokedex: c.nationalPokedexNumbers, regulation_mark: c.regulationMark,
+      evolves_from: c.evolvesFrom, set_series: (c.set && c.set.series) || '', set_code: (c.set && c.set.ptcgoCode) || '',
+      set_release_date: (c.set && c.set.releaseDate) || '', printed_total: (c.set && c.set.printedTotal) || null,
+      types: c.types, subtypes: c.subtypes, supertype: c.supertype,
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The queue
+// ---------------------------------------------------------------------------
+
+// Several copies of one card are ONE listing with quantity N under ONE shelf label — so a repeat
+// number bumps the quantity instead of minting a second competing listing (eBay [25002]).
+function addRow(card, ix, parsed) {
+  const draft = makeRow(card, ix, parsed);
+  const key = rowKey(draft);
+  const hit = QUEUE.find((r) => rowKey(r) === key && !r.staged && !r.published);
+  if (hit) {
+    hit.qty += (parsed.qty || 1);
+    if (parsed.askAud != null) { hit.askAud = parsed.askAud; hit.manual = true; }
+    undoStack.push({ kind: 'bump', uid: hit.uid, by: parsed.qty || 1, num: card.number });
+    patchRow(hit); refresh(); flashRow(hit.uid);
+    return hit;
+  }
+  QUEUE.push(draft);
+  undoStack.push({ kind: 'add', uid: draft.uid, num: card.number });
+  appendRowEl(draft);
+  cursor = QUEUE.length - 1;
+  // Always price, even when the owner typed a figure. A typed price is never overwritten, but
+  // skipping comps entirely would leave the row with no cross-check and no ↗ links — it would sail
+  // through as READY having been verified by nothing.
+  enqueuePrice(draft);
+  enqueueDupe(draft);
+  refresh();
+  return draft;
+}
+function dropRow(u) {
+  const i = QUEUE.findIndex((r) => r.uid === u); if (i < 0) return;
+  const el = ROWEL.get(u); if (el) el.remove();
+  ROWEL.delete(u); QUEUE.splice(i, 1);
+  if (cursor >= QUEUE.length) cursor = QUEUE.length - 1;
+  refresh();
+}
+function undo() {
+  const a = undoStack.pop(); if (!a) return;
+  const r = QUEUE.find((x) => x.uid === a.uid);
+  if (a.kind === 'bump' && r) { r.qty = Math.max(1, r.qty - a.by); patchRow(r); }
+  else if (a.kind === 'add' && r) dropRow(a.uid);
+  if (a.num) { $('catch').value = a.num; renderGhost(); }
+  refresh(); focusCatch();
+}
+
+// ---------------------------------------------------------------------------
+// Worker pool — comps and duplicate checks run BEHIND the typing, never in front of it.
+// Both hit endpoints that already exist, so Phase 1 needs no server change.
+// ---------------------------------------------------------------------------
+const POOL = { q: [], active: 0, max: 3 };
+function enqueue(fn) { POOL.q.push(fn); drainPool(); }
+function drainPool() {
+  while (POOL.active < POOL.max && POOL.q.length) {
+    const fn = POOL.q.shift(); POOL.active++;
+    Promise.resolve().then(fn).catch(() => {}).then(() => { POOL.active--; drainPool(); });
+  }
+}
+function enqueuePrice(r) {
+  r.pricing = true; patchRow(r);
+  enqueue(async () => {
+    try {
+      const out = await fetch('/api/listings/price', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ row: invRow(r) }) }).then((x) => x.json());
+      r.priceInfo = out; r.comps = out.comps || null;
+      const c = r.comps || {};
+      r.noComps = !c.matched;
+      // Marketplace Insights (real SOLD prices) soft-403s often; the engine then quietly falls back
+      // to ASKING prices and still calls them reliable. Carry that fact onto the row so the grid and
+      // the footer can say it out loud rather than letting the degradation pass silently (GR4).
+      r.askOnly = !!(c.matched && c.mode !== 'sold');
+      // GR4: no confident comps means the ask stays EMPTY. An empty cell is the only thing that
+      // cannot be mistaken for an answer — a guessed number here would be published as fact.
+      // A price the owner typed is never overwritten, but comps still run behind it: they are what
+      // the ↗ links and the TCGplayer cross-check are built from.
+      if (c.matched && !r.manual) r.askAud = c.recommended;
+    } catch (e) { r.noComps = true; r.comps = null; r.askOnly = false; }
+    finally { r.pricing = false; r.title = titleFor(r); patchRow(r); refresh(); }
+  });
+}
+// "Do we already have this card?" — the SAME condition- and printing-aware check the single
+// uploader runs (GET /api/inventory/match, keyed on stockKey). A hit is a WARNING plus a
+// "+1 to that one" offer, never a block: the hand-made-listing half of that answer is a
+// best-effort title parse and would both over- and under-match if trusted as a gate.
+// BATCHED. A hundred-row pile used to be a hundred requests three at a time; POST
+// /api/inventory/match/batch answers the lot in two SQL statements. Debounced, so a fast typist
+// sends one request per burst rather than one per card.
+let dupeQ = [], dupeT = null;
+function enqueueDupe(r) { if (!dupeQ.includes(r)) dupeQ.push(r); clearTimeout(dupeT); dupeT = setTimeout(flushDupes, 350); }
+async function flushDupes() {
+  const batch = dupeQ.splice(0); if (!batch.length) return;
+  const keys = batch.map((r) => ({
+    game: 'pokemon', identity_key: r.identityKey, name: r.card.name, variant: r.variant,
+    language: 'EN', condition: isNearMint(r.cond) ? 'Ungraded, Near Mint' : 'Ungraded, ' + r.cond,
+  }));
+  try {
+    const j = await fetch('/api/inventory/match/batch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keys }) }).then((x) => x.json());
+    const results = j.results || [];
+    batch.forEach((r, i) => { applyDupe(r, results[i]); patchRow(r); });
+  } catch (e) {
+    // GR7: a check we could not run is NOT a clean bill of health, so the row keeps no verdict.
+    for (const r of batch) { r.dupe = null; patchRow(r); }
+  }
+  refresh();
+}
+function applyDupe(r, m) {
+  if (!m) { r.dupe = null; return; }
+  const exact = (m.exact || []).filter((x) => x.status !== 'sold');
+  if (exact.length) {
+    const live = exact.find((x) => x.channel_status === 'active');
+    r.dupe = { hit: true, items: exact, live: live || null,
+      why: live ? 'already listed on eBay as ' + live.sku + ' (qty ' + (live.quantity ?? '?') + ') — add to that one instead of competing with it'
+                : 'already in stock as ' + exact[0].sku + ' (qty ' + (exact[0].quantity ?? '?') + ') at this condition' };
+  } else if (m.activeOnEbay) {
+    r.dupe = { hit: true, items: [], live: null, why: 'a listing matching this card looks live on eBay already — check before adding a second' };
+  } else r.dupe = { hit: false };
+}
+
+// ---------------------------------------------------------------------------
+// Grid — incremental. A full re-render at 100+ rows with thumbnails is visibly janky and would
+// drop an in-progress edit and the cursor, so rows are appended once and patched in place.
+// ---------------------------------------------------------------------------
+function curMedian() { return medianOf(QUEUE.filter((r) => !r.staged && !r.published).map((r) => r.askAud)); }
+function stateOf(r) { return deriveState(r, curMedian()); }
+
+function rowHtml(r) {
+  const c = r.card;
+  const numDisp = TCG.formatCardNumber(c.number, c.set || {}, { source: 'ptcg', rarity: c.rarity });
+  return ''
+    + '<td><input type="checkbox" class="inc"></td>'
+    + '<td data-c="state"></td>'
+    + '<td class="c-thumb"><img loading="lazy" src="' + esc(c.images.small || c.images.large) + '" alt=""></td>'
+    + '<td class="c-card"><div class="nm">' + esc(c.name) + '</div><div class="sm">' + esc(r.setLabel) + (c.rarity ? ' · ' + esc(c.rarity) : '') + '</div></td>'
+    + '<td class="mono" data-c="num">' + esc(numDisp) + '</td>'
+    + '<td data-c="printing"></td>'
+    + '<td data-c="cond"></td>'
+    + '<td><input type="number" min="1" class="cell qty" value="' + r.qty + '"></td>'
+    + '<td data-c="mkt" class="mono"></td>'
+    + '<td data-c="ebay" class="c-ebay"></td>'
+    + '<td><input class="cell ask" inputmode="decimal" placeholder=""></td>'
+    + '<td data-c="title"></td>'
+    + '<td data-c="label" class="mono"></td>'
+    + '<td data-c="acts" style="white-space:nowrap;"></td>';
+}
+function appendRowEl(r) {
+  const body = $('qBody');
+  if (!ROWEL.size) body.innerHTML = '';
+  const tr = document.createElement('tr');
+  tr.dataset.uid = String(r.uid);
+  tr.innerHTML = rowHtml(r);
+  body.appendChild(tr);
+  ROWEL.set(r.uid, tr);
+  const why = document.createElement('tr');
+  why.dataset.why = String(r.uid); why.className = 'whyrow';
+  why.innerHTML = '<td colspan="14" style="padding:0;border:0;"><div class="why" style="display:none;"></div><div class="drawer" style="display:none;"></div></td>';
+  body.appendChild(why);
+  patchRow(r);
+}
+function setCell(tr, name, html) { const el = tr.querySelector('[data-c="' + name + '"]'); if (el && el.innerHTML !== html) el.innerHTML = html; }
+function patchRow(r) {
+  const tr = ROWEL.get(r.uid); if (!tr) return;
+  const st = stateOf(r), flags = flagsFor(r, curMedian());
+  const idx = QUEUE.findIndex((x) => x.uid === r.uid);
+  r.inc = r.inc && isPublishable(st);
+  tr.className = 'st-' + st + (idx === cursor ? ' cur' : '') + (r.inc ? ' sel' : '');
+
+  setCell(tr, 'state', '<span class="st ' + st + '"><span class="dot"></span>' + st + '</span>');
+
+  // Printing: the words, always. Plus the chooser when the card genuinely has more than one, and
+  // a chip when the finish was guessed from rarity rather than read from the price keys.
+  let pr = '<span>' + esc(r.finish) + '</span>';
+  if (r.printings.length > 1) {
+    pr += ' <span class="chip amber">' + r.printings.length + '</span><div style="margin-top:3px;">'
+      + r.printings.map((p) => '<button class="btn sm pk' + (p.key === r.printingKey ? ' primary' : '') + '" data-pk="' + esc(p.key) + '" style="padding:1px 6px;font-size:10px;margin-right:3px;">' + esc(p.finish.replace('Holofoil', 'Holo').replace('Reverse Holo', 'Rev')) + '</button>').join('') + '</div>';
+  } else if (r.fromRarity) pr += ' <span class="chip amber" title="This card has no TCGplayer price data, so the finish was inferred from its rarity — check it.">from rarity</span>';
+  setCell(tr, 'printing', pr);
+
+  setCell(tr, 'cond', '<span class="chip ' + (isNearMint(r.cond) ? 'dim' : 'amber') + '">' + esc(r.cond) + '</span>');
+
+  setCell(tr, 'mkt', r.mktUsd != null
+    ? '<span>US$' + r.mktUsd.toFixed(2) + '</span>' + (r.mktAud != null ? '<div class="muted mono">' + money(r.mktAud) + '</div>' : '')
+    : '<span class="muted">—</span>');
+
+  const c = r.comps || {};
+  let eb = '<span class="muted">—</span>';
+  if (r.pricing) eb = '<span class="muted">checking eBay AU…</span>';
+  else if (c.matched) {
+    eb = '<span class="mono">' + money(c.recommended) + '</span><span class="pill ' + esc(c.confidence || 'low') + '">' + esc(c.confidence || 'low') + '</span>'
+      + '<div class="muted">' + (c.comparable || 0) + ' ' + (c.mode === 'sold' ? 'sold' : 'asking') + (c.clusterRange ? ' · ' + money(c.clusterRange[0]) + '–' + money(c.clusterRange[1]) : '') + '</div>'
+      + priceScale(r);
+  } else if (r.comps) eb = '<span class="muted">no confident comps</span><div class="muted">' + esc(c.reason || '') + '</div>';
+  setCell(tr, 'ebay', eb);
+
+  const ask = tr.querySelector('input.ask');
+  if (ask && document.activeElement !== ask) {
+    const v = (r.askAud != null && isFinite(r.askAud)) ? (Math.round(r.askAud * 100) / 100).toFixed(2) : '';
+    if (ask.value !== v) ask.value = v;
+  }
+  if (ask) ask.classList.toggle('ovr', !!r.manual);
+  const qty = tr.querySelector('input.qty');
+  if (qty && document.activeElement !== qty && qty.value !== String(r.qty)) qty.value = String(r.qty);
+  const inc = tr.querySelector('input.inc');
+  if (inc) { inc.checked = !!r.inc; inc.disabled = !isPublishable(st); }
+
+  setCell(tr, 'title', '<span style="font-size:12px;">' + esc(r.title || '') + '</span> <span class="pill ' + ((r.title || '').length >= 80 ? 'over' : 'medium') + '">' + (r.title || '').length + '/80</span>');
+  setCell(tr, 'label', r.sku ? '<span style="color:var(--gold)">' + esc(r.sku) + '</span>' : '<span class="muted">' + esc(labelSeeded && labelNext ? labelNext : 'BK-…') + '</span>');
+
+  const q = (r.priceInfo && r.priceInfo.query) || ['Pokemon', r.card.name, TCG.formatCardNumber(r.card.number, r.card.set || {}, { source: 'ptcg', rarity: r.card.rarity }), r.setLabel].filter(Boolean).join(' ');
+  let acts = '<a class="linkbtn" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, cheapest first" href="' + esc(ebaySearchUrl(q, false)) + '">↗</a>'
+    + ' <a class="linkbtn" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU" href="' + esc(ebaySearchUrl(q, true)) + '">sold</a>';
+  if (st === 'CHECK') acts += ' <button class="btn sm rel" title="Approve this row for publishing">OK</button>';
+  if (st === 'HELD') acts += ' <button class="btn sm open" title="Open in the single uploader, where you can add real photos">open</button>';
+  if (r.listingUrl) acts = '<a class="linkbtn" target="_blank" rel="noopener" href="' + esc(r.listingUrl) + '">view ↗</a>';
+  acts += ' <button class="btn sm drop" title="Remove from the batch">×</button>';
+  setCell(tr, 'acts', acts);
+
+  // The reason line. A red dot with no words is not something you can act on.
+  const whyTr = $('qBody').querySelector('tr[data-why="' + r.uid + '"]');
+  if (whyTr) {
+    const div = whyTr.querySelector('.why');
+    const msgs = [];
+    // The server's verdict outranks anything this page thinks — it is the one that decides.
+    if (r.serverBlocked && r.serverBlocked.length) for (const m of r.serverBlocked) msgs.push('<span class="w-x">Server held this row:</span> ' + esc(m));
+    else if (r.note) msgs.push('<span style="color:var(--muted)">' + esc(r.note) + '</span>');
+    else if (st === 'HELD') msgs.push('<span class="w-x">Held:</span> a ' + esc(r.cond) + ' card cannot be listed with the catalog image — eBay bans stock photos on used items. Open it in the single uploader and add real front/back photos.');
+    else if (st === 'EYES' && !r.pricing) msgs.push('<span class="w-x">Needs eyes:</span> no confident eBay AU comps' + (r.comps && r.comps.reason ? ' (' + esc(r.comps.reason) + ')' : '') + '. Check the ↗ links and type a price, or drop the row.');
+    else if (st === 'CHECK' || st === 'CHECKED') for (const f of flags) msgs.push((st === 'CHECK' ? '<span class="w-x">Check:</span> ' : '<span style="color:var(--green)">Approved:</span> ') + esc(f.why));
+    if (msgs.length) { div.innerHTML = msgs.join('<br>'); div.style.display = ''; } else { div.innerHTML = ''; div.style.display = 'none'; }
+    const dr = whyTr.querySelector('.drawer');
+    if (r.open) { dr.innerHTML = drawerHtml(r); dr.style.display = ''; } else if (dr.style.display !== 'none') { dr.innerHTML = ''; dr.style.display = 'none'; }
+  }
+  // Row visibility is applyVisibility()'s job alone — deciding it here as well would give two
+  // places that can disagree about whether a row is on screen.
+}
+function priceScale(r) {
+  const c = r.comps || {};
+  if (!c.clusterRange) return '';
+  const g = scaleGeometry({ askAud: r.askAud, clusterLo: c.clusterRange[0], clusterHi: c.clusterRange[1], fair: c.fair });
+  if (!g) return '';
+  const title = 'Cluster ' + money(c.clusterRange[0]) + '–' + money(c.clusterRange[1])
+    + (c.fair != null ? ' · fair (cluster median) ' + money(c.fair) : '')
+    + (r.askAud != null ? ' · your ask ' + money(r.askAud) + (g.inBand ? ' (inside the cluster)' : ' (outside it)') : '')
+    + (g.wide ? ' · wide spread, so these comps are thin' : '');
+  return '<div class="scale" title="' + esc(title) + '">'
+    + '<div class="rail"></div>'
+    + '<div class="band' + (g.wide ? ' wide' : '') + '" style="left:' + g.bandLeftPct.toFixed(1) + '%;width:' + g.bandWidthPct.toFixed(1) + '%"></div>'
+    + (g.tickPct != null ? '<div class="tick" style="left:' + g.tickPct.toFixed(1) + '%"></div>' : '')
+    + (g.caretPct != null ? '<div class="caret' + (g.inBand ? '' : ' out') + '" style="left:' + g.caretPct.toFixed(1) + '%"></div>' : '')
+    + '</div>';
+}
+
+// The drawer: everything needed to settle ONE flagged row without leaving the grid. The comps query
+// is the server's own echo (priceInfo.query), so the ↗ links open the exact population the
+// recommendation came from — that is what makes checking a price a glance instead of a search.
+function drawerHtml(r) {
+  const c = r.comps || {};
+  const q = (r.priceInfo && r.priceInfo.query) || '';
+  const leaves = STORE_CATS.filter((x) => x.leaf);
+  const chosen = r.storeOverride || null;
+  return '<div class="d-grid">'
+    + '<div><h5>Comps query (as the server ran it)</h5><div class="q">' + esc(q || '—') + '</div>'
+      + (q ? '<div class="chips"><a class="btn sm" target="_blank" rel="noopener" href="' + esc(ebaySearchUrl(q, false)) + '">Active ↗</a>'
+             + '<a class="btn sm" target="_blank" rel="noopener" href="' + esc(ebaySearchUrl(q, true)) + '">Sold ↗</a></div>' : '')
+      + '</div>'
+    + '<div><h5>Set the ask</h5>'
+      + '<div class="chips">'
+      + (c.recommended != null ? '<button class="btn sm dp" data-v="' + c.recommended + '">cheapest −1c ' + money(c.recommended) + '</button>' : '')
+      + (c.fair != null ? '<button class="btn sm dp" data-v="' + c.fair + '">fair ' + money(c.fair) + '</button>' : '')
+      + (c.fair != null ? '<button class="btn sm dp" data-v="' + (Math.round(c.fair * 110) / 100) + '">+10% ' + money(c.fair * 1.1) + '</button>' : '')
+      + (r.mktAud != null ? '<button class="btn sm dp" data-v="' + (Math.round(r.mktAud * 100) / 100) + '">TCGplayer ' + money(r.mktAud) + '</button>' : '')
+      + '</div></div>'
+    + '<div><h5>Condition</h5><select class="dcond">'
+      + ['Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played'].map((x) => '<option' + (x === r.cond ? ' selected' : '') + '>' + x + '</option>').join('')
+      + '</select></div>'
+    // Per-row department. The route already honours store_categories in overrides_by_id, so this is
+    // an override on the batch-wide pick rather than new plumbing. Best Offer stays batch-wide —
+    // the route takes ONE spec — which is why the publish modal prints it in resolved dollars.
+    + (leaves.length ? '<div><h5>Store department (this row)</h5><select class="ddept">'
+        + '<option value="">— use the batch pick —</option>'
+        + leaves.map((x) => '<option value="' + esc(x.path) + '"' + (chosen === x.path ? ' selected' : '') + '>' + esc(x.name) + '</option>').join('')
+        + '</select></div>' : '')
+    + (r.dupe && r.dupe.hit ? '<div><h5>Already held</h5><div class="muted">' + esc(r.dupe.why) + '</div>'
+        + (r.dupe.items && r.dupe.items.length ? '<div class="chips"><button class="btn sm dbump">+' + r.qty + ' to ' + esc(r.dupe.items[0].sku) + ' instead</button></div>' : '') + '</div>' : '')
+    + '</div>';
+}
+function flashRow(u) { const tr = ROWEL.get(u); if (!tr) return; tr.style.transition = 'none'; tr.style.background = 'rgba(240,192,32,.22)'; requestAnimationFrame(() => { tr.style.transition = 'background .5s'; tr.style.background = ''; }); }
+
+// One pass over every row after anything that can move the median or a band. patchRow only
+// touches the DOM where the content actually differs, so this stays cheap at 100+ rows.
+let refreshT = null;
+function refresh() { clearTimeout(refreshT); refreshT = setTimeout(refreshNow, 60); }
+function refreshNow() {
+  for (const r of QUEUE) patchRow(r);
+  const med = curMedian();
+  const bands = {};
+  for (const r of QUEUE) { const s = stateOf(r); bands[s] = (bands[s] || 0) + 1; }
+  const order = ['READY', 'CHECKED', 'PRICING', 'EYES', 'CHECK', 'HELD', 'STAGED', 'LIVE', 'FAILED'];
+  $('counts').innerHTML = order.filter((k) => bands[k]).map((k) => '<span class="st ' + k + '"><span class="dot"></span>' + bands[k] + ' ' + k.toLowerCase() + '</span>').join('');
+  $('qNote').textContent = QUEUE.length ? QUEUE.length + ' row' + (QUEUE.length > 1 ? 's' : '') + ' · ' + QUEUE.reduce((a, r) => a + r.qty, 0) + ' cards' : 'nothing queued yet';
+
+  const ticked = QUEUE.filter((r) => r.inc && isPublishable(stateOf(r)));
+  const totalAsk = ticked.reduce((a, r) => a + (r.askAud || 0) * r.qty, 0);
+  const fees = ticked.reduce((a, r) => a + feeAU(r.askAud || 0) * r.qty, 0);
+  const dearest = ticked.reduce((a, r) => (r.askAud || 0) > (a ? a.askAud : 0) ? r : a, null);
+  const priced = QUEUE.filter((r) => r.comps && r.comps.matched);
+  const askOnly = priced.filter((r) => r.askOnly).length;
+  $('foot').innerHTML = QUEUE.length ? [
+    '<span>Ticked <b>' + ticked.length + '</b> of ' + QUEUE.length + '</span>',
+    '<span>Cards <b>' + ticked.reduce((a, r) => a + r.qty, 0) + '</b></span>',
+    '<span>Total ask <b>' + money(totalAsk) + '</b></span>',
+    '<span>Median ask <b>' + money(med) + '</b></span>',
+    dearest ? '<span>Dearest <b>' + money(dearest.askAud) + '</b> ' + esc(dearest.card.name) + '</span>' : '',
+    // GR4: a batch priced off asking listings instead of real sold prices is a quiet quality drop,
+    // not an error — so it has to be said, not inferred.
+    askOnly ? '<span style="color:var(--amber)"><b>' + askOnly + '</b> of ' + priced.length + ' priced from asking listings, not sold prices</span>' : '',
+    '<span><b>' + money(fees) + '</b> eBay AU buyer-protection fee (not seller fees)</span>',
+  ].filter(Boolean).join('') : '';
+
+  renderSanity(med);
+
+  const staged = QUEUE.filter((r) => r.staged && !r.published);
+  $('canaryBtn').disabled = !staged.length || !connected || !acctReady;
+  $('stageBtn').disabled = !ticked.length;
+  $('stageBtn').textContent = ticked.length ? 'Stage ' + ticked.length + ' to inventory' : 'Stage to inventory';
+  $('pubBtn').disabled = !staged.length || !connected || !acctReady;
+  $('pubBtn').textContent = staged.length ? 'Publish ' + staged.length : 'Publish';
+  syncHdr();
+  applyVisibility();
+  saveQueue();
+}
+// The batch's health in one line. Every figure here is an integrity check on the WHOLE run — the
+// kind of thing that is obvious in aggregate and invisible row by row.
+function renderSanity(med) {
+  const box = $('sanity');
+  const live = QUEUE.filter((r) => !r.published);
+  const priced = live.filter((r) => r.askAud != null && r.comps && r.comps.matched);
+  if (!live.length) { box.style.display = 'none'; return; }
+  const asks = live.map((r) => r.askAud).filter((v) => v != null);
+  const total = live.reduce((a, r) => a + (r.askAud || 0) * r.qty, 0);
+  const dearest = live.reduce((a, r) => ((r.askAud || 0) > (a ? (a.askAud || 0) : -1) ? r : a), null);
+  // A REAL invariant, not a decoration: recommendedFromCluster always lands at cheapestInCluster−1c,
+  // so any row NOT sitting there was moved by hand or by an override.
+  const mech = priced.filter((r) => atMechanicalUndercut(r.askAud, r.comps.recommended)).length;
+  const askOnly = priced.filter((r) => r.askOnly).length;
+  const disagree = live.filter((r) => r.askAud > 0 && r.mktAud > 0 && (r.askAud / r.mktAud > DISAGREE_HI || r.askAud / r.mktAud < DISAGREE_LO)).length;
+  const noComps = live.filter((r) => r.noComps).length;
+
+  const bits = [
+    '<span>Total ask <b>' + money(total) + '</b></span>',
+    '<span>Median <b>' + money(med) + '</b></span>',
+    dearest && dearest.askAud ? '<span>Dearest <b>' + money(dearest.askAud) + '</b> ' + esc(dearest.card.name) + '</span>' : '',
+    priced.length ? '<span><b>' + mech + '</b> of ' + priced.length + ' at the mechanical undercut</span>' : '',
+    askOnly ? '<span class="s-warn"><b>' + askOnly + '</b> priced from asking listings, not sold prices</span>' : '',
+    noComps ? '<span class="s-warn"><b>' + noComps + '</b> with no confident comps</span>' : '',
+    disagree ? '<span class="s-bad"><b>' + disagree + '</b> disagree with TCGplayer by more than ' + DISAGREE_HI + '× — <button class="slink" id="sDis">' + (DISAGREE_ONLY ? 'show all' : 'show only these') + '</button></span>' : '',
+  ].filter(Boolean);
+  box.innerHTML = bits.join('');
+  box.style.display = '';
+  const sd = $('sDis');
+  if (sd) sd.addEventListener('click', () => { DISAGREE_ONLY = !DISAGREE_ONLY; VERIFY = DISAGREE_ONLY || VERIFY; applyVisibility(); });
+}
+
+// Verify mode + the disagreement filter, applied without re-rendering a row.
+function applyVisibility() {
+  $('verifyBtn').classList.toggle('primary', VERIFY);
+  const med = curMedian();
+  for (const r of QUEUE) {
+    const tr = ROWEL.get(r.uid); if (!tr) continue;
+    const whyTr = $('qBody').querySelector('tr[data-why="' + r.uid + '"]');
+    const st = stateOf(r);
+    // "Needs no decision" — which INCLUDES a row you just approved. Verify mode is a worklist, so
+    // it has to shrink as you resolve things; leaving CHECKED rows on screen would mean the count
+    // never moved and the mode bought nothing.
+    const settled = st === 'READY' || st === 'CHECKED' || st === 'LIVE' || st === 'STAGED';
+    let hide = false;
+    if (DISAGREE_ONLY) hide = !(r.askAud > 0 && r.mktAud > 0 && (r.askAud / r.mktAud > DISAGREE_HI || r.askAud / r.mktAud < DISAGREE_LO));
+    else if (VERIFY) hide = settled && !(r.serverBlocked && r.serverBlocked.length);
+    if (r.open) hide = false;   // an open drawer always stays visible, even once it is settled
+    tr.style.display = hide ? 'none' : '';
+    if (whyTr) whyTr.style.display = hide ? 'none' : '';
+  }
+  const shown = QUEUE.filter((r) => { const tr = ROWEL.get(r.uid); return tr && tr.style.display !== 'none'; }).length;
+  $('verifyBtn').textContent = (VERIFY || DISAGREE_ONLY) ? '🔍 Verify (' + shown + ')' : '🔍 Verify';
+}
+$('verifyBtn').addEventListener('click', () => { VERIFY = !VERIFY; if (!VERIFY) DISAGREE_ONLY = false; applyVisibility(); });
+document.addEventListener('keydown', (e) => {
+  // 'v' toggles verify mode, but only when the owner is not typing into something.
+  if (e.key !== 'v' && e.key !== 'V') return;
+  const t = e.target;
+  if (t && (t.id === 'catch' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+  VERIFY = !VERIFY; if (!VERIFY) DISAGREE_ONLY = false; applyVisibility();
+});
+
+function syncHdr() {
+  const el = $('hdrChk'); if (!el) return;
+  const able = QUEUE.filter((r) => isPublishable(stateOf(r)));
+  const on = able.filter((r) => r.inc).length;
+  el.checked = able.length > 0 && on === able.length;
+  el.indeterminate = on > 0 && on < able.length;
+}
+function ebaySearchUrl(q, sold) {
+  const p = new URLSearchParams({ _nkw: q, LH_BIN: '1', _sop: sold ? '13' : '15' });
+  if (sold) { p.set('LH_Sold', '1'); p.set('LH_Complete', '1'); }
+  return 'https://www.ebay.com.au/sch/i.html?' + p.toString();
+}
+
+// Delegated handlers — one listener for the whole grid, so appending a row costs nothing extra.
+//
+// A row is TWO <tr>s: the row itself (data-uid) and its reason/drawer row (data-why). The drawer's
+// controls live in the second one, so resolving only via data-uid silently drops every click and
+// change inside the drawer.
+function rowFromEvent(e) {
+  const tr = e.target.closest('tr[data-uid], tr[data-why]');
+  if (!tr) return null;
+  const uid = +(tr.dataset.uid ?? tr.dataset.why);
+  return QUEUE.find((x) => x.uid === uid) || null;
+}
+$('qBody').addEventListener('change', (e) => {
+  const r = rowFromEvent(e); if (!r) return;
+  if (e.target.classList.contains('inc')) { r.inc = e.target.checked; refresh(); }
+  else if (e.target.classList.contains('qty')) { r.qty = Math.max(1, Math.round(+e.target.value || 1)); refresh(); }
+  else if (e.target.classList.contains('ask')) {
+    const v = parseFloat(e.target.value);
+    r.askAud = isFinite(v) && v > 0 ? v : null; r.manual = r.askAud != null;
+    r.title = titleFor(r); refresh();
+  }
+  else if (e.target.classList.contains('dcond')) {
+    // A per-row condition change re-asks the shelf a different question (condition is part of
+    // stock identity) and can move the row into HELD, so both checks re-run.
+    r.cond = e.target.value; r.condManual = true; r.title = titleFor(r);
+    enqueueDupe(r); refresh();
+  }
+  else if (e.target.classList.contains('ddept')) { r.storeOverride = e.target.value || null; refresh(); }
+});
+$('qBody').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('ask')) return;
+  const r = rowFromEvent(e); if (!r) return;
+  const v = parseFloat(e.target.value);
+  r.askAud = isFinite(v) && v > 0 ? v : null; r.manual = r.askAud != null; refresh();
+});
+$('qBody').addEventListener('click', (e) => {
+  const r = rowFromEvent(e); if (!r) return;
+  if (e.target.classList.contains('drop')) { dropRow(r.uid); focusCatch(); }
+  // Approving a row means "yes, list this one" — so it ticks it too. Without this the row goes
+  // CHECK → CHECKED but stays unticked (patchRow un-ticks anything not publishable, and CHECK is
+  // not), so the owner approves it and visibly nothing happens.
+  else if (e.target.classList.contains('rel')) { r.released = true; r.inc = true; refresh(); }
+  else if (e.target.classList.contains('open')) openInUploader(r);
+  else if (e.target.classList.contains('dp')) {   // a quick-price chip in the drawer
+    const v = parseFloat(e.target.dataset.v);
+    if (isFinite(v) && v > 0) { r.askAud = Math.round(v * 100) / 100; r.manual = true; r.title = titleFor(r); refresh(); }
+  }
+  else if (e.target.classList.contains('dbump')) bumpExisting(r);
+  else if (e.target.closest('tr[data-uid]') && !e.target.closest('input,select,button,a')) {
+    // Clicking the row body opens its drawer — the flagged row is settled in place rather than in
+    // a modal that hides the rest of the batch. Scoped to the row itself, or clicking the drawer's
+    // own whitespace would slam it shut mid-edit.
+    r.open = !r.open; cursor = QUEUE.findIndex((x) => x.uid === r.uid); refresh();
+  }
+  else if (e.target.classList.contains('pk')) {
+    const p = r.printings.find((x) => x.key === e.target.dataset.pk); if (!p) return;
+    r.printingKey = p.key; r.finish = p.finish; r.variant = p.variant; r.edition = p.edition;
+    r.mktUsd = p.marketUsd; r.mktAud = mktToAud(r); r.title = titleFor(r);
+    // The printing IS the comps query's finish hint, so a change re-prices from scratch.
+    if (!r.manual) { r.askAud = null; enqueuePrice(r); }
+    enqueueDupe(r); refresh();
+  }
+});
+$('hdrChk').addEventListener('change', () => { const on = $('hdrChk').checked; for (const r of QUEUE) if (isPublishable(stateOf(r))) r.inc = on; refresh(); });
+$('selReady').addEventListener('click', () => { for (const r of QUEUE) r.inc = isPublishable(stateOf(r)); refresh(); });
+$('selNone').addEventListener('click', () => { for (const r of QUEUE) r.inc = false; refresh(); });
+$('clearQ').addEventListener('click', () => {
+  if (!QUEUE.length) return;
+  const live = QUEUE.filter((r) => r.published).length;
+  if (!confirm('Clear all ' + QUEUE.length + ' rows from the queue?' + (live ? '\n\n' + live + ' already published — clearing the queue does not touch the live listings.' : ''))) return;
+  QUEUE = []; ROWEL.clear(); cursor = -1;
+  $('qBody').innerHTML = '<tr><td colspan="14"><div class="empty">Nothing queued yet — pick a set and start typing numbers.</div></td></tr>';
+  refresh(); focusCatch();
+});
+
+// Sortable headers (the listings.html idiom).
+for (const th of document.querySelectorAll('th.s')) th.addEventListener('click', () => {
+  const k = th.dataset.s;
+  SORT = SORT.k === k ? { k, dir: -SORT.dir } : { k, dir: 1 };
+  for (const t of document.querySelectorAll('th.s')) { const on = t.dataset.s === SORT.k; t.classList.toggle('on', on); const car = t.querySelector('.car'); if (car) car.textContent = on ? (SORT.dir > 0 ? '▲' : '▼') : '▼'; }
+  applySort();
+});
+function sortVal(r, k) {
+  if (k === 'name') return String(r.card.name || '').toLowerCase();
+  if (k === 'num') { const q = numRank(r.rawNumber, r.printingKey); return q; }
+  if (k === 'mkt') return r.mktAud ?? -1;
+  if (k === 'ebay') return (r.comps && r.comps.recommended) ?? -1;
+  if (k === 'ask') return r.askAud ?? -1;
+  if (k === 'state') return ['CHECK', 'EYES', 'HELD', 'PRICING', 'CHECKED', 'READY', 'STAGED', 'LIVE', 'FAILED'].indexOf(stateOf(r));
+  return 0;
+}
+function applySort() {
+  if (!SORT.k) return;
+  QUEUE.sort((a, b) => {
+    if (SORT.k === 'num') return cmpRank(sortVal(a, 'num'), sortVal(b, 'num')) * SORT.dir;
+    const x = sortVal(a, SORT.k), y = sortVal(b, SORT.k);
+    return (x < y ? -1 : x > y ? 1 : 0) * SORT.dir;
+  });
+  const body = $('qBody');
+  for (const r of QUEUE) {
+    const tr = ROWEL.get(r.uid); const why = body.querySelector('tr[data-why="' + r.uid + '"]');
+    if (tr) body.appendChild(tr); if (why) body.appendChild(why);
+  }
+  refresh();
+}
+
+// ---------------------------------------------------------------------------
+// The catch line
+// ---------------------------------------------------------------------------
+function focusCatch() { const el = $('catch'); if (mode === 'pile' && !el.disabled) el.focus(); }
+function renderGhost() {
+  const g = $('ghost'), raw = $('catch').value;
+  g.classList.remove('bad');
+  if (!raw.trim()) { g.innerHTML = setObj ? '<span class="g-none">Type a card number and press Enter.</span>' : '<span class="g-none">Pick a set to start.</span>'; return; }
+  const parsed = parseCatch(raw, { setCodes: setCodes() });
+  const res = resolveEntry(parsed);
+  if (res.error) { g.classList.add('bad'); g.innerHTML = '<span class="g-none" style="color:var(--red)">' + esc(res.error) + '</span>'; return; }
+  if (!res.card) { g.innerHTML = '<span class="g-none">Keep typing…</span>'; return; }
+  const c = res.card, pk = printingFor(c, parsed.printing);
+  const bits = [esc(res.ix.set.label), pk.p.finish, (parsed.cond || $('defCond').value)];
+  if (parsed.qty) bits.push('×' + parsed.qty);
+  if (parsed.askAud != null) bits.push('@ ' + money(parsed.askAud));
+  const dupWarn = pk.fromRarity ? ' <span class="chip amber">finish from rarity</span>' : (pk.all.length > 1 ? ' <span class="chip amber">' + pk.all.length + ' printings</span>' : '');
+  g.innerHTML = '<img src="' + esc(c.images.small) + '" alt="">'
+    + '<div><div class="g-nm">' + esc(c.name) + ' <span class="mono muted">' + esc(TCG.formatCardNumber(c.number, c.set || {}, { source: 'ptcg', rarity: c.rarity })) + '</span>' + dupWarn + '</div>'
+    + '<div class="g-meta">' + bits.map(esc).join(' · ') + '</div></div>';
+}
+$('catch').addEventListener('input', renderGhost);
+$('catch').addEventListener('keydown', async (e) => {
+  const el = $('catch');
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const raw = el.value.trim(); if (!raw) return;
+    const parsed = parseCatch(raw, { setCodes: setCodes() });
+    // A bare set code with no number switches the active set and stays on the keyboard.
+    if (parsed.setCode && !parsed.num && !parsed.nameQuery) {
+      const s = SETS.find((x) => x.code === parsed.setCode);
+      if (s) { el.value = ''; renderGhost(); await selectSet(s); }
+      return;
+    }
+    if (parsed.setCode) {
+      const s = SETS.find((x) => x.code === parsed.setCode);
+      if (s && !INDEX.has(s.value)) { stat($('setStatus'), 'load', 'Loading ' + esc(s.label) + '…'); await loadSetIndex(s); }
+    }
+    const res = resolveEntry(parsed);
+    if (res.error) { stat($('setStatus'), 'warn', esc(res.error)); return; }
+    if (!res.card) return;
+    addRow(res.card, res.ix, parsed);
+    el.value = ''; renderGhost();
+    return;
+  }
+  if (e.key === 'ArrowDown') { e.preventDefault(); moveCursor(1); return; }
+  if (e.key === 'ArrowUp') { e.preventDefault(); moveCursor(-1); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if (el.value === '') {
+    const r = QUEUE[cursor];
+    if (e.key === 'Delete' && r) { e.preventDefault(); dropRow(r.uid); return; }
+    if ((e.key === '+' || e.key === '=') && r) { e.preventDefault(); r.qty++; patchRow(r); refresh(); return; }
+    if (e.key === '-' && r) { e.preventDefault(); r.qty = Math.max(1, r.qty - 1); patchRow(r); refresh(); return; }
+    if (e.key.toLowerCase() === 'o' && r) { e.preventDefault(); openInUploader(r); return; }
+  }
+});
+// The cursor walks the queue WITHOUT moving DOM focus, so fixing a row three cards back never
+// costs you the caret.
+function moveCursor(d) {
+  if (!QUEUE.length) return;
+  const old = cursor;
+  cursor = Math.max(0, Math.min(QUEUE.length - 1, (cursor < 0 ? QUEUE.length : cursor) + d));
+  if (old >= 0 && QUEUE[old]) patchRow(QUEUE[old]);
+  const r = QUEUE[cursor]; if (r) { patchRow(r); const tr = ROWEL.get(r.uid); if (tr) tr.scrollIntoView({ block: 'nearest' }); }
+}
+// Focus insurance: a scanner or a stray click must never leave the catch box dead.
+document.addEventListener('click', (e) => { if (mode !== 'pile') return; if (e.target.closest('input,select,textarea,button,a,summary,label')) return; focusCatch(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) focusCatch(); });
+
+// "+N to that one instead" — the whole point of catching a duplicate. Adds this row's quantity to
+// the stock we already hold rather than minting a second listing that competes with our own.
+async function bumpExisting(r) {
+  const it = r.dupe && r.dupe.items && r.dupe.items[0];
+  if (!it) return;
+  const wasLive = !!(it.ours && it.channel_status === 'active');
+  if (!confirm('Add ' + r.qty + ' to ' + it.sku + ' (currently ' + (it.quantity ?? '?') + ') and drop this row?'
+    + (wasLive ? '\n\nThat listing is live, so it will be re-published at the new quantity.' : ''))) return;
+  try {
+    const res = await fetch('/api/inventory/items/' + it.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ quantity: (it.quantity || 0) + r.qty }) });
+    if (!res.ok) throw new Error('stock update failed (' + res.status + ')');
+    if (wasLive) {
+      // Idempotent on SKU, so this is a revise rather than a second listing.
+      const out = await fetch('/api/listings/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemId: it.id }) }).then((x) => x.json());
+      if (!out.ok) { toast('Stock updated, but eBay was not'); stat($('runStatus'), 'warn', 'Added ' + r.qty + ' to ' + esc(it.sku) + ' in stock, but re-publishing failed: ' + esc(out.error || '') + ' — the live listing still shows the old quantity.'); dropRow(r.uid); return; }
+    }
+    toast('Added ' + r.qty + ' to ' + it.sku);
+    dropRow(r.uid);
+  } catch (e) { stat($('runStatus'), 'err', 'Could not add to ' + esc(it.sku) + ': ' + esc(String(e && e.message || e))); }
+}
+
+function openInUploader(r) {
+  const p = new URLSearchParams({ set: r.setId, num: r.rawNumber, cond: r.cond, finish: r.finish });
+  window.open('/stock-uploader.html?' + p.toString(), '_blank', 'noopener');
+}
+
+// ---------------------------------------------------------------------------
+// Mode switch + set-list tick mode (the box break)
+// ---------------------------------------------------------------------------
+$('modeSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-mode]'); if (!b) return;
+  mode = b.dataset.mode;
+  for (const x of $('modeSeg').querySelectorAll('button')) x.classList.toggle('on', x.dataset.mode === mode);
+  $('pileMode').style.display = mode === 'pile' ? '' : 'none';
+  $('setMode').style.display = mode === 'set' ? '' : 'none';
+  if (mode === 'set') renderTickList(); else focusCatch();
+});
+const TICK = new Set();
+function tickEntries() {
+  const ix = setObj && INDEX.get(setObj.value); if (!ix) return [];
+  const q = $('tq').value.trim().toLowerCase(), rar = $('trar').value, min = parseFloat($('tmin').value) || 0;
+  const out = [];
+  for (const c of ix.cards) {
+    const ps = printingsFor(c);
+    const list = ps.length ? ps : [{ key: null, finish: finishFromRarity(c.rarity).finish, variant: finishFromRarity(c.rarity).variant, marketUsd: null }];
+    for (const p of list) {
+      const aud = p.marketUsd != null && TCG.toAUD ? TCG.toAUD(p.marketUsd, 'USD') : null;
+      const e = { c, p, aud, key: c.id + '|' + (p.key || 'x') };
+      if (q && !(String(c.name).toLowerCase().includes(q) || String(c.number).toLowerCase().includes(q))) continue;
+      if (rar) { const rl = String(c.rarity || '').toLowerCase(); const cls = /^common$/.test(rl) ? 'common' : /^uncommon$/.test(rl) ? 'uncommon' : 'rare_plus'; if (cls !== rar) continue; }
+      e.below = min > 0 && (aud == null || aud < min);
+      out.push(e);
+    }
+  }
+  out.sort((a, b) => cmpRank(numRank(a.c.number, a.p.key), numRank(b.c.number, b.p.key)));
+  return out;
+}
+function renderTickList() {
+  const ix = setObj && INDEX.get(setObj.value);
+  const box = $('tickList');
+  if (!ix) { box.innerHTML = '<div class="empty">Pick a set to see its cards.</div>'; return; }
+  const all = tickEntries(), shown = all.filter((e) => !e.below), hidden = all.length - shown.length;
+  box.innerHTML = shown.map((e) => {
+    const on = TICK.has(e.key);
+    return '<div class="tickrow' + (on ? ' on' : '') + '" data-k="' + esc(e.key) + '">'
+      + '<input type="checkbox" ' + (on ? 'checked' : '') + '>'
+      + '<img loading="lazy" src="' + esc(e.c.images.small) + '" alt="">'
+      + '<span class="t-num mono">' + esc(TCG.formatCardNumber(e.c.number, e.c.set || {}, { source: 'ptcg', rarity: e.c.rarity })) + '</span>'
+      + '<span class="t-nm">' + esc(e.c.name) + '</span>'
+      + '<span class="t-pr">' + esc(e.p.finish) + '</span>'
+      + '<span class="t-mkt mono">' + (e.aud != null ? money(e.aud) : '<span class="muted">—</span>') + '</span>'
+      + '</div>';
+  }).join('') || '<div class="empty">Nothing matches those filters.</div>';
+  // Hidden rows are COUNTED and expandable — a silently dropped card is a lost sale.
+  $('tCount').innerHTML = TICK.size + ' ticked · ' + shown.length + ' shown'
+    + (hidden ? ' · <a href="#" id="showLow" class="linkbtn">' + hidden + ' below A$' + (parseFloat($('tmin').value) || 0).toFixed(2) + ' hidden — show them</a>' : '');
+  const sl = $('showLow'); if (sl) sl.addEventListener('click', (ev) => { ev.preventDefault(); $('tmin').value = '0'; renderTickList(); });
+}
+$('tickList').addEventListener('click', (e) => {
+  const row = e.target.closest('.tickrow'); if (!row) return;
+  const k = row.dataset.k;
+  if (TICK.has(k)) TICK.delete(k); else TICK.add(k);
+  row.classList.toggle('on', TICK.has(k));
+  const cb = row.querySelector('input'); if (cb) cb.checked = TICK.has(k);
+  renderTickCount();
+});
+function renderTickCount() { const n = $('tCount'); if (n) n.innerHTML = n.innerHTML.replace(/^\d+ ticked/, TICK.size + ' ticked'); }
+for (const id of ['tq', 'trar', 'tmin']) $(id).addEventListener('input', renderTickList);
+$('tAdd').addEventListener('click', () => {
+  const ix = setObj && INDEX.get(setObj.value); if (!ix) return;
+  const all = tickEntries(); let n = 0;
+  for (const e of all) {
+    if (!TICK.has(e.key)) continue;
+    addRow(e.c, ix, { printing: e.p.key, qty: 1, cond: $('defCond').value, askAud: null });
+    n++;
+  }
+  TICK.clear(); renderTickList();
+  toast(n + ' added to the queue');
+});
+
+// ---------------------------------------------------------------------------
+// Batch settings
+// ---------------------------------------------------------------------------
+$('defCond').addEventListener('change', () => {
+  const v = $('defCond').value;
+  // Only rows the owner has not individually changed follow the batch default.
+  for (const r of QUEUE) if (!r.condManual && !r.staged && !r.published) { r.cond = v; r.title = titleFor(r); }
+  refresh();
+});
+$('boEnable').addEventListener('change', () => {
+  $('boFields').style.display = $('boEnable').checked ? '' : 'none';
+  $('boHint').textContent = 'Offers at or above the accept figure auto-accept; at or below the decline figure auto-reject. Everything between pings you.';
+});
+function bestOffer() {
+  if (!$('boEnable').checked) return { enabled: false };
+  const o = { enabled: true };
+  const a = parseFloat($('boAcc').value), d = parseFloat($('boDec').value);
+  if (a > 0) o.autoAcceptPct = Math.round(a);
+  if (d > 0) o.autoDeclinePct = Math.round(d);
+  return o;
+}
+async function loadStoreCats() {
+  const box = $('storeCats');
+  try {
+    const j = await fetch('/api/listings/store/categories').then((r) => r.json());
+    if (!j.ok || !Array.isArray(j.categories) || !j.categories.length) { box.innerHTML = '<span class="muted">' + esc(j.error || 'no store departments found — listings will go to “Other”') + '</span>'; return; }
+    STORE_CATS = j.categories; STORE_MAX = j.max || 2;
+    let seed = []; try { seed = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || []; } catch (e) {}
+    if (!seed.length) { try { const c = await fetch('/api/listings/config').then((r) => r.json()); const s = (c.config && c.config.store) || {}; const d = (s.categoryByGame && s.categoryByGame.pokemon) || s.defaultCategory || ''; if (d) seed = Array.isArray(d) ? d : [d]; } catch (e) {} }
+    const leaves = new Set(STORE_CATS.filter((c) => c.leaf).map((c) => c.path));
+    storePick = seed.filter((p) => leaves.has(p)).slice(0, STORE_MAX);
+    renderStoreCats();
+  } catch (e) { box.innerHTML = '<span class="muted">could not read your store departments: ' + esc(String(e && e.message || e)) + '</span>'; }
+}
+function renderStoreCats() {
+  const box = $('storeCats'), full = storePick.length >= STORE_MAX;
+  box.innerHTML = STORE_CATS.map((c, i) => {
+    const on = storePick.includes(c.path);
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;cursor:' + (c.leaf ? 'pointer' : 'default') + ';color:' + (on ? 'var(--gold)' : c.leaf ? 'var(--text)' : 'var(--muted)') + ';padding-left:' + ((c.depth - 1) * 14) + 'px;">'
+      + (c.leaf ? '<input type="checkbox" data-i="' + i + '"' + (on ? ' checked' : '') + (!on && full ? ' disabled' : '') + '>' : '<span style="opacity:.4">└</span>')
+      + '<span>' + esc(c.name) + '</span></label>';
+  }).join('');
+  for (const cb of box.querySelectorAll('input[data-i]')) cb.addEventListener('change', () => {
+    const c = STORE_CATS[+cb.dataset.i];
+    if (cb.checked) { if (storePick.length >= STORE_MAX) { cb.checked = false; return; } storePick.push(c.path); }
+    else storePick = storePick.filter((p) => p !== c.path);
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(storePick)); } catch (e) {}
+    renderStoreCats(); refresh();
+  });
+  $('storeCount').textContent = storePick.length ? '— ' + storePick.length + ' of ' + STORE_MAX : '— none chosen, these go to “Other”';
+}
+
+// ---------------------------------------------------------------------------
+// Stage → publish
+// ---------------------------------------------------------------------------
+function modal(html) { $('modalBox').innerHTML = html; $('modal').classList.add('on'); }
+function closeModal() { $('modal').classList.remove('on'); focusCatch(); }
+$('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
+
+$('stageBtn').addEventListener('click', () => {
+  const rows = QUEUE.filter((r) => r.inc && isPublishable(stateOf(r)) && !r.staged && !r.published);
+  if (!rows.length) return;
+  const cards = rows.reduce((a, r) => a + r.qty, 0);
+  // Shelf labels are monotonic and NEVER reused (lib/sku-labels.mjs), so staging spends a
+  // permanent slice of the series. Name the exact range before it is spent.
+  const range = labelSeeded && labelNext ? '<div class="kv"><span>Shelf labels</span><span class="mono">' + esc(labelNext) + ' onward — ' + rows.length + ' label' + (rows.length > 1 ? 's' : '') + ', permanently</span></div>' : '<div class="kv"><span>Shelf labels</span><span class="mono">series not seeded — these get BK-… labels</span></div>';
+  modal('<h4>Stage ' + rows.length + ' rows to inventory</h4>'
+    + '<div class="kv"><span>Listings</span><span class="mono">' + rows.length + '</span></div>'
+    + '<div class="kv"><span>Cards (some listings hold several)</span><span class="mono">' + cards + '</span></div>'
+    + range
+    + '<p class="muted" style="margin-top:12px;">One label per listing. A listing holding 3 copies takes one label and goes live with quantity 3. Labels are never reused, so a row staged by mistake retires its label with it.</p>'
+    + '<div class="acts"><button class="btn" id="mCancel">Cancel</button><button class="btn primary" id="mGo">Stage ' + rows.length + '</button></div>');
+  $('mCancel').addEventListener('click', closeModal);
+  $('mGo').addEventListener('click', () => { closeModal(); runStage(rows); });
+});
+
+async function runStage(rows) {
+  $('stageBtn').disabled = true;
+  const act = TCG.activity ? TCG.activity('Staging ' + rows.length + ' rows') : null;
+  let ok = 0, bad = 0;
+  for (const r of rows) {
+    try {
+      const body = Object.assign({}, invRow(r), { quantity: r.qty, target_price_cents: Math.round((r.askAud || 0) * 100) });
+      const res = await fetch('/api/inventory/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error('inventory save failed (' + res.status + ')');
+      const j = await res.json();
+      r.itemId = j.id; r.sku = j.sku || null; r.staged = true; r.failed = null; ok++;
+    } catch (e) { r.failed = String(e && e.message || e); bad++; }
+    patchRow(r); act && act.update(ok + '/' + rows.length);
+    refresh();
+  }
+  await loadLabelState();
+  act && (bad ? act.fail(bad + ' failed') : act.done(ok + ' staged'));
+  stat($('runStatus'), bad ? 'warn' : 'ok', bad ? ok + ' staged, ' + bad + ' failed — see the rows marked FAILED.' : ok + ' staged. Checking them against the server…');
+  refresh();
+  await runPreflight();
+}
+
+// The FREE pre-flight: GET /api/listings/batch/preflight builds and validates every staged row
+// server-side with zero eBay calls, so the publish button can be gated on the server's own verdict
+// rather than on what this page believes. It is also where the resolved store departments come
+// from — the client only knows which paths it picked, not what eBay will actually file them under.
+let PREFLIGHT = null;
+async function runPreflight() {
+  const staged = QUEUE.filter((r) => r.staged && !r.published && r.itemId);
+  PREFLIGHT = null;
+  if (!staged.length) { refresh(); return null; }
+  try {
+    const ids = staged.map((r) => r.itemId).join(',');
+    const rel = staged.filter((r) => r.released).map((r) => r.itemId).join(',');
+    const j = await fetch('/api/listings/batch/preflight?item_ids=' + ids + (rel ? '&released_ids=' + rel : '')).then((x) => x.json());
+    if (j.error) throw new Error(j.error);
+    PREFLIGHT = j;
+    const byId = new Map((j.rows || []).map((x) => [x.item_id, x]));
+    for (const r of staged) {
+      const pf = byId.get(r.itemId); if (!pf) continue;
+      r.preflight = pf;
+      // The server's word is the one that counts — it is what the publish route will re-check.
+      r.serverBlocked = (!pf.ok && !pf.already_live) ? [...(pf.errors || []), ...(pf.refusals || []).map((x) => x.message)] : null;
+    }
+    const blocked = j.blocked || 0;
+    stat($('runStatus'), blocked ? 'warn' : 'ok',
+      blocked ? j.publishable + ' ready to publish · <b>' + blocked + ' held by the server</b> — open those rows and approve or fix them.'
+              : j.publishable + ' ready to publish' + (j.already_live ? ' · ' + j.already_live + ' already live' : '') + '.');
+  } catch (e) {
+    // GR7: a pre-flight we could not run must not silently look like a pass.
+    stat($('runStatus'), 'warn', 'Could not pre-check the batch (' + esc(String(e && e.message || e)) + '). Publishing still re-checks everything server-side.');
+  }
+  refresh();
+  return PREFLIGHT;
+}
+
+// NDJSON reader — the same partial-line-buffering shape bulk-listing-builder.html uses.
+async function consumeNdjson(resp, onObj) {
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let obj; try { obj = JSON.parse(line); } catch { continue; }
+      onObj(obj);
+    }
+  }
+}
+
+// Stop is honest about what it can do: the card already in flight finishes. There is no way to
+// un-send publishOffer, and stopping between createOffer and publishOffer would strand an offer
+// nothing in this tool can delete.
+$('stopBtn').addEventListener('click', async () => {
+  if (!JOB_ID) return;
+  $('stopBtn').disabled = true;
+  try {
+    const j = await fetch('/api/listings/batch/' + encodeURIComponent(JOB_ID) + '/cancel', { method: 'POST' }).then((x) => x.json());
+    stat($('runStatus'), 'warn', esc(j.message || 'stopping…') + ' — anything already listed stays listed.');
+  } catch (e) { stat($('runStatus'), 'err', 'Could not stop the run: ' + esc(String(e && e.message || e))); }
+  $('stopBtn').disabled = false;
+});
+
+// A run in progress when the page opens (a reload mid-batch, or a second tab) — re-attach rather
+// than showing an idle screen while eBay listings are appearing.
+async function attachIfRunning() {
+  try {
+    const st = await fetch('/api/listings/batch/state').then((x) => x.json());
+    if (!st || !st.running || !st.id) return;
+    JOB_ID = st.id;
+    stat($('runStatus'), 'load', 'A batch is already running (' + st.listed + ' of ' + st.total + ' listed) — re-attaching…');
+    attachToJob(st.id, 0, QUEUE.filter((r) => r.itemId));
+  } catch (e) { /* GR7: no run info is not a reason to block the page */ }
+}
+
+// The canary: a REAL dry run over at most four representative rows, so eBay's own verdict on the
+// payload arrives before a hundred cards go out. Kept to four on purpose — a dry run still creates
+// a real offer and uploads to EPS, and nothing in this repo can delete an offer afterwards.
+$('canaryBtn').addEventListener('click', async () => {
+  const staged = QUEUE.filter((r) => r.staged && !r.published && r.itemId);
+  if (!staged.length) { toast('Stage some rows first'); return; }
+  $('canaryBtn').disabled = true;
+  const act = TCG.activity ? TCG.activity('Canary dry-run') : null;
+  try {
+    const body = { item_ids: staged.map((r) => r.itemId), overrides_by_id: Object.fromEntries(staged.map((r) => [r.itemId, overridesFor(r)])), bestOffer: bestOffer() };
+    const j = await fetch('/api/listings/batch/preflight/canary', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json());
+    if (j.error) throw new Error(j.error);
+    act && (j.ok ? act.done(j.sampled + ' ok') : act.fail('eBay refused one'));
+    modal('<h4>Canary — ' + j.sampled + ' of ' + j.of + ' rows dry-run against eBay</h4>'
+      + (j.rows || []).map((x) => '<div class="kv"><span>' + (x.ok ? '✓' : '<span style="color:var(--red)">✗</span>') + ' ' + esc(x.name || x.sku) + '</span>'
+          + '<span class="mono">' + (x.ok ? (x.imageCount || 0) + ' images · ' + ((x.storeCategoryNames || []).join(', ') || 'no department') : esc(x.error || 'failed')) + '</span></div>').join('')
+      + '<p class="muted" style="margin-top:12px;">' + (j.ok
+          ? 'eBay accepted every sampled payload. The rest of the batch is built the same way.'
+          : 'eBay rejected at least one — fix that before sending the batch, since the others are built the same way.')
+      + '<br>These created real unpublished offers on your account. Nothing in this tool can delete an offer, so they sit there until you reuse or end them in Seller Hub.</p>'
+      + '<div class="acts"><button class="btn primary" id="mCancel">Close</button></div>');
+    $('mCancel').addEventListener('click', closeModal);
+  } catch (e) {
+    act && act.fail('error');
+    stat($('runStatus'), 'err', 'Canary failed: ' + esc(String(e && e.message || e)));
+  }
+  refresh();
+});
+
+$('pubBtn').addEventListener('click', async () => {
+  const rows = QUEUE.filter((r) => r.staged && !r.published && r.inc);
+  if (!rows.length) { toast('Nothing staged and ticked'); return; }
+  // Re-run the free pre-flight right before showing the numbers, so what the modal promises is what
+  // the server has just agreed to — not a verdict from before the last edit.
+  await runPreflight();
+  const blocked = rows.filter((r) => r.serverBlocked && r.serverBlocked.length);
+  const go = rows.filter((r) => !(r.serverBlocked && r.serverBlocked.length));
+  const total = go.reduce((a, r) => a + (r.askAud || 0) * r.qty, 0);
+  const dearest = go.reduce((a, r) => (r.askAud || 0) > (a ? (a.askAud || 0) : 0) ? r : a, null);
+  const cheapest = go.reduce((a, r) => (a == null || (r.askAud || 0) < (a.askAud || 0)) ? r : a, null);
+
+  // The RESOLVED department names, from the server's own resolveStoreCategoryNames — not the paths
+  // this page happens to have ticked. An empty resolution is how a whole batch quietly lands in
+  // the store's "Other".
+  const resolved = [...new Set(go.flatMap((r) => (r.preflight && r.preflight.store_categories) || []))];
+  const depts = resolved.length ? esc(resolved.join('  ·  ')) : '<span style="color:var(--red)">none resolved — every one of these lands in “Other”</span>';
+
+  // Best Offer in DOLLARS, at both ends of the batch. resolveBestOffer works from percentages, so a
+  // single wrong number here auto-accepts every lowball in the run at once — a percentage on its own
+  // is not something you can sanity-check.
+  const bo = bestOffer();
+  const boLine = bo.enabled
+    ? 'auto-accept from <b>' + money((cheapest ? cheapest.askAud : 0) * bo.autoAcceptPct / 100) + '</b> (cheapest) to <b>'
+      + money((dearest ? dearest.askAud : 0) * bo.autoAcceptPct / 100) + '</b> (dearest) · auto-decline below '
+      + bo.autoDeclinePct + '%'
+    : 'off — every offer comes to you';
+
+  modal('<h4>Publish ' + go.length + ' listing' + (go.length === 1 ? '' : 's') + ' to eBay AU</h4>'
+    + '<div class="kv"><span>Listings</span><span class="mono">' + go.length + '</span></div>'
+    + '<div class="kv"><span>Cards</span><span class="mono">' + go.reduce((a, r) => a + r.qty, 0) + '</span></div>'
+    + '<div class="kv"><span>Total ask</span><span class="mono">' + money(total) + '</span></div>'
+    + '<div class="kv"><span>Dearest single</span><span class="mono">' + money(dearest ? dearest.askAud : 0) + ' — ' + esc(dearest ? dearest.card.name : '—') + '</span></div>'
+    + '<div class="kv"><span>Store department</span><span>' + depts + '</span></div>'
+    + '<div class="kv"><span>Best Offer</span><span>' + boLine + '</span></div>'
+    + (blocked.length ? '<div class="kv"><span style="color:var(--red)">Held by the server</span><span class="mono">' + blocked.length + ' will not be sent</span></div>' : '')
+    + '<p class="muted" style="margin-top:12px;">Type <b>' + go.length + '</b> to confirm. The server publishes one card at a time and re-checks every rule as it goes. '
+      + '<b>The run continues if you close this page</b> — come back and it re-attaches. Stop halts after the card in flight; anything already listed stays listed.</p>'
+    + '<input id="mConfirm" class="mono" placeholder="' + go.length + '" style="margin-top:6px;">'
+    + '<div class="acts"><button class="btn" id="mCancel">Cancel</button><button class="btn primary" id="mGo" disabled>Publish</button></div>');
+  const inp = $('mConfirm'); inp.focus();
+  inp.addEventListener('input', () => { $('mGo').disabled = inp.value.trim() !== String(go.length); });
+  $('mCancel').addEventListener('click', closeModal);
+  $('mGo').addEventListener('click', () => { closeModal(); runPublish(go); });
+});
+
+// The per-row aspect overrides the server merges over the stored inventory row.
+function overridesFor(r) {
+  const c = r.card;
+  return {
+    price_cents: Math.round((r.askAud || 0) * 100),
+    card_type: c.supertype || null, stage: stageOf(c), illustrator: c.artist || null, finish: r.finish,
+    supertype: c.supertype, subtypes: c.subtypes, types: c.types, hp: c.hp,
+    pokedex_numbers: c.nationalPokedexNumbers, regulation_mark: c.regulationMark,
+    set_code: (c.set && c.set.ptcgoCode) || '', set_series: (c.set && c.set.series) || '',
+    set_release_date: (c.set && c.set.releaseDate) || '', printed_total: (c.set && c.set.printedTotal) || null,
+    evolves_from: c.evolvesFrom,
+    // A per-row department overrides the batch pick. pickOverrides already honours store_categories,
+    // so this needed no server change — an ABSENT array leaves the persisted pick alone, an array
+    // replaces it.
+    store_categories: r.storeOverride ? [r.storeOverride] : storePick.slice(0, STORE_MAX),
+  };
+}
+// ONE request for the whole batch, streaming NDJSON back. The loop lives on the server now, which
+// is what makes the price ceiling, the sub-NM rule and the abort-on-descriptor-failure real: this
+// page can no longer talk its way past them, and neither can a stale tab or a reload.
+//
+// No throttle of our own either side: lib/ebay-rest.mjs already serialises every Sell-API call
+// app-wide at 120ms + jitter and honours Retry-After.
+let RUNNING = false, JOB_ID = null;
+async function runPublish(rows) {
+  const body = {
+    item_ids: rows.map((r) => r.itemId),
+    released_ids: rows.filter((r) => r.released).map((r) => r.itemId),
+    bestOffer: bestOffer(),
+    overrides_by_id: Object.fromEntries(rows.map((r) => [r.itemId, overridesFor(r)])),
+  };
+  let resp;
+  try {
+    resp = await fetch('/api/listings/batch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (e) { stat($('runStatus'), 'err', esc(String(e && e.message || e))); return; }
+  if (!resp.ok) {
+    const j = await resp.json().catch(() => ({}));
+    // Someone (this tab or another) already has a run going. Attach to it rather than starting a
+    // second set of interleaved eBay writes.
+    if (j.code === 'job_running' && j.id) { stat($('runStatus'), 'warn', 'A batch is already running — attaching to it.'); return attachToJob(j.id, 0, rows); }
+    stat($('runStatus'), 'err', esc(j.error || ('batch refused (' + resp.status + ')')));
+    return;
+  }
+  const ct = resp.headers.get('content-type') || '';
+  if (!ct.includes('ndjson')) {
+    const j = await resp.json().catch(() => ({}));
+    stat($('runStatus'), 'ok', esc(j.message || 'nothing to publish — every row is already live.'));
+    for (const r of rows) { r.published = true; r.note = 'already live on eBay'; patchRow(r); }
+    refresh(); return;
+  }
+  return consumeJob(resp, rows);
+}
+
+// Re-attach to a run already in progress, replaying from `fromSeq` so nothing is missed.
+async function attachToJob(id, fromSeq, rows) {
+  try {
+    const resp = await fetch('/api/listings/batch/' + encodeURIComponent(id) + '/stream?from=' + (fromSeq | 0));
+    if (!resp.ok) { stat($('runStatus'), 'warn', 'That run has already finished.'); return; }
+    return consumeJob(resp, rows || QUEUE.filter((r) => r.staged));
+  } catch (e) { stat($('runStatus'), 'err', 'Could not attach to the run: ' + esc(String(e && e.message || e))); }
+}
+
+// Paint a job's event stream into the grid. The run belongs to the SERVER — this is only a view, so
+// losing it (a closed tab, a dropped connection) costs the picture, not the work.
+async function consumeJob(resp, rows) {
+  RUNNING = true; $('pubBtn').disabled = true; $('stageBtn').disabled = true; $('stopBtn').style.display = '';
+  const act = TCG.activity ? TCG.activity('Publishing') : null;
+  const byId = new Map((rows || []).map((r) => [r.itemId, r]));
+  const stats = { listed: 0, failed: 0, refused: 0, skipped: 0 };
+  let summary = null, done = 0;
+  try {
+    await consumeNdjson(resp, (o) => {
+      if (o.job) {
+        JOB_ID = o.job.id;
+        if (o.job.resumed_from) stat($('runStatus'), 'load', o.job.resumed_from + ' row(s) were already live and were skipped. Publishing the rest…');
+        return;
+      }
+      if (o.start) { stat($('runStatus'), 'load', 'Publishing ' + o.start.total + '… <span class="muted">this keeps running if you close the page</span>'); return; }
+      if (o.summary) { summary = o.summary; return; }
+      if (!o.row) return;
+      const r = byId.get(o.row.item_id); done++;
+      if (r) {
+        r.serverBlocked = null;
+        if (o.row.status === 'live') { r.published = true; r.listingUrl = o.row.url || null; r.sku = o.row.sku || r.sku; r.failed = null; }
+        else if (o.row.status === 'skipped') { r.published = true; r.note = o.row.error || 'skipped'; r.failed = null; }
+        else if (o.row.status === 'refused') { r.failed = (o.row.refusals || []).map((x) => x.message).join(' · ') || 'refused by the server'; r.serverBlocked = (o.row.refusals || []).map((x) => x.message); }
+        else { r.failed = o.row.error || 'publish failed'; r.lastFailure = o.row; }
+        patchRow(r);
+      }
+      stats[o.row.status === 'live' ? 'listed' : o.row.status === 'refused' ? 'refused' : o.row.status === 'skipped' ? 'skipped' : 'failed']++;
+      act && act.update(stats.listed + ' live · ' + (stats.failed + stats.refused) + ' held');
+      if (done % 5 === 0) refresh();
+    });
+  } catch (e) {
+    // The VIEW broke, not the run. Say so, and offer the way back.
+    RUNNING = false; $('stopBtn').style.display = 'none';
+    act && act.fail('view lost');
+    stat($('runStatus'), 'warn', 'Lost the live view (' + esc(String(e && e.message || e)) + ') — <b>the run itself is still going</b>. '
+      + '<button class="btn sm" id="reattach">Re-attach</button>');
+    const ra = $('reattach'); if (ra) ra.addEventListener('click', () => attachToJob(JOB_ID, 0, rows));
+    refresh(); return;
+  }
+  RUNNING = false; $('stopBtn').style.display = 'none'; JOB_ID = null;
+  const s = summary || stats;
+  const held = (s.failed || 0) + (s.refused || 0);
+  act && (held ? act.fail(held + ' held') : act.done(s.listed + ' live'));
+  stat($('runStatus'), held || s.cancelled ? 'warn' : 'ok',
+    s.cancelled ? s.listed + ' listed before you stopped it. Press Publish again to carry on — it picks up where it left off and never double-lists.'
+    : held ? s.listed + ' listed · ' + held + ' held. Held rows keep their shelf labels — fix or approve them and press Publish again; a re-run never double-lists.'
+         : 'All ' + s.listed + ' listed on eBay.');
+  const failures = rows.filter((r) => r.failed);
+  $('resultBox').innerHTML = '<div class="result">Published <b>' + (s.listed || 0) + '</b> of ' + rows.length + '.'
+    + (s.skipped ? ' <span class="muted">' + s.skipped + ' skipped (already live).</span>' : '')
+    + (s.aborted ? '<br><span style="color:var(--red)">Batch stopped: ' + esc(s.aborted) + '</span>' : '')
+    + (failures.length ? '<br><span class="muted">Held: ' + failures.map((f) => esc(f.card.name) + ' — ' + esc(f.failed)).join('<br>') + '</span>' : '') + '</div>'
+    + (failures.length ? failureDetail(failures.find((f) => f.lastFailure) ? failures.find((f) => f.lastFailure).lastFailure : null) : '');
+  refresh();
+}
+// Verbatim in spirit from stock-uploader.html showFailureDetail: a bare red line is not enough to
+// act on — the HTTP status says whose fault it is, and the rlogid is the only id eBay can trace.
+function failureDetail(out) {
+  if (!out) return '';
+  const steps = Array.isArray(out.steps) ? out.steps : [];
+  if (!steps.length && !out.rawResponse) return '';
+  const failed = steps.filter((s) => !s.ok);
+  const rows = steps.map((s) => '<div>' + (s.ok ? '✓' : '✗') + ' ' + esc(s.step)
+    + (s.httpStatus ? ' · HTTP ' + esc(s.httpStatus) : '') + (s.attempts > 1 ? ' · ' + esc(s.attempts) + ' attempts' : '')
+    + (s.requestId ? ' · rlogid ' + esc(s.requestId) : '') + (s.error ? '<br><span class="muted">' + esc(s.error) + '</span>' : '') + '</div>').join('');
+  const raw = out.rawResponse ? '<pre style="white-space:pre-wrap;font-size:11px;margin-top:8px;">' + esc(JSON.stringify(out.rawResponse, null, 2)).slice(0, 4000) + '</pre>' : '';
+  const hint = failed.some((s) => s.httpStatus >= 500) ? 'HTTP 5xx is eBay’s own backend — already retried. Worth another go in a few minutes before changing anything.'
+    : failed.some((s) => s.httpStatus >= 400) ? 'HTTP 4xx means eBay rejected what we sent — the payload needs a change, retrying will not help.' : '';
+  return '<details style="margin-top:10px;"><summary class="muted" style="cursor:pointer;">What eBay said about the first failure</summary>'
+    + '<div class="muted" style="margin-top:8px;line-height:1.7;">' + rows + (hint ? '<div style="margin-top:8px;">' + esc(hint) + '</div>' : '') + raw + '</div></details>';
+}
+
+// ---------------------------------------------------------------------------
+// Persistence — the queue survives a reload, but nothing is written to the DB until Stage.
+// ---------------------------------------------------------------------------
+let saveT = null;
+function saveQueue() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    try {
+      localStorage.setItem(Q_KEY, JSON.stringify({
+        v: 1, at: Date.now(),
+        rows: QUEUE.map((r) => ({ uid: r.uid, setId: r.setId, cardId: r.cardId, printingKey: r.printingKey, cond: r.cond, condManual: !!r.condManual, qty: r.qty, askAud: r.askAud, manual: r.manual, released: r.released, inc: r.inc, itemId: r.itemId, sku: r.sku, staged: r.staged, published: r.published, listingUrl: r.listingUrl })),
+      }));
+    } catch (e) {}
+  }, 400);
+}
+// Offer the previous queue back on a NON-blocking bar. A confirm() here would freeze the whole page
+// behind a dialog before the tool has even drawn — and the common case is starting a fresh pile,
+// which should not cost a click.
+function offerRestore() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(Q_KEY) || 'null'); } catch (e) {}
+  if (!saved || !Array.isArray(saved.rows) || !saved.rows.length) return;
+  const age = Math.round((Date.now() - (saved.at || 0)) / 60000);
+  const when = age < 1 ? 'a moment' : age < 60 ? age + ' minutes' : Math.round(age / 60) + ' hours';
+  const live = saved.rows.filter((r) => r.published).length;
+  const bar = $('restoreBar');
+  bar.innerHTML = '<b>' + saved.rows.length + ' rows</b> from ' + when + ' ago are still queued'
+    + (live ? ' (' + live + ' already published — those listings are live either way)' : '')
+    + '. <button class="btn sm" id="qRestore" style="margin-left:8px;">Restore them</button> '
+    + '<button class="btn sm" id="qDiscard">Discard</button>';
+  bar.style.display = 'block';
+  $('qRestore').addEventListener('click', async () => { bar.style.display = 'none'; await restoreQueue(saved); });
+  $('qDiscard').addEventListener('click', () => { try { localStorage.removeItem(Q_KEY); } catch (e) {} bar.style.display = 'none'; });
+}
+async function restoreQueue(saved) {
+  const setIds = [...new Set(saved.rows.map((r) => r.setId))];
+  for (const sid of setIds) { const s = SETS.find((x) => x.value === sid); if (s) await loadSetIndex(s); }
+  for (const sv of saved.rows) {
+    const ix = INDEX.get(sv.setId); if (!ix) continue;
+    const card = ix.cards.find((c) => c.id === sv.cardId); if (!card) continue;
+    const r = makeRow(card, ix, { printing: null, qty: sv.qty, cond: sv.cond, askAud: sv.askAud });
+    Object.assign(r, {
+      printingKey: sv.printingKey, cond: sv.cond, condManual: sv.condManual, qty: sv.qty, askAud: sv.askAud,
+      manual: sv.manual, released: sv.released, inc: sv.inc, itemId: sv.itemId, sku: sv.sku,
+      staged: sv.staged, published: sv.published, listingUrl: sv.listingUrl,
+    });
+    const p = r.printings.find((x) => x.key === sv.printingKey);
+    if (p) { r.finish = p.finish; r.variant = p.variant; r.edition = p.edition; r.mktUsd = p.marketUsd; r.mktAud = mktToAud(r); }
+    r.title = titleFor(r);
+    QUEUE.push(r); appendRowEl(r);
+    if (!r.staged && !r.published) { enqueuePrice(r); enqueueDupe(r); }
+  }
+  uid = Math.max(uid, ...QUEUE.map((r) => r.uid)) + 1;
+  refresh();
+}
+window.addEventListener('beforeunload', (e) => {
+  // Deliberately NOT guarding on RUNNING any more: the run lives on the server, so closing the tab
+  // costs the view, not the work. Only unstaged queue rows are worth stopping for.
+  const pending = QUEUE.filter((r) => !r.published && !r.staged).length;
+  if (pending) { e.preventDefault(); e.returnValue = ''; return ''; }
+});
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+(async function () {
+  if (window.TCG && TCG.loadFx) await TCG.loadFx();
+  await loadSets();
+  await checkAccount();
+  await loadLabelState();
+  loadStoreCats();
+  offerRestore();
+  refresh();
+  attachIfRunning();
+  // Deep link: /stock-runner.html?set=sv3 opens straight into a set.
+  const qp = new URLSearchParams(location.search);
+  const want = qp.get('set');
+  if (want) { const s = SETS.find((x) => x.value === want || x.code === want.toUpperCase()); if (s) await selectSet(s); }
+})();
+</script>
+</body>
+</html>
