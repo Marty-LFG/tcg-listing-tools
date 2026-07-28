@@ -172,6 +172,12 @@
         <div class="muted" id="boHint" style="display:none;margin-top:6px;"></div>
       </div>
 
+      <div class="card" id="composeCard" style="display:none;">
+        <h3>Listing image</h3>
+        <label class="tog"><input type="checkbox" id="composeEnable"><span>Branded rails on the photo</span></label>
+        <div class="muted" id="composeHint" style="margin-top:6px;"></div>
+      </div>
+
       <div class="card" id="storeCard" style="display:none;">
         <h3>5 · Store department <span class="muted" id="storeCount" style="text-transform:none;letter-spacing:0;"></span></h3>
         <div class="muted">Where this card sits in your eBay shop. eBay allows two, and only bottom-level
@@ -284,8 +290,9 @@ async function doLookup(){
     renderCard();
     act&&act.done('found');
     stat($('status'),'ok','Found. Verify the details, price and offers below.');
-    ['detailsCard','priceCard','offerCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
+    ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
     loadStoreCats();
+    if(COMPOSE_READY===null) loadComposeState();
     savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
     priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
     loadPrice(); checkStock(); loadNextLabel();
@@ -554,6 +561,30 @@ function seedOffers(){
   if(!$('boDecline').value) $('boDecline').value=(Math.round(p*dec)/100).toFixed(2);
   $('boHint').textContent='Offers at/above the accept price auto-accept; at/below the decline price auto-reject. Everything between pings you.';
 }
+// ---- branded listing image ----
+// The checkbox starts from data/listing-image.config.json and then means exactly what it says for
+// THIS listing: an explicit true/false, never "whatever the config happens to be at publish time".
+// COMPOSE_READY stays null until the config call answers, and a null send lets the server decide.
+let COMPOSE_READY=null;
+async function loadComposeState(){
+  try{
+    const j=await fetch('/api/listing-image/config').then(r=>r.json());
+    COMPOSE_READY=j;
+    const st=j.status||{};
+    const missing=Object.entries(st.rails||{}).filter(([,r])=>!r.present).map(([v])=>v);
+    let why='';
+    if(!st.sharp||!st.sharp.available) why='unavailable on this host — sharp is not installed';
+    else if(missing.length) why='rail art missing for '+missing.join(', ');
+    else if(!st.font||!st.font.ok) why='rails will render without the metadata line — '+(st.font&&st.font.reason||'no font');
+    $('composeEnable').checked=!!j.config.enabled;
+    $('composeEnable').disabled=!!why&&!(st.font&&!st.font.ok);
+    $('composeHint').textContent=why
+      ? why
+      : 'eBay crops the gallery thumbnail square. This fills the dead space either side with the store mark and the card’s set + language, instead of letting eBay letterbox it.';
+  }catch(e){ $('composeHint').textContent='could not read the compositor settings — the server default will apply'; }
+}
+function composeFlag(){ return COMPOSE_READY? $('composeEnable').checked : null; }
+
 function bestOffer(){
   if(!$('boEnable').checked) return {enabled:false};
   const o={enabled:true};
@@ -603,14 +634,16 @@ async function uploadPhotos(itemId){
   // clear any prior photos for a clean set, then upload the staged ones
   await fetch('/api/listings/'+itemId+'/photos',{method:'DELETE'});
   for(const ph of photos){
-    await fetch('/api/listings/photos',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({itemId,kind:ph.kind,dataUrl:ph.dataUrl})});
+    // Owner photos are branded HERE, at upload — by publish time they are finished EPS urls with no
+    // bytes left to work on. Same toggle as the catalog-art path so one tick means one thing.
+    await fetch('/api/listings/photos',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({itemId,kind:ph.kind,dataUrl:ph.dataUrl,compose:composeFlag()})});
   }
 }
 function publishBody(itemId){
   const r=cardRow();
   // character + speciality are deliberately absent: the server derives them (ebayCharacters from the
   // dex numbers, ebaySpeciality from the subtypes) and sending null would just look like data.
-  return {itemId,price_cents:Math.round((parseFloat($('price').value)||0)*100),bestOffer:bestOffer(),
+  return {itemId,price_cents:Math.round((parseFloat($('price').value)||0)*100),bestOffer:bestOffer(),compose:composeFlag(),
     card_type:r.card_type,stage:r.stage,illustrator:r.illustrator,finish:r.finish,
     supertype:card.supertype,subtypes:card.subtypeList,types:card.types,hp:card.hp,
     pokedex_numbers:card.pokedex,regulation_mark:card.regMark,set_code:card.setCode,

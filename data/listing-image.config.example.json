@@ -1,0 +1,14 @@
+{
+  "enabled": false,
+  "applyTo": {
+    "catalogArt": true,
+    "ownerPhotos": true
+  },
+  "font": {
+    "family": "Genty Sans",
+    "file": "fonts/Genty-Sans-Regular.ttf"
+  },
+  "layoutOverrides": {},
+  "textOverrides": {},
+  "variantOverrides": {}
+}

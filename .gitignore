@@ -63,3 +63,14 @@ data/postsale.config.json
 # location (filled by POST /api/listings/account/bootstrap) + listing defaults; re-seeded from the
 # tracked data/ebay-listing.config.example.json on boot (lib/listings.mjs ensureConfigSeeded).
 data/ebay-listing.config.json
+# Listing image compositor — SERVER-OWNED (settings dashboard writes it). Re-seeded from the tracked
+# data/listing-image.config.example.json on boot (lib/listing-image-config.mjs ensureConfigSeeded).
+data/listing-image.config.json
+# Composed listing images, content-addressed by the compose hash. Pure derived output: every file is
+# reproducible from its source image plus the layout config, exactly like data/img-cache/.
+data/composed/
+# The ORIGINAL bytes of owner-shot photos, kept so an ASSET_VERSION bump can re-brand them. Unlike
+# everything else under data/, these are NOT regenerable — the only other copy is on the owner's
+# phone — so they are excluded from git for size, not because they are disposable. Worth folding
+# into data/backup.config.json if the photo library grows.
+data/photo-originals/

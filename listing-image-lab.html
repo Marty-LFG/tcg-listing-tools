@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Listing Image Lab · Binders Keepers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#171b24;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#c9a227;--gold-soft:rgba(201,162,39,.14);
+    --green:#43d6a0;--amber:#f0c04a;--red:#f0666e;--blue:#6ab0ff;--violet:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:34px 24px 90px;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(201,162,39,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1320px;width:100%;margin:0 auto;}
+  a{color:var(--gold);text-decoration:none;}
+  ::selection{background:var(--gold-soft);}
+
+  .top{display:flex;align-items:center;gap:15px;margin-bottom:22px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin:0;line-height:1.05;}
+  .sub{color:var(--muted);font-size:12.5px;margin:5px 0 0;font-family:var(--mono);}
+  .back{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:7px 12px;transition:.15s;white-space:nowrap;}
+  .back:hover{border-color:var(--line2);color:var(--text);}
+
+  .banner{border:1px solid var(--line);border-radius:12px;padding:11px 15px;margin-bottom:16px;font-family:var(--mono);font-size:12px;display:none;}
+  .banner.show{display:block;}
+  .banner.warn{border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.08);color:var(--amber);}
+  .banner.bad{border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.08);color:var(--red);}
+
+  .grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start;}
+  @media (max-width:1000px){.grid{grid-template-columns:1fr;}}
+
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);padding:16px 17px;}
+  .card + .card{margin-top:14px;}
+  .card h2{font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 13px;}
+
+  .drop{border:1.5px dashed var(--line2);border-radius:12px;padding:22px 14px;text-align:center;cursor:pointer;transition:.15s;background:var(--ink);}
+  .drop:hover,.drop.over{border-color:var(--gold);background:rgba(201,162,39,.06);}
+  .drop .big{font-family:var(--mono);font-size:12.5px;color:var(--text);}
+  .drop .small{font-size:11px;color:var(--faint);margin-top:5px;font-family:var(--mono);}
+
+  label.row{display:flex;align-items:center;gap:10px;margin-bottom:11px;font-family:var(--mono);font-size:11px;color:var(--muted);}
+  label.row > span.k{flex:none;width:104px;letter-spacing:.04em;}
+  label.row input[type=text],label.row select{flex:1;min-width:0;background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 9px;outline:none;}
+  label.row input[type=text]:focus,label.row select:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+
+  .slider{margin-bottom:13px;}
+  .slider .lab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.05em;margin-bottom:5px;}
+  .slider .lab b{color:var(--gold);font-weight:600;}
+  .slider input[type=range]{width:100%;accent-color:var(--gold);}
+
+  .btn{font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.04em;border:1px solid var(--line2);background:var(--panel2);color:var(--text);border-radius:9px;padding:9px 14px;cursor:pointer;transition:.15s;}
+  .btn:hover{border-color:var(--gold);color:var(--gold);}
+  .btn.primary{background:var(--gold);border-color:var(--gold);color:var(--ink);}
+  .btn.primary:hover{filter:brightness(1.08);color:var(--ink);}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;}
+
+  .stage{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);padding:16px;}
+  .panes{display:grid;grid-template-columns:1fr;gap:14px;}
+  .panes.compare{grid-template-columns:1fr 1fr;}
+  @media (max-width:760px){.panes.compare{grid-template-columns:1fr;}}
+  .pane .cap{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;}
+  .pane img{width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:#000;}
+  .pane .empty{aspect-ratio:1;border-radius:10px;border:1px dashed var(--line2);display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:var(--mono);font-size:12px;}
+
+  .thumbs{display:flex;gap:14px;align-items:flex-end;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);}
+  .thumbs .t{text-align:center;}
+  .thumbs img{border-radius:6px;border:1px solid var(--line);display:block;}
+  .thumbs .n{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:5px;letter-spacing:.08em;}
+
+  .facts{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px;}
+  .fact{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:5px 9px;background:var(--ink);}
+  .fact b{color:var(--text);font-weight:600;}
+
+  pre.cfg{background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:12px;font-family:var(--mono);font-size:11px;color:var(--muted);overflow:auto;max-height:230px;margin:0 0 10px;white-space:pre;}
+  .hint{font-size:11px;color:var(--faint);font-family:var(--mono);line-height:1.6;margin-top:9px;}
+  .busy{opacity:.45;transition:opacity .12s;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="monogram">BK</div>
+    <div>
+      <h1>Listing Image Lab</h1>
+      <p class="sub">Tune the branded rails against real photos.</p>
+    </div>
+    <a class="back" href="/index.html">← All tools</a>
+  </div>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Source</h2>
+        <div class="drop" id="drop">
+          <div class="big">Drop a card photo</div>
+          <div class="small">or click to choose · jpg / png / webp</div>
+        </div>
+        <input type="file" id="file" accept="image/*" hidden>
+        <label class="row" style="margin-top:12px"><span class="k">or url</span><input type="text" id="url" placeholder="https://…/card.jpg"></label>
+      </div>
+
+      <div class="card">
+        <h2>Listing metadata</h2>
+        <label class="row"><span class="k">product type</span>
+          <select id="m_type"><option value="single">single</option><option value="slab">slab</option><option value="sealed">sealed</option></select></label>
+        <label class="row"><span class="k">language</span><input type="text" id="m_lang" placeholder="Japanese" value="Japanese"></label>
+        <label class="row"><span class="k">set name</span><input type="text" id="m_set" placeholder="Mega Symphonia" value="Mega Symphonia"></label>
+        <label class="row"><span class="k">rail art</span>
+          <select id="o_variant"><option value="">(from metadata)</option></select></label>
+        <div class="hint" id="railtext">—</div>
+      </div>
+
+      <div class="card">
+        <h2>Layout</h2>
+        <div id="sliders"></div>
+        <div class="btnrow" style="margin-top:6px">
+          <button class="btn" id="reset">Reset</button>
+          <button class="btn" id="reload">Reload rail art</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Config</h2>
+        <pre class="cfg" id="cfgout">—</pre>
+        <div class="btnrow">
+          <button class="btn primary" id="copycfg">Copy config</button>
+          <button class="btn" id="savecfg">Save to settings</button>
+        </div>
+        <div class="hint">Copy pastes the <code>layoutOverrides</code>/<code>textOverrides</code> block. Save writes it to
+          <code>data/listing-image.config.json</code> through <code>/api/settings</code> — the same validation a hand edit gets.
+          Sliders alone change nothing on disk.</div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="panes" id="panes">
+        <div class="pane">
+          <div class="cap"><span>Composed</span><span id="cap_ms"></span></div>
+          <div class="empty" id="empty">drop a photo to start</div>
+          <img id="out" style="display:none" alt="composed listing image">
+        </div>
+        <div class="pane" id="refpane" style="display:none">
+          <div class="cap"><span>Reference</span><span id="cap_ref"></span></div>
+          <img id="ref" alt="reference image">
+        </div>
+      </div>
+
+      <div class="thumbs" id="thumbs" style="display:none">
+        <div class="t"><img id="th220" width="220" height="220" alt="220px"><div class="n">220 · SEARCH</div></div>
+        <div class="t"><img id="th140" width="140" height="140" alt="140px"><div class="n">140 · MOBILE</div></div>
+        <div class="t"><img id="th64" width="64" height="64" alt="64px"><div class="n">64 · TINY</div></div>
+        <div class="hint" style="margin:0 0 4px 6px">This is the size that sells. If the card is unreadable at 140, the rails are too wide.</div>
+      </div>
+
+      <div class="facts" id="facts"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// The lab is a tuning harness, not a listing tool: it never publishes anything and never writes the
+// config on its own. Everything below drives POST /api/listing-image/preview, whose layout
+// overrides are request-scoped — saving is the separate, deliberate button.
+const $ = (id) => document.getElementById(id);
+
+// Which layout knobs get a slider, and the range each is useful over. Anything outside these bounds
+// is rejected by the same validator the compositor runs, so the sliders cannot produce a broken save.
+const SLIDERS = [
+  { key: 'railWidth',    scope: 'layout', min: 0,   max: 500, step: 10,  label: 'rail width',    unit: 'px' },
+  { key: 'cardPaddingY', scope: 'layout', min: 0,   max: 320, step: 8,   label: 'card padding',  unit: 'px' },
+  { key: 'canvas',       scope: 'layout', min: 800, max: 3200, step: 200, label: 'canvas',       unit: 'px' },
+  { key: 'quality',      scope: 'layout', min: 60,  max: 100, step: 1,   label: 'jpeg quality',  unit: '' },
+  { key: 'trimThreshold',scope: 'layout', min: 0,   max: 80,  step: 1,   label: 'trim threshold',unit: '' },
+  { key: 'fill',         scope: 'text',   min: 0.2, max: 1,   step: 0.02,label: 'text fill',     unit: '' },
+  { key: 'railInset',    scope: 'text',   min: 0,   max: 0.45,step: 0.01,label: 'text inset',    unit: '' },
+];
+
+let DEFAULTS = null, PROFILES = null, STATE = { layout: {}, text: {} }, SOURCE = null, INFLIGHT = false, PENDING = false;
+
+function banner(msg, kind) {
+  const b = $('banner');
+  if (!msg) { b.className = 'banner'; return; }
+  b.className = 'banner show ' + (kind || 'warn');
+  b.textContent = msg;
+}
+
+// Defaults come from the server so the sliders start where the compositor actually is, including any
+// productType profile — a sealed preview should open on 220px rails, not on the single default.
+function effectiveDefault(key, scope) {
+  const type = $('m_type').value;
+  const prof = (PROFILES && PROFILES[type]) || {};
+  if (scope === 'text') return DEFAULTS.text[key];
+  return prof[key] !== undefined ? prof[key] : DEFAULTS[key];
+}
+
+function buildSliders() {
+  $('sliders').innerHTML = '';
+  for (const s of SLIDERS) {
+    const val = STATE[s.scope][s.key] !== undefined ? STATE[s.scope][s.key] : effectiveDefault(s.key, s.scope);
+    const wrap = document.createElement('div');
+    wrap.className = 'slider';
+    wrap.innerHTML = '<div class="lab"><span>' + s.label + '</span><b id="v_' + s.key + '">' + val + s.unit + '</b></div>';
+    const r = document.createElement('input');
+    r.type = 'range'; r.min = s.min; r.max = s.max; r.step = s.step; r.value = val;
+    r.addEventListener('input', () => {
+      const n = s.step < 1 ? parseFloat(r.value) : parseInt(r.value, 10);
+      STATE[s.scope][s.key] = n;
+      document.getElementById('v_' + s.key).textContent = n + s.unit;
+      renderConfig();
+      schedule();
+    });
+    wrap.appendChild(r);
+    $('sliders').appendChild(wrap);
+  }
+}
+
+// Only knobs the owner actually moved get written out. Emitting every default as an override would
+// freeze the config against future changes to the defaults themselves.
+function overrides() {
+  const out = { layoutOverrides: {}, textOverrides: {} };
+  for (const s of SLIDERS) {
+    const v = STATE[s.scope][s.key];
+    if (v === undefined) continue;
+    if (v === effectiveDefault(s.key, s.scope)) continue;
+    (s.scope === 'text' ? out.textOverrides : out.layoutOverrides)[s.key] = v;
+  }
+  return out;
+}
+
+function renderConfig() {
+  $('cfgout').textContent = JSON.stringify(overrides(), null, 2);
+}
+
+function meta() {
+  return { productType: $('m_type').value, language: $('m_lang').value.trim(), setName: $('m_set').value.trim() };
+}
+
+// One request in flight at a time, with the latest state coalesced behind it: dragging a slider
+// fires input events far faster than a 1600px composite completes.
+function schedule() {
+  if (INFLIGHT) { PENDING = true; return; }
+  clearTimeout(schedule._t);
+  schedule._t = setTimeout(preview, 140);
+}
+
+async function preview() {
+  if (!SOURCE) return;
+  INFLIGHT = true;
+  $('panes').classList.add('busy');
+  const o = overrides();
+  const body = Object.assign({ meta: meta(), options: { variant: $('o_variant').value || undefined } }, SOURCE, o);
+  try {
+    const r = await fetch('/api/listing-image/preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) { banner(j.error || ('preview failed (HTTP ' + r.status + ')'), j.unavailable ? 'bad' : 'warn'); return; }
+    banner('');
+    $('empty').style.display = 'none';
+    for (const id of ['out', 'th220', 'th140', 'th64']) $(id).src = j.dataUrl;
+    $('out').style.display = 'block';
+    $('thumbs').style.display = 'flex';
+    $('cap_ms').textContent = j.ms + 'ms · ' + Math.round(j.bytes / 1024) + 'kB';
+    $('railtext').textContent = j.textLines.length ? 'rail reads: ' + j.textLines[0] : 'no rail text (needs language and/or set)';
+    $('facts').innerHTML = [
+      ['canvas', j.width + '×' + j.height],
+      ['rails', j.layout.railWidth + 'px'],
+      ['card box', j.layout.cardBox.width + '×' + j.layout.cardBox.height],
+      ['card', j.card.width + '×' + j.card.height + (j.card.trimmed ? ' (trimmed)' : '')],
+      ['variant', j.variant],
+      ['version', j.composeVersion],
+      ['hash', j.contentHash.slice(0, 12)],
+    ].map(([k, v]) => '<div class="fact">' + k + ' <b>' + v + '</b></div>').join('');
+  } catch (e) {
+    banner('preview request failed: ' + e.message, 'bad');
+  } finally {
+    INFLIGHT = false;
+    $('panes').classList.remove('busy');
+    if (PENDING) { PENDING = false; schedule(); }
+  }
+}
+
+function setSource(src) { SOURCE = src; schedule(); }
+
+// --- input wiring ---
+$('drop').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', () => { const f = $('file').files[0]; if (f) readFile(f); });
+for (const ev of ['dragenter', 'dragover']) $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.add('over'); });
+for (const ev of ['dragleave', 'drop']) $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.remove('over'); });
+$('drop').addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+function readFile(f) {
+  const fr = new FileReader();
+  fr.onload = () => { $('drop').querySelector('.big').textContent = f.name; setSource({ dataUrl: fr.result }); };
+  fr.readAsDataURL(f);
+}
+$('url').addEventListener('change', () => { const u = $('url').value.trim(); if (u) setSource({ url: u }); });
+
+for (const id of ['m_type', 'm_lang', 'm_set', 'o_variant']) {
+  $(id).addEventListener('change', () => { if (id === 'm_type') buildSliders(); renderConfig(); schedule(); });
+  $(id).addEventListener('input', schedule);
+}
+
+$('reset').addEventListener('click', () => { STATE = { layout: {}, text: {} }; buildSliders(); renderConfig(); schedule(); });
+
+$('reload').addEventListener('click', async () => {
+  const r = await fetch('/api/listing-image/reload-assets', { method: 'POST' }).then((x) => x.json()).catch(() => null);
+  if (r && r.ok) { showReadiness(r.status); schedule(); }
+});
+
+$('copycfg').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('cfgout').textContent);
+  $('copycfg').textContent = 'Copied';
+  setTimeout(() => { $('copycfg').textContent = 'Copy config'; }, 1400);
+});
+
+// Saving goes through /api/settings, not through the lab: same validation as a hand edit, and it is
+// the one action here with a consequence beyond this page.
+$('savecfg').addEventListener('click', async () => {
+  // Read-modify-write: the overrides are only two keys of the config, and a blind PUT of just those
+  // would drop `enabled`, `applyTo` and the font block.
+  const entry = await fetch('/api/settings/listing-image').then((r) => r.json()).catch(() => null);
+  if (!entry || !entry.content) { banner('could not read the current listing-image config' + (entry && entry.error ? ': ' + entry.error : ''), 'bad'); return; }
+  const next = Object.assign({}, entry.content, overrides());
+  const r = await fetch('/api/settings/listing-image', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(next) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { banner('save rejected: ' + (j.error || j.detail || r.status), 'bad'); return; }
+  banner('');
+  $('savecfg').textContent = 'Saved';
+  setTimeout(() => { $('savecfg').textContent = 'Save to settings'; }, 1400);
+});
+
+function showReadiness(status) {
+  if (!status) return;
+  if (!status.sharp.available) return banner('sharp is not installed on this host — the compositor cannot run. ' + (status.sharp.error || ''), 'bad');
+  const missing = Object.entries(status.rails).filter(([, r]) => !r.present).map(([v]) => v);
+  if (missing.length) return banner('missing rail art for: ' + missing.join(', ') + ' — run node scripts/build-placeholder-rails.mjs', 'bad');
+  if (!status.font.ok) return banner('rail text is disabled — ' + status.font.reason, 'warn');
+  banner('');
+}
+
+(async function init() {
+  const cfg = await fetch('/api/listing-image/config').then((r) => r.json()).catch(() => null);
+  if (!cfg) { banner('could not reach /api/listing-image/config — is the dev server running?', 'bad'); return; }
+  DEFAULTS = cfg.defaults;
+  PROFILES = cfg.profiles;
+  for (const v of cfg.variants) {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    $('o_variant').appendChild(o);
+  }
+  // Start from whatever is already saved, so the lab opens on the live layout rather than on defaults.
+  STATE.layout = Object.assign({}, cfg.config.layoutOverrides || {});
+  STATE.text = Object.assign({}, cfg.config.textOverrides || {});
+  buildSliders();
+  renderConfig();
+  showReadiness(cfg.status);
+})();
+</script>
+</body>
+</html>

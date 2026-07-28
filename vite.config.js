@@ -1,8 +1,4 @@
 import { defineConfig, loadEnv } from 'vite'
-import crypto from 'node:crypto'
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { trackerPlugin } from './lib/tracker.mjs'
 import { inventoryPlugin } from './lib/inventory.mjs'
 import { sealedPlugin } from './lib/sealed.mjs'
@@ -13,6 +9,7 @@ import { listingsPlugin } from './lib/listings.mjs'
 import { statusPlugin } from './lib/status.mjs'
 import { catalogPlugin } from './lib/catalog.mjs'
 import { pkmSetsPlugin } from './lib/pkm-sets-cache.mjs'
+import { listingImageLabPlugin } from './lib/listing-image-lab.mjs'
 import { lookup as pcLookup, enumerateConsole as pcEnumerate, listPokemonConsoles as pcConsoles } from './lib/pricecharting.mjs'
 import { certLookup, certProviders } from './lib/certlookup.mjs'
 import { analyzeCard } from './lib/grader.mjs'
@@ -20,19 +17,14 @@ import { printConfig, buildJob, sendToPrinter } from './lib/labelprint.mjs'
 import { bricklinkAuthHeader } from './lib/bricklink.mjs'
 import { ebayToken, ebayInsightsToken } from './lib/ebay-token.mjs'
 import { readJsonBody } from './lib/req-body.mjs'
+import { fetchCached } from './lib/img-cache.mjs'
 
 // Streams any remote image through the dev server (so the browser can blob-download it — cross-origin
 // <a download> is blocked otherwise) AND caches it on disk (data/img-cache/) keyed by URL hash. Card
 // images are content-addressed / stable, so cached forever; repeat display + download is then served
 // locally (faster, and resilient if the upstream CDN URL ever changes).
-const IMG_CACHE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'img-cache')
-const IMG_TTL_MS = 30 * 24 * 60 * 60 * 1000   // 30d — images are near-immutable; re-fetch monthly in case one is replaced at the same URL
-const IMG_CT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', avif: 'image/avif', gif: 'image/gif' }
-function imgCacheFile(u) {
-  const ext = ((u.match(/\.(png|jpe?g|webp|avif|gif)(?:[?#]|$)/i) || [])[1] || '').toLowerCase()
-  const name = crypto.createHash('sha1').update(u).digest('hex') + (ext ? '.' + ext : '')
-  return { file: path.join(IMG_CACHE_DIR, name), ext }
-}
+// The cache itself now lives in lib/img-cache.mjs so the listing-image compositor shares it: that
+// pipeline must download bytes to compute its content hash, and this keeps the repeat a local read.
 const imgProxy = {
   name: 'img-proxy',
   configureServer(server) {
@@ -40,33 +32,15 @@ const imgProxy = {
       try {
         const u = new URL(req.url, 'http://localhost').searchParams.get('u')
         if (!u) { res.statusCode = 400; return res.end('missing u') }
-        const { file, ext } = imgCacheFile(u)
         res.setHeader('access-control-allow-origin', '*')
         res.setHeader('cache-control', 'public, max-age=86400')   // browser re-checks daily; served from our disk
-        try {                                                     // disk cache hit — only while within TTL
-          if (Date.now() - fs.statSync(file).mtimeMs < IMG_TTL_MS) {
-            res.setHeader('content-type', IMG_CT[ext] || 'image/jpeg')
-            res.setHeader('x-img-cache', 'HIT')
-            return res.end(fs.readFileSync(file))
-          }
-        } catch {}
-        const r = await fetch(u).catch(() => null)               // miss/expired → refetch
-        const ct = (r && r.headers.get('content-type')) || ''
-        if (r && r.ok && /^image\//i.test(ct)) {                 // only cache a REAL image (never an error page)
-          const buf = Buffer.from(await r.arrayBuffer())
-          try { fs.mkdirSync(IMG_CACHE_DIR, { recursive: true }); fs.writeFileSync(file, buf) } catch {}
-          res.setHeader('content-type', ct)
-          res.setHeader('x-img-cache', 'MISS')
-          return res.end(buf)
+        const got = await fetchCached(u)
+        if (got.buffer) {
+          res.setHeader('content-type', got.contentType)
+          res.setHeader('x-img-cache', got.status.toUpperCase())  // HIT | MISS | STALE
+          return res.end(got.buffer)
         }
-        // Refetch failed / not an image → serve the expired-but-present disk copy rather than break.
-        try {
-          const buf = fs.readFileSync(file)
-          res.setHeader('content-type', IMG_CT[ext] || 'image/jpeg')
-          res.setHeader('x-img-cache', 'STALE')
-          return res.end(buf)
-        } catch {}
-        res.statusCode = r ? r.status : 502
+        res.statusCode = got.httpStatus || 502
         res.end('img unavailable')
       } catch (e) { res.statusCode = 502; res.end('img fetch failed') }
     })
@@ -348,7 +322,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
-    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env)],
+    plugins: [imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), listingImageLabPlugin(env)],
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

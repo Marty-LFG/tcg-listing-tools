@@ -267,6 +267,13 @@
         </div>
       </div>
       <div>
+        <label>Listing image</label>
+        <label style="display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);cursor:pointer;">
+          <input type="checkbox" id="composeEnable"> Branded rails on every image
+        </label>
+        <div class="muted" id="composeHint" style="margin-top:5px;">checking…</div>
+      </div>
+      <div>
         <label>Store department <span id="storeCount" class="muted"></span></label>
         <div id="storeCats" class="muted" style="max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:9px;padding:6px 8px;">loading…</div>
       </div>
@@ -1299,6 +1306,27 @@ $('boEnable').addEventListener('change', () => {
   $('boFields').style.display = $('boEnable').checked ? '' : 'none';
   $('boHint').textContent = 'Offers at or above the accept figure auto-accept; at or below the decline figure auto-reject. Everything between pings you.';
 });
+// ---- branded listing images (batch-level) ----
+// One tick for the whole run. COMPOSE_READY stays null until the config answers; sending null lets
+// the server fall back to data/listing-image.config.json rather than guessing on the client.
+let COMPOSE_READY = null;
+async function loadComposeState() {
+  try {
+    const j = await fetch('/api/listing-image/config').then((r) => r.json());
+    COMPOSE_READY = j;
+    const st = j.status || {};
+    const missing = Object.entries(st.rails || {}).filter(([, r]) => !r.present).map(([v]) => v);
+    let why = '';
+    if (!st.sharp || !st.sharp.available) why = 'unavailable on this host — sharp is not installed';
+    else if (missing.length) why = 'rail art missing for ' + missing.join(', ');
+    else if (!st.font || !st.font.ok) why = 'rails will render without the metadata line — ' + ((st.font && st.font.reason) || 'no font');
+    $('composeEnable').checked = !!j.config.enabled;
+    $('composeEnable').disabled = !!why && !(st.font && !st.font.ok);
+    $('composeHint').textContent = why || 'Fills the square eBay crops to, instead of letting it letterbox the card. Tune it in the Listing Image Lab.';
+  } catch (e) { $('composeHint').textContent = 'could not read the compositor settings — the server default will apply'; }
+}
+function composeFlag() { return COMPOSE_READY ? $('composeEnable').checked : null; }
+
 function bestOffer() {
   if (!$('boEnable').checked) return { enabled: false };
   const o = { enabled: true };
@@ -1565,6 +1593,7 @@ async function runPublish(rows) {
     item_ids: rows.map((r) => r.itemId),
     released_ids: rows.filter((r) => r.released).map((r) => r.itemId),
     bestOffer: bestOffer(),
+    compose: composeFlag(),
     overrides_by_id: Object.fromEntries(rows.map((r) => [r.itemId, overridesFor(r)])),
   };
   let resp;
@@ -1742,6 +1771,7 @@ window.addEventListener('beforeunload', (e) => {
   await checkAccount();
   await loadLabelState();
   loadStoreCats();
+  loadComposeState();
   offerRestore();
   refresh();
   attachIfRunning();

@@ -167,6 +167,16 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `data/riftbound.json` | Baked Riftbound catalog (~943 cards, all 4 sets), built by `scripts/build-riftbound-data.mjs` from the **official LoL card gallery** (keyless). Keyed by lowercase set code; per-card `{k,num,name,rarity,type,domain,e,p,m,img}`. Fetched same-origin. Default Riftbound source. |
 | `scripts/build-riftbound-data.mjs` | Rebuilds `data/riftbound.json`: scrapes the gallery Next.js `buildId`, fetches `card-gallery.json`, slims + groups by set. Re-run when a new set drops. |
 | `extras.js` | Shared `TCG.*` module. **Images** (`renderExtras`): each image is `{label, display:[fast/small urls — raced, quickest shown], download:bestQualityUrl, fallback}`; the download button is ALWAYS best quality (back-compat `{url,fallback}` still works). **`TCG.activity(label)`** → `{update,done,fail}` renders a bottom-left toast stack with a live elapsed timer so every network op is visible. **`TCG.ebayComps({query,container,status,filter?})`** — shared eBay AU delivered-comps engine (sold-first via Marketplace Insights → asking fallback; delivered totals = item + shipping; AU vs Worldwide; undercut; auto-drives an activity toast). Plus prices/graph panel, FX, title-fitting, `condCode`/`langCode`, `legoCondToken`/`funkoCondToken`, `renderItemSpecifics`. Loaded via `<script src="/extras.js">`. |
+| `listing-image-lab.html` | Tuning harness for the branded listing image (§19). Drop a photo, drag rail-width / padding / canvas / text sliders, check it at thumbnail size, copy or save the config. Sliders are request-scoped — saving is a separate button through `/api/settings`. |
+| `lib/listing-image.mjs` | The compositor: `composeListingImage(input, meta, options)` → a 1600×1600 branded JPEG. Also `composeAvailable`, `describeCompositor`, `hashFor`, and the `cardDetector` seam (default `trimDetector`). Knows nothing about eBay. |
+| `lib/listing-image-config.mjs` | `ASSET_VERSION`, `DEFAULT_LAYOUT`, per-`productType` profiles, the variant registry + rules, `resolveLayout`/`railText`/`composeHash`/`composeVersion`, and load/save for `data/listing-image.config.json`. |
+| `lib/listing-image-assets.mjs` | Rail PNG loading (normalised to the target width ONCE, memoised), `railsDigest`, the lazy `sharp` import, and `fontProbe()` — see §19 for why the probe is not optional. |
+| `lib/listing-image-lab.mjs` | `listingImageLabPlugin` → `/api/listing-image/{config,preview,resolve,reload-assets}`. Registered in the `vite.config.js` plugins array (GR1). |
+| `lib/img-cache.mjs` | The content-addressed image cache (`data/img-cache/`), extracted from the `/api/img` middleware so the compositor shares it — it must download bytes before it can compute its cache key. |
+| `rails/<variant>/{left,right}.png` | Rail art per variant (`default`, `japanese`, `sealed`). Any authoring scale works; see `scripts/build-placeholder-rails.mjs` for the full contract. Currently PLACEHOLDERS. |
+| `fonts/Genty-Sans-Regular.ttf` | The bundled rail font. Its family name is **`Genty Sans`** and that string must match exactly (§19). |
+| `scripts/compose-listing-images.mjs` | Batch/backfill CLI: `--in <file\|dir> --out <dir> [--variant --type --language --set --concurrency --dry-run --force]`. Exports `composeDir()`/`pool()` for the suite. |
+| `scripts/build-placeholder-rails.mjs` | Regenerates the stand-in rail art. Documents the contract real artwork has to meet. Never overwrites existing files without `--force`. |
 | `vite.config.js` | Dev-server config: `/api/*` proxies + `/api/img` streaming, BrickLink OAuth1-signing, and eBay OAuth2 token-minting middlewares + LAN host settings. |
 | `.env.example` | Placeholder env vars. Copy to `.env`. |
 | `package.json` | Vite ^6; scripts `dev` / `build` / `preview`. (Use `dev`; see Golden Rule 1.) |
@@ -1037,3 +1047,143 @@ check) · `test/unit/runner-ndjson.test.mjs` (the page's real `consumeNdjson`, p
 `extract-inline`, against split/byte-wise/malformed chunks) · `test/integration/listings-batch.test.mjs`
 (partial failure, refusals, release semantics, abort, audit rows, preflight) ·
 `test/integration/runner-stage.test.mjs` (the stage contract + the routes). All wrapped by `pnpm verify`.
+
+---
+
+## 19. Branded listing images (the compositor)
+
+eBay crops every gallery thumbnail to a **square**. A portrait card scan letterboxes inside it, so we
+hand eBay two columns of dead space and let eBay decide what fills them. `lib/listing-image.mjs`
+fills them ourselves: the card centred in a 1000px column with a fixed 300px branded rail either
+side, on a 1600×1600 canvas.
+
+```
+composeListingImage(input, meta, options?)
+  -> { buffer, width, height, contentHash, composeVersion, variant, layout, textLines, card }
+```
+
+`input` is a path or a Buffer · `meta` is `{ productType, language, setName, cardNumber, rarity }` ·
+`options` takes `{ variant, canvasSize, quality, cfg, cacheDir, detector }` plus any whitelisted
+layout key. Tune it in **`/listing-image-lab.html`**; batch it with
+`node scripts/compose-listing-images.mjs`.
+
+**Ships OFF.** `data/listing-image.config.json` (`enabled: false`) is the master switch, `applyTo`
+splits catalog art from owner photos, and each publish carries a per-listing `compose` flag from the
+checkbox in `stock-uploader.html` / `stock-runner.html`. Precedence: **per-row → batch-level →
+config**. Absent always means *defer*, never *yes*.
+
+### Fixed rails, flexible card
+
+The rails are always exactly `railWidth`, so the art is pixel-exact and never stretches; the card is
+fitted into whatever is left (`fit: 'inside'`). Rails sized to the leftover space would rescale per
+photo and the store would stop looking like one set. A standard card lands at 1000×1397 in the
+1000×1408 box, so near-every single fills the column identically. `PROFILES` overrides the geometry
+per `productType` — `sealed` narrows the rails to 220 because a landscape ETB photo otherwise floats
+tiny in the middle of the canvas.
+
+### The three silent failures
+
+Everything that can go wrong here goes wrong **without an error**, which is why the readiness
+plumbing exists (`describeCompositor()`, surfaced in `/api/status` and on the lab page).
+
+1. **The font.** sharp's `text.fontfile` adds the file to the font set but `font` still selects the
+   face through fontconfig. With `font: 'sans'` the fontfile is **ignored**, and a family name that
+   does not match the TTF's internal name renders the system default with no error at all —
+   `'Genty-Sans'` substitutes where `'Genty Sans'` does not (measured). `fontProbe()` renders the
+   same string twice, once with the configured font and once with the bare fallback, and compares
+   pixels: identical means the font did not load. Deliberately not a hardcoded pixel pin — libvips
+   rasterises identically for a given build but not necessarily across builds, so a pin would fail on
+   the server for a font that is working fine. A failed probe drops the text layer and keeps the
+   rails; it never fails the image.
+2. **Missing rail art.** A variant registered in `VARIANTS` with no directory under `rails/` throws
+   only when someone lists a card of that language. `test/invariants/listing-image-assets.test.mjs`
+   catches it at `pnpm test` instead.
+3. **No `sharp`.** It is the repo's only runtime dependency and it is a native binary, so it is
+   imported **lazily**: a host without it still boots the dev server and still runs `pnpm test`, and
+   every call site falls through to the un-composed image with a warning. GR7, applied to a
+   dependency. `pnpm-workspace.yaml` needs it in `onlyBuiltDependencies` (**not** the older
+   `allowBuilds:` map — pnpm 10 does not read that one).
+
+### The content hash IS the cache key
+
+`sha256(sourceBytes ‖ layout ‖ ASSET_VERSION ‖ variant ‖ renderedTextLines ‖ railArtDigest)`, hashing
+**inputs, never output bytes** — libvips is deterministic per build but not across builds, so hashing
+output would give one card two different keys on the dev box and the server.
+
+The **rendered text is part of the key**, and this is load-bearing. `lib/ebay-media.mjs` deliberately
+dedupes catalog art on `source_url` **alone**, so one card's art uploads once for the whole store.
+Compositing breaks that premise: a Japanese and an English printing share art but not rails. So with
+compositing on, `cachedEps()` keys on `compose_hash` instead, which *keeps* the dedupe win (two copies
+of one card still upload once) while making a cross-card collision impossible.
+
+Two consequences worth knowing:
+
+- **Condition must never reach the rail.** An NM and an LP of one card are two stock rows with
+  identical bytes; putting condition on the rail would split every pair into two eBay uploads.
+  `railText()` is language + set name only, and a test pins that.
+- The `source_url` / `local_path` branches carry `AND compose_hash IS NULL`. Without it, an item
+  published *with* rails and then switched off would match its own branded row and keep them — the
+  toggle would silently do nothing. Every pre-compositing row has a NULL hash, so this changes
+  nothing about the old behaviour.
+
+`compose_version` (`v1/japanese/f08bad85`) is stored alongside as the **audit** token: it answers
+"which live listings are still on the old art?", which a hash alone cannot.
+
+Bumping `ASSET_VERSION` invalidates every cached composite and every `listing_images` row keyed on the
+old value — that is the point, and it is why the constant lives in **code** and not in the
+settings-editable JSON. Swapping the rail PNGs invalidates too (their digest is in the hash), so
+dropping in new art re-composes even if nobody remembered to bump the version.
+
+### Owner photos are branded at UPLOAD, not at publish
+
+`POST /api/listings/photos` pushes straight to eBay EPS, so by publish time there are no bytes left
+to work on. Branding therefore happens in that route — and the route now **retains the original** at
+`data/photo-originals/<sha256>.<ext>` in `listing_images.local_path`. It used to discard the decoded
+data URL; with rails baked in and no original, an `ASSET_VERSION` bump could never reach an owner
+photo and the only recovery would be re-shooting the card. `POST /api/listings/:id/photos/recompose`
+rebuilds from those originals. **These are the only non-regenerable bytes under `data/`** and
+`data/backup.config.json` does not cover directories.
+
+`runPublish` warns (never blocks — GR7) when a photo's `compose_version` is behind the current one.
+
+### Branded rails do NOT satisfy the stock-photo refusals
+
+`sub_nm_no_photos` and `graded_no_photos` in `lib/runner-core.mjs` stay hard blocks regardless of
+whether compositing is on. Framing catalog art in store chrome changes how the thumbnail looks and
+nothing about what it *is*: a stock image on a used item, which is an eBay policy breach. There is a
+comment at the refusal site saying so, because it is exactly the "tidy-up" someone will attempt.
+
+### eBay's image policy
+
+eBay prohibits added borders, artwork and promotional text on listing photos. Enforcement in TCG
+categories is effectively nil and competitors run heavily branded rails, but the account was up for
+Top Rated Seller review on **20 August 2026**. So the `default` variant carries the **logo mark and
+the card's own metadata only** — no "check our store", no contact details, no promotional copy. That
+reads as identification rather than advertising. Keep anything more aggressive as a separate variant
+to opt into deliberately.
+
+### Validation
+
+`test/unit/listing-image-config.test.mjs` (variant precedence, geometry invariant
+`rails*2 + cardBox === canvas`, the hash sensitivity matrix) · `test/unit/listing-image.test.mjs`
+(EXIF orientation, aspect edge cases, trim guards, rails-survive-compositing, determinism, the
+degrade-without-a-font path) · `test/unit/listing-image-cli.test.mjs` ·
+`test/unit/listings-compose-context.test.mjs` (the on/off precedence and the meta shape) ·
+`test/invariants/listing-image-assets.test.mjs` (art present + the font probe genuinely fails on a
+wrong family) · `test/integration/listings-compose.test.mjs` (**the cache-key contract, including a
+flag-off no-op proof**) · `test/integration/listings-photos-compose.test.mjs` (original retention +
+recompose) · `test/integration/listing-image-lab.test.mjs` (the lab routes + `/api/settings` refusing
+broken geometry). All wrapped by `pnpm verify`.
+
+**Goldens are text-free and tolerance-based on purpose.** libvips output is not guaranteed identical
+across builds, so pixel comparison uses `test/helpers/image-diff.mjs` (hand-rolled on raw RGBA — no
+`pixelmatch`) with a threshold. Note the rail invariant only holds **pre-encode**: after JPEG the max
+channel error at the rails' hard gold edge is ~31, so the assertion is on the *fraction* of differing
+pixels, which a moved or rescaled rail fails loudly and JPEG ringing does not.
+
+### Still open
+
+The **cross-host determinism check has not been run**: ALCSERVER exposes only the app port, no shell.
+Once `sharp` is installed there, run the CLI on the same source file on both hosts and compare the
+printed `contentHash` — it hashes inputs, so it should match by construction; a mismatch means the
+layout or the font differs, not that libvips does.

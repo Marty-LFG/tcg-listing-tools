@@ -1,2 +1,9 @@
-allowBuilds:
-  esbuild: true
+# Packages allowed to run postinstall/build scripts. `onlyBuiltDependencies` is the field pnpm 10
+# actually reads — the older `allowBuilds:` map is inert here (pnpm 10.22 still printed "Ignored
+# build scripts: sharp" with it set), which went unnoticed because esbuild ships prebuilt binaries
+# and never needed its script. Same for sharp: it resolves a prebuilt @img/sharp-<platform> on
+# win32-x64 and linux-x64, so this mostly keeps the source-build fallback available on a platform
+# with no prebuild — and stops the install printing a warning on every run.
+onlyBuiltDependencies:
+  - esbuild
+  - sharp

@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read } from '../helpers/extract-inline.mjs';
 import { availableBakes } from '../../lib/refresh.mjs';
+import { LAYOUT_OVERRIDE_KEYS, TEXT_OVERRIDE_KEYS, VARIANTS, resolveLayout } from '../../lib/listing-image-config.mjs';
 
 const cfg = (name) => JSON.parse(read(`data/${name}`));
 
@@ -109,6 +110,34 @@ describe('ebay-listing.config.example.json', () => {
     if (c.returns.accepted) assert.ok([30, 60].includes(c.returns.days), `returns.days=${c.returns.days}`);
     assert.ok(c.bestOffer.autoAcceptPct > 0 && c.bestOffer.autoAcceptPct <= 100);
     assert.ok(c.bestOffer.autoDeclinePct >= 0 && c.bestOffer.autoDeclinePct <= 100);
+  });
+});
+
+describe('listing-image.config.example.json', () => {
+  const c = cfg('listing-image.config.example.json');   // gitignored runtime file; validate the tracked template
+  it('SHIPS DISABLED — branded rails go live only when the owner turns them on', () => {
+    assert.equal(c.enabled, false, 'enabled must stay false in the tracked template');
+    assert.equal(typeof c.applyTo.catalogArt, 'boolean');
+    assert.equal(typeof c.applyTo.ownerPhotos, 'boolean');
+  });
+  it('names BOTH a font family and a font file', () => {
+    // sharp loads text.fontfile but still selects the face by family through fontconfig; a family
+    // that does not match the TTF's internal name silently renders a different typeface.
+    assert.ok(c.font.family, 'font.family');
+    assert.ok(c.font.file, 'font.file');
+    assert.ok(read(c.font.file).length > 1000, `font file ${c.font.file} missing or truncated`);
+  });
+  it('override blocks exist and only carry whitelisted keys', () => {
+    for (const k of ['layoutOverrides', 'textOverrides', 'variantOverrides']) {
+      assert.ok(c[k] && typeof c[k] === 'object' && !Array.isArray(c[k]), `${k} must be an object`);
+    }
+    for (const k of Object.keys(c.layoutOverrides)) assert.ok(LAYOUT_OVERRIDE_KEYS.includes(k), `layoutOverrides.${k} is not whitelisted`);
+    for (const k of Object.keys(c.textOverrides)) assert.ok(TEXT_OVERRIDE_KEYS.includes(k), `textOverrides.${k} is not whitelisted`);
+    for (const [k, v] of Object.entries(c.variantOverrides)) assert.ok(VARIANTS.includes(v), `variantOverrides.${k} points at unknown art '${v}'`);
+  });
+  it('the template resolves to a valid layout (geometry closes)', () => {
+    const l = resolveLayout(c, {});
+    assert.equal(l.railWidth * 2 + l.cardBox.width, l.canvas);
   });
 });
 
