@@ -176,6 +176,20 @@
         <h3>Listing image</h3>
         <label class="tog"><input type="checkbox" id="composeEnable"><span>Branded rails on the photo</span></label>
         <div class="muted" id="composeHint" style="margin-top:6px;"></div>
+        <div id="composePreview" style="display:none;margin-top:12px;">
+          <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+            <div>
+              <img id="composeBig" alt="composed listing image"
+                   style="width:210px;height:210px;display:block;border-radius:9px;border:1px solid var(--line);background:#000;">
+              <div class="muted" id="composeFacts" style="font-size:10.5px;margin-top:5px;letter-spacing:.02em;"></div>
+            </div>
+            <div>
+              <img id="composeThumb" alt="thumbnail size"
+                   style="width:140px;height:140px;display:block;border-radius:6px;border:1px solid var(--line);background:#000;">
+              <div class="muted" style="font-size:10px;margin-top:5px;letter-spacing:.08em;">140px &middot; AS BUYERS SEE IT</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="card" id="storeCard" style="display:none;">
@@ -311,6 +325,9 @@ $('condSel').addEventListener('change',()=>{const g=$('condSel').value==='graded
 // The match key includes finish and condition, so changing either asks a different question of the
 // shelf: a Reverse Holo or a Lightly Played copy is separate stock, not the same item.
 for(const id of ['finish','rawGrade','grCo','grGrade']) $(id).addEventListener('change',checkStock);
+// Grading company/grade flips the row from a single to a slab, which is a different rail profile —
+// so anything feeding composeMetaFor has to re-render the preview.
+for(const id of ['condSel','grCo','grGrade']) $(id).addEventListener('change',()=>refreshComposePreview());
 
 // ---- build the row/item payload ----
 function graded(){return $('condSel').value==='graded';}
@@ -598,9 +615,55 @@ async function loadComposeState(){
   $('composeEnable').checked=!!j.config.enabled;
   $('composeHint').textContent=(!st.font||!st.font.ok)
     ? 'rails will render without the metadata line — '+((st.font&&st.font.reason)||'no font')
-    : 'eBay crops the gallery thumbnail square. This fills the dead space either side with the store mark and the card’s set + language, instead of letting eBay letterbox it. Preview it in the Listing Image Lab.';
+    : 'eBay crops the gallery thumbnail square. This fills the dead space either side with the store mark and the card’s set + language, instead of letting eBay letterbox it.';
+  refreshComposePreview();
 }
 function composeFlag(){ return COMPOSE_READY? $('composeEnable').checked : null; }
+
+// ---- live preview of the ACTUAL listing image ----
+// The server derives the rail metadata from the stock row through composeMetaFor — the same
+// function runPublish uses — so this shows what will really be listed, not an approximation.
+//
+// The source follows the publish rule too: staged owner photos REPLACE catalog art (eBay bans stock
+// images on used cards), so when any are staged the first one is what gets branded.
+let _composeSeq=0, _composeBusy=false, _composePending=false;
+function composeSource(){
+  if(photos.length) return {dataUrl:photos[0].dataUrl};
+  return card&&card.image ? {url:card.image} : null;
+}
+function refreshComposePreview(){
+  clearTimeout(refreshComposePreview._t);
+  refreshComposePreview._t=setTimeout(runComposePreview,180);
+}
+async function runComposePreview(){
+  const box=$('composePreview');
+  // Nothing to show when branding is off for this listing — the plain photo is already on screen.
+  if(!COMPOSE_READY||!$('composeEnable').checked||!card){ box.style.display='none'; return; }
+  const src=composeSource();
+  if(!src){ box.style.display='none'; return; }
+  // One render in flight at a time, latest state coalesced behind it: a 1600px composite takes far
+  // longer than a keystroke.
+  if(_composeBusy){ _composePending=true; return; }
+  _composeBusy=true;
+  const seq=++_composeSeq;
+  try{
+    const r=await fetch('/api/listing-image/preview',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify(Object.assign({stockRow:cardRow()},src))});
+    const j=await r.json();
+    if(seq!==_composeSeq) return;          // a slower earlier request must not overwrite a newer one
+    if(!r.ok){ box.style.display='none'; $('composeHint').textContent='preview failed: '+(j.error||r.status); return; }
+    $('composeBig').src=j.dataUrl;
+    $('composeThumb').src=j.dataUrl;
+    $('composeFacts').textContent=(photos.length?'your photo':'catalog art')+' · '+j.variant+' rails'+
+      (j.textLines.length?' · '+j.textLines[0]:' · no rail text')+' · '+Math.round(j.bytes/1024)+'kB';
+    box.style.display='';
+  }catch(e){ if(seq===_composeSeq) box.style.display='none'; }
+  finally{
+    _composeBusy=false;
+    if(_composePending){ _composePending=false; refreshComposePreview(); }
+  }
+}
+$('composeEnable').addEventListener('change',refreshComposePreview);
 
 function bestOffer(){
   if(!$('boEnable').checked) return {enabled:false};
@@ -627,6 +690,9 @@ $('photoInput').addEventListener('change',e=>{
   e.target.value='';
 });
 function renderThumbs(){
+  // Staged photos REPLACE the catalog art at publish, so adding or removing one changes what the
+  // listing image actually is.
+  refreshComposePreview();
   $('photoThumbs').innerHTML=photos.map((p,i)=>'<div style="position:relative;"><img class="ph" src="'+p.dataUrl+'"><button class="rm" onclick="rmPhoto('+i+')">×</button></div>').join('');
 }
 function rmPhoto(i){ photos.splice(i,1); renderThumbs(); }

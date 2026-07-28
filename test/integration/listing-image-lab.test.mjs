@@ -139,6 +139,52 @@ describe('unknown routes', () => {
   });
 });
 
+describe('/api/status plugins — the staleness check', () => {
+  // Written after ALCSERVER served /api/listing-image/* as HTML because the plugin's
+  // configureServer had never run in that process, while every other signal (git commit, the
+  // /api/settings entry) read perfectly current. One GET has to be able to say that.
+  it('lists the route-owning plugins THIS process registered', async () => {
+    const j = await fetch(S.base + '/api/status').then((r) => r.json());
+    assert.ok(j.plugins, '/api/status has no plugins block');
+    assert.ok(Array.isArray(j.plugins.registered));
+    assert.ok(j.plugins.registered.includes('listing-image-lab'), `listing-image-lab did not register: ${j.plugins.registered.join(', ')}`);
+    for (const core of ['listings', 'status', 'inventory', 'img-proxy']) {
+      assert.ok(j.plugins.registered.includes(core), `${core} missing from the registry`);
+    }
+    assert.ok(j.plugins.registered.length >= 15, `only ${j.plugins.registered.length} plugins registered`);
+  });
+
+  it('a just-booted server is not stale, and says when it registered', async () => {
+    const j = await fetch(S.base + '/api/status').then((r) => r.json());
+    assert.equal(j.plugins.stale, false, `stale on a fresh boot: ${JSON.stringify(j.plugins.stale_files)}`);
+    assert.ok(j.plugins.registered_at, 'registration time is half the comparison — it must be reported');
+    assert.equal(j.plugins.note, null);
+  });
+
+  it('goes stale when a server source is written after boot, and names it', async () => {
+    // Exactly the pull-without-restart case: a source on disk moves past the running process.
+    //
+    // Deliberately a NEW file rather than touching an existing one. Every lib/*.mjs that
+    // vite.config.js imports is a watched config dependency, so bumping its mtime makes Vite
+    // restart the whole dev server mid-suite and every later test dies on a closed socket. A file
+    // nothing imports is invisible to Vite's watcher and still visible to the registry's walk.
+    const probe = path.join(ROOT, 'lib', '__staleness-probe.mjs');
+    const future = new Date(Date.now() + 3600e3);
+    try {
+      fs.writeFileSync(probe, '// temporary fixture for the staleness check\n');
+      fs.utimesSync(probe, future, future);
+      const j = await fetch(S.base + '/api/status').then((r) => r.json());
+      assert.equal(j.plugins.stale, true);
+      assert.ok(j.plugins.stale_files.includes('lib/__staleness-probe.mjs'), `stale_files did not name it: ${JSON.stringify(j.plugins.stale_files)}`);
+      assert.match(j.plugins.note, /restart the dev server/);
+    } finally {
+      fs.rmSync(probe, { force: true });
+    }
+    const after = await fetch(S.base + '/api/status').then((r) => r.json());
+    assert.equal(after.plugins.stale, false, 'should recover once the newer file is gone');
+  });
+});
+
 describe('/api/settings listing-image', () => {
   let base;
   before(async () => { base = (await get('/api/settings/listing-image')).json.content; });

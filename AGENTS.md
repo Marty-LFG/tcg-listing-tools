@@ -173,6 +173,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `lib/listing-image-assets.mjs` | Rail PNG loading (normalised to the target width ONCE, memoised), `railsDigest`, the lazy `sharp` import, and `fontProbe()` — see §19 for why the probe is not optional. |
 | `lib/listing-image-lab.mjs` | `listingImageLabPlugin` → `/api/listing-image/{config,preview,resolve,reload-assets}`. Registered in the `vite.config.js` plugins array (GR1). |
 | `lib/img-cache.mjs` | The content-addressed image cache (`data/img-cache/`), extracted from the `/api/img` middleware so the compositor shares it — it must download bytes before it can compute its cache key. |
+| `lib/plugin-registry.mjs` | `withRegistry()` + `pluginHealth()` — which plugins this PROCESS registered, and whether the sources on disk are newer than it. Powers the `plugins.stale` block in `/api/status` (§20). |
 | `rails/<variant>/{left,right}.png` | Rail art per variant (`default`, `japanese`, `sealed`). Any authoring scale works; see `scripts/build-placeholder-rails.mjs` for the full contract. Currently PLACEHOLDERS. |
 | `fonts/Genty-Sans-Regular.ttf` | The bundled rail font. Its family name is **`Genty Sans`** and that string must match exactly (§19). |
 | `scripts/compose-listing-images.mjs` | Batch/backfill CLI: `--in <file\|dir> --out <dir> [--variant --type --language --set --concurrency --dry-run --force]`. Exports `composeDir()`/`pool()` for the suite. |
@@ -1064,7 +1065,11 @@ composeListingImage(input, meta, options?)
 
 `input` is a path or a Buffer · `meta` is `{ productType, language, setName, cardNumber, rarity }` ·
 `options` takes `{ variant, canvasSize, quality, cfg, cacheDir, detector }` plus any whitelisted
-layout key. Tune it in **`/listing-image-lab.html`**; batch it with
+layout key. `stock-uploader.html` shows a live preview of the real composite for the card in hand —
+it posts the row it is about to save to `/api/listing-image/preview`, which derives the rail metadata
+through the **same `composeMetaFor`** the publish path uses, so it is not an approximation. The
+source follows the publish rule too: staged owner photos replace the catalog art. Tune the constants
+in **`/listing-image-lab.html`**; batch it with
 `node scripts/compose-listing-images.mjs`.
 
 **Ships OFF.** `data/listing-image.config.json` (`enabled: false`) is the master switch, `applyTo`
@@ -1187,3 +1192,69 @@ The **cross-host determinism check has not been run**: ALCSERVER exposes only th
 Once `sharp` is installed there, run the CLI on the same source file on both hosts and compare the
 printed `contentHash` — it hashes inputs, so it should match by construction; a mismatch means the
 layout or the font differs, not that libvips does.
+
+---
+
+## 20. Is this dev server running the code on disk?
+
+`GET /api/status` → `plugins`:
+
+```json
+"plugins": {
+  "registered": ["bricklink-proxy", "bulk", ..., "listing-image-lab", "status", "tracker"],
+  "registered_at": "2026-07-28T22:58:24.352Z",
+  "stale": false,
+  "stale_files": [],
+  "newest_source": "lib/plugin-registry.mjs",
+  "newest_source_mtime": "2026-07-28T22:58:24.287Z"
+}
+```
+
+**`stale: true` means restart the dev server.** One `curl`, no page load:
+
+```bash
+curl -s http://192.168.4.200:5273/api/status | jq '.plugins | {stale, stale_files, registered_at}'
+```
+
+### Why this exists, and why the obvious checks don't work
+
+ALCSERVER once reported the current git commit *and* served the new `/api/settings` entry, while
+`/api/listing-image/*` fell through to Vite's page fallback and returned HTML with a 200. The
+process had `lib/status.mjs` loaded but had never run the new plugin's `configureServer`, which only
+fires at startup. The uploader page just said "could not read the compositor settings".
+
+The trap: **a stale process has stale everything in memory** — its config object, its module graph,
+even the git commit if that was memoised at boot. Comparing two in-memory values can never catch it.
+`versionInfo()` is no help either: it shells out to `git rev-parse` and so reports the tree, not the
+running code.
+
+So `pluginHealth()` compares two things that genuinely differ:
+
+- **when** this process registered its plugins (memory, frozen at startup), against
+- the newest mtime of the server sources **on disk** (`vite.config.js` + `lib/**/*.mjs`, read fresh
+  on every call).
+
+A source newer than the registration means the process predates the code. That is precisely what a
+`git pull` without a restart looks like. `MTIME_SLACK_MS` (2s) absorbs the startup race — the server
+stats files it loaded moments earlier — and filesystems with coarse mtime resolution.
+
+`registered` is the other half of the diagnosis: it lists the plugins that actually claimed routes in
+*this* server, so a missing name points straight at the subsystem whose endpoints are 404ing or
+returning HTML.
+
+### Coverage is enforced
+
+`vite.config.js` wraps its array once — `plugins: withRegistry([...])` — so a plugin added later is
+covered without anyone remembering to. `test/invariants/plugin-registry.test.mjs` asserts the wrapper
+is present, that there is exactly ONE `plugins:` array, and that every entry inside it is imported or
+declared. Without that, a plugin appended outside the wrapper would register nothing and the check
+would go quietly blind — the same class of silent failure it was built to catch.
+
+Plugins with no `configureServer` pass through untouched: they own no routes, so their presence says
+nothing about staleness.
+
+**Testing note:** do not bump the mtime of an existing `lib/*.mjs` to simulate staleness. Every one
+that `vite.config.js` imports is a watched config dependency, so Vite restarts the whole dev server
+and any in-flight test dies on a closed socket. Write a throwaway file nothing imports — invisible to
+Vite's watcher, still visible to the registry's walk. `test/integration/listing-image-lab.test.mjs`
+does exactly that.
