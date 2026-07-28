@@ -564,24 +564,41 @@ function seedOffers(){
 // ---- branded listing image ----
 // The checkbox starts from data/listing-image.config.json and then means exactly what it says for
 // THIS listing: an explicit true/false, never "whatever the config happens to be at publish time".
-// COMPOSE_READY stays null until the config call answers, and a null send lets the server decide.
+//
+// COMPOSE_READY stays null until the config call answers, and composeFlag() then sends null so the
+// server decides. That makes the control a LIE unless it is also disabled — a tickable box that
+// silently defers is worse than no box, because it reads as armed. So every path that leaves
+// COMPOSE_READY null unchecks and disables it and says why.
 let COMPOSE_READY=null;
+function composeUnavailable(why){
+  COMPOSE_READY=null;
+  $('composeEnable').checked=false;
+  $('composeEnable').disabled=true;
+  $('composeHint').textContent=why;
+}
 async function loadComposeState(){
+  let j;
   try{
-    const j=await fetch('/api/listing-image/config').then(r=>r.json());
-    COMPOSE_READY=j;
-    const st=j.status||{};
-    const missing=Object.entries(st.rails||{}).filter(([,r])=>!r.present).map(([v])=>v);
-    let why='';
-    if(!st.sharp||!st.sharp.available) why='unavailable on this host — sharp is not installed';
-    else if(missing.length) why='rail art missing for '+missing.join(', ');
-    else if(!st.font||!st.font.ok) why='rails will render without the metadata line — '+(st.font&&st.font.reason||'no font');
-    $('composeEnable').checked=!!j.config.enabled;
-    $('composeEnable').disabled=!!why&&!(st.font&&!st.font.ok);
-    $('composeHint').textContent=why
-      ? why
-      : 'eBay crops the gallery thumbnail square. This fills the dead space either side with the store mark and the card’s set + language, instead of letting eBay letterbox it.';
-  }catch(e){ $('composeHint').textContent='could not read the compositor settings — the server default will apply'; }
+    const r=await fetch('/api/listing-image/config');
+    // A dev server without the compositor plugin registered answers the page fallback, so this is
+    // HTML with a 200 rather than an error — check the content type, not just r.ok.
+    if(!r.ok||!/json/i.test(r.headers.get('content-type')||'')) throw new Error('the compositor routes are not registered — restart the dev server on this host');
+    j=await r.json();
+  }catch(e){ return composeUnavailable('branding is off: '+(e.message||e)); }
+
+  const st=j.status||{};
+  const missing=Object.entries(st.rails||{}).filter(([,r])=>!r.present).map(([v])=>v);
+  // Hard stops leave the toggle disabled; a missing font is a DEGRADE (rails without the metadata
+  // line), so it stays usable and just says so.
+  if(!st.sharp||!st.sharp.available) return composeUnavailable('branding is off: sharp is not installed on this host');
+  if(missing.length) return composeUnavailable('branding is off: rail art missing for '+missing.join(', '));
+
+  COMPOSE_READY=j;
+  $('composeEnable').disabled=false;
+  $('composeEnable').checked=!!j.config.enabled;
+  $('composeHint').textContent=(!st.font||!st.font.ok)
+    ? 'rails will render without the metadata line — '+((st.font&&st.font.reason)||'no font')
+    : 'eBay crops the gallery thumbnail square. This fills the dead space either side with the store mark and the card’s set + language, instead of letting eBay letterbox it. Preview it in the Listing Image Lab.';
 }
 function composeFlag(){ return COMPOSE_READY? $('composeEnable').checked : null; }
 
