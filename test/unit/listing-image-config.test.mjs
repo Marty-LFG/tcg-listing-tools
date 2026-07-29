@@ -146,6 +146,12 @@ describe('railText', () => {
     assert.deepEqual(railText({ setName: 'Lost Origin' }, L), ['LOST ORIGIN'], 'no card name still gives the set');
     assert.deepEqual(railText({}, L), []);
   });
+  it('never prints a raw language CODE as the fallback line', () => {
+    // ebayLanguageName passes through anything it does not recognise, so a row carrying "zh-cn"
+    // would otherwise put "ZH-CN" down the rail.
+    assert.deepEqual(railText({ cardName: 'Eevee', language: 'zh-cn', setName: '星彩晶璃' }, L), ['EEVEE']);
+    assert.deepEqual(railText({ cardName: 'Eevee', language: 'pt-BR' }, L), ['EEVEE']);
+  });
   it('a non-English card with no usable set name keeps its language on line 2', () => {
     // 146 JP sets have no romanised name, and the native one cannot be drawn — but "which printing"
     // is exactly what a JP buyer is checking, so it must not vanish entirely.

@@ -1189,12 +1189,33 @@ why `findSetLogo` takes several candidates and the index is keyed under all of t
 That `_JP`/`_EN` suffix is not a detail. Matching only `_Logo.png` caught 13 of 135 English logos and
 missed the entire MEGA series — the era the compositor is actually used on.
 
-**The index is LANGUAGE-SCOPED (`format: 2`) and lookups never cross languages.** A flat index let
-the Japanese page claim `bw1`/`xy4`/`sm7` and shadow the English file of the same set code — 45 of
-them — so an English card could be handed a Japanese logo. Falling back across languages is not a
-graceful degradation here: the wrong-language logo reads as the wrong product, which is worse than no
-logo. `findSetSymbol(lang, ...candidates)` / `findSetLogo(lang, ...candidates)`. An index of any other
-`format` is refused outright rather than misread; the refresh bake rebuilds it.
+**The index is LANGUAGE-SCOPED (`format: 2`).** A flat index let the Japanese page claim
+`bw1`/`xy4`/`sm7` and shadow the English file of the same set code — 45 of them — so an English card
+could be handed a Japanese logo. `findSetSymbol(lang, ...candidates)` /
+`findSetLogo(lang, ...candidates)`. An index of any other `format` is refused outright rather than
+misread; the refresh bake rebuilds it.
+
+**Symbols and logos resolve by DIFFERENT language rules, because they are different kinds of thing:**
+
+- A **symbol** is the little language-neutral mark printed on the card. Every localisation of a set
+  carries the same one — Bulbapedia's "expansions in other languages" page is built exactly that way,
+  one symbol per row with the set's name in each language beside it.
+- A **logo** is the wordmark: the set's name as type, in that language. A Korean card wearing the
+  Japanese logo is the wrong product, the same failure as the shadowing above.
+
+| card language | symbol | logo |
+|---|---|---|
+| English | `en` | `en` |
+| Japanese | `ja` | `ja` |
+| Korean, Traditional Chinese | **`ja`** — translated JP releases | none |
+| Simplified Chinese | none | none |
+| anything else / unknown | none | none |
+
+Korean and Traditional Chinese sets *are* Japanese sets translated: 78/101 KO and 46/98 ZH-TW codes
+in the intl bake are Japanese set ids (`SV6`, `SV9A`, `CS1.5`…), so a code lookup in the `ja` bucket
+finds the right set. Simplified Chinese is its own product line (`CSV9C`, `CBB5C` — only 8/65
+Japanese-shaped) and resolves nothing. An unknown language resolves nothing rather than defaulting to
+English: defaulting is what handed a Korean card the English logo in the first place.
 
 **`normName` (build) and `normSetKey` (lib) must stay byte-identical** — the index is written with
 one and read with the other, so any divergence is a lookup that silently finds nothing. Both do

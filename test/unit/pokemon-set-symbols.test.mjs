@@ -174,6 +174,32 @@ describe('the baked index', { skip: !baked && 'data/pokemon-set-symbols.json not
     });
   });
 
+  describe('symbols and logos resolve by DIFFERENT language rules', () => {
+    // A symbol is the language-neutral mark every localisation of a set carries. A logo is the
+    // wordmark in that language — a Korean card wearing the Japanese logo is the wrong product.
+    // Korean and Traditional Chinese sets are translated Japanese releases (78/101 KO and 46/98
+    // ZH-TW codes in the intl bake are Japanese set ids), so they share the symbol and nothing else.
+    for (const lang of ['KO', 'korean', 'zh-tw']) {
+      it(`${lang} borrows the JP symbol but never the JP logo`, () => {
+        const sym = findSetSymbol(lang, 'Abyss Eye');
+        assert.ok(sym, `${lang} resolved no symbol`);
+        assert.equal(sym.url, findSetSymbol('JP', 'Abyss Eye').url, 'should be the same mark');
+        assert.equal(findSetLogo(lang, 'M5'), null, `${lang} must not get the Japanese wordmark`);
+      });
+    }
+    it('Simplified Chinese is its own product line — neither', () => {
+      assert.equal(findSetSymbol('zh-cn', 'Abyss Eye'), null);
+      assert.equal(findSetLogo('zh-cn', 'M5'), null);
+    });
+    it('an unknown language resolves nothing rather than defaulting to English', () => {
+      assert.equal(findSetSymbol('Klingon', 'Lost Origin'), null);
+      assert.equal(findSetLogo('Klingon', 'LOR'), null);
+    });
+    it('an UNSET language is treated as the store default, English', () => {
+      assert.ok(findSetSymbol('', '151'), 'unset should still resolve English');
+    });
+  });
+
   describe('paired-set base-code fallback', () => {
     // JP sets often ship in pairs sharing ONE logo on the wiki: Ancient Roar/Future Flash are
     // SV4K/SV4M against a single SV4_Logo_JP.png.
