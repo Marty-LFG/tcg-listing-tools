@@ -263,15 +263,17 @@ async function doLookup(){
   st.className='status load'; st.textContent='Looking up '+setId+'-'+n+'…';
   var act=window.TCG?TCG.activity('Looking up '+setId+'-'+n+'…'):null;
   try{
-    var r=await TCG.fetchJson('/api/pkm/cards/'+encodeURIComponent(setId+'-'+n),
+    // Never `setId+'-'+n`: promo/gallery/vault sets carry the prefix + padding upstream
+    // (swshp-SWSH284, bwp-BW004), so the printed number has to resolve through the roster.
+    var res=await TCG.pkmLookupCard(setId,n,
       {onRetry:function(k){st.textContent='Looking up '+setId+'-'+n+'… (retry '+k+')';}});
-    if(!r.ok){ var down=r.status>=500||r.status===429;   // source down ≠ missing card
+    if(res.error){ var down=res.error==='source-down';   // source down ≠ missing card
       act&&act.fail(down?'source down':'no match'); st.className='status warn';
       st.textContent=down
-        ?'pokemontcg.io is temporarily unavailable (HTTP '+r.status+') — try again shortly, or fill fields manually.'
-        :'No API match for '+setId+'-'+n+' (new sets can be missing). Fill fields manually — everything still works.';
+        ?'pokemontcg.io is temporarily unavailable'+(res.status?' (HTTP '+res.status+')':'')+' — try again shortly, or fill fields manually.'
+        :'No API match for '+n+' in '+setId+(res.hint?' — '+res.hint:'')+' (new sets can be missing). Fill fields manually — everything still works.';
       return; }
-    var j=await r.json(); var c=j.data||j;
+    var c=res.card;
     setv('f_name',c.name); setv('f_set',(c.set&&c.set.name)||setId);
     setv('f_num',TCG.formatCardNumber(c.number||n,c.set||{},{source:'ptcg',rarity:c.rarity})); setv('f_rarity',c.rarity||'');
     setv('f_finish',/gold|metal|hyper/i.test(c.rarity||'')?'Gold / Metal':(/holo/i.test(c.rarity||'')?'Holo':'Non-holo'));

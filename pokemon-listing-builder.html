@@ -627,19 +627,20 @@ async function doLookup(){
   st.className='status load';st.textContent='Looking up '+setId+'-'+num+'\u2026';
   const act=window.TCG?TCG.activity('Looking up '+setId+'-'+num+'\u2026'):null;
   try{
-    const r=await TCG.fetchJson(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(setId+'-'+num),
+    // Never `setId+'-'+num`: promo/gallery/vault sets carry the prefix + padding upstream
+    // (swshp-SWSH284, bwp-BW004), so the printed number has to resolve through the roster.
+    const res=await TCG.pkmLookupCard(setId,num,
       {onRetry:function(n){st.textContent='Looking up '+setId+'-'+num+'… (retry '+n+')';}});
-    if(!r.ok){
+    if(res.error){
       // pokemontcg.io flakes with 500s — after the retries that is the SOURCE being down,
       // not a missing card. Saying "no match" for it sends people hunting a typo (GR7).
-      const down=r.status>=500||r.status===429;
+      const down=res.error==='source-down';
       act&&act.fail(down?'source down':'no match');set('f_set',_setObj.name||setId);clearCardFields({keepSet:true});st.className='status warn';
       st.textContent=down
-        ?'pokemontcg.io is temporarily unavailable (HTTP '+r.status+') — hit Look up again in a moment, or fill the fields manually.'
-        :'No match for '+setId+'-'+num+'. Check the set/number or fill manually.';
+        ?'pokemontcg.io is temporarily unavailable'+(res.status?' (HTTP '+res.status+')':'')+' — hit Look up again in a moment, or fill the fields manually.'
+        :'No match for '+num+' in '+(_setObj.name||setId)+(res.hint?' — '+res.hint:'')+'. Check the set/number or fill manually.';
       return;}
-    const j=await r.json(); const c=j.data||j;
-    if(!c||!c.name){act&&act.fail('no card');set('f_set',_setObj.name||setId);clearCardFields({keepSet:true});st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}
+    const c=res.card;
     set('f_name',c.name);
     set('f_set',(c.set&&c.set.name)||setId);
     set('f_num',TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity}));

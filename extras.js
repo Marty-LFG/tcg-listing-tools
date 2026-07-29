@@ -869,6 +869,125 @@
       .join('/');
   };
 
+  // ── Pokémon EN card lookup: typed number → pokemontcg.io id ────────────────────────────────
+  // NOT a mirror of listing-copy.mjs (it fetches) — keep it out of that MIRROR contract above.
+  //
+  // pokemontcg.io stores the collector number with the set's OWN alpha prefix and padding, so
+  // `{setId}-{whatever the seller typed}` cannot match on 12 sets: the six prefixed promo sets
+  // (swshp SWSH001-307 · smp SM01-248 · xyp XY01-211 · bwp BW01-101 · hsp HGSS01-25 · dpp
+  // DP01-56), the four Trainer Galleries + Galarian Gallery (TG01 · GG01) and both Shiny Vaults.
+  // The reverse also missed: svp/basep/np/dv1/tk* store "1", so the PRINTED "001" 404'd too.
+  //
+  // A prefix/padding TABLE cannot express the real data — two sets disproved it outright:
+  //   bwp contradicts itself upstream  BW01 BW02 BW03 BW004 BW005 BW06 … BW101
+  //   the two Shiny Vaults disagree    sma = SV1 … SV94   vs   swsh45sv = SV001 … SV122
+  // So resolve against the set's ACTUAL roster instead. /api/catalog/cards already paginates
+  // (swshp is 304 cards), caches to set_cards for 24h and serves the last-good copy when
+  // pokemontcg.io is down (measured ~50% HTTP 500) — exactly the GR7 behaviour wanted here.
+  var PKM_ROSTER={},PKM_ROSTER_KEY='pkm_roster_v1',PKM_NEEDS_KEY='pkm_needs_roster_v1';
+
+  // Sets that only resolve THROUGH the roster, learned at runtime — no hardcoded promo list, so
+  // a new promo set costs one wasted 404 once and never again.
+  function needsRoster(setId,mark){
+    var s={};
+    try{s=JSON.parse(localStorage.getItem(PKM_NEEDS_KEY)||'{}')||{};}catch(e){}
+    if(mark){s[setId]=1;try{localStorage.setItem(PKM_NEEDS_KEY,JSON.stringify(s));}catch(e){}}
+    return !!s[setId];
+  }
+
+  // numRaw → the digits that a seller actually reads off the card. SWSH284→284, BW004→4, SV001→1.
+  function bareNum(s){var m=String(s==null?'':s).match(/(\d+)/);return m?String(parseInt(m[1],10)):'';}
+
+  // Index one roster. `byNum` is the load-bearing map (bare digits → entries); `byRaw` lets a
+  // seller who types the full printed form (SWSH284, TG01) hit without a numeric round-trip.
+  function indexRoster(cards){
+    var byNum={},byRaw={};
+    (cards||[]).forEach(function(c){
+      var raw=String((c&&(c.numRaw!=null?c.numRaw:c.number))||'').trim();
+      if(!raw)return;
+      byRaw[raw.toUpperCase().replace(/^0+(?=[0-9])/,'')]=raw;
+      var b=bareNum(raw);
+      if(!b)return;
+      (byNum[b]=byNum[b]||[]).push(raw);
+    });
+    return {byNum:byNum,byRaw:byRaw};
+  }
+
+  // The pure core — index + typed token in, raw upstream number out. Unit-tested.
+  TCG.pkmResolveNumber=function(index,typed){
+    if(!index)return null;
+    var t=String(typed==null?'':typed).trim().replace(/\s/g,'').replace(/\/.*$/,'');   // "284/307" → "284"
+    if(!t)return null;
+    var exact=index.byRaw[t.toUpperCase().replace(/^0+(?=[0-9])/,'')];
+    if(exact)return exact;
+    var b=bareNum(t);
+    var hits=b?(index.byNum[b]||[]):[];
+    if(!hits.length)return null;
+    if(hits.length===1)return hits[0];
+    // Collision: 39 vs 39a alt-art suffixes (GR5). Prefer the suffix-free print; a caller that
+    // wants to disambiguate can re-read index.byNum itself.
+    var plain=hits.filter(function(r){return /^\D*\d+$/.test(r);});
+    return plain.length===1?plain[0]:hits[0];
+  };
+
+  // Roster for one EN set, memoised in-process and mirrored to localStorage so a reload (or a
+  // pokemontcg.io outage) doesn't re-fetch. Returns null when the roster is genuinely unavailable.
+  TCG.pkmRoster=async function(setId){
+    if(!setId)return null;
+    if(PKM_ROSTER[setId])return PKM_ROSTER[setId];
+    try{
+      var raw=localStorage.getItem(PKM_ROSTER_KEY+':'+setId);
+      if(raw){var o=JSON.parse(raw);if(o&&o.cards&&o.cards.length)return (PKM_ROSTER[setId]=indexRoster(o.cards));}
+    }catch(e){}
+    try{
+      var r=await TCG.fetchJson('/api/catalog/cards?lang=en&set='+encodeURIComponent(setId));
+      if(!r.ok)return null;
+      var j=await r.json();
+      var cards=(j&&j.cards)||[];
+      if(!cards.length)return null;
+      try{localStorage.setItem(PKM_ROSTER_KEY+':'+setId,JSON.stringify({cards:cards,at:j.cachedAt||''}));}catch(e){}
+      return (PKM_ROSTER[setId]=indexRoster(cards));
+    }catch(e){return null;}
+  };
+
+  // The whole ladder. Returns {card} | {error:'no-match',hint} | {error:'source-down',status}.
+  // Callers keep their own status wording — this only decides WHICH of the two failures it is,
+  // because "no card found" for an upstream outage is the bug that sends sellers hunting a typo.
+  TCG.pkmLookupCard=async function(setId,typed,opts){
+    opts=opts||{};
+    var t=String(typed==null?'':typed).trim().replace(/\s/g,'').replace(/\/.*$/,'');
+    if(!setId||!t)return {error:'no-match',hint:''};
+    var index=null;
+    async function get(numRaw){
+      var r=await TCG.fetchJson('/api/pkm/cards/'+encodeURIComponent(setId+'-'+numRaw),{onRetry:opts.onRetry});
+      if(r.ok){
+        var j=await r.json();
+        var c=j&&(j.data||j);
+        return (c&&c.name)?{card:c}:null;
+      }
+      return r.status>=500||r.status===429?{error:'source-down',status:r.status}:null;
+    }
+    // A set already known to need the roster skips the 404 it would certainly get.
+    if(!needsRoster(setId)){
+      var direct=await get(t);
+      if(direct)return direct;                 // hit, or a real upstream outage
+    }
+    index=await TCG.pkmRoster(setId);
+    if(!index){
+      // No roster AND the direct id missed. The roster call is the same upstream, so treat an
+      // unavailable roster as the source being down rather than claiming the card doesn't exist.
+      return {error:'source-down',status:0};
+    }
+    var raw=TCG.pkmResolveNumber(index,t);
+    if(!raw){
+      var all=Object.keys(index.byRaw);
+      return {error:'no-match',hint:all.length?(all.length+' cards, numbered like '+index.byRaw[all[0]]):''};
+    }
+    needsRoster(setId,true);
+    var viaRoster=await get(raw);
+    return viaRoster||{error:'no-match',hint:''};
+  };
+
   // --- collectibles helpers (LEGO / Funko) — condCode() above stays card-only ---
   function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function copyToClipboard(text,btn){

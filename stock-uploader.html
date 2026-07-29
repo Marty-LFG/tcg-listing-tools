@@ -327,11 +327,12 @@ async function doLookup(){
   const act=TCG.activity?TCG.activity('Looking up '+setObj.value+'-'+num):null;
   stat($('status'),'load','Looking up…');
   try{
-    const r=await TCG.fetchJson(base+'/cards/'+encodeURIComponent(setObj.value+'-'+num.replace(/\s/g,'')),{onRetry:n=>stat($('status'),'load','Looking up… (retry '+n+')')});
-    if(!r.ok){ act&&act.fail(r.status>=500?'source down':'no match'); stat($('status'),'warn',r.status>=500?'pokemontcg.io is flaky right now — hit Look up again.':'No card found. Check the number.'); return; }
-    const j=await r.json();
-    const c=j&&j.data;
-    if(!c||!c.name){ act&&act.fail('no match'); stat($('status'),'warn','No card found. Check the number.'); return; }
+    // Never `setId+'-'+typed`: promo/gallery/vault sets carry the prefix + padding upstream
+    // (swshp-SWSH284, bwp-BW004), so the printed number has to resolve through the roster.
+    const res=await TCG.pkmLookupCard(setObj.value,num,{onRetry:n=>stat($('status'),'load','Looking up… (retry '+n+')')});
+    if(res.error==='source-down'){ act&&act.fail('source down'); stat($('status'),'warn','pokemontcg.io is flaky right now — hit Look up again.'); return; }
+    if(res.error==='no-match'){ act&&act.fail('no match'); stat($('status'),'warn','No card found in '+setObj.label+(res.hint?' — '+res.hint:'')+'. Check the number.'); return; }
+    const c=res.card;
     card={
       id:c.id, name:c.name, set_name:(c.set&&c.set.name)||setObj.label,
       number:TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity}),
