@@ -1114,15 +1114,22 @@ badge there at compose time.
 
 ### What the rails say
 
-- **Down the right rail:** the set name, with the language on **its own line above** when it is not
-  English (`JAPANESE` over `ABYSS EYE`, but a bare `PITCH BLACK`). Two things matter here. English is
-  the store's default and the bulk of stock, so printing it every time is noise that costs the set
-  name space, while a non-English printing changes what the card is worth and is worth telling a
-  buyer. And `railText` returns **one line per element, never a joined string** — the type is sized
-  to the longest line, so two short lines render visibly bigger down a 300px rail than one long one.
+- **Down the right rail:** two lines on every listing — the **card name**, then the **set name** with
+  a language marker appended for anything non-English (`PARASECT` / `LOST ORIGIN`, and
+  `IRON DEFENDER` / `ABYSS EYE (JP)`). English carries no marker; it is the store default and the
+  bulk of stock.
+
+  `railText` returns **one line per element, never a joined string** — the type is sized to the
+  longest line, so two short lines render visibly bigger down a 300px rail than one long one.
   `text.railInset` is 0.12 rather than 0.22 because the cross-axis budget is shared by all lines: a
   two-line rail gets half each and shrinks at a wide inset, while a single line is bound by the
   along-run `fill` and so is unaffected.
+
+  The set line is **optional** and the marker is appended **after** clipping, so a long name reads
+  `ABYSS EY… (JP)` and never `ABYSS EYE (J…` — losing the marker would lose the one thing it is
+  there to say. A non-English card whose set name is missing or undrawable keeps its language on
+  that line instead (`PIKACHU` / `JAPANESE`), because "which printing is this" is exactly what a JP
+  buyer is checking.
 - **At the foot of the right rail:** the set symbol above the card's **printed** number — the two
   things a collector checks after the name, and the pair a thumbnail otherwise makes unreadable.
 - **At the foot of the left rail:** the set **logo** (the wordmark), mirroring the badge opposite it.

@@ -32,6 +32,11 @@ describe('composeMetaFor', () => {
   it('a graded row is a slab even with no company recorded', () => {
     assert.equal(composeMetaFor({ grade: '9' }).productType, 'slab');
   });
+  it('carries the card name — line 1 of every rail', () => {
+    assert.equal(composeMetaFor({ name: 'Parasect' }).cardName, 'Parasect');
+    assert.equal(composeMetaFor({ name: 'Iron Defender', set_code: 'M5', language: 'JP' }).cardName, 'Iron Defender');
+    assert.equal(composeMetaFor({}).cardName, '', 'never undefined — it would hash as "undefined"');
+  });
   it('carries set name, number and rarity', () => {
     const m = composeMetaFor({ set_name: 'Base Set', number: '58/102', rarity: 'Rare Holo' });
     assert.equal(m.setName, 'Base Set');

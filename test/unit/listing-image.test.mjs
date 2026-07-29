@@ -257,13 +257,13 @@ describe('composeListingImage', { skip: SKIP }, () => {
   });
 
   describe('rail text', () => {
-    it('renders the metadata lines and reports them', async () => {
-      const r = await compose(card, { language: 'Japanese', setName: 'Mega Symphonia' });
-      assert.deepEqual(r.textLines, ['JAPANESE', 'MEGA SYMPHONIA']);
+    it('renders card name over set name and reports them', async () => {
+      const r = await compose(card, { cardName: 'Iron Defender', language: 'Japanese', setName: 'Mega Symphonia' });
+      assert.deepEqual(r.textLines, ['IRON DEFENDER', 'MEGA SYMPHONIA (JP)']);
     });
-    it('English gets the set name alone, on one line', async () => {
-      const r = await compose(card, { language: 'English', setName: 'Pitch Black' });
-      assert.deepEqual(r.textLines, ['PITCH BLACK']);
+    it('English carries no language marker', async () => {
+      const r = await compose(card, { cardName: 'Parasect', language: 'English', setName: 'Lost Origin' });
+      assert.deepEqual(r.textLines, ['PARASECT', 'LOST ORIGIN']);
     });
     it('composites cleanly with no metadata at all', async () => {
       const r = await compose(card, {});

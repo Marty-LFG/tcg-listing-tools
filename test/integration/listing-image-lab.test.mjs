@@ -75,13 +75,13 @@ describe('POST /api/listing-image/resolve', () => {
 
 describe('POST /api/listing-image/preview', { skip: !sharp && 'sharp not installed' }, () => {
   it('composes an uploaded data URL', async () => {
-    const r = await post('/api/listing-image/preview', { dataUrl, meta: { language: 'Japanese', setName: 'Mega Symphonia' } });
+    const r = await post('/api/listing-image/preview', { dataUrl, meta: { cardName: 'Iron Defender', language: 'Japanese', setName: 'Mega Symphonia' } });
     assert.equal(r.status, 200);
     assert.equal(r.json.width, 1600);
     assert.equal(r.json.variant, 'japanese');
     assert.match(r.json.dataUrl, /^data:image\/jpeg;base64,/);
     assert.match(r.json.contentHash, /^[0-9a-f]{64}$/);
-    assert.deepEqual(r.json.textLines, ['JAPANESE', 'MEGA SYMPHONIA'], 'language and set name are separate lines');
+    assert.deepEqual(r.json.textLines, ['IRON DEFENDER', 'MEGA SYMPHONIA (JP)'], 'card name over set name, marked non-English');
   });
 
   it('applies slider overrides WITHOUT writing them to disk', async () => {

@@ -117,28 +117,40 @@ describe('validateLayout', () => {
 
 describe('railText', () => {
   const L = resolveLayout(DEFAULT_CONFIG, {});
-  it('is the set name alone for English — the store default needs no announcing', () => {
-    assert.deepEqual(railText({ language: 'English', setName: 'Pitch Black' }, L), ['PITCH BLACK']);
-    assert.deepEqual(railText({ language: 'EN', setName: 'Pitch Black' }, L), ['PITCH BLACK']);
-    assert.deepEqual(railText({ setName: 'Pitch Black' }, L), ['PITCH BLACK']);
+  it('is card name over set name, on every listing', () => {
+    assert.deepEqual(railText({ cardName: 'Parasect', language: 'English', setName: 'Lost Origin' }, L), ['PARASECT', 'LOST ORIGIN']);
   });
-  it('puts a non-English language on its OWN line above the set name', () => {
-    // Separate lines, not a joined run: the type is sized to the longest line, so two short lines
-    // render bigger down a 300px rail than one long one.
-    assert.deepEqual(railText({ language: 'Japanese', setName: 'Abyss Eye' }, L), ['JAPANESE', 'ABYSS EYE']);
-    assert.deepEqual(railText({ language: 'Korean', setName: 'Base Set' }, L), ['KOREAN', 'BASE SET']);
+  it('marks a non-English printing on the SET line', () => {
+    assert.deepEqual(railText({ cardName: 'Iron Defender', language: 'Japanese', setName: 'Abyss Eye' }, L), ['IRON DEFENDER', 'ABYSS EYE (JP)']);
+    assert.deepEqual(railText({ cardName: 'Pikachu', language: 'Korean', setName: 'Base Set' }, L), ['PIKACHU', 'BASE SET (KO)']);
   });
-  it('truncates a long set name per line, and never the language', () => {
-    const [lang, set] = railText({ language: 'Japanese', setName: 'A Set Name Far Longer Than Any Rail Could Ever Hold' }, L);
-    assert.equal(lang, 'JAPANESE', 'the language line must survive intact');
-    assert.ok(set.endsWith('…'));
+  it('English carries no marker — it is the store default', () => {
+    for (const lang of ['English', 'EN', 'eng', '']) {
+      assert.deepEqual(railText({ cardName: 'Parasect', language: lang, setName: 'Lost Origin' }, L), ['PARASECT', 'LOST ORIGIN']);
+    }
+  });
+  it('the language marker survives truncation of a long set name', () => {
+    // Clipping the set BEFORE appending means "ABYSS EY… (JP)" — never "ABYSS EYE (J…", which would
+    // lose the one thing the marker is there to say.
+    const [, set] = railText({ cardName: 'X', language: 'Japanese', setName: 'A Set Name Far Longer Than Any Rail Could Ever Hold' }, L);
+    assert.ok(set.endsWith('(JP)'), `marker lost: ${set}`);
     assert.ok(set.length <= L.text.maxChars);
   });
-  it('drops missing fields rather than leaving a dangling separator', () => {
-    assert.deepEqual(railText({ setName: 'Base Set' }, L), ['BASE SET']);
-    assert.deepEqual(railText({ language: 'English' }, L), [], 'English alone is nothing worth printing');
-    assert.deepEqual(railText({ language: 'Japanese' }, L), ['JAPANESE']);
+  it('truncates a long card name too', () => {
+    const [card] = railText({ cardName: 'A Card Name Far Longer Than Any Rail Could Ever Hold', setName: 'X' }, L);
+    assert.ok(card.endsWith('…'));
+    assert.ok(card.length <= L.text.maxChars);
+  });
+  it('the set line is optional', () => {
+    assert.deepEqual(railText({ cardName: 'Parasect' }, L), ['PARASECT']);
+    assert.deepEqual(railText({ setName: 'Lost Origin' }, L), ['LOST ORIGIN'], 'no card name still gives the set');
     assert.deepEqual(railText({}, L), []);
+  });
+  it('a non-English card with no usable set name keeps its language on line 2', () => {
+    // 146 JP sets have no romanised name, and the native one cannot be drawn — but "which printing"
+    // is exactly what a JP buyer is checking, so it must not vanish entirely.
+    assert.deepEqual(railText({ cardName: 'Pikachu', language: 'Japanese', setName: 'スタートデッキ100' }, L), ['PIKACHU', 'JAPANESE']);
+    assert.deepEqual(railText({ cardName: 'Pikachu', language: 'Japanese' }, L), ['PIKACHU', 'JAPANESE']);
   });
   it('CONDITION never reaches the rail — it would split every NM/LP pair into two eBay uploads', () => {
     const a = railText({ language: 'English', setName: 'Base Set', condition: 'Near Mint' }, L);
