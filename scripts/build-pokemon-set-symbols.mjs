@@ -45,15 +45,24 @@ export function setNameFromFile(file) {
   return m ? m[1].replace(/_/g, ' ').trim() : null;
 }
 
-// Logos use a DIFFERENT convention from symbols, and it varies by era:
+// Logos use a DIFFERENT convention from symbols, and it varies by era AND carries an optional
+// LANGUAGE SUFFIX:
 //   `Jungle_Logo.png`              → name 'Jungle'
 //   `SM1_Logo.png`                 → code 'SM1', no name
 //   `SV3a_Raging_Surf_Logo.png`    → code 'SV3a', name 'Raging Surf'
-// Both keys get indexed, because a stock row may carry either. Returns { code, name } — either may
-// be empty, but not both.
+//   `M5_Logo_JP.png`               → code 'M5'          ← the MEGA series, and every modern SV set
+//   `Neo_Genesis_Logo_EN.png`      → name 'Neo Genesis'
+//
+// That `_JP`/`_EN` suffix is not a detail: matching only `_Logo.png` caught 13 of 135 English logos
+// and missed the entire MEGA series, which is exactly the set the compositor is being used on.
+//
+// Returns { code, name } — either may be empty, but not both. Both get indexed, because a stock row
+// may carry either identity.
 const CODE_TOKEN = /^[A-Za-z]{1,4}\d+[A-Za-z]?$/;
+export const LOGO_FILE_RE = /_logo(?:_[a-z]{2})?\.(png|gif|jpg)$/i;
+
 export function setLogoKeysFromFile(file) {
-  const m = String(file).match(/^(.+?)_logo\.(png|gif|jpg)$/i);
+  const m = String(file).match(/^(.+?)_logo(?:_[a-z]{2})?\.(png|gif|jpg)$/i);
   if (!m) return null;
   const parts = m[1].split('_').filter(Boolean);
   if (!parts.length) return null;
@@ -73,7 +82,7 @@ export async function listPageImages(page) {
   const all = (j.parse && j.parse.images) || [];
   return {
     symbols: all.filter((n) => /^SetSymbol/i.test(n)),
-    logos: all.filter((n) => /_logo\.(png|gif|jpg)$/i.test(n)),
+    logos: all.filter((n) => LOGO_FILE_RE.test(n)),
   };
 }
 
