@@ -70,13 +70,23 @@
   .panes.compare{grid-template-columns:1fr 1fr;}
   @media (max-width:760px){.panes.compare{grid-template-columns:1fr;}}
   .pane .cap{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;}
-  .pane img{width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:#000;}
+  /* WHITE, deliberately: eBay has no dark mode. The rails are near-black, so on a dark panel you
+     cannot tell where the image ends and the page begins — the exact thing this tool is for. */
+  .shot{background:#fff;border-radius:11px;padding:12px;border:1px solid var(--line2);}
+  .pane img{width:100%;height:auto;display:block;cursor:zoom-in;background:#fff;}
   .pane .empty{aspect-ratio:1;border-radius:10px;border:1px dashed var(--line2);display:flex;align-items:center;justify-content:center;color:var(--faint);font-family:var(--mono);font-size:12px;}
 
-  .thumbs{display:flex;gap:14px;align-items:flex-end;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);}
+  .thumbs{display:flex;gap:14px;align-items:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;}
   .thumbs .t{text-align:center;}
-  .thumbs img{border-radius:6px;border:1px solid var(--line);display:block;}
-  .thumbs .n{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:5px;letter-spacing:.08em;}
+  .thumbs img{display:block;cursor:zoom-in;background:#fff;}
+  .thumbs .n{font-family:var(--mono);font-size:9.5px;color:#6b7280;margin-top:5px;letter-spacing:.08em;}
+  .thumbs .hint2{font-family:var(--mono);font-size:10px;color:#9ca3af;line-height:1.6;margin:0 0 4px 6px;text-align:left;}
+
+  /* full-size zoom */
+  #zoom{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(6,7,10,.86);padding:24px;cursor:zoom-out;backdrop-filter:blur(2px);}
+  #zoom figure{margin:0;background:#fff;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;max-height:100%;box-shadow:0 30px 80px -20px rgba(0,0,0,.8);}
+  #zoom img{max-width:min(1600px,84vw);max-height:78vh;width:auto;height:auto;display:block;border-radius:4px;}
+  #zoom figcaption{font:11px/1.5 var(--mono);color:#6b7280;letter-spacing:.04em;text-align:center;}
 
   .facts{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px;}
   .fact{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:5px 9px;background:var(--ink);}
@@ -146,28 +156,36 @@
     </div>
 
     <div class="stage">
-      <div class="panes" id="panes">
-        <div class="pane">
-          <div class="cap"><span>Composed</span><span id="cap_ms"></span></div>
-          <div class="empty" id="empty">drop a photo to start</div>
-          <img id="out" style="display:none" alt="composed listing image">
+      <div class="shot">
+        <div class="panes" id="panes">
+          <div class="pane">
+            <div class="empty" id="empty">drop a photo to start</div>
+            <img id="out" style="display:none" alt="composed listing image — click to view full size" title="Click to view full size">
+          </div>
+          <div class="pane" id="refpane" style="display:none">
+            <img id="ref" alt="reference image">
+          </div>
         </div>
-        <div class="pane" id="refpane" style="display:none">
-          <div class="cap"><span>Reference</span><span id="cap_ref"></span></div>
-          <img id="ref" alt="reference image">
+
+        <div class="thumbs" id="thumbs" style="display:none">
+          <div class="t"><img id="th225" width="225" height="225" alt="eBay search results size" title="Click to view full size"><div class="n">225 · EBAY SEARCH</div></div>
+          <div class="t"><img id="th140" width="140" height="140" alt="mobile size" title="Click to view full size"><div class="n">140 · MOBILE</div></div>
+          <div class="t"><img id="th64" width="64" height="64" alt="tiny size" title="Click to view full size"><div class="n">64 · TINY</div></div>
+          <div class="hint2">225px is eBay desktop search; mobile is smaller again.<br>If the card is unreadable at 140, the rails are too wide.</div>
         </div>
       </div>
 
-      <div class="thumbs" id="thumbs" style="display:none">
-        <div class="t"><img id="th220" width="220" height="220" alt="220px"><div class="n">220 · SEARCH</div></div>
-        <div class="t"><img id="th140" width="140" height="140" alt="140px"><div class="n">140 · MOBILE</div></div>
-        <div class="t"><img id="th64" width="64" height="64" alt="64px"><div class="n">64 · TINY</div></div>
-        <div class="hint" style="margin:0 0 4px 6px">This is the size that sells. If the card is unreadable at 140, the rails are too wide.</div>
-      </div>
-
+      <div class="cap" style="margin:9px 0 0;"><span id="cap_ms"></span></div>
       <div class="facts" id="facts"></div>
     </div>
   </div>
+</div>
+
+<div id="zoom">
+  <figure>
+    <img id="zoomImg" alt="composed listing image, full size">
+    <figcaption id="zoomCap"></figcaption>
+  </figure>
 </div>
 
 <script>
@@ -268,7 +286,7 @@ async function preview() {
     if (!r.ok) { banner(j.error || ('preview failed (HTTP ' + r.status + ')'), j.unavailable ? 'bad' : 'warn'); return; }
     banner('');
     $('empty').style.display = 'none';
-    for (const id of ['out', 'th220', 'th140', 'th64']) $(id).src = j.dataUrl;
+    for (const id of ['out', 'th225', 'th140', 'th64']) $(id).src = j.dataUrl;
     $('out').style.display = 'block';
     $('thumbs').style.display = 'flex';
     $('cap_ms').textContent = j.ms + 'ms · ' + Math.round(j.bytes / 1024) + 'kB';
@@ -339,6 +357,22 @@ $('savecfg').addEventListener('click', async () => {
   $('savecfg').textContent = 'Saved';
   setTimeout(() => { $('savecfg').textContent = 'Save to settings'; }, 1400);
 });
+
+// ---- full-size zoom ----
+// The stage is capped by the layout, which is well short of the ~700px eBay gives the main image on
+// an item page. Clicking opens the real 1600px composite, still on white.
+function openZoom() {
+  const src = $('out').src;
+  if (!src) return;
+  $('zoomImg').src = src;
+  $('zoomCap').textContent = 'full size · click anywhere or press Esc to close';
+  $('zoom').style.display = 'flex';
+  document.addEventListener('keydown', zoomKey);
+}
+function closeZoom() { $('zoom').style.display = 'none'; document.removeEventListener('keydown', zoomKey); }
+function zoomKey(e) { if (e.key === 'Escape') closeZoom(); }
+$('zoom').addEventListener('click', closeZoom);
+for (const id of ['out', 'th225', 'th140', 'th64']) $(id).addEventListener('click', openZoom);
 
 function showReadiness(status) {
   if (!status) return;

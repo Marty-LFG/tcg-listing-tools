@@ -176,19 +176,25 @@
         <h3>Listing image</h3>
         <label class="tog"><input type="checkbox" id="composeEnable"><span>Branded rails on the photo</span></label>
         <div class="muted" id="composeHint" style="margin-top:6px;"></div>
+        <!-- WHITE, deliberately. eBay has no dark mode, so a dark-panel preview is a lie about the
+             one thing this feature changes: the rails are near-black, and against a dark page you
+             cannot see where the image stops and the page starts. On white they read exactly as a
+             buyer will see them. Sizes are eBay's real desktop ones, measured from a live listing. -->
         <div id="composePreview" style="display:none;margin-top:12px;">
-          <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
-            <div>
-              <img id="composeBig" alt="composed listing image"
-                   style="width:210px;height:210px;display:block;border-radius:9px;border:1px solid var(--line);background:#000;">
-              <div class="muted" id="composeFacts" style="font-size:10.5px;margin-top:5px;letter-spacing:.02em;"></div>
-            </div>
-            <div>
-              <img id="composeThumb" alt="thumbnail size"
-                   style="width:140px;height:140px;display:block;border-radius:6px;border:1px solid var(--line);background:#000;">
-              <div class="muted" style="font-size:10px;margin-top:5px;letter-spacing:.08em;">140px &middot; AS BUYERS SEE IT</div>
+          <div style="background:#fff;border-radius:11px;padding:14px;border:1px solid var(--line2);">
+            <img id="composeBig" alt="composed listing image — click to view full size"
+                 title="Click to view full size"
+                 style="width:100%;max-width:460px;aspect-ratio:1;display:block;margin:0 auto;cursor:zoom-in;background:#fff;">
+            <div style="display:flex;gap:14px;align-items:flex-end;margin-top:14px;padding-top:13px;border-top:1px solid #e5e7eb;">
+              <img id="composeThumb" alt="as it appears in eBay search results — click to view full size"
+                   title="Click to view full size"
+                   style="width:225px;height:225px;display:block;cursor:zoom-in;background:#fff;flex:none;">
+              <div style="font-size:10px;color:#6b7280;letter-spacing:.08em;font-family:var(--mono,monospace);line-height:1.7;">
+                225px<br>EBAY SEARCH RESULTS<br><span style="color:#9ca3af;">(smaller again on mobile)</span>
+              </div>
             </div>
           </div>
+          <div class="muted" id="composeFacts" style="font-size:10.5px;margin-top:7px;letter-spacing:.02em;"></div>
         </div>
       </div>
 
@@ -664,6 +670,40 @@ async function runComposePreview(){
   }
 }
 $('composeEnable').addEventListener('change',refreshComposePreview);
+
+// ---- full-size zoom ----
+// The in-card preview is capped by the column width, which is well short of the ~700px eBay gives
+// the main image on an item page. Clicking opens the real 1600px composite, on white, so the rails
+// can be judged at the size a buyer actually inspects them at.
+function openComposeZoom(){
+  const src=$('composeBig').src;
+  if(!src) return;
+  let ov=$('composeZoom');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='composeZoom';
+    ov.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;'+
+      'background:rgba(6,7,10,.86);padding:24px;cursor:zoom-out;backdrop-filter:blur(2px);';
+    ov.innerHTML='<figure style="margin:0;background:#fff;border-radius:12px;padding:16px;max-height:100%;display:flex;flex-direction:column;gap:10px;box-shadow:0 30px 80px -20px rgba(0,0,0,.8);">'+
+      '<img id="composeZoomImg" alt="composed listing image, full size" style="max-width:min(1600px,84vw);max-height:78vh;width:auto;height:auto;display:block;border-radius:4px;">'+
+      '<figcaption id="composeZoomCap" style="font:11px/1.5 var(--mono,monospace);color:#6b7280;letter-spacing:.04em;text-align:center;"></figcaption>'+
+      '</figure>';
+    ov.addEventListener('click',closeComposeZoom);
+    document.body.appendChild(ov);
+  }
+  $('composeZoomImg').src=src;
+  $('composeZoomCap').textContent=($('composeFacts').textContent||'')+' — click anywhere or press Esc to close';
+  ov.style.display='flex';
+  document.addEventListener('keydown',composeZoomKey);
+}
+function closeComposeZoom(){
+  const ov=$('composeZoom');
+  if(ov) ov.style.display='none';
+  document.removeEventListener('keydown',composeZoomKey);
+}
+function composeZoomKey(e){ if(e.key==='Escape') closeComposeZoom(); }
+$('composeBig').addEventListener('click',openComposeZoom);
+$('composeThumb').addEventListener('click',openComposeZoom);
 
 function bestOffer(){
   if(!$('boEnable').checked) return {enabled:false};

@@ -1070,6 +1070,13 @@ it posts the row it is about to save to `/api/listing-image/preview`, which deri
 through the **same `composeMetaFor`** the publish path uses, so it is not an approximation. The
 source follows the publish rule too: staged owner photos replace the catalog art. Tune the constants
 in **`/listing-image-lab.html`**; batch it with
+
+**Both previews render on WHITE and click to zoom, deliberately.** eBay has no dark mode, and the
+rails are near-black: on this suite's dark panels you cannot see where the composite ends and the
+page begins, which is the one thing a preview of this feature has to show. The in-page sizes are
+eBay's real desktop ones (460px stage, 225px search-results thumb — measured against a live listing,
+not guessed), and clicking opens the full 1600px on white, because the card column is well short of
+the ~700px eBay gives an item page's main image.
 `node scripts/compose-listing-images.mjs`.
 
 **Ships OFF.** `data/listing-image.config.json` (`enabled: false`) is the master switch, `applyTo`
