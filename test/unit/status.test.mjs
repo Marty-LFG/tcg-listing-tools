@@ -86,6 +86,22 @@ describe('SETTINGS validators', () => {
     assert.match(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: ['nope'] }), /unknown bake/);
     assert.match(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: ['funko'] }), /unknown bake/);   // funko isn't a bake
   });
+  it('ebay-listing: a transposed best-offer pair cannot be saved as the default', () => {
+    // Each percentage is separately legal, so only the PAIR can be wrong — and eBay rejects an
+    // auto-accept below the auto-decline (25002) at publish, i.e. once per listing that inherits it.
+    const ok = {
+      marketplaceId: 'EBAY_AU', categoryTreeId: '15', listingDuration: 'GTC', handlingDays: 1,
+      location: { merchantLocationKey: 'tcg-au-1' },
+      policyNames: { payment: 'P', return: 'R', fulfillment: 'F' },
+      returns: { accepted: true, days: 30 },
+      bestOffer: { enabled: true, autoAcceptPct: 95, autoDeclinePct: 78 },
+    };
+    assert.equal(SETTINGS['ebay-listing'].validate(ok), null);
+    const swapped = { ...ok, bestOffer: { enabled: true, autoAcceptPct: 71, autoDeclinePct: 94 } };
+    assert.match(SETTINGS['ebay-listing'].validate(swapped), /autoAcceptPct must be ≥ autoDeclinePct/);
+    // Equal is fine — eBay only objects to accept being LOWER than decline.
+    assert.equal(SETTINGS['ebay-listing'].validate({ ...ok, bestOffer: { enabled: true, autoAcceptPct: 80, autoDeclinePct: 80 } }), null);
+  });
   it('read-only entries are flagged and have no validators', () => {
     for (const name of ['collectr', 'grading', 'grading-companies']) {
       assert.equal(SETTINGS[name].editable, false);

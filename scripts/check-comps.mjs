@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { JUNK_RE, buildNumberRe, classifyLang, singlesFilter, recommendedFromCluster, isGraded } from '../lib/comps-singles.mjs';
+import { JUNK_RE, buildNumberRe, classifyLang, singlesFilter, recommendedFromCluster, isGraded, snapToEnding, ASK_ENDINGS } from '../lib/comps-singles.mjs';
 import { clusterValue } from '../lib/comps.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -62,11 +62,34 @@ assert('condId 2750 ⇒ graded', isGraded({ condId: '2750', title: 'x' }) === tr
 assert('condId 4000 ⇒ not graded even if title says PSA', isGraded({ condId: '4000', title: 'not PSA graded, raw' }) === false);
 assert('no condId, "PSA 10" in title ⇒ graded', isGraded({ title: 'Charizard PSA 10 Gem Mint' }) === true);
 
-console.log('\n[recommendedFromCluster — undercut cheapest in-cluster by 1c, floor $0.50]');
+console.log('\n[ASK_ENDINGS parity with extras.js (GR9)]');
+{
+  const me = extras.match(/TCG\.ASK_ENDINGS = (\[[^\]]*\]);/);
+  assert('extras.js ASK_ENDINGS literal found', !!me, 'literal not located');
+  if (me) assert('server ASK_ENDINGS === browser ASK_ENDINGS', me[1] === '[' + ASK_ENDINGS.join(', ') + ']',
+    'browser=' + me[1] + '\n           server=[' + ASK_ENDINGS.join(', ') + ']');
+}
+
+console.log('\n[snapToEnding — down never goes up, nearest picks the closer side]');
+{
+  // Down: the undercut direction. Landing ON an ending must be a no-op, or repeated pricing walks
+  // a card down a dollar at a time.
+  const down = [[10.99, 10.98], [10.49, 10.48], [10.98, 10.98], [10.48, 10.48], [10.29, 9.98], [10.00, 9.98], [1.30, 0.98]];
+  for (const [inp, want] of down) assert('down ' + inp + ' → ' + want, snapToEnding(inp, 'down') === want, 'got ' + snapToEnding(inp, 'down'));
+  for (const [inp] of down) assert('down never rounds up (' + inp + ')', snapToEnding(inp, 'down') <= inp);
+  const near = [[10.29, 10.48], [10.10, 9.98], [10.75, 10.98], [10.70, 10.48]];
+  for (const [inp, want] of near) assert('nearest ' + inp + ' → ' + want, snapToEnding(inp, 'nearest') === want, 'got ' + snapToEnding(inp, 'nearest'));
+  assert('null/0 pass through untouched', snapToEnding(null) === null && snapToEnding(0) === 0);
+}
+
+console.log('\n[recommendedFromCluster — undercut cheapest in-cluster, on a price ending, floor $0.50]');
 {
   const c = clusterValue([18.5, 19.0, 19.0, 19.5, 20.0, 55.0]);   // cheapest-in-cluster ~18.5
   const rec = recommendedFromCluster(c);
-  assert('undercuts cheapest in-cluster by 1c', Math.abs(rec - (c.cheapestInCluster - 0.01)) < 1e-9, 'rec=' + rec + ' clusterLo=' + c.cheapestInCluster);
+  assert('never above the cheapest in-cluster', rec < c.cheapestInCluster, 'rec=' + rec + ' clusterLo=' + c.cheapestInCluster);
+  assert('lands on a price ending', ASK_ENDINGS.some((e) => Math.abs((rec % 1) - e) < 1e-9), 'rec=' + rec);
+  // 18.50 → undercut 18.49 → snapped down to the .48 ending.
+  assert('18.50 cluster ⇒ 18.48', rec === 18.48, 'rec=' + rec);
   assert('floors at $0.50', recommendedFromCluster({ cheapestInCluster: 0.2 }) === 0.5);
 }
 

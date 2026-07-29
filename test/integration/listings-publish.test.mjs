@@ -109,10 +109,42 @@ describe('runPublish — publish a raw single end to end', () => {
     assert.ok(db.prepare("SELECT 1 FROM listing_pushes WHERE item_id=? AND action='preview'").get(itemId));
   });
 
+  it('blocks a transposed best-offer pair before the first eBay call', async () => {
+    // Lived (AAC-095, 2026-07-29): accept 602 / decline 797 went out and eBay refused it at PUBLISH —
+    // i.e. after the inventory item AND the offer had been created, leaving a half-built offer behind.
+    // The refusal has to land before any of that, so nothing reaches the account.
+    const before = db.prepare("SELECT COUNT(*) n FROM listing_pushes WHERE item_id=?").get(itemId).n;
+    const out = await runPublish(ENV, db, CFG, () => {}, {
+      itemId, dryRun: false, bestOfferSpec: { enabled: true, autoAcceptPct: 71, autoDeclinePct: 94 },
+    });
+    assert.equal(out.ok, false);
+    assert.match(out.error, /auto-accept/);
+    assert.match(out.error, /25002/);
+    assert.match(out.error, /transposed/);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM listing_pushes WHERE item_id=?").get(itemId).n, before,
+      'refused before any eBay call, so there is no attempt to audit');
+  });
+
+  it('allows the right way round, and allows equal', async () => {
+    for (const spec of [{ enabled: true, autoAcceptPct: 94, autoDeclinePct: 71 }, { enabled: true, autoAcceptPct: 80, autoDeclinePct: 80 }]) {
+      const out = await runPublish(ENV, db, CFG, () => {}, { itemId, dryRun: true, bestOfferSpec: spec });
+      assert.equal(out.ok, true, out.error);
+    }
+  });
+
   it('blocks publish when the price is missing (needs_price, GR4)', async () => {
     db.prepare('UPDATE inventory_items SET target_price_cents = NULL WHERE id = ?').run(itemId);
     const out = await runPublish(ENV, db, CFG, () => {}, { itemId, dryRun: false });
     assert.equal(out.ok, false);
     assert.match(out.error, /price|needs_price/i);
+  });
+
+  it('blocks publish under eBay’s A$1.00 floor — the AAC-096 phantom', async () => {
+    // 99c passed every local check and died at eBay's fee preflight, leaving a staged row holding a
+    // shelf label it never earned. Distinct from needs_price: there IS a price, it is just illegal.
+    db.prepare('UPDATE inventory_items SET target_price_cents = 99 WHERE id = ?').run(itemId);
+    const out = await runPublish(ENV, db, CFG, () => {}, { itemId, dryRun: false });
+    assert.equal(out.ok, false);
+    assert.match(out.error, /A\$0\.99 is under eBay’s A\$1\.00 minimum/);
   });
 });

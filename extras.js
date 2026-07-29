@@ -441,6 +441,27 @@
     return 'en';
   };
 
+  // The owner's price endings, and the snap onto them. MIRROR of lib/comps-singles.mjs (GR9) — the
+  // ASK_ENDINGS literal is compared byte-for-byte by scripts/check-comps.mjs, because a browser that
+  // suggests $5.98 while the server suggests $5.48 for the same card is the kind of drift nobody
+  // notices until a batch is already live. Keep the two edits together.
+  TCG.ASK_ENDINGS = [0.48, 0.98];
+  TCG.snapToEnding = function (aud, mode) {
+    if (aud == null || !isFinite(aud) || !(aud > 0)) return aud;
+    var c = Math.round(aud * 100);
+    var whole = Math.floor(c / 100);
+    var cands = [];
+    [whole - 1, whole, whole + 1].forEach(function (w) {
+      TCG.ASK_ENDINGS.forEach(function (e) { cands.push(w * 100 + Math.round(e * 100)); });
+    });
+    var under = cands.filter(function (x) { return x > 0 && x <= c; });
+    var below = under.length ? under[under.length - 1] : null;
+    var above = cands.filter(function (x) { return x >= c; })[0];
+    if (mode !== 'nearest') return (below != null ? below : cands.filter(function (x) { return x > 0; })[0]) / 100;
+    if (below == null) return above / 100;
+    return (c - below <= above - c ? below : above) / 100;
+  };
+
   // TCG.analyzeComps(rows, {mode, ref, refLabel, precision, numberMatch, lang}) -> rich analysis.
   // With precision:true, rows are first narrowed to listings that are plausibly THIS exact card
   // (title carries the collector number, not an accessory/lot, right language) before any stats.
@@ -515,7 +536,7 @@
     [mi-1, mi+1].forEach(function (j) { if (hist[j] && hist[j].count >= modeBin.count * 0.5) clusterItems = clusterItems.concat(hist[j].items); });
     clusterItems.sort(function(a,b){return a-b;});
     var fair = median(clusterItems), clusterLo = clusterItems[0], clusterHi = clusterItems[clusterItems.length-1];
-    var recommended = Math.max(0.5, Math.round((clusterLo - 0.01) * 100) / 100); // undercut cheapest IN-cluster
+    var recommended = Math.max(0.5, TCG.snapToEnding(Math.round((clusterLo - 0.01) * 100) / 100, 'down')); // undercut cheapest IN-cluster, on a price ending
 
     result.histogram = hist.map(function (b) { return { lo: b.lo, hi: b.hi, count: b.count, inCluster: b.lo >= clusterLo - 1e-9 && b.hi <= clusterHi + w }; });
     result.fair = fair; result.fairRange = [clusterLo, clusterHi];
