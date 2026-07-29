@@ -1114,18 +1114,41 @@ badge there at compose time.
 
 ### What the rails say
 
-- **Down the right rail:** the set name. The language is prefixed **only when it is not English**
-  (`JAPANESE · MEGA SYMPHONIA`, but plain `PITCH BLACK`). English is the store's default and the bulk
-  of stock, so printing it every time is noise that costs the set name space; a non-English printing
-  is worth telling a buyer, because it changes what the card is worth.
+- **Down the right rail:** the set name, with the language on **its own line above** when it is not
+  English (`JAPANESE` over `ABYSS EYE`, but a bare `PITCH BLACK`). Two things matter here. English is
+  the store's default and the bulk of stock, so printing it every time is noise that costs the set
+  name space, while a non-English printing changes what the card is worth and is worth telling a
+  buyer. And `railText` returns **one line per element, never a joined string** — the type is sized
+  to the longest line, so two short lines render visibly bigger down a 300px rail than one long one.
+  `text.railInset` is 0.12 rather than 0.22 because the cross-axis budget is shared by all lines: a
+  two-line rail gets half each and shrinks at a wide inset, while a single line is bound by the
+  along-run `fill` and so is unaffected.
 - **At the foot of the right rail:** the set symbol above the card's **printed** number — the two
   things a collector checks after the name, and the pair a thumbnail otherwise makes unreadable.
 
-The symbol URL and the era fields come from the cached pokemontcg.io set list via
-`findSet({code, name})` in `lib/pkm-sets-cache.mjs`. A cold cache, a JP set or another game simply
-means no symbol; the number still draws. The symbol itself is fetched through `lib/img-cache.mjs`, so
-the second listing from a set is a local read, and a fetch failure costs the badge its icon and
-nothing else.
+### A non-English card is a different product, not a translation
+
+`composeMetaFor` resolves a non-English row against the **baked TCGdex index**
+(`data/pokemon-intl-sets.json`) via `findIntlSet(lang, {code, name})`, and only falls back to the
+English list. It has to: the JP counterpart of *Pitch Black* is **アビスアイ / Abyss Eye**, it holds
+**81** cards rather than 84, and a JP secret rare therefore prints **102/081** — a number that does
+not exist in the English set. The English set's identity on a Japanese card's rail is wrong in
+exactly the way that costs a sale, because it is the first thing a JP collector checks.
+
+The rail carries the **romanised** name (`name_en`) — what an AU buyer searches, and what the Latin
+rail font can actually draw. `findIntlSet` matches on the set code, the romanised name, the native
+name **and** the English equivalent, because a stock row may have been saved under any of them. Its
+normaliser is `\p{L}\p{N}`-based on purpose: an ASCII-only class collapses アビスアイ to the empty
+string, at which point every Japanese set matches every other one.
+
+**JP sets almost never have a symbol** — 4 of 277 in the current bake — so those cards get a
+number-only badge. Borrowing the English set's symbol would put the wrong symbol on a Japanese card,
+which is worse than none.
+
+English rows use the cached pokemontcg.io list via `findSet({code, name})`, which carries the symbol
+plus the era fields the number formatter reads. Either way the symbol is fetched through
+`lib/img-cache.mjs`, so the second listing from a set is a local read, and a fetch failure costs the
+badge its icon and nothing else.
 
 **The number goes through `printedCardNumber()` (Golden Rule 10), which guards a real trap.**
 `formatCardNumber` takes the RAW upstream number; the uploader already stores a formatted one. Feed

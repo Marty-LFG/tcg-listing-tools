@@ -47,6 +47,36 @@ describe('composeMetaFor', () => {
     const m = composeMetaFor({ set_name: 'No Such Set At All', number: '1/1' });
     assert.equal(m.setSymbolUrl, '');
   });
+
+  describe('non-English cards resolve against the JP index, not the English one', () => {
+    // A JP card is a different product, not a translation: its own set name, its own card count and
+    // therefore its own printed number. The English set's identity on a JP rail is simply wrong.
+    it('uses the romanised JP set name for a JP row saved under its English set', () => {
+      const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'M5', number: '102', language: 'JP' });
+      assert.equal(m.language, 'Japanese');
+      assert.equal(m.setName, 'Abyss Eye', 'a JP card is not in "Pitch Black"');
+    });
+    it('numbers it out of the JAPANESE card count', () => {
+      // JP Abyss Eye holds 81 cards, so a secret rare prints 102/081 — a number that does not exist
+      // in the 84-card English set.
+      const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'M5', number: '102', language: 'JP' });
+      assert.equal(m.cardNumber, '102/081');
+    });
+    it('resolves by the native name and by the English equivalent too', () => {
+      for (const name of ['Abyss Eye', 'アビスアイ', 'Pitch Black']) {
+        assert.equal(composeMetaFor({ set_name: name, number: '1', language: 'JP' }).setName, 'Abyss Eye', `failed for ${name}`);
+      }
+    });
+    it('English rows are untouched by any of this', () => {
+      const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'PBL', number: '006/084', language: 'EN' });
+      assert.equal(m.setName, 'Pitch Black');
+      assert.equal(m.cardNumber, '006/084');
+    });
+    it('an unknown JP set falls back to the row rather than throwing', () => {
+      const m = composeMetaFor({ set_name: 'Not A Real JP Set', number: '5', language: 'JP' });
+      assert.equal(m.setName, 'Not A Real JP Set');
+    });
+  });
   it('does NOT carry condition — that is the whole NM/LP dedupe argument', () => {
     const nm = composeMetaFor({ set_name: 'Base Set', condition: 'Near Mint' });
     const lp = composeMetaFor({ set_name: 'Base Set', condition: 'Lightly Played' });

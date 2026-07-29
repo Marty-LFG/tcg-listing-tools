@@ -122,9 +122,17 @@ describe('railText', () => {
     assert.deepEqual(railText({ language: 'EN', setName: 'Pitch Black' }, L), ['PITCH BLACK']);
     assert.deepEqual(railText({ setName: 'Pitch Black' }, L), ['PITCH BLACK']);
   });
-  it('prefixes the language when it is NOT English — that changes what the card is worth', () => {
-    assert.deepEqual(railText({ language: 'Japanese', setName: 'Mega Symphonia' }, L), ['JAPANESE · MEGA SYMPHONIA']);
-    assert.deepEqual(railText({ language: 'Korean', setName: 'Base Set' }, L), ['KOREAN · BASE SET']);
+  it('puts a non-English language on its OWN line above the set name', () => {
+    // Separate lines, not a joined run: the type is sized to the longest line, so two short lines
+    // render bigger down a 300px rail than one long one.
+    assert.deepEqual(railText({ language: 'Japanese', setName: 'Abyss Eye' }, L), ['JAPANESE', 'ABYSS EYE']);
+    assert.deepEqual(railText({ language: 'Korean', setName: 'Base Set' }, L), ['KOREAN', 'BASE SET']);
+  });
+  it('truncates a long set name per line, and never the language', () => {
+    const [lang, set] = railText({ language: 'Japanese', setName: 'A Set Name Far Longer Than Any Rail Could Ever Hold' }, L);
+    assert.equal(lang, 'JAPANESE', 'the language line must survive intact');
+    assert.ok(set.endsWith('…'));
+    assert.ok(set.length <= L.text.maxChars);
   });
   it('drops missing fields rather than leaving a dangling separator', () => {
     assert.deepEqual(railText({ setName: 'Base Set' }, L), ['BASE SET']);
@@ -136,16 +144,6 @@ describe('railText', () => {
     const a = railText({ language: 'English', setName: 'Base Set', condition: 'Near Mint' }, L);
     const b = railText({ language: 'English', setName: 'Base Set', condition: 'Lightly Played' }, L);
     assert.deepEqual(a, b);
-  });
-  it('truncates the SET and never the language', () => {
-    const [line] = railText({ language: 'Japanese', setName: 'Some Extremely Long Set Name That Will Never Fit' }, L);
-    assert.ok(line.startsWith('JAPANESE · '), 'language must survive intact');
-    assert.ok(line.endsWith('…'));
-    assert.ok(line.length <= L.text.maxChars + 1);
-  });
-  it('drops the set entirely when there is no room to abbreviate it usefully', () => {
-    const tight = resolveLayout(DEFAULT_CONFIG, {}, { text: { maxChars: 14 } });
-    assert.deepEqual(railText({ language: 'Japanese', setName: 'Mega Symphonia' }, tight), ['JAPANESE']);
   });
   it('text.rail none means no line at all', () => {
     const off = resolveLayout(DEFAULT_CONFIG, {}, { text: { rail: 'none' } });

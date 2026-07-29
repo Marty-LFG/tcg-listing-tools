@@ -81,7 +81,7 @@ describe('POST /api/listing-image/preview', { skip: !sharp && 'sharp not install
     assert.equal(r.json.variant, 'japanese');
     assert.match(r.json.dataUrl, /^data:image\/jpeg;base64,/);
     assert.match(r.json.contentHash, /^[0-9a-f]{64}$/);
-    assert.deepEqual(r.json.textLines, ['JAPANESE · MEGA SYMPHONIA']);
+    assert.deepEqual(r.json.textLines, ['JAPANESE', 'MEGA SYMPHONIA'], 'language and set name are separate lines');
   });
 
   it('applies slider overrides WITHOUT writing them to disk', async () => {
