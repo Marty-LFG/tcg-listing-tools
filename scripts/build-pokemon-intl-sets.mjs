@@ -135,6 +135,7 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
   const prior = loadExisting(out)
   const result = {}
   let fetched = 0, reused = 0, injected = 0
+  const nameCollisions = []
 
   for (const lang of LANGS) {
     let brief
@@ -207,6 +208,30 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
       }
     }
 
+    // Flag upstream name collisions. TCGdex sometimes returns ONE set's identity for a whole block
+    // of distinct codes: as of 2026-07 all fifteen JP `CS*` ids come back as トリプレットビート with
+    // the same 101-card count and the same release date, which is simply wrong at the source. Baked
+    // verbatim that reads as fifteen real sets — in the catalog, and on a listing image's rail.
+    //
+    // We do NOT invent replacements (Golden Rule 4: never present a guess as authoritative). The
+    // rows are marked so consumers can distrust the NAME while still using the code, and the build
+    // says so out loud. The real fix is a seed entry per set in data/pokemon-intl-seed.json once the
+    // true names are known, or upstream correcting it.
+    const byName = new Map()
+    for (const r of records) {
+      const k = (r.name_native || '').trim()
+      if (!k) continue
+      if (!byName.has(k)) byName.set(k, [])
+      byName.get(k).push(r)
+    }
+    for (const [name, group] of byName) {
+      if (group.length < 4) continue                      // 2–3 sharing a name is normal (paired releases)
+      if (group.some((r) => r.seeded || r.name_en)) continue   // the overlay already distinguishes them
+      for (const r of group) r.nameSuspect = true
+      nameCollisions.push({ lang, name, count: group.length, codes: group.map((r) => r.code) })
+      console.warn(`[pkm-intl] ${lang}: ${group.length} distinct sets share the upstream name "${name}" (${group.map((r) => r.code).join(', ')}) — marked nameSuspect; seed real names to fix`)
+    }
+
     records.sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || ''))
     result[lang] = records
   }
@@ -225,8 +250,10 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
   renameSync(tmp, out)
 
   const counts = LANGS.map((l) => l + ':' + result[l].length).join(' ')
-  const summary = counts + ' (fetched ' + fetched + ', reused ' + reused + ', injected ' + injected + ', pcSlugs ' + pcMatched + ', pcAdded ' + pcAdded + ')'
-  return { summary, out, fetched, reused, injected, pcMatched, pcAdded }
+  const suspect = nameCollisions.reduce((n, c) => n + c.count, 0)
+  const summary = counts + ' (fetched ' + fetched + ', reused ' + reused + ', injected ' + injected
+    + ', pcSlugs ' + pcMatched + ', pcAdded ' + pcAdded + (suspect ? ', nameSuspect ' + suspect : '') + ')'
+  return { summary, out, fetched, reused, injected, pcMatched, pcAdded, nameCollisions }
 }
 
 // CLI entry — only runs when invoked directly (not when imported).

@@ -1177,6 +1177,40 @@ why `findSetLogo` takes several candidates and the index is keyed under all of t
 | `Jungle_Logo.png` | name `Jungle` |
 | `SM1_Logo.png` | code `SM1` |
 | `SV3a_Raging_Surf_Logo.png` | code `SV3a` **and** name `Raging Surf` |
+| `M5_Logo_JP.png` | code `M5` — note the **language suffix** |
+
+That `_JP`/`_EN` suffix is not a detail. Matching only `_Logo.png` caught 13 of 135 English logos and
+missed the entire MEGA series — the era the compositor is actually used on.
+
+`lookup()` tries three things in order, and **an exact match always wins**:
+
+1. **Exact**, against every identity the caller passes.
+2. **`SET_NAME_ALIASES`** — TCGdex and Bulbapedia romanise differently, so our `Glory of Team Rocket`
+   is the wiki's `Glory of the Rocket Gang`, `Heat Wave Arena` is `Hot Wind Arena`, `Mask of Change`
+   is `Transformation Mask`. Deliberately a short checked list, never fuzzy matching: a near-miss
+   that resolves to the WRONG set puts the wrong symbol on a listing, which is worse than none.
+3. **`baseSetCode()`** — JP sets often ship in pairs sharing one logo file. `SV4K`/`SV4M` (Ancient
+   Roar / Future Flash) both live under `SV4_Logo_JP.png`, as do `M1L`/`M1S`, `SV11B`/`SV11W`,
+   `SV5M`/`SV5K` and `SV2D`/`SV2P`. A code that is already a base returns `''`, so it cannot resolve
+   to itself and mask a genuine miss.
+
+**Coverage** (audit with the snippet in `test/unit/pokemon-set-symbols.test.mjs`): English is
+**174/174** on both. Japanese 2023+ is **84%** on both once the upstream-suspect block below is
+excluded; what remains is starter decks and promo products (`MC`, `M-P`, `SVLN`, `SVLS`, `SVK`,
+`SVG`) that have no wiki symbol because they are products, not expansions.
+
+### TCGdex name collisions (`nameSuspect`)
+
+TCGdex sometimes returns ONE set's identity for a whole block of distinct codes: as of 2026-07 all
+fifteen JP `CS*` ids come back as トリプレットビート with the same 101-card count and the same
+release date, and the same collision appears in `zh-tw` and `ko`. Baked verbatim that reads as
+fifteen real sets — in the catalog, and on a listing image's rail.
+
+`build-pokemon-intl-sets.mjs` flags any block of **4+ distinct codes sharing one upstream native
+name** as `nameSuspect`, warns during the bake, and counts them in the summary. It does **not**
+invent replacements (Golden Rule 4). `composeMetaFor` prefers the owner's own stored `set_name` for
+those rows, so a suspect upstream name never reaches a rail. The real fix is a seed entry per set in
+`data/pokemon-intl-seed.json` once the true names are known, or upstream correcting it.
 
 Two things it took a while to establish, so they are worth not rediscovering:
 

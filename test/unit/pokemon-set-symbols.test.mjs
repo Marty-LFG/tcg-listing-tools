@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setNameFromFile, setLogoKeysFromFile, normName, OUT_PATH } from '../../scripts/build-pokemon-set-symbols.mjs';
-import { findSetSymbol, findSetLogo } from '../../lib/pkm-sets-cache.mjs';
+import { findSetSymbol, findSetLogo, baseSetCode } from '../../lib/pkm-sets-cache.mjs';
 
 describe('setNameFromFile', () => {
   it('reads the set name out of the Bulbapedia filename convention', () => {
@@ -127,5 +127,59 @@ describe('the baked index', { skip: !baked && 'data/pokemon-set-symbols.json not
   it('indexes enough English logos to be worth having', () => {
     const en = Object.values(baked.logos).filter((v) => v.lang === 'en');
     assert.ok(en.length > 50, `only ${en.length} EN logos — the language suffix filter has regressed`);
+  });
+
+  describe('paired-set base-code fallback', () => {
+    // JP sets often ship in pairs sharing ONE logo on the wiki: Ancient Roar/Future Flash are
+    // SV4K/SV4M against a single SV4_Logo_JP.png.
+    for (const [code, base] of [['M1L', 'M1'], ['M1S', 'M1'], ['SV11B', 'SV11'], ['SV11W', 'SV11'],
+      ['SV5M', 'SV5'], ['SV5K', 'SV5'], ['SV4K', 'SV4'], ['SV4M', 'SV4'], ['SV2D', 'SV2'], ['SV2P', 'SV2']]) {
+      it(`${code} falls back to ${base}`, () => {
+        const hit = findSetLogo(code);
+        assert.ok(hit, `${code} resolved no logo`);
+        assert.match(hit.url, new RegExp(`${base}_Logo`, 'i'));
+      });
+    }
+    it('an EXACT match always beats the base code', () => {
+      // SV3a has its own file, so stripping to SV3 must not win.
+      const hit = findSetLogo('SV3a');
+      assert.match(hit.url, /SV3a_Raging_Surf_Logo/);
+    });
+  });
+
+  describe('romanisation aliases', () => {
+    for (const [ours, wiki] of [['Glory of Team Rocket', 'Glory_of_the_Rocket_Gang'], ['Terastal Festival ex', 'Terastal_Fest_ex'],
+      ['Pokemon Card 151', 'SetSymbol151'], ['Heat Wave Arena', 'Hot_Wind_Arena'], ['Mask of Change', 'Transformation_Mask']]) {
+      it(`${ours} resolves to the wiki's ${wiki}`, () => {
+        const hit = findSetSymbol(ours);
+        assert.ok(hit, `${ours} resolved no symbol`);
+        assert.match(hit.url, new RegExp(wiki, 'i'));
+      });
+    }
+    it('an alias never rescues a set that genuinely does not exist', () => {
+      assert.equal(findSetSymbol('Completely Made Up Set'), null);
+      assert.equal(findSetLogo('ZZ99Q'), null);
+    });
+  });
+});
+
+describe('baseSetCode', () => {
+  it('strips the trailing letters of a paired set code', () => {
+    assert.equal(baseSetCode('SV4K'), 'SV4');
+    assert.equal(baseSetCode('M1L'), 'M1');
+    assert.equal(baseSetCode('SV11B'), 'SV11');
+    assert.equal(baseSetCode('CS4DA'), 'CS4');
+  });
+  it('leaves a code that is already a base alone', () => {
+    // Returning '' means "no fallback to try" — a base code must not resolve to itself and mask a
+    // genuine miss.
+    assert.equal(baseSetCode('SV2'), '');
+    assert.equal(baseSetCode('M5'), '');
+  });
+  it('ignores things that are not set codes', () => {
+    assert.equal(baseSetCode('PBL'), '');
+    assert.equal(baseSetCode('CS1.5'), '');
+    assert.equal(baseSetCode(''), '');
+    assert.equal(baseSetCode(null), '');
   });
 });

@@ -84,6 +84,12 @@ describe('composeMetaFor', () => {
       const m = composeMetaFor({ set_name: 'Start Deck 100', set_code: 'MC', number: '5', language: 'JP' });
       assert.ok(isRailDrawable(m.setName), `setName "${m.setName}" is not drawable by the rail font`);
     });
+    it('a nameSuspect row never puts the upstream name on the rail', () => {
+      // TCGdex returns ONE set's identity for a whole block of distinct codes — all fifteen JP CS*
+      // ids come back as トリプレットビート. The bake marks them; the owner's own value wins.
+      const m = composeMetaFor({ set_name: 'Triplet Beat', set_code: 'CS1A', number: '5', language: 'JP' });
+      assert.equal(m.setName, 'Triplet Beat', 'the owner’s stored name must win over a suspect upstream one');
+    });
     it('resolves the JP set logo by code as well as by name', () => {
       // Bulbapedia files them as SV3a_Raging_Surf_Logo.png — findable from either identity.
       const byCode = composeMetaFor({ set_name: 'Raging Surf', set_code: 'SV3a', number: '50', language: 'JP' });
