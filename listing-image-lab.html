@@ -205,9 +205,12 @@ const SLIDERS = [
   { key: 'trimThreshold',scope: 'layout', min: 0,   max: 80,  step: 1,   label: 'trim threshold',unit: '' },
   { key: 'fill',         scope: 'text',   min: 0.2, max: 1,   step: 0.02,label: 'text fill',     unit: '' },
   { key: 'railInset',    scope: 'text',   min: 0,   max: 0.45,step: 0.01,label: 'text inset',    unit: '' },
+  { key: 'symbolFraction', scope: 'badge', min: 0.1, max: 0.9, step: 0.02, label: 'set symbol',  unit: '' },
+  { key: 'numberFill',   scope: 'badge',  min: 0.2, max: 1,   step: 0.02,label: 'number size',   unit: '' },
+  { key: 'marginBottom', scope: 'badge',  min: 0,   max: 400, step: 8,   label: 'badge margin',  unit: 'px' },
 ];
 
-let DEFAULTS = null, PROFILES = null, STATE = { layout: {}, text: {} }, SOURCE = null, INFLIGHT = false, PENDING = false;
+let DEFAULTS = null, PROFILES = null, STATE = { layout: {}, text: {}, badge: {} }, SOURCE = null, INFLIGHT = false, PENDING = false;
 
 function banner(msg, kind) {
   const b = $('banner');
@@ -221,9 +224,10 @@ function banner(msg, kind) {
 function effectiveDefault(key, scope) {
   const type = $('m_type').value;
   const prof = (PROFILES && PROFILES[type]) || {};
-  if (scope === 'text') return DEFAULTS.text[key];
+  if (scope === 'text' || scope === 'badge') return DEFAULTS[scope][key];
   return prof[key] !== undefined ? prof[key] : DEFAULTS[key];
 }
+const OVERRIDE_KEY = { layout: 'layoutOverrides', text: 'textOverrides', badge: 'badgeOverrides' };
 
 function buildSliders() {
   $('sliders').innerHTML = '';
@@ -249,12 +253,12 @@ function buildSliders() {
 // Only knobs the owner actually moved get written out. Emitting every default as an override would
 // freeze the config against future changes to the defaults themselves.
 function overrides() {
-  const out = { layoutOverrides: {}, textOverrides: {} };
+  const out = { layoutOverrides: {}, textOverrides: {}, badgeOverrides: {} };
   for (const s of SLIDERS) {
     const v = STATE[s.scope][s.key];
     if (v === undefined) continue;
     if (v === effectiveDefault(s.key, s.scope)) continue;
-    (s.scope === 'text' ? out.textOverrides : out.layoutOverrides)[s.key] = v;
+    out[OVERRIDE_KEY[s.scope]][s.key] = v;
   }
   return out;
 }
@@ -330,7 +334,7 @@ for (const id of ['m_type', 'm_lang', 'm_set', 'o_variant']) {
   $(id).addEventListener('input', schedule);
 }
 
-$('reset').addEventListener('click', () => { STATE = { layout: {}, text: {} }; buildSliders(); renderConfig(); schedule(); });
+$('reset').addEventListener('click', () => { STATE = { layout: {}, text: {}, badge: {} }; buildSliders(); renderConfig(); schedule(); });
 
 $('reload').addEventListener('click', async () => {
   const r = await fetch('/api/listing-image/reload-assets', { method: 'POST' }).then((x) => x.json()).catch(() => null);
@@ -397,6 +401,7 @@ function showReadiness(status) {
   // Start from whatever is already saved, so the lab opens on the live layout rather than on defaults.
   STATE.layout = Object.assign({}, cfg.config.layoutOverrides || {});
   STATE.text = Object.assign({}, cfg.config.textOverrides || {});
+  STATE.badge = Object.assign({}, cfg.config.badgeOverrides || {});
   buildSliders();
   renderConfig();
   showReadiness(cfg.status);

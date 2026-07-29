@@ -63,7 +63,7 @@ describe('POST /api/listing-image/resolve', () => {
     assert.equal(r.status, 200);
     assert.equal(r.json.variant, 'sealed');
     assert.equal(r.json.layout.railWidth, 220);
-    assert.deepEqual(r.json.textLines, ['ENGLISH · PRISMATIC EVOLUTIONS']);
+    assert.deepEqual(r.json.textLines, ['PRISMATIC EVOLUTIONS'], 'English is not printed on the rail');
     assert.equal(r.json.dataUrl, undefined, 'resolve must not render');
   });
   it('400s on geometry that cannot close, naming the offending value', async () => {

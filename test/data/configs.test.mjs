@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read } from '../helpers/extract-inline.mjs';
 import { availableBakes } from '../../lib/refresh.mjs';
-import { LAYOUT_OVERRIDE_KEYS, TEXT_OVERRIDE_KEYS, VARIANTS, resolveLayout } from '../../lib/listing-image-config.mjs';
+import { LAYOUT_OVERRIDE_KEYS, TEXT_OVERRIDE_KEYS, BADGE_OVERRIDE_KEYS, VARIANTS, resolveLayout } from '../../lib/listing-image-config.mjs';
 
 const cfg = (name) => JSON.parse(read(`data/${name}`));
 
@@ -128,11 +128,12 @@ describe('listing-image.config.example.json', () => {
     assert.ok(read(c.font.file).length > 1000, `font file ${c.font.file} missing or truncated`);
   });
   it('override blocks exist and only carry whitelisted keys', () => {
-    for (const k of ['layoutOverrides', 'textOverrides', 'variantOverrides']) {
+    for (const k of ['layoutOverrides', 'textOverrides', 'badgeOverrides', 'variantOverrides']) {
       assert.ok(c[k] && typeof c[k] === 'object' && !Array.isArray(c[k]), `${k} must be an object`);
     }
     for (const k of Object.keys(c.layoutOverrides)) assert.ok(LAYOUT_OVERRIDE_KEYS.includes(k), `layoutOverrides.${k} is not whitelisted`);
     for (const k of Object.keys(c.textOverrides)) assert.ok(TEXT_OVERRIDE_KEYS.includes(k), `textOverrides.${k} is not whitelisted`);
+    for (const k of Object.keys(c.badgeOverrides)) assert.ok(BADGE_OVERRIDE_KEYS.includes(k), `badgeOverrides.${k} is not whitelisted`);
     for (const [k, v] of Object.entries(c.variantOverrides)) assert.ok(VARIANTS.includes(v), `variantOverrides.${k} points at unknown art '${v}'`);
   });
   it('the template resolves to a valid layout (geometry closes)', () => {

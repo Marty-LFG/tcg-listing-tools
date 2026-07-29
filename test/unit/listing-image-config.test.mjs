@@ -117,12 +117,19 @@ describe('validateLayout', () => {
 
 describe('railText', () => {
   const L = resolveLayout(DEFAULT_CONFIG, {});
-  it('is language + set name, uppercased, middot separated', () => {
+  it('is the set name alone for English — the store default needs no announcing', () => {
+    assert.deepEqual(railText({ language: 'English', setName: 'Pitch Black' }, L), ['PITCH BLACK']);
+    assert.deepEqual(railText({ language: 'EN', setName: 'Pitch Black' }, L), ['PITCH BLACK']);
+    assert.deepEqual(railText({ setName: 'Pitch Black' }, L), ['PITCH BLACK']);
+  });
+  it('prefixes the language when it is NOT English — that changes what the card is worth', () => {
     assert.deepEqual(railText({ language: 'Japanese', setName: 'Mega Symphonia' }, L), ['JAPANESE · MEGA SYMPHONIA']);
+    assert.deepEqual(railText({ language: 'Korean', setName: 'Base Set' }, L), ['KOREAN · BASE SET']);
   });
   it('drops missing fields rather than leaving a dangling separator', () => {
     assert.deepEqual(railText({ setName: 'Base Set' }, L), ['BASE SET']);
-    assert.deepEqual(railText({ language: 'English' }, L), ['ENGLISH']);
+    assert.deepEqual(railText({ language: 'English' }, L), [], 'English alone is nothing worth printing');
+    assert.deepEqual(railText({ language: 'Japanese' }, L), ['JAPANESE']);
     assert.deepEqual(railText({}, L), []);
   });
   it('CONDITION never reaches the rail — it would split every NM/LP pair into two eBay uploads', () => {
@@ -156,6 +163,11 @@ describe('composeHash', () => {
   it('splits on the rendered text — the NM/LP collision the naive hash would cause', () => {
     assert.notEqual(H(), H({ textLines: ['JAPANESE · MEGA SYMPHONIA'] }));
   });
+  it('splits on the BADGE — two cards from one set share art but not a number', () => {
+    assert.notEqual(H({ badge: '006/084|abc' }), H({ badge: '007/084|abc' }));
+    assert.notEqual(H({ badge: '006/084|abc' }), H({ badge: '006/084|def' }), 'a different set symbol must re-compose');
+    assert.equal(H({ badge: '006/084|abc' }), H({ badge: '006/084|abc' }));
+  });
   it('splits on source bytes, variant, layout and rail art', () => {
     assert.notEqual(H(), H({ sourceBytes: Buffer.from('different scan') }));
     assert.notEqual(H(), H({ variant: 'japanese' }));
@@ -180,6 +192,44 @@ describe('layoutFingerprint', () => {
   });
   it('is order independent for the same values', () => {
     assert.equal(layoutFingerprint(resolveLayout(DEFAULT_CONFIG, {})), layoutFingerprint(resolveLayout(DEFAULT_CONFIG, {})));
+  });
+
+  // Regression: the fingerprint used JSON.stringify's replacer-ARRAY form, which is a RECURSIVE
+  // property allowlist rather than a key ordering. With only top-level names in the list the nested
+  // `text` and `badge` blocks serialised to {}, so restyling the rail or moving the set badge
+  // changed nothing in the content hash and every cached composite kept the old art.
+  it('INCLUDES the nested text block', () => {
+    const l = resolveLayout(DEFAULT_CONFIG, {});
+    const fp = layoutFingerprint(l);
+    assert.ok(fp.includes('"railInset"'), 'text.railInset missing from the fingerprint');
+    assert.ok(fp.includes('"maxChars"'), 'text.maxChars missing from the fingerprint');
+  });
+  it('INCLUDES the nested badge block', () => {
+    const fp = layoutFingerprint(resolveLayout(DEFAULT_CONFIG, {}));
+    assert.ok(fp.includes('"symbolFraction"'), 'badge.symbolFraction missing from the fingerprint');
+    assert.ok(fp.includes('"marginBottom"'), 'badge.marginBottom missing from the fingerprint');
+  });
+  it('changes when a nested value changes — the whole point of the thing', () => {
+    const base = resolveLayout(DEFAULT_CONFIG, {});
+    for (const over of [
+      { text: { fill: 0.9 } },
+      { text: { color: '#ff0000' } },
+      { text: { rotate: 270 } },
+      { badge: { symbolFraction: 0.8 } },
+      { badge: { marginBottom: 300 } },
+      { badge: { rail: 'none' } },
+    ]) {
+      const changed = resolveLayout(DEFAULT_CONFIG, {}, over);
+      assert.notEqual(layoutFingerprint(base), layoutFingerprint(changed), `${JSON.stringify(over)} did not move the fingerprint`);
+    }
+  });
+  it('is stable across key insertion order', () => {
+    const a = layoutFingerprint({ b: 2, a: 1, n: { y: 2, x: 1 } });
+    const b = layoutFingerprint({ a: 1, b: 2, n: { x: 1, y: 2 } });
+    assert.equal(a, b);
+  });
+  it('handles arrays, null and undefined without throwing', () => {
+    assert.doesNotThrow(() => layoutFingerprint({ a: [1, 2, { z: null }], b: null, c: undefined }));
   });
 });
 

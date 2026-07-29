@@ -81,10 +81,10 @@ export async function buildPlaceholderRails({ outDir = path.join(ROOT, 'rails'),
       if (fs.existsSync(file) && !force) { skipped.push(path.relative(ROOT, file)); continue; }
       const layers = [];
       if (mark) {
-        // One mark per rail, at opposite ends: the left rail carries it high and the right low, so
-        // the pair frames the card diagonally instead of stacking four marks down the same edge.
-        const top = side === 'left' ? 150 : HEIGHT - 150 - markMeta.height;
-        layers.push({ input: mark, left: Math.round((spec.width - markMeta.width) / 2), top });
+        // The mark sits at the TOP of BOTH rails, so the pair reads as one masthead across the
+        // image. The foot of the right rail is left clear on purpose: the compositor draws the set
+        // symbol and the card's printed number there at compose time.
+        layers.push({ input: mark, left: Math.round((spec.width - markMeta.width) / 2), top: 150 });
       }
       let img = sharp(Buffer.from(railSvg(side, spec)));
       if (layers.length) img = img.composite(layers);

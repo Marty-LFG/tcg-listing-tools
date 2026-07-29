@@ -1105,9 +1105,34 @@ to 24, because a landscape ETB photo otherwise floats tiny in the middle of the 
 
 `scripts/build-placeholder-rails.mjs` composites **`logos/BK_Logo_alpha.png`** — the real store mark,
 which must keep its alpha channel or it composites as a box — onto a dark-plum gradient pulled from
-the mark's own backing disc, so rails and logo read as one thing. One mark per rail at opposite ends
-(left high, right low) frames the card diagonally instead of stacking four down the same edge. The
-inner edge carries a per-variant hairline: gold on `default`, magenta on `japanese`, blue on `sealed`.
+the mark's own backing disc, so rails and logo read as one thing. The mark sits at the **top of both
+rails**, reading as one masthead across the image. The inner edge carries a per-variant hairline:
+gold on `default`, magenta on `japanese`, blue on `sealed`.
+
+The **foot of the right rail is left clear in the art on purpose** — the compositor draws the set
+badge there at compose time.
+
+### What the rails say
+
+- **Down the right rail:** the set name. The language is prefixed **only when it is not English**
+  (`JAPANESE · MEGA SYMPHONIA`, but plain `PITCH BLACK`). English is the store's default and the bulk
+  of stock, so printing it every time is noise that costs the set name space; a non-English printing
+  is worth telling a buyer, because it changes what the card is worth.
+- **At the foot of the right rail:** the set symbol above the card's **printed** number — the two
+  things a collector checks after the name, and the pair a thumbnail otherwise makes unreadable.
+
+The symbol URL and the era fields come from the cached pokemontcg.io set list via
+`findSet({code, name})` in `lib/pkm-sets-cache.mjs`. A cold cache, a JP set or another game simply
+means no symbol; the number still draws. The symbol itself is fetched through `lib/img-cache.mjs`, so
+the second listing from a set is a local read, and a fetch failure costs the badge its icon and
+nothing else.
+
+**The number goes through `printedCardNumber()` (Golden Rule 10), which guards a real trap.**
+`formatCardNumber` takes the RAW upstream number; the uploader already stores a formatted one. Feed
+`"069/086"` back through it and it falls past both numeric branches into the trailing
+`raw + '/' + denom`, yielding `"069/086/086"`. So anything already carrying a slash is treated as
+printed and passed through untouched, while a bare `"6"` from a bulk import is still rebuilt from the
+set's era (`006/084` for a modern set, `58/102` for a pre-Sword-&-Shield one).
 
 ### The three silent failures
 
@@ -1134,9 +1159,20 @@ plumbing exists (`describeCompositor()`, surfaced in `/api/status` and on the la
 
 ### The content hash IS the cache key
 
-`sha256(sourceBytes ‖ layout ‖ ASSET_VERSION ‖ variant ‖ renderedTextLines ‖ railArtDigest)`, hashing
-**inputs, never output bytes** — libvips is deterministic per build but not across builds, so hashing
-output would give one card two different keys on the dev box and the server.
+`sha256(sourceBytes ‖ layout ‖ ASSET_VERSION ‖ variant ‖ renderedTextLines ‖ railArtDigest ‖ badge)`,
+hashing **inputs, never output bytes** — libvips is deterministic per build but not across builds, so
+hashing output would give one card two different keys on the dev box and the server. `badge` is the
+drawn card number plus a digest of the set symbol: two cards from one set share art but not a number,
+and once the number is on the rail, leaving it out of the key is the same collision the rail text had
+to fix.
+
+**`layoutFingerprint` sorts keys at every level by hand — do not "simplify" it back to
+`JSON.stringify(o, Object.keys(o).sort())`.** That replacer-array form looks like a key ordering but
+is a RECURSIVE property allowlist: applied to a nested object it keeps only properties whose names
+also appear in the array. With only top-level names listed, the whole `text` and `badge` blocks
+serialised to `{}` — so restyling the rail text or moving the set badge changed nothing in the hash,
+and every cached composite and hosted eBay image would have kept the old art with nothing to explain
+why. `test/unit/listing-image-config.test.mjs` pins the nested blocks against exactly this.
 
 The **rendered text is part of the key**, and this is load-bearing. `lib/ebay-media.mjs` deliberately
 dedupes catalog art on `source_url` **alone**, so one card's art uploads once for the whole store.

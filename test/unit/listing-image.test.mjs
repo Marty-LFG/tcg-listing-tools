@@ -271,6 +271,36 @@ describe('composeListingImage', { skip: SKIP }, () => {
       assert.equal(long.width, 1600);
       assert.ok(long.textLines[0].length <= resolveLayout(CFG, {}).text.maxChars + 1);
     });
+    it('draws the printed card number at the foot of the rail', async () => {
+      const r = await compose(card, { setName: 'Pitch Black', cardNumber: '006/084' });
+      assert.equal(r.badge.number, '006/084');
+    });
+    it('a card with no number and no symbol gets no badge at all', async () => {
+      const r = await compose(card, { setName: 'Pitch Black' });
+      assert.equal(r.badge.number, '');
+      assert.equal(r.badge.symbol, false);
+    });
+    it('badge.rail none suppresses it', async () => {
+      const r = await compose(card, { setName: 'Pitch Black', cardNumber: '006/084' }, { badge: { rail: 'none' } });
+      assert.equal(r.badge.number, '');
+    });
+    it('an unreachable set symbol still draws the number — it never fails the image', async () => {
+      const r = await compose(card, { setName: 'X', cardNumber: '001/999', setSymbolUrl: 'https://unreachable.invalid/sym.png' });
+      assert.equal(r.badge.symbol, false);
+      assert.equal(r.badge.number, '001/999');
+      assert.equal(r.width, 1600);
+    });
+    it('the card number is in the hash — two cards of one set must not collide', async () => {
+      const a = await compose(card, { setName: 'Pitch Black', cardNumber: '006/084' });
+      const b = await compose(card, { setName: 'Pitch Black', cardNumber: '007/084' });
+      assert.notEqual(a.contentHash, b.contentHash);
+    });
+    it('hashFor agrees with a real compose once a badge is involved', async () => {
+      const meta = { setName: 'Pitch Black', cardNumber: '006/084' };
+      const pre = await hashFor(card, meta, { cfg: CFG });
+      const r = await compose(card, meta);
+      assert.equal(pre.contentHash, r.contentHash, 'a cache probe that disagrees with the render serves the wrong image');
+    });
     it('an unusable font degrades to rails-without-text, it does not fail the image', async () => {
       const badFont = { ...CFG, font: { family: 'Nope Not A Font 12345', file: 'fonts/Genty-Sans-Regular.ttf' } };
       const r = await composeListingImage(card, { language: 'English', setName: 'Base Set' }, { cfg: badFont });

@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { composeMetaFor, composeContext, storePhotoOriginal } from '../../lib/listings.mjs';
+import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber } from '../../lib/listings.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
 
 // composeContext reads the real config file, so these assertions pin the SHIPPED state: disabled.
@@ -37,6 +37,16 @@ describe('composeMetaFor', () => {
     assert.equal(m.cardNumber, '58/102');
     assert.equal(m.rarity, 'Rare Holo');
   });
+  it('resolves the set symbol when the set is one we have cached', () => {
+    // Cold cache in CI is fine — the assertion is "a URL or nothing", never a crash.
+    const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'PBL', number: '006/084' });
+    assert.equal(typeof m.setSymbolUrl, 'string');
+    if (m.setSymbolUrl) assert.match(m.setSymbolUrl, /^https?:\/\//);
+  });
+  it('an unknown set yields no symbol rather than throwing', () => {
+    const m = composeMetaFor({ set_name: 'No Such Set At All', number: '1/1' });
+    assert.equal(m.setSymbolUrl, '');
+  });
   it('does NOT carry condition — that is the whole NM/LP dedupe argument', () => {
     const nm = composeMetaFor({ set_name: 'Base Set', condition: 'Near Mint' });
     const lp = composeMetaFor({ set_name: 'Base Set', condition: 'Lightly Played' });
@@ -46,6 +56,32 @@ describe('composeMetaFor', () => {
   it('never returns undefined fields that would leak into a hash as "undefined"', () => {
     const m = composeMetaFor({});
     for (const [k, v] of Object.entries(m)) assert.equal(typeof v, 'string', `${k} is ${typeof v}`);
+  });
+});
+
+describe('printedCardNumber (Golden Rule 10 on the rail)', () => {
+  it('passes an ALREADY-PRINTED number through untouched', () => {
+    // The trap: formatCardNumber takes the RAW upstream number. "069/086" matches neither numeric
+    // branch, so it falls to the trailing `raw + '/' + denom` and comes back "069/086/086".
+    assert.equal(printedCardNumber({ number: '069/086', set_name: 'Pitch Black', printed_total: 86 }), '069/086');
+    assert.equal(printedCardNumber({ number: '106/086', printed_total: 86 }), '106/086');
+    assert.equal(printedCardNumber({ number: 'TG01/TG30', printed_total: 30 }), 'TG01/TG30');
+  });
+  it('rebuilds a bare number from the set era — modern pads to three digits', () => {
+    assert.equal(printedCardNumber({ number: '6', set_name: 'Pitch Black', printed_total: 84, set_series: 'Mega Evolution', set_release_date: '2026/07/17' }), '006/084');
+  });
+  it('pre-Sword & Shield keeps its natural width', () => {
+    assert.equal(printedCardNumber({ number: '58', set_name: 'Base Set', printed_total: 102, set_release_date: '1999/01/09' }), '58/102');
+  });
+  it('a promo prints bare, with no invented denominator', () => {
+    assert.equal(printedCardNumber({ number: 'SWSH039', set_name: 'SWSH Black Star Promos', printed_total: 307 }), 'SWSH039');
+  });
+  it('an empty number stays empty rather than becoming a lone slash', () => {
+    assert.equal(printedCardNumber({}), '');
+    assert.equal(printedCardNumber({ number: '   ' }), '');
+  });
+  it('never throws on a malformed row — the rail badge is not worth a failed listing', () => {
+    assert.doesNotThrow(() => printedCardNumber({ number: '4', printed_total: 'wat', set_release_date: 'nonsense' }));
   });
 });
 
