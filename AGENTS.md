@@ -1361,6 +1361,36 @@ whether compositing is on. Framing catalog art in store chrome changes how the t
 nothing about what it *is*: a stock image on a used item, which is an eBay policy breach. There is a
 comment at the refusal site saying so, because it is exactly the "tidy-up" someone will attempt.
 
+### The item description frame (same set art, different surface)
+
+The set logo and symbol resolved for the rails also dress the **description**. `composeMetaFor`
+hands `runPublish` a `setLogoUrl` + `setSymbolUrl`, which reach `buildItemDescription` in
+`lib/channels/ebay-map.mjs` and then `buildDescription` in `lib/listing-copy.mjs` — so a card gets
+its set's real logo in the masthead and its symbol beside the card number, from the same
+language-scoped index the rails use (§19 above). No art resolves ⇒ the set *name* renders instead.
+`artUrl` beats `imageUrl` for the in-description picture: the description wants the clean catalog
+scan, not the branded 1600×1600 hero, and falls back to the hero only when owner photos replaced it.
+
+**The layout has two non-obvious load-bearing details, because GR8 leaves no media queries.** eBay
+strips `<style>`, so the art/pitch pair goes side-by-side or stacks using two `display:inline-block`
+siblings, which share a line while both fit and wrap when `min-width` cannot be honoured:
+
+- **No whitespace between `</div><div`.** A text node between inline-blocks renders as a space,
+  pushes the pair over the line, and they never sit together. A formatter reflowing that file breaks
+  the layout silently.
+- **`width:calc(100% - 216px)` on the copy.** An inline-block sizes against its **container**, not
+  the space left on the line — omit the width and the copy claims 100% and always wraps.
+
+Measured in the browser: stacked and full-width to ~480px, side-by-side and vertically centred from
+~545px up, no horizontal overflow at any width. Pinned by
+`test/invariants/ebay-html.test.mjs` (the pair's adjacency, the `calc()`, and the no-art path
+dropping the split entirely). Per GR9 `pokemon-listing-builder.html buildHTML()` mirrors this
+byte-for-byte — `node scripts/check-listing-copy.mjs` is the gate.
+
+⚠ That file's **static** GR8 scan greps the builder source for `<style`/`<script` literals, so even a
+*comment* mentioning those tags in `buildHTML()` fails the test. Say "STYLE and LINK elements" in
+prose rather than weakening the check.
+
 ### eBay's image policy
 
 eBay prohibits added borders, artwork and promotional text on listing photos. Enforcement in TCG

@@ -246,38 +246,74 @@ function buildHTML(f){
   if(f.enSet) rows.push(['English set',f.enSet]);
   if(f.cert) rows.push(['Cert number',f.cert]);
   if(f.subgrades) rows.push(['Subgrades',f.subgrades]);
-  let tr=''; rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f8fc;':'';
-    tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
-  const imgHtml=f.img?`<div style="text-align:center;padding:16px 24px 0;"><img src="${esc(f.img)}" alt="${esc(f.name)} ${esc(f.num)} ${esc(f.set)} Pok&eacute;mon TCG ${esc(f.lang)} card" style="max-width:320px;width:100%;height:auto;border-radius:8px;" /></div>`:'';
+  // A specimen list, not a zebra table. MIRROR: lib/listing-copy.mjs buildDescription().
+  let tr=''; rows.forEach((r)=>{
+    tr+=`<tr><td style="padding:11px 14px 11px 0;border-bottom:1px solid #ece7f0;color:#7a6f85;font-size:11px;letter-spacing:.13em;text-transform:uppercase;vertical-align:top;width:42%;">${esc(r[0])}</td><td style="padding:11px 0;border-bottom:1px solid #ece7f0;color:#1b1420;font-size:15px;font-weight:600;">${esc(r[1])}</td></tr>`;});
+
+  // SYSTEM FONTS ONLY — eBay strips STYLE and LINK elements (GR8), so a webfont cannot be loaded and
+  // naming one only produces a silent fallback. MIRROR: SERIF_BODY / SANS_UI / MONO_DATA in
+  // lib/listing-copy.mjs. (Spelled out rather than written as markup: the GR8 invariant is a static
+  // source scan, so a literal style tag in a COMMENT fails it just as a real one would.)
+  const SERIF_BODY="Georgia,'Iowan Old Style','Times New Roman',serif";
+  const SANS_UI="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  const MONO_DATA="ui-monospace,'Cascadia Mono',Menlo,Consolas,'Courier New',monospace";
+
+  const logoHtml=f.setLogoUrl
+    ?`<img src="${esc(f.setLogoUrl)}" alt="${esc(f.set)} set logo" style="height:34px;width:auto;max-width:58%;vertical-align:middle;" />`
+    :`<span style="color:#efe8f6;font-size:17px;vertical-align:middle;line-height:34px;">${esc(f.set)}</span>`;
+  const symHtml=f.setSymbolUrl?`<img src="${esc(f.setSymbolUrl)}" alt="" style="height:17px;width:auto;vertical-align:-2px;margin-right:7px;" />`:'';
+
+  // Card art beside the pitch, vertically centred — and STACKED on a phone. Two inline-blocks rather
+  // than table cells: with no stylesheet there are no media queries, and a table row cannot stack,
+  // it only narrows (~23 chars a line at 360px). These share a line while both fit and the
+  // copy wraps onto its own line once it cannot hold min-width. calc(100% - 216px) is deliberate —
+  // an inline-block sizes against its CONTAINER, not the space left on the line, so without it the
+  // copy claims full width and always wraps. MIRROR: lib/listing-copy.mjs.
+  const artHtml=f.img
+    ?`<div style="padding:26px 26px 0;font-size:0;">
+    <div style="display:inline-block;vertical-align:middle;width:210px;max-width:100%;padding:0 22px 0 0;box-sizing:border-box;">
+      <img src="${esc(f.img)}" alt="${esc(f.name)} ${esc(f.num)} ${esc(f.set)} Pok&eacute;mon TCG ${esc(f.lang)} card" style="width:100%;height:auto;display:block;border-radius:5px;" />
+    </div><div style="display:inline-block;vertical-align:middle;width:calc(100% - 216px);min-width:280px;font-size:16px;box-sizing:border-box;">
+      <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7a6f85;font-weight:700;margin:14px 0 9px;">${esc(rarDisplay(f.rarity))}</div>
+      <p style="margin:0;font-size:17px;line-height:1.6;color:#3a3244;">${esc(f.pitch)}</p>
+    </div>
+  </div>`
+    :`<div style="padding:26px 26px 0;"><p style="margin:0;font-size:17px;line-height:1.65;color:#3a3244;">${esc(f.pitch)}</p></div>`;
   // Graded slab? The penny-sleeve/toploader lines are physically wrong for an encapsulated slab, so
   // a graded condition (PSA 10 / BGS 9.5 / …) swaps to slab-specific wording. MIRROR: isSlabCondition
   // + SLAB_/CARD_ wording in lib/listing-copy.mjs (buildDescription) — keep both sides identical.
   const slab=/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||'');
   const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated — see photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
   const postageLine=esc(slab?'Ships securely inside a rigid mailer, with FREE postage within Australia.':'Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.');
-  return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
-  <div style="background:#1c2b5e;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #f0c020;">
-    <div style="color:#f0c020;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Pok&eacute;mon TCG</div>
-    <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}</div>
-    <div style="color:#9aa6cf;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(rarDisplay(f.rarity))}${f.nativeName?' &middot; '+esc(f.nativeName):''}</div>
-  </div>
-  ${imgHtml}
-  <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
-  <div style="padding:0 24px;">
-    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1c2b5e;font-weight:700;border-bottom:2px solid #e9edf6;padding-bottom:6px;margin-bottom:4px;">Card details</div>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>${tr}</tbody></table>
-  </div>
-  <div style="padding:18px 24px 4px;">
-    <div style="background:#f6f8fc;border-left:4px solid #f0c020;border-radius:0 8px 8px 0;padding:14px 16px;">
-      <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1c2b5e;font-weight:700;margin-bottom:4px;">Condition</div>
-      <p style="margin:0;">${condLine}</p>
+  return `<div style="max-width:760px;margin:0 auto;font-family:${SERIF_BODY};color:#1b1420;line-height:1.6;font-size:16px;background:#ffffff;">
+  <div style="background:#160f1d;padding:26px 26px 22px;">
+    <div style="font-family:${SANS_UI};color:#d4b072;font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;">Binders Keepers &middot; Pok&eacute;mon TCG</div>
+    <div style="color:#ffffff;font-size:30px;font-weight:400;line-height:1.15;margin-top:12px;letter-spacing:-.01em;">${esc(f.name)}</div>
+    <div style="margin-top:16px;padding-top:15px;border-top:1px solid rgba(212,176,114,.28);">
+      ${logoHtml}
+      <span style="float:right;color:#efe8f6;font-family:${MONO_DATA};font-size:22px;font-variant-numeric:tabular-nums;line-height:34px;">${symHtml}${esc(f.num)}</span>
+      <span style="display:block;clear:both;"></span>
     </div>
   </div>
-  <div style="padding:18px 24px 4px;">
-    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1c2b5e;font-weight:700;border-bottom:2px solid #e9edf6;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
-    <p style="margin:0;">${postageLine}</p>
+  <div style="height:3px;background:#d4b072;"></div>
+  ${artHtml}
+  <div style="padding:24px 26px 0;">
+    <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7a6f85;font-weight:700;padding-bottom:9px;border-bottom:2px solid #160f1d;">The card</div>
+    <table style="width:100%;border-collapse:collapse;font-family:${SANS_UI};"><tbody>${tr}</tbody></table>
   </div>
-  <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
+  <div style="padding:24px 26px 0;">
+    <div style="border:1px solid #e0d8e8;border-left:4px solid #160f1d;padding:16px 18px;background:#faf8fb;">
+      <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7a6f85;font-weight:700;margin-bottom:7px;">Condition</div>
+      <p style="margin:0;font-size:16px;">${condLine}</p>
+    </div>
+  </div>
+  <div style="padding:22px 26px 0;">
+    <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7a6f85;font-weight:700;margin-bottom:7px;">Postage &amp; protection</div>
+    <p style="margin:0;font-size:16px;">${postageLine}</p>
+  </div>
+  <div style="padding:22px 26px 26px;margin-top:20px;border-top:1px solid #ece7f0;">
+    <p style="margin:0;color:#7a6f85;font-size:14px;font-style:italic;">From a smoke-free home. Fast dispatch. Thanks for looking.</p>
+  </div>
 </div>`;
 }
 function render(){const f=readFields();lastHTML=buildHTML(f);
@@ -619,6 +655,11 @@ async function doLookup(){
     // No native (JP/CN/KO) metadata for English cards, but still surface the SEO extras pokemontcg.io carries.
     _intlMeta={nativeName:'',romaji:'',nativeSet:'',enSet:'',
       setSymbol:(_setObj&&_setObj.ptcgoCode)||'',
+      // Set ART for the description masthead. pokemontcg.io carries both on the set record, so an
+      // English card needs no lookup. JP/CN/KO resolve theirs server-side in composeMetaFor at
+      // publish time; here they stay blank and the masthead falls back to the set name.
+      setLogoUrl:(c.set&&c.set.images&&c.set.images.logo)||'',
+      setSymbolUrl:(c.set&&c.set.images&&c.set.images.symbol)||'',
       illustrator:c.artist||'',hp:(c.hp!=null?String(c.hp):''),regMark:c.regulationMark||'',
       releaseYear:((c.set&&c.set.releaseDate)||'').slice(0,4),
       img:(c.images&&(c.images.large||c.images.small))||''};

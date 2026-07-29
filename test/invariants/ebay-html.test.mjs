@@ -29,6 +29,40 @@ describe('buildDescription output (shared port — GR8)', () => {
   }
 });
 
+// The art/pitch pair sits side-by-side above ~545px and stacks below it, with no
+// media query — eBay strips those (GR8). Two display:inline-block siblings share a
+// line while both fit and wrap when min-width can't be honoured. Both properties
+// below are load-bearing and neither is obvious from reading the markup:
+//
+//   • no whitespace between </div><div — a text node between inline-blocks renders
+//     as a space and pushes the pair over the line, so they never sit together;
+//   • width:calc(100% - <art>px) — an inline-block sizes against its CONTAINER, not
+//     the space left on the line. Omit it and the copy claims 100% and always wraps.
+describe('description art/pitch pair (no media queries available — GR8)', () => {
+  const F_ART = { ...F, img: 'https://example.test/art.png' };
+
+  it('keeps the two inline-blocks adjacent with no text node between them', () => {
+    const html = buildDescription('pokemon', F_ART);
+    const blocks = (html.match(/display:inline-block/g) || []).length;
+    assert.equal(blocks, 2, 'expected exactly the art + pitch pair');
+    assert.match(html, /<\/div><div style="display:inline-block/,
+      'whitespace between the inline-blocks would push the pair apart');
+  });
+
+  it('sizes the copy against the container, leaving room for the art', () => {
+    const html = buildDescription('pokemon', F_ART);
+    assert.match(html, /width:calc\(100% - \d+px\)/,
+      'inline-block sizes against its container — without calc() the copy always wraps');
+    assert.match(html, /min-width:\d+px/, 'min-width is what triggers the stack');
+  });
+
+  it('drops the split entirely when there is no art', () => {
+    const html = buildDescription('pokemon', { ...F_ART, img: '' });
+    assert.ok(!/display:inline-block/.test(html),
+      'no art means the pitch should run full width, not sit in half a split');
+  });
+});
+
 describe('builder buildHTML() source (static scan)', () => {
   for (const file of [...CARD_BUILDERS, ...COLLECTIBLE_BUILDERS]) {
     it(file, () => {
