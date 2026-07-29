@@ -4,7 +4,10 @@
 // default-adjacent integration run must not do.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { bootServer } from '../helpers/boot-server.mjs';
+import { ROOT } from '../helpers/extract-inline.mjs';
 
 let srv;
 before(async () => { srv = await bootServer(); }, { timeout: 60_000 });
@@ -112,27 +115,44 @@ describe('/api/settings', () => {
     assert.equal(json.files.grading.editable, false);
     assert.ok(json.files['bulk-pricing'].content.tiers, 'bulk tiers content present');
   });
-  it('PUT round-trip: valid tracker config is saved and applied, then restored', async () => {
-    // NOTE: settings live in the real data/*.config.json (only DBs are temp-redirected),
-    // so the original is restored in a finally block no matter what fails in between.
+  it('PUT round-trip: valid tracker config is saved and applied, then set back', async () => {
+    // The server writes a temp COPY of the configs (TCG_CONFIG_DIR), so this is a real save
+    // against a disposable file: no restore to get right, and an assertion failure here cannot
+    // leave data/tracker.config.json modified for git — or for the next run's baseline.
     const put = (body) => fetch(srv.base + '/api/settings/tracker', {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
     const orig = (await get('/api/settings/tracker')).json.content;
     const edited = JSON.parse(JSON.stringify(orig));
     edited.cadence_hours = orig.cadence_hours === 23 ? 24 : 23;
-    try {
-      const r = await put(edited);
-      assert.equal(r.status, 200);
-      const j = await r.json();
-      assert.equal(j.saved, true);
-      assert.match(j.applied, /collector restarted/);
-      assert.equal((await get('/api/settings/tracker')).json.content.cadence_hours, edited.cadence_hours);
-    } finally {
-      const restore = await put(orig);
-      assert.equal(restore.status, 200);
-      assert.equal((await get('/api/settings/tracker')).json.content.cadence_hours, orig.cadence_hours);
-    }
+
+    const r = await put(edited);
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.saved, true);
+    assert.match(j.applied, /collector restarted/);
+    assert.equal((await get('/api/settings/tracker')).json.content.cadence_hours, edited.cadence_hours);
+
+    // and back the other way — a save must be reversible through the same route
+    const back = await put(orig);
+    assert.equal(back.status, 200);
+    assert.equal((await get('/api/settings/tracker')).json.content.cadence_hours, orig.cadence_hours);
+  });
+  it('a settings PUT writes the temp copy and never the repo file', async () => {
+    // Regression guard: this suite used to save to the real data/tracker.config.json, which left
+    // the working tree dirty when a run was interrupted.
+    const repoFile = path.join(ROOT, 'data', 'tracker.config.json');
+    const before = fs.readFileSync(repoFile, 'utf8');
+    const cfg = (await get('/api/settings/tracker')).json.content;
+    const r = await fetch(srv.base + '/api/settings/tracker', {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...cfg, cadence_hours: cfg.cadence_hours === 19 ? 20 : 19 }),
+    });
+    assert.equal(r.status, 200);
+    assert.notEqual(srv.configFile('tracker.config.json'), repoFile, 'configs were not redirected');
+    assert.equal(JSON.parse(fs.readFileSync(srv.configFile('tracker.config.json'), 'utf8')).cadence_hours,
+      (await get('/api/settings/tracker')).json.content.cadence_hours, 'the temp copy is what the API read back');
+    assert.equal(fs.readFileSync(repoFile, 'utf8'), before, 'the repo config must be byte-identical after a save');
   });
   it('PUT invalid config → 400, file untouched', async () => {
     const before = (await get('/api/settings/tracker')).json.content;

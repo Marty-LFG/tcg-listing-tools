@@ -22,22 +22,18 @@ const post = (p, body) => fetch(S.base + p, { method: 'POST', headers: { 'conten
 const put = (p, body) => fetch(S.base + p, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
   .then(async (r) => ({ status: r.status, json: await r.json() }));
 
-const CONFIG_FILE = path.join(ROOT, 'data', 'listing-image.config.json');
-let savedConfig = null;
+// The saves below are real, but they land in the server's temp config copy (TCG_CONFIG_DIR), not
+// in the owner's data/ — so there is nothing to snapshot and nothing to restore, and an assertion
+// failure mid-suite cannot leave settings changed behind it.
+let CONFIG_FILE;
 
 before(async () => {
-  // The server writes the REAL data/listing-image.config.json (it is not redirected the way the DBs
-  // are), so snapshot and restore it rather than leaving the owner's settings changed by a test run.
-  try { savedConfig = fs.readFileSync(CONFIG_FILE, 'utf8'); } catch { savedConfig = null; }
   S = await bootServer();
+  CONFIG_FILE = S.configFile('listing-image.config.json');
   if (sharp) dataUrl = 'data:image/jpeg;base64,' + (await fakeCard(733, 1024)).toString('base64');
 });
 after(async () => {
   if (S) await S.close();
-  try {
-    if (savedConfig != null) fs.writeFileSync(CONFIG_FILE, savedConfig);
-    else fs.rmSync(CONFIG_FILE, { force: true });
-  } catch { /* best effort */ }
 });
 
 describe('GET /api/listing-image/config', () => {
@@ -52,7 +48,7 @@ describe('GET /api/listing-image/config', () => {
     assert.ok(r.json.status, 'readiness must be reported so the page can explain itself');
   });
   it('seeds the server-owned config file on boot', () => {
-    assert.ok(fs.existsSync(CONFIG_FILE), 'data/listing-image.config.json was not seeded');
+    assert.ok(fs.existsSync(CONFIG_FILE), 'listing-image.config.json was not seeded from the tracked example');
     assert.equal(JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')).enabled, false, 'seeded config must ship disabled');
   });
 });

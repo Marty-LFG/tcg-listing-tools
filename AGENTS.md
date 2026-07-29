@@ -359,7 +359,10 @@ It runs the two suites:
   repricer `never_decrease:true` is asserted, BJB config-audit style).
 - **`pnpm test:integration`** — boots the REAL dev server (vite.config.js, all plugins)
   in-process on an ephemeral port with the SQLite stores redirected via `TCG_TRACKER_DB` /
-  `TCG_REPRICER_DB` (never touches `data/*.db`) and exercises `/api/*`, including the
+  `TCG_REPRICER_DB` (never touches `data/*.db`) and the owner-editable configs redirected
+  to a temp copy via `TCG_CONFIG_DIR` (never touches `data/*.config.json`, so a settings
+  PUT can be exercised for real without dirtying the tree — `lib/config-paths.mjs` is the
+  single resolver every config reader goes through). Exercises `/api/*`, including the
   `/api/status` no-secret-leak guard and `/api/settings` write validation.
 - **Opt-in live smoke**: `$env:TEST_LIVE='1'; pnpm test:integration` probes each upstream
   once through the proxies (keyless sources must answer; keyed sources may be
