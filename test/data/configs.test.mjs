@@ -137,7 +137,7 @@ describe('listing-image.config.example.json', () => {
   });
   it('the template resolves to a valid layout (geometry closes)', () => {
     const l = resolveLayout(c, {});
-    assert.equal(l.railWidth * 2 + l.cardBox.width, l.canvas);
+    assert.equal(l.railWidth * 2 + l.cardPaddingX * 2 + l.cardBox.width, l.canvas);
   });
 });
 

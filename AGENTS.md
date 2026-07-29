@@ -1055,8 +1055,8 @@ check) · `test/unit/runner-ndjson.test.mjs` (the page's real `consumeNdjson`, p
 
 eBay crops every gallery thumbnail to a **square**. A portrait card scan letterboxes inside it, so we
 hand eBay two columns of dead space and let eBay decide what fills them. `lib/listing-image.mjs`
-fills them ourselves: the card centred in a 1000px column with a fixed 300px branded rail either
-side, on a 1600×1600 canvas.
+fills them ourselves: the card centred on a 1600×1600 canvas with a fixed 300px branded rail either
+side and a 48px white mat between card and rail.
 
 ```
 composeListingImage(input, meta, options?)
@@ -1088,10 +1088,26 @@ config**. Absent always means *defer*, never *yes*.
 
 The rails are always exactly `railWidth`, so the art is pixel-exact and never stretches; the card is
 fitted into whatever is left (`fit: 'inside'`). Rails sized to the leftover space would rescale per
-photo and the store would stop looking like one set. A standard card lands at 1000×1397 in the
-1000×1408 box, so near-every single fills the column identically. `PROFILES` overrides the geometry
-per `productType` — `sealed` narrows the rails to 220 because a landscape ETB photo otherwise floats
-tiny in the middle of the canvas.
+photo and the store would stop looking like one set.
+
+The column is `canvas − 2×railWidth − 2×cardPaddingX` — **904px** at the defaults. `cardPaddingX`
+(48) is the white mat between card and rail: without it a standard single is width-constrained by
+the column and its edge sits hard against near-black chrome, which reads as a printing error rather
+than a frame. `validateLayout` enforces the whole thing closes, so a wide rail plus a wide mat fails
+loudly instead of emitting a squashed card. The card is centred on the **canvas**, never measured off
+the rail edge — derive it from the rail and it shifts by `cardPaddingX` the moment the mat is
+non-zero.
+
+`PROFILES` overrides the geometry per `productType` — `sealed` narrows the rails to 220 and the mat
+to 24, because a landscape ETB photo otherwise floats tiny in the middle of the canvas.
+
+### The rail art
+
+`scripts/build-placeholder-rails.mjs` composites **`logos/BK_Logo_alpha.png`** — the real store mark,
+which must keep its alpha channel or it composites as a box — onto a dark-plum gradient pulled from
+the mark's own backing disc, so rails and logo read as one thing. One mark per rail at opposite ends
+(left high, right low) frames the card diagonally instead of stacking four down the same edge. The
+inner edge carries a per-variant hairline: gold on `default`, magenta on `japanese`, blue on `sealed`.
 
 ### The three silent failures
 

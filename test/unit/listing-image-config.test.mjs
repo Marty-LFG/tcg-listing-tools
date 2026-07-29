@@ -44,26 +44,31 @@ describe('resolveVariant', () => {
 });
 
 describe('resolveLayout', () => {
-  it('the geometry invariant holds: 2 rails + card box === canvas', () => {
+  it('the geometry invariant holds: 2 rails + 2 side paddings + card box === canvas', () => {
     for (const productType of Object.keys(PROFILES)) {
       const l = resolveLayout(DEFAULT_CONFIG, { productType });
-      assert.equal(l.railWidth * 2 + l.cardBox.width, l.canvas, `${productType} geometry does not close`);
+      assert.equal(l.railWidth * 2 + l.cardPaddingX * 2 + l.cardBox.width, l.canvas, `${productType} geometry does not close`);
       assert.equal(l.cardPaddingY * 2 + l.cardBox.height, l.canvas, `${productType} padding does not close`);
     }
   });
-  it('defaults are the specced 1600 canvas / 300 rails / 1000x1408 card box', () => {
+  it('defaults are the specced 1600 canvas / 300 rails, minus the side mat', () => {
     const l = resolveLayout(DEFAULT_CONFIG, { productType: 'single' });
     assert.equal(l.canvas, 1600);
     assert.equal(l.railWidth, 300);
-    assert.deepEqual({ ...l.cardBox }, { width: 1000, height: 1408 });
+    assert.equal(l.cardPaddingX, 48);
+    assert.deepEqual({ ...l.cardBox }, { width: 904, height: 1408 });   // 1600 − 2×300 − 2×48
   });
   it('the sealed profile widens the card column (landscape boxes float otherwise)', () => {
     const l = resolveLayout(DEFAULT_CONFIG, { productType: 'sealed' });
     assert.equal(l.railWidth, 220);
-    assert.ok(l.cardBox.width > 1000 && l.cardBox.height > 1408);
+    const single = resolveLayout(DEFAULT_CONFIG, { productType: 'single' });
+    assert.ok(l.cardBox.width > single.cardBox.width && l.cardBox.height > single.cardBox.height);
+  });
+  it('the side mat cannot be squeezed out by a wide rail without failing loudly', () => {
+    assert.throws(() => resolveLayout(DEFAULT_CONFIG, {}, { railWidth: 760, cardPaddingX: 48 }), /rails leave no room/);
   });
   it('unknown productType falls back to the base layout, it does not throw', () => {
-    assert.deepEqual({ ...resolveLayout(DEFAULT_CONFIG, { productType: 'wat' }).cardBox }, { width: 1000, height: 1408 });
+    assert.deepEqual({ ...resolveLayout(DEFAULT_CONFIG, { productType: 'wat' }).cardBox }, { width: 904, height: 1408 });
   });
   it('config overrides beat profiles, per-call options beat config', () => {
     const cfg = { ...DEFAULT_CONFIG, layoutOverrides: { railWidth: 260 } };

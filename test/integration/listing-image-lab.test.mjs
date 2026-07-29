@@ -89,7 +89,7 @@ describe('POST /api/listing-image/preview', { skip: !sharp && 'sharp not install
     const r = await post('/api/listing-image/preview', { dataUrl, meta: {}, layoutOverrides: { railWidth: 180 }, textOverrides: { fill: 0.9 } });
     assert.equal(r.status, 200);
     assert.equal(r.json.layout.railWidth, 180, 'the override did not reach the compositor');
-    assert.equal(r.json.layout.cardBox.width, 1240);
+    assert.equal(r.json.layout.cardBox.width, 1600 - 2 * 180 - 2 * r.json.layout.cardPaddingX);
     const after = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     assert.deepEqual(after, before, 'a preview must never persist the layout — saving is a separate act');
   });

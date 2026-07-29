@@ -23,52 +23,73 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
-// Vault Ledger palette (vault.css) so the placeholders at least look like the rest of the suite.
-const PANEL = '#14171f';
-const INK = '#0b0d12';
+// Dark plum, pulled from the store mark's own backing disc so the rails and the logo read as one
+// thing rather than a logo dropped onto a neutral panel.
+const TOP = '#2e1640';
+const MID = '#150a1d';
+
+// The real store mark. A transparent PNG, so it composites straight onto the rail — which is why
+// the mark file must keep its alpha channel: flattened onto white it would show a box.
+export const LOGO = path.join(ROOT, 'logos', 'BK_Logo_alpha.png');
 
 const VARIANTS = {
-  default: { width: 600, accent: '#d4b072', label: 'BINDERS KEEPERS' },
-  japanese: { width: 600, accent: '#c96a6a', label: 'BINDERS KEEPERS' },
-  sealed: { width: 440, accent: '#7ea8c9', label: 'BINDERS KEEPERS' },
+  default: { width: 600, accent: '#d4b072' },
+  japanese: { width: 600, accent: '#e0669a' },
+  sealed: { width: 440, accent: '#7ea8c9' },
 };
 const HEIGHT = 3200;
+const LOGO_FRACTION = 0.78;   // of the rail width — leaves a margin either side at every scale
 
 // side: the rail's own side of the canvas. The INNER edge (the one facing the card) carries the
 // hairline, so the two rails mirror rather than repeat.
 function railSvg(side, { width, accent }) {
   const innerX = side === 'left' ? width - 10 : 0;
-  const markCy = side === 'left' ? 300 : HEIGHT - 300;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${PANEL}"/>
-      <stop offset="0.5" stop-color="${INK}"/>
-      <stop offset="1" stop-color="${PANEL}"/>
+      <stop offset="0" stop-color="${TOP}"/>
+      <stop offset="0.5" stop-color="${MID}"/>
+      <stop offset="1" stop-color="${TOP}"/>
     </linearGradient>
   </defs>
   <rect width="${width}" height="${HEIGHT}" fill="url(#g)"/>
   <rect x="${innerX}" y="0" width="10" height="${HEIGHT}" fill="${accent}"/>
-  <circle cx="${width / 2}" cy="${markCy}" r="${width * 0.28}" fill="none" stroke="${accent}" stroke-width="8" opacity="0.9"/>
-  <circle cx="${width / 2}" cy="${markCy}" r="${width * 0.16}" fill="${accent}" opacity="0.25"/>
-  <text x="${width / 2}" y="${markCy + 12}" font-family="sans-serif" font-size="${width * 0.16}" font-weight="700"
-        fill="${accent}" text-anchor="middle" opacity="0.95">BK</text>
 </svg>`;
 }
 
-export async function buildPlaceholderRails({ outDir = path.join(ROOT, 'rails'), force = false } = {}) {
+export async function buildPlaceholderRails({ outDir = path.join(ROOT, 'rails'), force = false, logo = LOGO } = {}) {
   const { default: sharp } = await import('sharp');
   const written = [];
   const skipped = [];
+  const haveLogo = fs.existsSync(logo);
+  if (!haveLogo) console.warn(`warning: ${path.relative(ROOT, logo)} not found — rails will be plain panels`);
+
   for (const [variant, spec] of Object.entries(VARIANTS)) {
     const dir = path.join(outDir, variant);
     fs.mkdirSync(dir, { recursive: true });
+
+    // Rendered once per variant: the mark is the same on both rails, only its position mirrors.
+    const markW = Math.round(spec.width * LOGO_FRACTION);
+    const mark = haveLogo
+      ? await sharp(logo).resize(markW, markW, { fit: 'inside', withoutEnlargement: false }).png().toBuffer()
+      : null;
+    const markMeta = mark ? await sharp(mark).metadata() : null;
+
     for (const side of ['left', 'right']) {
       const file = path.join(dir, side + '.png');
       // Never clobber real artwork that has been dropped in. --force is the deliberate override.
       if (fs.existsSync(file) && !force) { skipped.push(path.relative(ROOT, file)); continue; }
-      await sharp(Buffer.from(railSvg(side, spec))).png({ compressionLevel: 9 }).toFile(file);
-      written.push(`${path.relative(ROOT, file)}  ${spec.width}x${HEIGHT}`);
+      const layers = [];
+      if (mark) {
+        // One mark per rail, at opposite ends: the left rail carries it high and the right low, so
+        // the pair frames the card diagonally instead of stacking four marks down the same edge.
+        const top = side === 'left' ? 150 : HEIGHT - 150 - markMeta.height;
+        layers.push({ input: mark, left: Math.round((spec.width - markMeta.width) / 2), top });
+      }
+      let img = sharp(Buffer.from(railSvg(side, spec)));
+      if (layers.length) img = img.composite(layers);
+      await img.png({ compressionLevel: 9 }).toFile(file);
+      written.push(`${path.relative(ROOT, file)}  ${spec.width}x${HEIGHT}${mark ? '  + mark ' + markMeta.width + 'x' + markMeta.height : ''}`);
     }
   }
   return { written, skipped };

@@ -161,9 +161,18 @@ describe('composeListingImage', { skip: SKIP }, () => {
 
   it('crops a card off its background when there IS one', async () => {
     const r = await compose(await cardOnBackground(400, 560), {});
+    const box = resolveLayout(CFG, {}).cardBox;
     assert.equal(r.card.trimmed, true);
-    // 400x560 fitted into the 1000x1408 box is width-constrained -> 1000 wide
-    assert.equal(r.card.width, 1000);
+    // 400x560 into a 904x1408 box is width-constrained, so it pegs to the column width
+    assert.equal(r.card.width, box.width);
+  });
+
+  it('leaves a white mat between the card and each rail', async () => {
+    const r = await compose(card, {});
+    const l = resolveLayout(CFG, {});
+    const gap = (l.canvas - 2 * l.railWidth - r.card.width) / 2;
+    assert.equal(gap, l.cardPaddingX, `card sits ${gap}px off the rails, expected ${l.cardPaddingX}`);
+    assert.ok(gap > 0, 'the card must not butt against the rail');
   });
 
   it('a custom cardDetector can replace trim without touching the compositor', async () => {
@@ -236,9 +245,10 @@ describe('composeListingImage', { skip: SKIP }, () => {
     });
     it('sealed narrows the rails and widens the card column', async () => {
       const r = await compose(await fakeCard(1400, 900), { productType: 'sealed' });
+      const single = resolveLayout(CFG, { productType: 'single' });
       assert.equal(r.variant, 'sealed');
       assert.equal(r.layout.railWidth, 220);
-      assert.ok(r.card.width > 1000);
+      assert.ok(r.card.width > single.cardBox.width, `sealed card ${r.card.width} is not wider than the single column ${single.cardBox.width}`);
     });
     it('an explicit variant overrides the metadata rule', async () => {
       const r = await compose(card, { language: 'Japanese' }, { variant: 'default' });

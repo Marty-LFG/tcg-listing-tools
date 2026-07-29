@@ -198,7 +198,8 @@ const $ = (id) => document.getElementById(id);
 // is rejected by the same validator the compositor runs, so the sliders cannot produce a broken save.
 const SLIDERS = [
   { key: 'railWidth',    scope: 'layout', min: 0,   max: 500, step: 10,  label: 'rail width',    unit: 'px' },
-  { key: 'cardPaddingY', scope: 'layout', min: 0,   max: 320, step: 8,   label: 'card padding',  unit: 'px' },
+  { key: 'cardPaddingY', scope: 'layout', min: 0,   max: 320, step: 8,   label: 'card padding ↕', unit: 'px' },
+  { key: 'cardPaddingX', scope: 'layout', min: 0,   max: 200, step: 4,   label: 'card mat ↔',     unit: 'px' },
   { key: 'canvas',       scope: 'layout', min: 800, max: 3200, step: 200, label: 'canvas',       unit: 'px' },
   { key: 'quality',      scope: 'layout', min: 60,  max: 100, step: 1,   label: 'jpeg quality',  unit: '' },
   { key: 'trimThreshold',scope: 'layout', min: 0,   max: 80,  step: 1,   label: 'trim threshold',unit: '' },
