@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber } from '../../lib/listings.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
+import { isRailDrawable } from '../../lib/listing-image-config.mjs';
 
 // composeContext reads the real config file, so these assertions pin the SHIPPED state: disabled.
 const shipped = (() => {
@@ -75,6 +76,29 @@ describe('composeMetaFor', () => {
     it('an unknown JP set falls back to the row rather than throwing', () => {
       const m = composeMetaFor({ set_name: 'Not A Real JP Set', number: '5', language: 'JP' });
       assert.equal(m.setName, 'Not A Real JP Set');
+    });
+    it('NEVER falls back to the native name — the rail font cannot draw it', () => {
+      // 146 of 277 JP sets have no romanised name in the bake. Using name_native there would put
+      // Japanese script on a Latin-only rail, which renders via a system font on Windows and as
+      // blank boxes on a server without one.
+      const m = composeMetaFor({ set_name: 'Start Deck 100', set_code: 'MC', number: '5', language: 'JP' });
+      assert.ok(isRailDrawable(m.setName), `setName "${m.setName}" is not drawable by the rail font`);
+    });
+    it('resolves the JP set logo by code as well as by name', () => {
+      // Bulbapedia files them as SV3a_Raging_Surf_Logo.png — findable from either identity.
+      const byCode = composeMetaFor({ set_name: 'Raging Surf', set_code: 'SV3a', number: '50', language: 'JP' });
+      if (byCode.setLogoUrl) assert.match(byCode.setLogoUrl, /Raging_Surf_Logo/);
+    });
+  });
+
+  describe('every JP set in the bake produces rail-drawable output', () => {
+    it('no set name reaching the rail needs a font we do not ship', () => {
+      const bad = [];
+      for (const code of ['M5', 'SV3a', 'S12a', 'MC', 'M-P', 'SVLN', 'CS1.5']) {
+        const m = composeMetaFor({ set_name: '', set_code: code, number: '1', language: 'JP' });
+        if (m.setName && !isRailDrawable(m.setName)) bad.push(code + '=' + m.setName);
+      }
+      assert.deepEqual(bad, [], 'these would render as blank boxes on a host without a CJK font');
     });
   });
   it('does NOT carry condition — that is the whole NM/LP dedupe argument', () => {

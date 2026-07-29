@@ -145,6 +145,20 @@ describe('railText', () => {
     const b = railText({ language: 'English', setName: 'Base Set', condition: 'Lightly Played' }, L);
     assert.deepEqual(a, b);
   });
+  it('DROPS a line the bundled Latin font cannot draw', () => {
+    // Pango does not fail on a missing glyph — it substitutes a SYSTEM font. That renders Japanese
+    // perfectly on the Windows dev box and as blank boxes on a Linux server with no CJK font, with
+    // nothing in the pipeline reporting it. So an undrawable line is dropped, not gambled on.
+    assert.deepEqual(railText({ language: 'Japanese', setName: 'スタートデッキ100' }, L), ['JAPANESE']);
+    assert.deepEqual(railText({ language: 'Japanese', setName: 'VSTARユニバース' }, L), ['JAPANESE']);
+  });
+  it('keeps accented Latin — Pokémon is drawable, it is not CJK', () => {
+    assert.deepEqual(railText({ setName: 'Pokémon Card 151' }, L), ['POKÉMON CARD 151']);
+  });
+  it('keeps the punctuation real set names use', () => {
+    assert.deepEqual(railText({ setName: 'Sword & Shield' }, L), ['SWORD & SHIELD']);
+    assert.deepEqual(railText({ setName: "Trainer's Toolkit" }, L), ["TRAINER'S TOOLKIT"]);
+  });
   it('text.rail none means no line at all', () => {
     const off = resolveLayout(DEFAULT_CONFIG, {}, { text: { rail: 'none' } });
     assert.deepEqual(railText({ language: 'English', setName: 'Base Set' }, off), []);

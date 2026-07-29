@@ -1144,18 +1144,39 @@ name **and** the English equivalent, because a stock row may have been saved und
 normaliser is `\p{L}\p{N}`-based on purpose: an ASCII-only class collapses アビスアイ to the empty
 string, at which point every Japanese set matches every other one.
 
+**Never fall back to `name_native`, and never assume a string is drawable.** 146 of 277 JP sets have
+no romanised name in the bake, and their native names are Japanese script the bundled Latin font
+cannot draw. Pango does **not** fail on a missing glyph — it silently substitutes a SYSTEM font, so
+Japanese renders perfectly on the Windows dev box and as blank boxes on a Linux server with no CJK
+font installed, with nothing in the pipeline reporting it. The same class of silent substitution as
+the `fontProbe` case, one level down.
+
+So `composeMetaFor` falls back to the owner's own stored `set_name`, and `railText` drops any line
+failing `isRailDrawable` (Latin script, digits and ordinary punctuation — `Pokémon Card 151` passes,
+`スタートデッキ100` does not). A JP card with no romanised name still gets `JAPANESE` plus its symbol
+and number; it just does not get a set name we cannot render.
+
 ### Where set symbols and logos come from
 
 | | symbol | logo |
 |---|---|---|
-| **English** | pokemontcg.io cache (`images.symbol`), falling back to the Bulbapedia bake | pokemontcg.io cache (`images.logo`) — drawn at the foot of the **left** rail |
-| **Japanese / other** | the **Bulbapedia bake** (`data/pokemon-set-symbols.json`) | none baked yet — that rail foot is left empty |
+| **English** | pokemontcg.io cache (`images.symbol`), then the Bulbapedia bake | pokemontcg.io cache (`images.logo`), then the bake |
+| **Japanese / other** | the **Bulbapedia bake** (`data/pokemon-set-symbols.json`) | the bake — 109 JP logos indexed |
 
-`scripts/build-pokemon-set-symbols.mjs` indexes both Bulbapedia expansion lists into
-`SetSymbol<Name>.png` → URL, keyed on the normalised set name, and is registered as the
-**`pokemon-set-symbols`** refresh bake. It resolves URLs only — a few batched API calls, no image
+`scripts/build-pokemon-set-symbols.mjs` indexes both Bulbapedia expansion lists and is registered as
+the **`pokemon-set-symbols`** refresh bake. It resolves URLs only — a few batched API calls, no image
 downloads; the images are fetched lazily through `lib/img-cache.mjs`, so the second listing from a
 set is a local read.
+
+**Symbols and logos use different filename conventions, and the logo one varies by era**, which is
+why `findSetLogo` takes several candidates and the index is keyed under all of them:
+
+| file | indexed under |
+|---|---|
+| `SetSymbolAbyss_Eye.png` | name `Abyss Eye` |
+| `Jungle_Logo.png` | name `Jungle` |
+| `SM1_Logo.png` | code `SM1` |
+| `SV3a_Raging_Surf_Logo.png` | code `SV3a` **and** name `Raging Surf` |
 
 Two things it took a while to establish, so they are worth not rediscovering:
 
