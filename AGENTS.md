@@ -1125,6 +1125,9 @@ badge there at compose time.
   along-run `fill` and so is unaffected.
 - **At the foot of the right rail:** the set symbol above the card's **printed** number — the two
   things a collector checks after the name, and the pair a thumbnail otherwise makes unreadable.
+- **At the foot of the left rail:** the set **logo** (the wordmark), mirroring the badge opposite it.
+  It gets its own W×H box rather than the symbol's square, because logos are wide and squeezing one
+  into a square box is worse than letting it keep its aspect.
 
 ### A non-English card is a different product, not a translation
 
@@ -1141,14 +1144,35 @@ name **and** the English equivalent, because a stock row may have been saved und
 normaliser is `\p{L}\p{N}`-based on purpose: an ASCII-only class collapses アビスアイ to the empty
 string, at which point every Japanese set matches every other one.
 
-**JP sets almost never have a symbol** — 4 of 277 in the current bake — so those cards get a
-number-only badge. Borrowing the English set's symbol would put the wrong symbol on a Japanese card,
-which is worse than none.
+### Where set symbols and logos come from
 
-English rows use the cached pokemontcg.io list via `findSet({code, name})`, which carries the symbol
-plus the era fields the number formatter reads. Either way the symbol is fetched through
-`lib/img-cache.mjs`, so the second listing from a set is a local read, and a fetch failure costs the
-badge its icon and nothing else.
+| | symbol | logo |
+|---|---|---|
+| **English** | pokemontcg.io cache (`images.symbol`), falling back to the Bulbapedia bake | pokemontcg.io cache (`images.logo`) — drawn at the foot of the **left** rail |
+| **Japanese / other** | the **Bulbapedia bake** (`data/pokemon-set-symbols.json`) | none baked yet — that rail foot is left empty |
+
+`scripts/build-pokemon-set-symbols.mjs` indexes both Bulbapedia expansion lists into
+`SetSymbol<Name>.png` → URL, keyed on the normalised set name, and is registered as the
+**`pokemon-set-symbols`** refresh bake. It resolves URLs only — a few batched API calls, no image
+downloads; the images are fetched lazily through `lib/img-cache.mjs`, so the second listing from a
+set is a local read.
+
+Two things it took a while to establish, so they are worth not rediscovering:
+
+- **Bulbapedia's files live on the Bulbagarden *Archives* wiki.** `prop=imageinfo` against Bulbapedia
+  itself reports every one of them `missing`, which makes the whole approach look like a dead end.
+- **There is no CDN with Japanese set symbols.** TCGdex serves only the old shared `univ` ones
+  (neo/xy/bw — every modern JP set 404s), and `images.scrydex.com` has no JP ids at all. It does not
+  404 for them either: it answers **200 with a generic 186KB placeholder** for any unknown id,
+  including an empty one. A constructed URL therefore yields a valid PNG of nothing, silently.
+  `loadSetArt` hashes what it fetches and drops anything matching `CDN_PLACEHOLDER_SHA`, so this can
+  never reach a rail.
+
+A host without the bake degrades to a number-only badge, so run it once on a fresh checkout:
+
+```bash
+node scripts/build-pokemon-set-symbols.mjs
+```
 
 **The number goes through `printedCardNumber()` (Golden Rule 10), which guards a real trap.**
 `formatCardNumber` takes the RAW upstream number; the uploader already stores a formatted one. Feed

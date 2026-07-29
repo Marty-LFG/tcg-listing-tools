@@ -50,6 +50,11 @@ data/pokemon-en-early.json
 # the Scrydex image CDN). Same rationale — a tracked bake collides with the server's own rebuild.
 # Re-seeded from data/pokemon-mep-seed.json on boot (lib/refresh.mjs ensureMepSeeded).
 data/pokemon-mep.json
+# Set symbol/logo URL index for the listing-image rail badge, baked from Bulbapedia by
+# scripts/build-pokemon-set-symbols.mjs (registered as the 'pokemon-set-symbols' refresh bake).
+# URLs only — the images are fetched lazily through data/img-cache/. A host without it degrades to
+# a number-only badge, so run the bake once on a fresh checkout.
+data/pokemon-set-symbols.json
 
 # Runtime-editable config the settings dashboard writes at runtime — SERVER-OWNED so its live edits
 # never collide with git pulls (tracking it did: it had to be skip-worktree'd on the server, which

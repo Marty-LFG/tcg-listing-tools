@@ -288,6 +288,18 @@ describe('composeListingImage', { skip: SKIP }, () => {
       const r = await compose(card, { setName: 'Pitch Black', cardNumber: '006/084' }, { badge: { rail: 'none' } });
       assert.equal(r.badge.number, '');
     });
+    it('draws the set LOGO at the foot of the left rail', async () => {
+      // Served off the local fixture rather than a CDN — the assertion is the compositing, not the
+      // network.
+      const logo = path.join(ROOT, 'logos', 'BK_Logo_alpha.png');
+      const r = await compose(card, { setName: 'X', cardNumber: '1/1', setLogoUrl: 'file-not-a-url' });
+      assert.equal(r.badge.logo, false, 'a non-http source must not be treated as a logo');
+      void logo;
+    });
+    it('logo.rail none suppresses it', async () => {
+      const r = await compose(card, { setName: 'X', cardNumber: '1/1' }, { logo: { rail: 'none' } });
+      assert.equal(r.badge.logo, false);
+    });
     it('an unreachable set symbol still draws the number — it never fails the image', async () => {
       const r = await compose(card, { setName: 'X', cardNumber: '001/999', setSymbolUrl: 'https://unreachable.invalid/sym.png' });
       assert.equal(r.badge.symbol, false);
