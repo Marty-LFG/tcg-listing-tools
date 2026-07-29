@@ -260,10 +260,47 @@ function banner(html){ const b=$('setupBanner'); b.innerHTML=html; b.style.displ
 // ---- set picker ----
 const SETS_CACHE='tcg_uploader_pkm_sets';
 function wireSetCombobox(){ TCG.setCombobox({input:$('setCode'),menu:$('setMenu'),items:()=>SETS,onPick:it=>{setObj=SETS.find(s=>s.value===it.value)||it;$('num').focus();}}); }
+// ── Mega Evolution Promo (mep) ──────────────────────────────────────────────────────────────────
+// A BAKED English set absent from pokemontcg.io AND PriceCharting: roster from TCGplayer, images
+// from the keyless Scrydex CDN (data/pokemon-mep.json, scripts/build-pokemon-mep.mjs). The picker
+// here is fed by /api/pkm/sets alone, so without this overlay the set simply does not exist in the
+// uploader — which is why it was invisible while the card builder could list it.
+//
+// Mirrors pokemon-listing-builder.html's mepSetRow()/loadMep()/doLookupMep() deliberately, down to
+// the shared localStorage key, so the two pages cannot drift apart.
+//
+// NOT ported: the early pre-release EN sets. Those resolve through the PriceCharting console path
+// (pcSlug), not a baked roster, so listing them here without that path would put sets in the picker
+// that cannot be looked up — worse than leaving them out.
+let MEP=null, MEP_BY_NUM={};
+const MEP_CACHE_KEY='pkm_mep_v1';   // shared with pokemon-listing-builder.html
+function mepSetRow(){
+  if(!MEP||!MEP.set) return null;
+  const s=MEP.set;
+  return {value:s.id||'mep', label:s.name, code:(s.ptcgoCode||'MEP').toUpperCase(), icon:'', releaseDate:s.releaseDate||'', mep:true};
+}
+function indexMep(){ MEP_BY_NUM={}; if(MEP&&MEP.cards) MEP.cards.forEach(c=>{ MEP_BY_NUM[String(parseInt(c.number,10))]=c; }); }
+function loadCachedMep(){ try{ const raw=localStorage.getItem(MEP_CACHE_KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.cards){ MEP=o; indexMep(); return true; } } }catch(e){} return false; }
+async function loadMep(){
+  loadCachedMep();
+  try{ const r=await fetch('/data/pokemon-mep.json'); if(r.ok){ const o=await r.json(); if(o&&o.cards){ MEP=o; indexMep(); try{ localStorage.setItem(MEP_CACHE_KEY,JSON.stringify(o)); }catch(e){} } } }catch(e){}
+  return MEP;
+}
+// Overlay the baked set on top of the live list — unless pokemontcg.io has since catalogued it, in
+// which case the live row wins and the overlay disappears on its own.
+function withOverlay(list){
+  const mep=mepSetRow();
+  if(!mep) return list;
+  const live=list.some(s=>String(s.value).toLowerCase()===String(mep.value).toLowerCase()
+    || String(s.label).toLowerCase()===String(mep.label).toLowerCase());
+  return live?list:[mep].concat(list);
+}
+
 async function loadSets(){
+  loadMep();   // fire-and-forget: the cached copy lands immediately, the fetch refreshes behind it
   // Cache sets in localStorage (like the builder) so a flaky pokemontcg.io moment doesn't leave the
   // picker empty — show the cache immediately, then refresh in the background.
-  try{ const cached=JSON.parse(localStorage.getItem(SETS_CACHE)||'null'); if(cached&&cached.length){ SETS=cached; $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); } }catch(e){}
+  try{ const cached=JSON.parse(localStorage.getItem(SETS_CACHE)||'null'); if(cached&&cached.length){ SETS=withOverlay(cached); $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); } }catch(e){}
   try{
     const r=await TCG.fetchJson(base+'/sets?pageSize=500',{onRetry:n=>{ if(!SETS.length) $('setStatus').textContent='loading sets… (retry '+n+')'; }});
     if(!r.ok) throw new Error('http '+r.status);
@@ -272,7 +309,9 @@ async function loadSets(){
       .sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||''));
     // j.stale: the server served its cached copy because pokemontcg.io was down. Say so — a silently
     // stale picker is how a brand-new set looks like a missing card.
-    if(list.length){ SETS=list; try{ localStorage.setItem(SETS_CACHE,JSON.stringify(SETS)); }catch(e){} $('setStatus').textContent=SETS.length+' sets'+(j.stale?' (cached — source down)':''); wireSetCombobox(); }
+    // Cache the LIVE list only — the overlay is re-applied on read, so a set that graduates to
+    // pokemontcg.io stops being overlaid without anyone clearing localStorage.
+    if(list.length){ try{ localStorage.setItem(SETS_CACHE,JSON.stringify(list)); }catch(e){} SETS=withOverlay(list); $('setStatus').textContent=SETS.length+' sets'+(j.stale?' (cached — source down)':''); wireSetCombobox(); }
     else if(!SETS.length){ $('setStatus').textContent='no sets (source flaky) — retry'; }
   }catch(e){ if(!SETS.length) $('setStatus').textContent='sets failed (source down) — retry'; }
 }
@@ -284,6 +323,7 @@ async function doLookup(){
     setObj=SETS.find(s=>s.code===code.toUpperCase()||s.label.toLowerCase()===code.toLowerCase());
   }
   if(!setObj||!num){ stat($('status'),'warn','Pick a set and enter a card number.'); return; }
+  if(setObj.mep) return doLookupMep(setObj,num);
   const act=TCG.activity?TCG.activity('Looking up '+setObj.value+'-'+num):null;
   stat($('status'),'load','Looking up…');
   try{
@@ -307,16 +347,62 @@ async function doLookup(){
     // default finish from rarity/name
     if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
     else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
-    renderCard();
+    afterLookup();
     act&&act.done('found');
     stat($('status'),'ok','Found. Verify the details, price and offers below.');
-    ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
-    loadStoreCats();
-    if(COMPOSE_READY===null) loadComposeState();
-    savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
-    priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
-    loadPrice(); checkStock(); loadNextLabel();
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
+}
+
+// Everything that has to happen once `card` is populated, whichever lane filled it. Shared so the
+// MEP lane cannot quietly miss a step the pokemontcg.io lane does.
+function afterLookup(){
+  // default finish from rarity/name
+  if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
+  else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
+  renderCard();
+  ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
+  loadStoreCats();
+  if(COMPOSE_READY===null) loadComposeState();
+  savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
+  priceInfo=null; syncEbayLinks();   // clickable off the local query while the comps call is in flight
+  loadPrice(); checkStock(); loadNextLabel();
+}
+
+// Mega Evolution Promo: resolve a typed number against the baked roster. English output, images off
+// the keyless Scrydex CDN. identity_key stays BLANK — there is no pokemontcg.io id for these, and
+// inventing one would collide with a real card's key in the tracker.
+async function doLookupMep(setObj,num){
+  const act=TCG.activity?TCG.activity('Looking up '+setObj.label+' #'+num):null;
+  stat($('status'),'load','Looking up…');
+  if(!MEP) await loadMep();
+  const roster=(MEP&&MEP.cards)||[];
+  const c=MEP_BY_NUM[String(parseInt(String(num).replace(/\/.*/,''),10))];
+  if(!c){
+    act&&act.fail('no match');
+    stat($('status'),'warn','Card #'+esc(num)+' not found in '+esc(setObj.label)+' ('+roster.length+' cards). Check the number.');
+    return;
+  }
+  const bare=String(parseInt(c.number,10));
+  // The DIRECT CDN url, not the /api/img proxy: this goes into image_url, and the publish path
+  // downloads it server-side to re-host on eBay. A proxy path would be unreachable from there.
+  const large=c.img?('https://images.scrydex.com/pokemon/mep-'+bare+'/large'):'';
+  const s=(MEP&&MEP.set)||{};
+  card={
+    id:'',                                  // no pokemontcg.io id — identity_key stays blank
+    name:c.name, set_name:s.name||setObj.label,
+    number:TCG.formatCardNumber(c.number,Object.assign({mep:true},s),{source:'ptcg',rarity:c.rarity}),
+    rawNumber:c.number, rarity:c.rarity||'Promo', image:large,
+    supertype:'Pokémon', subtypes:c.stage||'', artist:'',
+    subtypeList:c.stage?[c.stage]:[], types:c.type?[c.type]:[], hp:c.hp||'',
+    pokedex:[], regMark:'', evolvesFrom:'',
+    setSeries:s.series||'', setCode:(s.ptcgoCode||'MEP'),
+    setRelease:s.releaseDate||'', printedTotal:s.printedTotal||null,
+    mep:true,
+  };
+  afterLookup();
+  act&&act.done('found');
+  const v=(c.variants||[]).find(x=>x.label==='Standard')||(c.variants||[])[0]||null;
+  stat($('status'),'ok','Found '+esc(c.name)+' #'+esc(c.number)+(v?' · ~US$'+v.market+' market':'')+(c.img?'':' · no stock image — add a photo'));
 }
 function renderCard(){
   const v=$('cardview'); v.style.display='';
