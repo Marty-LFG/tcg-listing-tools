@@ -1182,6 +1182,20 @@ why `findSetLogo` takes several candidates and the index is keyed under all of t
 That `_JP`/`_EN` suffix is not a detail. Matching only `_Logo.png` caught 13 of 135 English logos and
 missed the entire MEGA series — the era the compositor is actually used on.
 
+**The index is LANGUAGE-SCOPED (`format: 2`) and lookups never cross languages.** A flat index let
+the Japanese page claim `bw1`/`xy4`/`sm7` and shadow the English file of the same set code — 45 of
+them — so an English card could be handed a Japanese logo. Falling back across languages is not a
+graceful degradation here: the wrong-language logo reads as the wrong product, which is worse than no
+logo. `findSetSymbol(lang, ...candidates)` / `findSetLogo(lang, ...candidates)`. An index of any other
+`format` is refused outright rather than misread; the refresh bake rebuilds it.
+
+**`normName` (build) and `normSetKey` (lib) must stay byte-identical** — the index is written with
+one and read with the other, so any divergence is a lookup that silently finds nothing. Both do
+NFD → drop Latin combining marks (U+0300–U+036F) → **NFC** → strip non-letters. The recompose is
+load-bearing: NFD leaves ガ as カ + U+3099, and U+3099 is a nonspacing mark that the `\p{L}\p{N}`
+filter then eats, folding メガブレイブ into メカフレイフ and colliding distinct Japanese sets. A test
+pins the two functions against each other.
+
 `lookup()` tries three things in order, and **an exact match always wins**:
 
 1. **Exact**, against every identity the caller passes.

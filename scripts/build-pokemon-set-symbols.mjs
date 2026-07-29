@@ -36,8 +36,16 @@ const PAGES = [
   ['en', 'List_of_Pokémon_Trading_Card_Game_expansions'],
 ];
 
-// Same normalisation the lookup uses: unicode-aware, so a name is matched on its letters alone.
-export const normName = (s) => String(s == null ? '' : s).trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+// MUST stay identical to _norm in lib/pkm-sets-cache.mjs — the index is written with this and read
+// with that, so any divergence is a lookup that silently finds nothing. Latin accents are folded
+// (the wiki writes `Pokémon Card 151`, TCGdex gives us `Pokemon Card 151`); the stripped range is
+// U+0300–U+036F, so Japanese dakuten (U+3099/U+309A) survive and ガ never folds into カ.
+export const normName = (s) => String(s == null ? '' : s)
+  .trim().toLowerCase()
+  // NFD → drop Latin combining marks → NFC. The recompose matters: without it NFD leaves ガ as
+  // カ + U+3099, and the \p{L}\p{N} filter eats that mark, folding メガブレイブ into メカフレイフ.
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').normalize('NFC')
+  .replace(/[^\p{L}\p{N}]+/gu, '');
 
 // `SetSymbolAbyss_Eye.png` → `Abyss Eye`. A leading underscore appears on a few (`SetSymbol_SMPromo`).
 export function setNameFromFile(file) {
@@ -102,11 +110,20 @@ export async function resolveUrls(files) {
   return out;
 }
 
+// Bump when the document SHAPE changes. The lookup refuses an index it does not understand rather
+// than mis-reading one, and the refresh bake rebuilds it.
+export const INDEX_FORMAT = 2;
+
 export async function buildSetSymbols({ dryRun = false, log = () => {} } = {}) {
+  // LANGUAGE-SCOPED. A flat index let the Japanese page claim `bw1`/`xy4`/`sm7` and shadow the
+  // English file of the same code — 45 of them — so an English card falling through to this bake
+  // would have been given the JAPANESE logo. Set art is language-specific; keys are not.
   const symbols = {};
   const logos = {};
   const perPage = {};
   for (const [lang, page] of PAGES) {
+    symbols[lang] = symbols[lang] || {};
+    logos[lang] = logos[lang] || {};
     const { symbols: symFiles, logos: logoFiles } = await listPageImages(page);
     const urls = await resolveUrls([...symFiles, ...logoFiles]);
 
@@ -116,9 +133,7 @@ export async function buildSetSymbols({ dryRun = false, log = () => {} } = {}) {
       const hit = urls.get(f);
       const key = name ? normName(name) : '';
       if (!key || !hit) { sMissed++; continue; }
-      // First page wins: Japanese is listed first on purpose, because where a name collides the
-      // JP art is the one we cannot get anywhere else.
-      if (!symbols[key]) { symbols[key] = { name, url: hit.url, w: hit.width, h: hit.height, lang }; sAdded++; }
+      if (!symbols[lang][key]) { symbols[lang][key] = { name, url: hit.url, w: hit.width, h: hit.height, lang }; sAdded++; }
     }
 
     let lAdded = 0, lMissed = 0;
@@ -131,7 +146,7 @@ export async function buildSetSymbols({ dryRun = false, log = () => {} } = {}) {
       // findable from a row storing "SV3a" and from one storing "Raging Surf".
       let any = false;
       for (const k of [normName(keys.code), normName(keys.name)]) {
-        if (k && !logos[k]) { logos[k] = entry; any = true; }
+        if (k && !logos[lang][k]) { logos[lang][k] = entry; any = true; }
       }
       if (any) lAdded++; else lMissed++;
     }
@@ -139,11 +154,13 @@ export async function buildSetSymbols({ dryRun = false, log = () => {} } = {}) {
     perPage[lang] = { symbolFiles: symFiles.length, symbols: sAdded, logoFiles: logoFiles.length, logos: lAdded };
     log(`  ${lang}: ${symFiles.length} symbol files → ${sAdded} indexed (${sMissed} skipped) · ${logoFiles.length} logo files → ${lAdded} indexed (${lMissed} skipped)`);
   }
+  const total = (o) => Object.values(o).reduce((n, m) => n + Object.keys(m).length, 0);
   const doc = {
+    format: INDEX_FORMAT,
     builtAt: new Date().toISOString(),
     source: 'bulbapedia.bulbagarden.net + archives.bulbagarden.net',
-    count: Object.keys(symbols).length,
-    logoCount: Object.keys(logos).length,
+    count: total(symbols),
+    logoCount: total(logos),
     symbols,
     logos,
   };

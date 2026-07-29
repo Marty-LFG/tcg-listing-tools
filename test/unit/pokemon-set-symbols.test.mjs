@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setNameFromFile, setLogoKeysFromFile, normName, OUT_PATH } from '../../scripts/build-pokemon-set-symbols.mjs';
-import { findSetSymbol, findSetLogo, baseSetCode } from '../../lib/pkm-sets-cache.mjs';
+import { findSetSymbol, findSetLogo, baseSetCode, INDEX_FORMAT, normSetKey } from '../../lib/pkm-sets-cache.mjs';
 
 describe('setNameFromFile', () => {
   it('reads the set name out of the Bulbapedia filename convention', () => {
@@ -58,10 +58,31 @@ describe('setLogoKeysFromFile', () => {
   });
 });
 
+describe('the two normalisers must stay identical', () => {
+  // The index is WRITTEN with normName (the build script) and READ with normSetKey (the lib). Any
+  // divergence is a lookup that silently finds nothing — which is exactly how the accented
+  // `Pokémon Card 151` went missing after only one side learned to fold.
+  it('agree on every shape the sources actually produce', () => {
+    for (const s of ['Abyss Eye', 'Pokémon Card 151', 'Pokemon Card 151', 'アビスアイ', 'メガブレイブ',
+      'Sword & Shield', "Trainer's Toolkit", 'SV3a', 'M5', '  spaced  out  ', '', null, 'Neo Genesis']) {
+      assert.equal(normName(s), normSetKey(s), `diverged on ${JSON.stringify(s)}`);
+    }
+  });
+  it('folds Latin accents so the sources agree', () => {
+    assert.equal(normSetKey('Pokémon Card 151'), normSetKey('Pokemon Card 151'));
+  });
+  it('does NOT fold Japanese dakuten — that would merge distinct sets', () => {
+    // ガ decomposes to カ + U+3099. Stripping it would make メガブレイブ match メカフレイフ.
+    assert.notEqual(normSetKey('メガブレイブ'), normSetKey('メカフレイフ'));
+    assert.ok(normSetKey('メガブレイブ').length > 0);
+  });
+});
+
 describe('normName', () => {
   it('matches on letters alone, so punctuation and spacing cannot split a set', () => {
     assert.equal(normName('Abyss Eye'), normName('abyss-eye'));
-    assert.equal(normName('Pokémon Card 151'), normName('pokemon card 151') === normName('Pokémon Card 151') ? 'pokémoncard151' : normName('Pokémon Card 151'));
+    assert.equal(normName('Abyss Eye'), normName('  ABYSS   EYE  '));
+    assert.equal(normName('Pokémon Card 151'), 'pokemoncard151');
   });
   it('is unicode-aware — an ASCII-only class collapses Japanese names to nothing', () => {
     assert.ok(normName('アビスアイ').length > 0, 'a native name must not normalise to the empty string');
@@ -76,57 +97,81 @@ describe('normName', () => {
 const baked = (() => { try { return JSON.parse(fs.readFileSync(OUT_PATH, 'utf8')); } catch { return null; } })();
 
 describe('the baked index', { skip: !baked && 'data/pokemon-set-symbols.json not built on this host' }, () => {
+  const allSymbols = () => Object.values(baked.symbols).flatMap((m) => Object.values(m));
+  const allLogos = () => Object.values(baked.logos).flatMap((m) => Object.values(m));
+
+  it('is the language-scoped format', () => {
+    assert.equal(baked.format, INDEX_FORMAT, 'a flat v1 index lets one language shadow another');
+    assert.ok(baked.symbols.ja && baked.symbols.en, 'symbols must be bucketed per language');
+    assert.ok(baked.logos.ja && baked.logos.en, 'logos must be bucketed per language');
+  });
   it('has a sane shape and a real count', () => {
     assert.ok(baked.builtAt);
     assert.ok(baked.count > 100, `only ${baked.count} symbols indexed`);
-    assert.equal(typeof baked.symbols, 'object');
   });
   it('every entry carries a usable https URL', () => {
-    for (const [key, v] of Object.entries(baked.symbols)) {
-      assert.match(v.url, /^https:\/\//, `${key} has no https url`);
-      assert.ok(v.name, `${key} has no display name`);
+    for (const v of [...allSymbols(), ...allLogos()]) {
+      assert.match(v.url, /^https:\/\//, `${v.name} has no https url`);
+      assert.ok(v.name, 'entry has no display name');
     }
   });
   it('covers Japanese sets — the whole reason this bake exists', () => {
-    const jp = Object.values(baked.symbols).filter((v) => v.lang === 'ja');
-    assert.ok(jp.length > 100, `only ${jp.length} JP symbols — the JP page did not parse`);
+    assert.ok(Object.keys(baked.symbols.ja).length > 100, 'the JP page did not parse');
   });
   it('resolves Abyss Eye, the JP counterpart of Pitch Black', () => {
-    const s = findSetSymbol('Abyss Eye');
+    const s = findSetSymbol('JP', 'Abyss Eye');
     assert.ok(s, 'Abyss Eye missing from the index');
     assert.match(s.url, /SetSymbolAbyss_Eye/);
   });
   it('lookup is punctuation- and case-insensitive', () => {
-    assert.ok(findSetSymbol('abyss eye'));
-    assert.ok(findSetSymbol('ABYSS-EYE'));
+    assert.ok(findSetSymbol('JP', 'abyss eye'));
+    assert.ok(findSetSymbol('JP', 'ABYSS-EYE'));
   });
   it('an unknown set returns null rather than a wrong symbol', () => {
-    assert.equal(findSetSymbol('No Such Set Anywhere'), null);
-    assert.equal(findSetSymbol(''), null);
-    assert.equal(findSetSymbol(null), null);
+    assert.equal(findSetSymbol('JP', 'No Such Set Anywhere'), null);
+    assert.equal(findSetSymbol('JP', ''), null);
+    assert.equal(findSetSymbol('JP', null), null);
   });
 
   it('indexes logos, including the whole MEGA series by set code', () => {
     // M1–M6 are all `M<n>_Logo_JP.png`. They were missing entirely until the language suffix was
     // handled, so this pins the era the compositor is being used on.
     for (const code of ['M1', 'M2', 'M3', 'M4', 'M5', 'M6']) {
-      const hit = findSetLogo(code);
+      const hit = findSetLogo('JP', code);
       assert.ok(hit, `no logo indexed for ${code}`);
       assert.match(hit.url, new RegExp(`${code}_Logo_JP\\.png$`));
     }
   });
   it('finds a logo by set name as well as by code', () => {
-    const byName = findSetLogo('Raging Surf');
+    const byName = findSetLogo('JP', 'Raging Surf');
     if (byName) assert.match(byName.url, /Raging_Surf_Logo/);
   });
   it('takes several candidates and returns the first that hits', () => {
-    assert.ok(findSetLogo('nope-not-a-set', 'M5'), 'should fall through to the second candidate');
-    assert.equal(findSetLogo('nope', 'also-nope'), null);
-    assert.equal(findSetLogo(), null);
+    assert.ok(findSetLogo('JP', 'nope-not-a-set', 'M5'), 'should fall through to the second candidate');
+    assert.equal(findSetLogo('JP', 'nope', 'also-nope'), null);
+    assert.equal(findSetLogo('JP'), null);
   });
   it('indexes enough English logos to be worth having', () => {
-    const en = Object.values(baked.logos).filter((v) => v.lang === 'en');
-    assert.ok(en.length > 50, `only ${en.length} EN logos — the language suffix filter has regressed`);
+    assert.ok(Object.keys(baked.logos.en).length > 50, 'the language suffix filter has regressed');
+  });
+
+  describe('languages never cross', () => {
+    // The bug this format fixes: the JP page claimed `bw1`/`xy4`/`sm7` and shadowed the English file
+    // of the same code, so an English card could be handed a JAPANESE logo.
+    for (const code of ['BW1', 'XY4', 'SM7']) {
+      it(`${code} resolves to different art for EN and JP`, () => {
+        const en = findSetLogo('EN', code);
+        const ja = findSetLogo('JP', code);
+        assert.ok(en, `${code} has no EN logo`);
+        assert.ok(ja, `${code} has no JP logo`);
+        assert.notEqual(en.url, ja.url, `${code} served the same file to both languages`);
+        assert.match(en.url, /_Logo_EN\.png$/);
+      });
+    }
+    it('a JP-only set does not leak into an English lookup', () => {
+      assert.ok(findSetSymbol('JP', 'Abyss Eye'), 'sanity: it exists in JP');
+      assert.equal(findSetSymbol('EN', 'Abyss Eye'), null, 'a JP set must not resolve for an English card');
+    });
   });
 
   describe('paired-set base-code fallback', () => {
@@ -135,30 +180,38 @@ describe('the baked index', { skip: !baked && 'data/pokemon-set-symbols.json not
     for (const [code, base] of [['M1L', 'M1'], ['M1S', 'M1'], ['SV11B', 'SV11'], ['SV11W', 'SV11'],
       ['SV5M', 'SV5'], ['SV5K', 'SV5'], ['SV4K', 'SV4'], ['SV4M', 'SV4'], ['SV2D', 'SV2'], ['SV2P', 'SV2']]) {
       it(`${code} falls back to ${base}`, () => {
-        const hit = findSetLogo(code);
+        const hit = findSetLogo('JP', code);
         assert.ok(hit, `${code} resolved no logo`);
         assert.match(hit.url, new RegExp(`${base}_Logo`, 'i'));
       });
     }
     it('an EXACT match always beats the base code', () => {
       // SV3a has its own file, so stripping to SV3 must not win.
-      const hit = findSetLogo('SV3a');
-      assert.match(hit.url, /SV3a_Raging_Surf_Logo/);
+      assert.match(findSetLogo('JP', 'SV3a').url, /SV3a_Raging_Surf_Logo/);
     });
   });
 
   describe('romanisation aliases', () => {
     for (const [ours, wiki] of [['Glory of Team Rocket', 'Glory_of_the_Rocket_Gang'], ['Terastal Festival ex', 'Terastal_Fest_ex'],
-      ['Pokemon Card 151', 'SetSymbol151'], ['Heat Wave Arena', 'Hot_Wind_Arena'], ['Mask of Change', 'Transformation_Mask']]) {
+      ['Heat Wave Arena', 'Hot_Wind_Arena'], ['Mask of Change', 'Transformation_Mask']]) {
       it(`${ours} resolves to the wiki's ${wiki}`, () => {
-        const hit = findSetSymbol(ours);
+        const hit = findSetSymbol('JP', ours);
         assert.ok(hit, `${ours} resolved no symbol`);
         assert.match(hit.url, new RegExp(wiki, 'i'));
       });
     }
+    it('the accented JP file resolves from our unaccented name', () => {
+      // The wiki writes SetSymbolPokémon_Card_151.png; TCGdex gives us "Pokemon Card 151". Each
+      // language resolves to ITS OWN file — the JP set symbol is not the English one.
+      const jp = findSetSymbol('JP', 'Pokemon Card 151');
+      const en = findSetSymbol('EN', '151');
+      assert.ok(jp, 'JP 151 resolved no symbol');
+      assert.ok(en, 'EN 151 resolved no symbol');
+      assert.notEqual(jp.url, en.url);
+    });
     it('an alias never rescues a set that genuinely does not exist', () => {
-      assert.equal(findSetSymbol('Completely Made Up Set'), null);
-      assert.equal(findSetLogo('ZZ99Q'), null);
+      assert.equal(findSetSymbol('JP', 'Completely Made Up Set'), null);
+      assert.equal(findSetLogo('JP', 'ZZ99Q'), null);
     });
   });
 });
