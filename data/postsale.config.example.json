@@ -17,6 +17,7 @@
   "quiet_hours": { "enabled": true, "start": "21:00", "end": "08:00" },
   "holidays": [],
   "dashboard_url": "",
+  "telegram_allowed_user_ids": [],
   "alerts": true,
   "labels": true,
   "listings_sync": true,

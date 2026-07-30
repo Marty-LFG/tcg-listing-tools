@@ -505,6 +505,9 @@
         {p:'brand_voice',l:'Brand voice',t:'textarea',wide:true,tip:'Tone guidance for the AI — e.g. “casual, warm, an Aussie TCG store owner who loves the hobby”.'},
         {p:'style_notes',l:'Style notes',t:'textarea',wide:true,tip:'Extra style rules for the drafts (length, what to mention, what to avoid).'},
       ]},
+      {name:'Telegram approvals',fields:[
+        {p:'telegram_allowed_user_ids',l:'Telegram approvers',t:'text',wide:true,tip:'Numeric Telegram user ids allowed to tap Send/Skip on a <b>buyer message</b> card, comma separated. <b>Empty denies everyone</b> — being in the chat is not authorisation, and the ✅ button sends a real eBay message. Not @usernames: those get changed and reassigned, ids don’t. To find an id, tap a button and the bot replies with yours.'},
+      ]},
       {name:'Fallback message',fields:[
         {p:'fallback_enabled',l:'Template fallback',t:'toggle',tip:'When the AI can’t draft (no API key, provider outage, bad reply), send a plain template instead of leaving the buyer with nothing. The message still waits for your approval, and the dashboard shows <b>template</b> as the model plus the reason the AI lane failed.'},
         {p:'fallback_subject',l:'Subject',t:'text',tip:'Subject line for the template message.'},
@@ -539,6 +542,7 @@
       {p:'guardrails.proposal_ttl_hours',l:'Proposal TTL (h)',t:'number',tip:'How long a price proposal stays valid before it expires unapproved.'},
       {p:'telegram.digest_enabled',l:'Telegram digest',t:'toggle',tip:'Send the repricer proposal digest to Telegram.'},
       {p:'telegram.poll_enabled',l:'Telegram poll',t:'toggle',tip:'Run the Telegram approve/apply poll loop for repricer proposals.'},
+      {p:'telegram.allowed_user_ids',l:'Telegram approvers',t:'text',wide:true,tip:'Numeric Telegram user ids allowed to tap Approve/Skip on a <b>price</b> proposal, comma separated. <b>Empty denies everyone</b> — being in the chat is not authorisation. Not @usernames: those get changed and reassigned, ids don’t. To find an id, tap a button and the bot replies with yours.'},
     ]}]},
     refresh:{ title:'Baked-data refresh', groups:[{name:null,fields:[
       {p:'enabled',l:'Auto refresh',t:'toggle',tip:'Automatically re-bake the enabled catalogs on a timer.'},
