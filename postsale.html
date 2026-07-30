@@ -284,6 +284,8 @@ $('panel').addEventListener('click', async (e) => {
 
 // ---- message detail modal ----
 let CUR = null; // current message id
+// What's currently persisted for CUR, so Send can tell whether the textareas hold an unsaved edit.
+let LOADED = { subject: '', body: '' };
 function setCC() { const n = $('m_body').value.length; const cc = $('m_cc'); cc.textContent = n + ' / 2000'; cc.classList.toggle('over', n > 2000); }
 $('m_body').addEventListener('input', setCC);
 function closeModal(){ $('overlay').classList.remove('open'); CUR = null; }
@@ -303,6 +305,7 @@ async function openMessage(id) {
     $('m_meta').textContent = money(o.total_cents, o.currency) + ' · order ' + (m.order_id||'') + (m.model?(' · '+m.model):'') + (d.dry_run?' · DRY-RUN':'');
     $('m_subject').value = m.subject || '';
     $('m_body').value = m.body || '';
+    LOADED = { subject: $('m_subject').value, body: $('m_body').value };
     $('m_err').textContent = m.error && m.status==='failed' ? ('⚠ ' + m.error) : '';
     setCC();
     const done = ['sent','skipped','replied','closed'].includes(m.status);
@@ -318,13 +321,36 @@ async function modalAction(path, body, btn) {
     if (r.message && (path==='/regenerate' || path==='/edit')) { // repopulate in place
       $('m_status').className = 'pill ' + r.message.status; $('m_status').textContent = r.message.status;
       $('m_subject').value = r.message.subject || ''; $('m_body').value = r.message.body || ''; setCC();
+      LOADED = { subject: $('m_subject').value, body: $('m_body').value };
       if (!r.ok && r.error) $('m_err').textContent = '⚠ ' + (r.violations?('blocked: '+r.violations.join(', ')):r.error);
     } else { closeModal(); }
     await loadAll();
   } catch (e) { $('m_err').textContent = e.message; }
   finally { btn.disabled = false; btn.textContent = label; }
 }
-$('m_send').addEventListener('click', (e) => modalAction('/approve', null, e.target));
+// Send has to send what is ON SCREEN. It used to POST /approve with no body, so an edit the owner
+// typed but did not separately Save was silently dropped and the ORIGINAL draft went to the buyer.
+// Persist a pending edit first — that also runs the length + eBay-policy checks server-side — and
+// only send if it succeeds, so a rejected edit can never fall back to sending the old text.
+async function sendCurrent(btn) {
+  if (!CUR) return;
+  const subject = $('m_subject').value, body = $('m_body').value;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = '…'; $('m_err').textContent = '';
+  try {
+    if (subject !== LOADED.subject || body !== LOADED.body) {
+      const e = await api('/messages/'+CUR+'/edit', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ subject, body }) });
+      if (e.message) {
+        $('m_subject').value = e.message.subject || ''; $('m_body').value = e.message.body || ''; setCC();
+        LOADED = { subject: $('m_subject').value, body: $('m_body').value };
+      }
+    }
+    await api('/messages/'+CUR+'/approve', { method:'POST' });
+    closeModal();
+    await loadAll();
+  } catch (err) { $('m_err').textContent = err.message; }   // api() throws on !ok, so a bad edit aborts the send
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+$('m_send').addEventListener('click', (e) => sendCurrent(e.target));
 $('m_skip').addEventListener('click', (e) => modalAction('/skip', null, e.target));
 $('m_regen').addEventListener('click', (e) => modalAction('/regenerate', null, e.target));
 $('m_save').addEventListener('click', (e) => modalAction('/edit', { subject: $('m_subject').value, body: $('m_body').value }, e.target));
