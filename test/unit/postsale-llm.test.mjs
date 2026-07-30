@@ -176,3 +176,29 @@ describe('fallbackDraft', () => {
     assert.equal(d.body, 'Yo James. Nice pickup on the Sprigatito ex. Posted tomorrow. -XX');
   });
 });
+
+// A blank config string is "not set", not "send nothing". The settings form renders the config file,
+// so a field added by a release is empty until backfilled — and a user can clear a box by hand.
+describe('fallbackDraft — blank config falls back to the defaults', () => {
+  const shipBy = { date: '2026-07-31', weekday: 'Friday' };
+  const now = new Date('2026-07-30T06:00:00Z');
+  const one = [{ title: 'Pokemon Sprigatito ex 251/217 Ascended Heroes Ultra Rare Holo EN M/NM', quantity: 1 }];
+
+  it('an empty body never yields an empty message', () => {
+    for (const blank of ['', '   ', '\n', null, undefined]) {
+      const d = fallbackDraft({ order: { ship_name: 'James Martin' }, items: one, shipBy, now, cfg: { fallback_body: blank } });
+      assert.equal(d.ok, true);
+      assert.match(d.body, /^Hey James, thanks/, 'blank body must fall back to the default template');
+    }
+  });
+  it('blank subject and card line fall back too', () => {
+    const d = fallbackDraft({ order: { ship_name: 'James Martin' }, items: one, shipBy, now, cfg: { fallback_subject: '', fallback_card_line: '  ' } });
+    assert.equal(d.subject, 'Thanks for your order!');
+    assert.match(d.body, /Glad you grabbed that Sprigatito ex\./);
+  });
+  it('refuses rather than returning an empty body when the template holds only unfilled slots', () => {
+    const d = fallbackDraft({ order: {}, items: [], shipBy, now, cfg: { fallback_body: '{{name}}{{card}}' } });
+    assert.equal(d.ok, false);
+    assert.equal(d.error, 'template_empty');
+  });
+});
