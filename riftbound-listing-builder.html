@@ -71,9 +71,9 @@
     <div class="card">
       <label>Data source</label>
       <select id="src_mode" onchange="setSource(this.value)" style="width:100%;margin-bottom:12px;padding:10px 12px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;">
-        <option value="offline">Offline &mdash; baked card data (all sets, no key)</option>
+        <option value="offline">Offline &mdash; baked card data + market price (all sets, no key)</option>
         <option value="riftscribe">Riftscribe &mdash; live, keyless (community-hosted)</option>
-        <option value="scrydex">Scrydex &mdash; live pricing + trend (needs key)</option>
+        <option value="scrydex">Scrydex &mdash; adds price trend (needs an ACTIVE paid key)</option>
       </select>
 
       <details id="cfgBox">
@@ -123,7 +123,7 @@
         <div class="f-full"><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
-      <div class="hint">Covers all four sets (Origins / Proving Grounds / Spiritforged / Unleashed) with images and no key &mdash; via baked offline data or live Riftscribe. Scrydex (optional) adds live market price + trend. Alt-art / Showcase: type the number with its letter (e.g. <b>162a</b>); Overnumbered uses <b>*</b> (e.g. <b>299*</b>). Runes (Spiritforged onward) use <b>R##</b> &mdash; type e.g. <b>R01a</b> (Fury Rune, alt-art).</div>
+      <div class="hint">Covers all five sets (Origins / Proving Grounds / Spiritforged / Unleashed / Vendetta) with images, market price and no key &mdash; via baked offline data or live Riftscribe. <b>Market price is keyless on every source</b> (TCGplayer, refreshed daily); Scrydex only adds the price-trend graph, and needs an active paid subscription. Alt-art / Showcase: type the number with its letter (e.g. <b>162a</b>); Overnumbered uses <b>*</b> (e.g. <b>299*</b>). Runes (Spiritforged onward) use <b>R##</b> &mdash; type e.g. <b>R01a</b> (Fury Rune, alt-art); reprints price only on Origins.</div>
     </div>
 
     <div class="card">
@@ -265,7 +265,16 @@ function runeFill(raw){
     const code=curSetCode().toUpperCase();
     const dg='https://static.dotgg.gg/riftbound/cards/'+code+'-'+pr.num+'.webp';
     const primary=code==='OGN'?(r.img||dg):dg;
-    TCG.renderExtras(document.getElementById('extras'),{name,images:[{label:'Front',display:[primary],download:primary}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});
+    // Price, with the same per-set discipline as the art above. The TCGplayer index carries the
+    // runes only under their ORIGINS printed numbers (OGN-7a Fury Rune) — the R## reprints are
+    // separate products it deliberately skips. So price an ORIGINS rune from the canonical record,
+    // and show NO price for a reprint rather than Origins' figure for different art.
+    const _ex={name,images:[{label:'Front',display:[primary],download:primary}],prices:[],
+      priceNote:'Fetching TCGplayer market price…',history:null};
+    const _ognNum=(code==='OGN'&&r.num&&/^\d/.test(String(r.num)))?String(r.num):null;
+    if(!_ognNum) _ex.priceNote='No TCGplayer price for a per-set rune reprint (it prices the Origins printing only) — run eBay AU comps.';
+    TCG.renderExtras(document.getElementById('extras'),_ex);
+    if(_ognNum) rbPriceEnrich(document.getElementById('extras'),_ex,'OGN',_ognNum);
     const _ie=document.getElementById('tcg-img-0');   // fall back to the canonical OGN rune only if the per-set image 404s (never raced)
     if(_ie&&r.img&&r.img!==primary){_ie.onerror=function(){_ie.onerror=null;_ie.src=r.img;};}
   }
@@ -351,8 +360,13 @@ function embedLookup(){
   set('f_pitch',genPitch(readFields(),rawRarity));
   st.className='status ok'; st.textContent='\u2713 '+_nm+'  ('+mapRarity(rawRarity)+')';
   render();
-  if(window.TCG){const _dg=rbDotgg(sd.code,c.num);TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,c.img].filter(Boolean),download:c.img||_dg,fallback:c.img||_dg}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});}
   _trk={game:'riftbound',identity_key:(sd.code||curSet).toUpperCase()+'-'+normNum(raw),name:_nm,variant:val('f_finish'),price:null};
+  if(window.TCG){
+    const _dg=rbDotgg(sd.code,c.num);
+    const _ex={name:_nm,images:[{label:'Front',display:[_dg,c.img].filter(Boolean),download:c.img||_dg,fallback:c.img||_dg}],prices:[],priceNote:'Fetching TCGplayer market price…',history:null};
+    TCG.renderExtras(document.getElementById('extras'),_ex);
+    rbPriceEnrich(document.getElementById('extras'),_ex,sd.code||curSet,raw);
+  }
   regenTitle();
 }
 
@@ -430,7 +444,14 @@ function mapScrydexCard(c,num){
   st.className='status ok';
   st.textContent='\u2713 '+name+'  ('+(rawRarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' NM market':'');
   render();
-  if(window.TCG){var _dg=rbDotgg(expCode,c.printed_number||c.number||num);var _im=[];var _i0=(c.images&&c.images[0])||null;_im.push({label:"Front",display:[_dg,(_i0&&(_i0.small||_i0.medium))].filter(Boolean),download:(_i0&&(_i0.large||_i0.medium||_i0.small))||_dg,fallback:_dg});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_vv.prices[0];if(_np&&_np.market!=null){_pr.push({source:"Scrydex",measure:(_vv.name||"NM")+" NM market",group:"market",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}TCG.renderExtras(document.getElementById("extras"),{name:name,images:_im,prices:_pr,priceNote:_pr.length?'':'No NM price from Scrydex for this variant.',history:_hist});}regenTitle();
+  if(window.TCG){var _dg=rbDotgg(expCode,c.printed_number||c.number||num);var _im=[];var _i0=(c.images&&c.images[0])||null;_im.push({label:"Front",display:[_dg,(_i0&&(_i0.small||_i0.medium))].filter(Boolean),download:(_i0&&(_i0.large||_i0.medium||_i0.small))||_dg,fallback:_dg});var _want=(val("f_finish")==="Foil")?"foil":"normal";var _vv=(c.variants||[]).find(function(x){return x.name===_want;})||(c.variants||[])[0];var _pr=[];var _hist=null;if(_vv&&_vv.prices){var _np=_vv.prices.find(function(x){return x.condition==="NM";})||_vv.prices[0];if(_np&&_np.market!=null){_pr.push({source:"Scrydex",measure:(_vv.name||"NM")+" NM market",group:"market",amount:_np.market,currency:_np.currency||"USD"});if(_np.trends)_hist=TCG.histFromTrends(_np.market,_np.trends);}}
+    // Overlay the keyless TCGplayer market price ALONGSIDE Scrydex's. Scrydex is the only lane
+    // with trend deltas (so _hist stays its job), but it 402s on a lapsed subscription — this
+    // keeps a price on screen either way, and gives two independent references when both answer.
+    var _ex={name:name,images:_im,prices:_pr,priceNote:_pr.length?'':'Fetching TCGplayer market price…',history:_hist};
+    TCG.renderExtras(document.getElementById("extras"),_ex);
+    rbPriceEnrich(document.getElementById("extras"),_ex,expCode||curSet,c.printed_number||c.number||num);
+  }regenTitle();
 }
 function priceFrom(c, finish){
   if(!c.variants) return null;
@@ -442,6 +463,48 @@ function priceFrom(c, finish){
 }
 
 // ---------- shared ----------
+// Keyless market price, overlaid on ANY source after the card fields are filled.
+//
+// Scrydex used to be the only lane with prices, and its subscription lapsed (402
+// SUBSCRIPTION_INACTIVE), so every source rendered "No live price source" and told the user to
+// "switch to the Scrydex source" — advice that could not work. This reads the baked TCGplayer
+// index instead (/api/riftbound/prices, lib/riftbound-prices.mjs), so the DEFAULT offline source
+// now shows a price. Mirrors pcEnrich() in pokemon-listing-builder.html: fire-and-forget after the
+// synchronous render, re-render extras when it lands.
+//
+// Builds the identity_key itself from setCode + the RAW typed number, deliberately: the index is
+// keyed by normNum ('OGN-27a'), while the scrydex lane's own _trk key uses the number as typed
+// ('ogn-027a'). Passing a pre-built key in would silently miss for exactly one of the three lanes.
+// GR7: never throws, and a failure leaves the card fully listable.
+function rbPriceEnrich(el, extras, setCode, rawNum){
+  try{
+    if(!el||!window.TCG) return;
+    const key=String(setCode||'').toUpperCase()+'-'+normNum(rawNum);
+    const act=TCG.activity?TCG.activity('TCGplayer price…'):null;
+    fetch('/api/riftbound/prices/'+encodeURIComponent(key)).then(function(r){
+      return r.json().then(function(j){ return {status:r.status,j:j}; });
+    }).then(function(res){
+      const base=Object.assign({},extras);
+      if(res.status===200&&res.j&&res.j.market!=null){
+        const rows=(extras.prices||[]).slice();
+        rows.push({source:'TCGplayer',measure:'Market',group:'market',amount:+res.j.market,currency:res.j.currency||'USD'});
+        if(res.j.low!=null) rows.push({source:'TCGplayer',measure:'Lowest listing',group:'market',amount:+res.j.low,currency:res.j.currency||'USD'});
+        base.prices=rows; base.priceNote='';
+        TCG.renderExtras(el,base);
+        // Feed the tracker too, so "watch this card" stores a price instead of null.
+        if(_trk) _trk.price={market:+res.j.market,currency:res.j.currency||'USD'};
+        act&&act.done('TCGplayer '+(res.j.currency||'USD')+' '+res.j.market);
+        return;
+      }
+      // Say which kind of miss it is — "no price" and "never baked" need different actions.
+      base.priceNote=res.status===503
+        ? 'Riftbound price index not baked yet — run the riftbound-prices refresh, or use eBay AU comps.'
+        : 'No TCGplayer market price for this card yet — run eBay AU comps for a live AUD figure.';
+      TCG.renderExtras(el,base);
+      act&&act.fail(res.status===503?'price index not baked':'no TCGplayer price');
+    }).catch(function(){ act&&act.fail('price lookup blocked'); });
+  }catch(e){}
+}
 function doLookup(){ source==='scrydex'?scrydexLookup():source==='riftscribe'?riftscribeLookup():embedLookup(); }
 function buildPills(){
   const pills=document.getElementById('pills'); pills.innerHTML='';
@@ -540,8 +603,12 @@ function mapRiftscribeCard(c){
   const _th=c.image_thumb||{};                                    // riftscribe webp thumbnails (small/medium/large) = fast display
   const _full=c.image||_th.large||_th.medium||_th.small;          // full image = best download
   const _dg=rbDotgg(setCode,c.collector_number+suf);
-  if(window.TCG)TCG.renderExtras(document.getElementById('extras'),{name:_nm,images:[{label:'Front',display:[_dg,_th.medium||_th.small].filter(Boolean),download:_full||_dg,fallback:_full||_dg}],prices:[],priceNote:'No live price source — switch to the Scrydex source or run eBay AU comps for prices.',history:null});
   _trk={game:'riftbound',identity_key:setCode+'-'+String(c.collector_number)+suf,name:_nm,variant:val('f_finish'),price:null};
+  if(window.TCG){
+    const _ex={name:_nm,images:[{label:'Front',display:[_dg,_th.medium||_th.small].filter(Boolean),download:_full||_dg,fallback:_full||_dg}],prices:[],priceNote:'Fetching TCGplayer market price…',history:null};
+    TCG.renderExtras(document.getElementById('extras'),_ex);
+    rbPriceEnrich(document.getElementById('extras'),_ex,setCode,String(c.collector_number)+suf);
+  }
   regenTitle();
 }
 
