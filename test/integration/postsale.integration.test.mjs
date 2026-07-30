@@ -295,3 +295,21 @@ describe('postsale — template fallback when the model lane is down', () => {
     assert.doesNotMatch(m.body, /Alpha|Mystery|Glad you grabbed/);
   });
 });
+
+// The manual card push. The harness blanks TELEGRAM_*, so the interesting assertion is that it
+// degrades to a clean 502 instead of throwing — the same shape every other Telegram path uses.
+describe('postsale — manual approval-card push', () => {
+  it('404s an unknown message', async () => {
+    const r = await post('/api/postsale/messages/999999/push-card');
+    assert.equal(r.status, 404);
+    assert.equal(r.json.error, 'message not found');
+  });
+  it('degrades cleanly when Telegram is not configured', async () => {
+    const msgs = await get('/api/postsale/messages');
+    const m = msgs.json.messages.find((x) => x.order_id === 'FB-1');
+    const r = await post('/api/postsale/messages/' + m.id + '/push-card');
+    assert.equal(r.status, 502);
+    assert.equal(r.json.skipped, 'no_telegram');
+    assert.ok(r.json.message, 'should still echo the message row back');
+  });
+});
