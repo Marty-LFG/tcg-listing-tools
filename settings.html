@@ -503,6 +503,12 @@
         {p:'brand_voice',l:'Brand voice',t:'textarea',wide:true,tip:'Tone guidance for the AI — e.g. “casual, warm, an Aussie TCG store owner who loves the hobby”.'},
         {p:'style_notes',l:'Style notes',t:'textarea',wide:true,tip:'Extra style rules for the drafts (length, what to mention, what to avoid).'},
       ]},
+      {name:'Fallback message',fields:[
+        {p:'fallback_enabled',l:'Template fallback',t:'toggle',tip:'When the AI can’t draft (no API key, provider outage, bad reply), send a plain template instead of leaving the buyer with nothing. The message still waits for your approval, and the dashboard shows <b>template</b> as the model plus the reason the AI lane failed.'},
+        {p:'fallback_subject',l:'Subject',t:'text',tip:'Subject line for the template message.'},
+        {p:'fallback_card_line',l:'Card line',t:'text',wide:true,tip:'Inserted at <code>{{card}}</code> when we can name the card confidently, using <code>{{card}}</code> for the short name (e.g. “Mega Zeraora ex”). Dropped entirely on multi-card orders or an unusual title.'},
+        {p:'fallback_body',l:'Body',t:'textarea',wide:true,tip:'Placeholders: <code>{{name}}</code> buyer’s first name from the shipping address, blank if it looks like a business or an initial · <code>{{card}}</code> the card line above · <code>{{ship_by}}</code> “tomorrow” or “on Monday” · <code>{{signature}}</code>. <b>Anything uncertain collapses to nothing, so the text must still read correctly without it.</b>'},
+      ]},
       {name:'Quiet hours',fields:[
         {p:'quiet_hours.enabled',l:'Quiet hours',t:'toggle',tip:'Don’t auto-send messages during the window below (buyer-friendly).'},
         {p:'quiet_hours.start',l:'Start',t:'text',tip:'Start of quiet window, 24h HH:MM (e.g. 21:00).'},

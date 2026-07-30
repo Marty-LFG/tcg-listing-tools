@@ -258,3 +258,40 @@ describe('postsale — messaging (Phase 1, dry-run)', () => {
     assert.equal(db.prepare('SELECT status FROM postsale_messages WHERE id=?').get(m.id).status, 'sent'); // unchanged
   });
 });
+
+// The failure that started all this: with no API key the drafter marked the message `failed` and the
+// buyer got nothing at all. The template fallback has to turn that into an approvable draft instead.
+// This harness genuinely runs without a key, so this is the real no_key path, not a simulated one.
+describe('postsale — template fallback when the model lane is down', () => {
+  const withCard = (id, ship, title) => mkOrder(id, {
+    ship: { name: ship, street1: '1 Test St', street2: null, city: 'Sydney', state: 'NSW', postal: '2000', country: 'AU', countryName: 'Australia', phone: null },
+    items: [{ orderLineItemId: id + '-1', transactionId: 'tx-' + id, itemId: '999' + id, sku: 'BK-PKM-1', title, quantity: 1, unitPriceCents: 4200 }],
+  });
+  const regen = async (orderId) => {
+    const msgs = await get('/api/postsale/messages');
+    const m = msgs.json.messages.find((x) => x.order_id === orderId);
+    const r = await post('/api/postsale/messages/' + m.id + '/regenerate');
+    assert.equal(r.status, 200, 'regenerate should succeed via the fallback, got ' + r.text);
+    return r.json.message;
+  };
+
+  it('drafts a template message instead of failing, and keeps the real reason visible', async () => {
+    ingestOrder(db, withCard('FB-1', 'James Martin', 'Pokemon Sprigatito ex 251/217 Ascended Heroes Ultra Rare Holo EN M/NM'), cfg);
+    const m = await regen('FB-1');
+    assert.equal(m.status, 'awaiting_approval');   // approve mode parks it for a human
+    assert.equal(m.model, 'template');
+    assert.match(m.error, /^fallback template \(no_key/);
+    assert.match(m.body, /^Hey James, thanks/);
+    assert.match(m.body, /Glad you grabbed that Sprigatito ex\./);
+    assert.doesNotMatch(m.body, /\{\{/);
+  });
+
+  it('degrades to generic rather than guessing a business name or an odd title', async () => {
+    ingestOrder(db, withCard('FB-2', 'Alpha Cards Pty Ltd', 'Mystery bundle, 10 assorted holos'), cfg);
+    const m = await regen('FB-2');
+    assert.equal(m.status, 'awaiting_approval');
+    assert.equal(m.model, 'template');
+    assert.match(m.body, /^Hey, thanks so much for your purchase!/);
+    assert.doesNotMatch(m.body, /Alpha|Mystery|Glad you grabbed/);
+  });
+});

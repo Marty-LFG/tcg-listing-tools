@@ -52,6 +52,11 @@ export async function bootServer() {
   process.env.TCG_BACKUP_DIR = path.join(dataDir, 'backups');   // the backup job must never touch real data/backups
   process.env.TELEGRAM_BOT_TOKEN = '';        // never start the Telegram poller from tests
   process.env.TELEGRAM_CHAT_ID = '';
+  // vite's loadEnv() reads the developer's real .env, so without this a test that triggers a draft
+  // makes a live, billed model call. Blanking both keys keeps the suite offline and deterministic,
+  // and is what puts the drafter on its documented no-key path so the fallback can be tested.
+  process.env.ANTHROPIC_API_KEY = '';
+  process.env.OPENAI_API_KEY = '';
 
   const port = await freePort();
   const { createServer } = await import('vite');

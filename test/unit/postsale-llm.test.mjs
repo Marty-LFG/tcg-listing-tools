@@ -3,7 +3,10 @@
 // (draftMessage) is exercised manually + degrades gracefully with no key (tested here too).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextBusinessDay, guardrailScrub, buildContext, systemPrompt, draftMessage } from '../../lib/postsale-llm.mjs';
+import {
+  nextBusinessDay, guardrailScrub, buildContext, systemPrompt, draftMessage,
+  friendlyFirstName, cardHook, shipByPhrase, fallbackDraft,
+} from '../../lib/postsale-llm.mjs';
 
 describe('nextBusinessDay', () => {
   const at = (iso) => nextBusinessDay(new Date(iso), { tz: 'Australia/Sydney' });
@@ -75,5 +78,101 @@ describe('draftMessage degradation', () => {
     const r = await draftMessage({ order: { buyerUsername: 'x' }, items: [], cfg: {}, env: {} });
     assert.equal(r.ok, false);
     assert.equal(r.error, 'no_key');
+  });
+});
+
+// --- fallback template draft ---
+// The whole contract here is "personalise only when certain", so most of these assert the BAIL:
+// a wrong name or a card they didn't buy is far worse than a slightly generic note.
+describe('friendlyFirstName', () => {
+  it('takes the first name off the shipping name', () => {
+    assert.equal(friendlyFirstName('James Martin'), 'James');
+  });
+  it('title-cases shouty and all-lowercase entries, leaves real mixed case alone', () => {
+    assert.equal(friendlyFirstName('jose anthony cardoso'), 'Jose');
+    assert.equal(friendlyFirstName('JAMES MARTIN'), 'James');
+    assert.equal(friendlyFirstName("Ronan O'Brien"), 'Ronan');
+    assert.equal(friendlyFirstName('Ewan McDonald'), 'Ewan');
+  });
+  it('bails on a business name', () => {
+    assert.equal(friendlyFirstName('James Martin Trading'), '');
+    assert.equal(friendlyFirstName('Alpha Cards Pty Ltd'), '');
+    assert.equal(friendlyFirstName('Southside Collectibles'), '');
+  });
+  it('bails on initials, handles, digits and junk', () => {
+    assert.equal(friendlyFirstName('J Martin'), '');
+    assert.equal(friendlyFirstName('J. Martin'), '');
+    assert.equal(friendlyFirstName('horse_divorce'), '');
+    assert.equal(friendlyFirstName('vanurb-12'), '');
+    assert.equal(friendlyFirstName(''), '');
+    assert.equal(friendlyFirstName(null), '');
+  });
+});
+
+describe('cardHook', () => {
+  it('keeps the card name and drops number, set, rarity and condition', () => {
+    assert.equal(cardHook('Pokemon Sprigatito ex 251/217 Ascended Heroes Ultra Rare Holo EN M/NM'), 'Sprigatito ex');
+    assert.equal(cardHook('Pokemon Mega Zeraora ex 027/084 Pitch Black Double Rare Holo EN M/NM'), 'Mega Zeraora ex');
+    assert.equal(cardHook('Pokemon Primarina 85 Abyss Eye Holo JP M/NM'), 'Primarina');
+    assert.equal(cardHook("Pokemon Misty's Spirit 108 Abyss Eye Super Rare Holo JP M/NM"), "Misty's Spirit");
+  });
+  it('bails on a title without the expected shape', () => {
+    assert.equal(cardHook('Mystery bundle, 10 assorted holos, see photos'), '');
+    assert.equal(cardHook('Pokemon'), '');
+    assert.equal(cardHook(''), '');
+  });
+});
+
+describe('shipByPhrase', () => {
+  const from = new Date('2026-07-30T06:00:00Z');   // Thu 16:00 Sydney
+  it('says "tomorrow" only when it really is the next calendar day', () => {
+    assert.equal(shipByPhrase({ date: '2026-07-31', weekday: 'Friday' }, from), 'tomorrow');
+  });
+  it('names the weekday when it is not', () => {
+    assert.equal(shipByPhrase({ date: '2026-08-03', weekday: 'Monday' }, from), 'on Monday');
+  });
+  it('empty when there is no next business day', () => {
+    assert.equal(shipByPhrase(null, from), '');
+  });
+});
+
+describe('fallbackDraft', () => {
+  const shipBy = { date: '2026-07-31', weekday: 'Friday' };
+  const now = new Date('2026-07-30T06:00:00Z');
+  const one = [{ title: 'Pokemon Sprigatito ex 251/217 Ascended Heroes Ultra Rare Holo EN M/NM', quantity: 1 }];
+
+  it('uses the name and the card when both are certain', () => {
+    const d = fallbackDraft({ order: { ship_name: 'James Martin' }, items: one, shipBy, now });
+    assert.equal(d.model, 'template');
+    assert.deepEqual(d.personalised, { name: true, card: true });
+    assert.match(d.body, /^Hey James, thanks/);
+    assert.match(d.body, /Glad you grabbed that Sprigatito ex\./);
+    assert.match(d.body, /posted tomorrow/);
+  });
+  it('still reads correctly with neither', () => {
+    const d = fallbackDraft({ order: { ship_name: 'Alpha Cards Pty Ltd' }, items: [], shipBy, now });
+    assert.deepEqual(d.personalised, { name: false, card: false });
+    assert.match(d.body, /^Hey, thanks so much for your purchase!/);
+    assert.doesNotMatch(d.body, /Glad you grabbed/);
+    assert.doesNotMatch(d.body, /\{\{/);            // no unfilled placeholders leak to the buyer
+  });
+  it('never names a card on a multi-item or multi-quantity order', () => {
+    const two = [...one, { title: 'Pokemon Yamper 099/094 Phantasmal Flames Illustration Rare Holo EN M/NM', quantity: 1 }];
+    assert.equal(fallbackDraft({ order: {}, items: two, shipBy, now }).personalised.card, false);
+    assert.equal(fallbackDraft({ order: {}, items: [{ ...one[0], quantity: 2 }], shipBy, now }).personalised.card, false);
+  });
+  it('passes the eBay contact guardrail in every combination', () => {
+    for (const order of [{ ship_name: 'James Martin' }, { ship_name: 'Alpha Cards Pty Ltd' }, {}]) {
+      for (const items of [one, [], [{ title: 'odd listing', quantity: 1 }]]) {
+        assert.ok(guardrailScrub(fallbackDraft({ order, items, shipBy, now }).body).clean);
+      }
+    }
+  });
+  it('honours a custom template from config', () => {
+    const d = fallbackDraft({
+      order: { ship_name: 'James Martin' }, items: one, shipBy, now,
+      cfg: { fallback_body: 'Yo{{name}}. {{card}}Posted {{ship_by}}. {{signature}}', fallback_card_line: 'Nice pickup on the {{card}}. ', signature: '-XX' },
+    });
+    assert.equal(d.body, 'Yo James. Nice pickup on the Sprigatito ex. Posted tomorrow. -XX');
   });
 });
