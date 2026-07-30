@@ -247,7 +247,22 @@ function runeFill(raw){
   if(!r)return false;
   const rawRarity=pr.variant==='a'?'Alternate Art':(r.rarity||'Common');
   const name=(r.name||(pr.dom+' Rune')).replace(/\s*\((Alternate Art|Overnumbered)\)\s*$/i,'');
-  set('f_name',name); set('f_set',curSetName()+' ('+curSetCode()+')'); set('f_num',pr.num);
+  // R## is the number printed on the REPRINT sets only. Origins prints its runes with ordinary
+  // collector numbers (007a Fury, 042a Calm, … 214a Order — the bake carries all 12, and no other
+  // set carries any), so `R01a` is a number Origins never prints. Decide the card's real number
+  // ONCE here and let the field, the identity_key, the image and the price all follow it:
+  //   · f_num reaches the buyer — the eBay description's "Card number" row said R01a for a card
+  //     reading 007a/298, and typing `7a` for the same card gave 007a/298, so the two entry paths
+  //     disagreed about one physical card.
+  //   · identity_key is what the collector re-fetches by. `OGN-R01a` matches nothing: the price
+  //     index, dotgg and the existing watchlist rows all use the printed form (OGN-7a Fury Rune).
+  //     Nothing had ever persisted an R## key, so there is no stored data to migrate.
+  // A reprint keeps R##[a] — there it IS the printed number, and the right identity.
+  const code=curSetCode().toUpperCase();
+  const _isOgn=code==='OGN';
+  const _printedNum=(_isOgn&&r.num)?String(r.num):pr.num;      // '007a/298' on OGN, else 'R01a'
+  const _idNum=(_isOgn&&r.num)?normNum(r.num):pr.num;          // '7a' on OGN, else 'R01a'
+  set('f_name',name); set('f_set',curSetName()+' ('+curSetCode()+')'); set('f_num',_printedNum);
   set('f_rarity',mapRarity(rawRarity)); set('f_variant',variantOf(rawRarity)); set('f_type',r.type||'Rune');
   set('f_domain',domainDisp(r.domain||pr.dom)); set('f_tags',''); set('f_finish',finishOf(rawRarity));
   set('f_e','');set('f_p','');set('f_m','');
@@ -255,15 +270,14 @@ function runeFill(raw){
   const st=document.getElementById('status'); st.className='status ok'; st.textContent='✓ '+name+'  ('+mapRarity(rawRarity)+')  · rune';
   render();
   if(window.TCG){
-    // Runes are reprinted in EVERY set with DIFFERENT art per set. The reprint sets
-    // (SFD/UNL/…) are keyed on dotgg's CDN as {SET}-R##[a]; Origins has no OGN-R## entry
-    // (its runes use the printed NNN[a] number), so there the baked OGN image (r.img) is
-    // the correct one. r.img is OGN's printing — the WRONG art for any reprint set — so it
+    // Runes are reprinted in EVERY set with DIFFERENT art per set. The reprint sets (SFD/UNL/…)
+    // are keyed on dotgg's CDN as {SET}-R##[a], Origins by its printed NNN[a] — which _printedNum
+    // now supplies for both, so the constructed URL is valid either way (it used to build a
+    // nonexistent OGN-R##). r.img is OGN's printing — the WRONG art for any reprint set — so it
     // must be an ERROR-ONLY fallback, never a raced display candidate: renderExtras races
     // display candidates by load speed, so the (valid) OGN image would routinely beat the
     // correct per-set art. Keep it out of the display list; attach it via onerror instead.
-    const code=curSetCode().toUpperCase();
-    const dg='https://static.dotgg.gg/riftbound/cards/'+code+'-'+pr.num+'.webp';
+    const dg=rbDotgg(code,_printedNum);
     const primary=code==='OGN'?(r.img||dg):dg;
     // Price, with the same per-set discipline as the art above. The TCGplayer index carries the
     // runes only under their ORIGINS printed numbers (OGN-7a Fury Rune) — the R## reprints are
@@ -271,14 +285,13 @@ function runeFill(raw){
     // and show NO price for a reprint rather than Origins' figure for different art.
     const _ex={name,images:[{label:'Front',display:[primary],download:primary}],prices:[],
       priceNote:'Fetching TCGplayer market price…',history:null};
-    const _ognNum=(code==='OGN'&&r.num&&/^\d/.test(String(r.num)))?String(r.num):null;
-    if(!_ognNum) _ex.priceNote='No TCGplayer price for a per-set rune reprint (it prices the Origins printing only) — run eBay AU comps.';
+    if(!_isOgn) _ex.priceNote='No TCGplayer price for a per-set rune reprint (it prices the Origins printing only) — run eBay AU comps.';
     TCG.renderExtras(document.getElementById('extras'),_ex);
-    if(_ognNum) rbPriceEnrich(document.getElementById('extras'),_ex,'OGN',_ognNum);
+    if(_isOgn) rbPriceEnrich(document.getElementById('extras'),_ex,'OGN',_idNum);
     const _ie=document.getElementById('tcg-img-0');   // fall back to the canonical OGN rune only if the per-set image 404s (never raced)
     if(_ie&&r.img&&r.img!==primary){_ie.onerror=function(){_ie.onerror=null;_ie.src=r.img;};}
   }
-  _trk={game:'riftbound',identity_key:curSetCode().toUpperCase()+'-'+pr.num,name:name,variant:val('f_finish'),price:null};
+  _trk={game:'riftbound',identity_key:code+'-'+_idNum,name:name,variant:val('f_finish'),price:null};
   regenTitle(); return true; }
 
 function readFields(){return {name:val('f_name'),set:val('f_set'),setName:curSetName(),

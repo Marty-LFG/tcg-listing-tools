@@ -53,12 +53,34 @@ describe('rbPriceEnrich — the identity-key trap', () => {
 });
 
 describe('rune reprints do not borrow the Origins price', () => {
+  const rune = extractFn(src, 'function runeFill');
   it('prices a rune only when the set is OGN', () => {
     // Runes are reprinted per set with DIFFERENT art; the index carries only the Origins printing.
     // Showing Origins' figure for an SFD reprint is the same class of error the image handling
     // directly above it goes out of its way to avoid.
-    const rune = extractFn(src, 'function runeFill');
-    assert.match(rune, /code===['"]OGN['"]/, 'rune pricing must be gated on the Origins set');
+    assert.match(rune, /_isOgn/, 'rune pricing must be gated on the Origins set');
+    assert.match(rune, /code===['"]OGN['"]|===['"]OGN['"]/);
     assert.match(rune, /rune reprint/i, 'a reprint must say why it has no price');
+  });
+
+  // An Origins rune is PRINTED 007a/298 — R## is the reprint sets' numbering only. The builder
+  // used to emit `R01a` for both the visible card number and the identity_key, so:
+  //   · the eBay description told buyers "Card number R01a" for a card reading 007a/298;
+  //   · typing `7a` and `R01a` for ONE physical card produced two different identities;
+  //   · identity `OGN-R01a` matched nothing — not the price index, not dotgg, not the watchlist
+  //     rows (which store `OGN-7a`), so a watched rune could never be re-priced.
+  it('an Origins rune takes its number from the canonical record, not R##', () => {
+    assert.match(rune, /_printedNum\s*=\s*\(_isOgn&&r\.num\)/, 'printed number must come from r.num on OGN');
+    assert.match(rune, /set\(['"]f_num['"],_printedNum\)/, 'the visible card number must use it');
+  });
+  it('the identity_key uses normNum of the printed number on OGN, never R##', () => {
+    assert.match(rune, /_idNum\s*=\s*\(_isOgn&&r\.num\)\?normNum\(r\.num\)/, 'identity must be normNum(r.num) on OGN');
+    assert.match(rune, /identity_key:code\+['"]-['"]\+_idNum/, 'the tracker key must use the resolved id number');
+    assert.ok(!/identity_key:\s*[^,]*\bpr\.num\b/.test(rune),
+      'identity_key must not be built from pr.num (the R## form) — it resolves to nothing downstream');
+  });
+  it('a reprint still keeps R##, where it IS the printed number', () => {
+    // Both fall back to pr.num when the set is not Origins — that is the correct identity there.
+    assert.match(rune, /:pr\.num;\s*\/\/.*OGN/i);
   });
 });

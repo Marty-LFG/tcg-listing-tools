@@ -159,7 +159,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `mtg-listing-builder.html` | Magic builder (Scryfall). |
 | `swu-listing-builder.html` | Star Wars: Unlimited builder (swu-db). |
 | `lorcana-listing-builder.html` | Disney Lorcana builder (Lorcast). Set-pills + number lookup (SWU pattern); one Lorcast call returns image + gameplay + `prices.{usd,usd_foil}`. Image + price panel and the PriceCharting graded ladder (`pcEnrich`, reuses `/api/pc`) render into `#extras`; eBay AUD comps overlay into `#ebayextras`. |
-| `riftbound-listing-builder.html` | Riftbound builder. Three interchangeable sources (`source` ∈ `offline`/`riftscribe`/`scrydex`): **offline** = baked `data/riftbound.json` (default, all 5 sets, keyless, images + stats); **riftscribe** = `/api/rbs` live keyless; **scrydex** = `/api/rb` (needs an ACTIVE paid key) for the price-trend graph only. **Market price is keyless on every lane** — `rbPriceEnrich()` overlays `/api/riftbound/prices` (TCGplayer) after each lookup and feeds `_trk.price`; it builds the index key with `normNum()` itself because the scrydex lane's own `_trk` key uses the number as typed. Runes price on OGN only (the reprints aren't in the index). eBay AUD comps overlay (`findRBComps`, renders into `#ebayextras`) works under any source. |
+| `riftbound-listing-builder.html` | Riftbound builder. Three interchangeable sources (`source` ∈ `offline`/`riftscribe`/`scrydex`): **offline** = baked `data/riftbound.json` (default, all 5 sets, keyless, images + stats); **riftscribe** = `/api/rbs` live keyless; **scrydex** = `/api/rb` (needs an ACTIVE paid key) for the price-trend graph only. **Market price is keyless on every lane** — `rbPriceEnrich()` overlays `/api/riftbound/prices` (TCGplayer) after each lookup and feeds `_trk.price`; it builds the index key with `normNum()` itself because the scrydex lane's own `_trk` key uses the number as typed. Runes price on OGN only (the reprints aren't in the index), and `runeFill()` resolves an Origins rune to its PRINTED number for the field, identity and image alike — `R01a` and `7a` both yield `OGN-7a`; `R##` survives only on the reprint sets that actually print it. eBay AUD comps overlay (`findRBComps`, renders into `#ebayextras`) works under any source. |
 | `lego-listing-builder.html` | LEGO set builder. Set-number lookup → Rebrickable (core) + Brickset (RRP/age) + BrickLink (new/used market price). LEGO condition/postage model + item-specifics block. |
 | `funko-listing-builder.html` | Funko Pop builder. **Hybrid** autocomplete — instant offline catalog + live eBay Browse search (post-2021 coverage; parses name/franchise/Pop#/image from listing titles) — + manual number/exclusive/flags; eBay Browse price comps. Funko condition/postage model + item-specifics block. |
 | `data/funko_pop.json` | Vendored, filtered Funko catalog (~11k Pop vinyls). Built by `scripts/build-funko-data.mjs` from the MIT `kennymkchan/funko-pop-data` dump. Frozen at 2021. Fetched same-origin (no proxy). |
@@ -434,12 +434,15 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
   their Origins printed numbers; the per-set `R##` reprints are separate
   TCGplayer products it skips. The builder prices a rune only on OGN and says so
   otherwise, rather than showing Origins' figure for different art.
-- **A watched rune can't be re-priced by the collector.** The builder's rune lane
-  writes `identity_key` as `OGN-R01a`, but the price index is keyed by printed
-  number (`OGN-7a`), so a rune added to the watchlist resolves to `no_price` on
-  refresh even though the builder displayed one. Pre-existing key-shape mismatch
-  (the existing watchlist rows use `OGN-7a`), not introduced by the price lane —
-  fixing it means changing rune identity semantics, which affects dedupe.
+- ~~A watched rune can't be re-priced by the collector.~~ **Fixed.** `R##` is the
+  numbering on the *reprint* sets only — Origins prints its runes `007a/298` etc
+  (the bake carries all 12; no other set carries any). `runeFill()` resolves the
+  card's real number once and uses it for the field, the `identity_key`, the
+  dotgg URL and the price, so typing `R01a` and `7a` on Origins now produce one
+  identical card (`OGN-7a`, matching the stored watchlist rows and the price
+  index) and the buyer-facing "Card number" row stops saying `R01a` for a card
+  that reads `007a/298`. A reprint keeps `SFD-R01a` — there it IS the printed
+  number. No migration was needed: no `R##` key had ever been persisted.
 - **Language tile + cached symbol combobox** exist only in the Pokémon builder so
   far; the others use a simpler picker and plain language field.
 - **Finish/printing can't be inferred** from the APIs (Holo vs Reverse Holo;
