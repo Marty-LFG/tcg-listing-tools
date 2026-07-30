@@ -233,8 +233,9 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/mtg` | `api.scryfall.com` | Adds `User-Agent` + `Accept`. No key. |
 | `/api/swu` | swu-db API | No key. |
 | `/api/lorcana` | `api.lorcast.com/v0` | Keyless Disney Lorcana API. One call returns image + gameplay + `prices.{usd,usd_foil}` (USD, daily). No key. |
-| `/api/rb`  | `api.scrydex.com/riftbound/v1` | Injects `X-Api-Key` + `X-Team-ID` from `.env`. **Optional** — only for live Riftbound pricing + trend; coverage comes from baked data / riftscribe. |
+| `/api/rb`  | `api.scrydex.com/riftbound/v1` | Injects `X-Api-Key` + `X-Team-ID` from `.env`. **Optional, and currently `402 SUBSCRIPTION_INACTIVE`** — the subscription lapsed, so this serves nothing. Still the `lookupPath()` target for the card RECORD (name/images). Prices moved to `/api/riftbound/prices`. |
 | `/api/rbs` | `riftscribe.gg/api` | Keyless community Riftbound card API (live alternative to Scrydex). No key. |
+| `/api/riftbound/prices/:key` | (middleware, `lib/riftbound-prices.mjs`) | **Keyless Riftbound market prices** from the baked `data/riftbound-prices.json` (TCGplayer public search API). The collector's `pricePath()` target — replaced Scrydex after its 402. NOT named `/api/rbp`: the `/api/rb` proxy prefix-matches and would swallow it. 200 priced · 404 no price yet · 503 index never baked. |
 | `/api/fx`  | `api.frankfurter.app` | FX rates for AUD conversion. No key. |
 | `/api/img` | (middleware) | Streams any remote image same-origin so the browser can blob-download it. |
 | `/api/lego/rebrickable` | `rebrickable.com/api/v3/lego` | Injects `Authorization: key <REBRICKABLE_API_KEY>`. LEGO set/minifig lookup. |
@@ -419,9 +420,14 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
 ## 10. Known limitations & roadmap
 
 - **Production hosting** needs a backend (proxies are dev-only — Golden Rule 1).
-- **Riftbound price graph** is reconstructed from Scrydex *trend deltas*, not a
-  true daily series. Scrydex exposes a price-history endpoint that could be wired
-  to `/api/rb` for real history.
+- **Riftbound price graph** no longer has Scrydex *trend deltas* to reconstruct
+  from — that subscription lapsed (402) and prices now come from the keyless
+  TCGplayer bake, which carries no trend percentages. The graph falls back to
+  deltas computed from local `price_snapshots`, so it fills in as history
+  accrues (one point per collector pass) rather than being available instantly.
+- **The Riftbound builder's `scrydex` source** is dead while the subscription is
+  inactive; `offline` (default) and `riftscribe` are unaffected. The builder has
+  not been repointed at `/api/riftbound/prices` — only the collector was.
 - **Language tile + cached symbol combobox** exist only in the Pokémon builder so
   far; the others use a simpler picker and plain language field.
 - **Finish/printing can't be inferred** from the APIs (Holo vs Reverse Holo;
@@ -496,8 +502,12 @@ review queue.
 `GET /cache/:id` (raw payload), `GET /export` (the Claude bundle), `GET /config`.
 
 **Key formats** (what the collector re-fetches by): Riftbound `OGN-296`, MTG `neo-1`,
-Pokémon `sv4-25`, SWU `sor/010`. Riftbound prices need valid Scrydex creds — a 401/403
-sets `last_error='scrydex_unauthorized'` and the card tracks without a price.
+Pokémon `sv4-25`, SWU `sor/010`. Riftbound prices are **keyless** now — the collector uses
+`pricePath()` (→ `/api/riftbound/prices`), not `lookupPath()`, because Scrydex went 402
+`SUBSCRIPTION_INACTIVE` and was the game's only price source. A missing bake sets
+`last_error='rb_index_missing'`; the `scrydex_unauthorized`/`scrydex_inactive` codes remain for a
+reactivated subscription. ⚠ The whole watchlist is Riftbound, so if that one lane breaks,
+`price_snapshots` stops accruing for **every** game — that is how it sat empty until 2026-07-30.
 
 **`node:sqlite`** (built-in, Node 24) keeps deps vite-only; the launcher passes
 `--disable-warning=ExperimentalWarning`. Fallback is `better-sqlite3` — change only the
