@@ -1,10 +1,10 @@
 // test/unit/telegram.test.mjs — Telegram client formatting + degradation (lib/telegram.mjs).
 // No network: every call short-circuits before fetch when TELEGRAM_BOT_TOKEN is unset (GR7).
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   escapeHtml, telegramEnabled, telegramChatConfigured, sendMessage, editMessageText,
-  isAllowedUser, parseUserIds, denyCallbackText,
+  isAllowedUser, parseUserIds, denyCallbackText, sendCard, CAPTION_LIMIT,
 } from '../../lib/telegram.mjs';
 
 describe('escapeHtml', () => {
@@ -93,5 +93,54 @@ describe('denyCallbackText', () => {
   });
   it('degrades when the id is missing', () => {
     assert.match(denyCallbackText(undefined, 'Repricer'), /unknown/);
+  });
+});
+
+// --- sendCard: photo vs text ---
+// Telegram caps a caption at 1024 chars but a message at 4096. A post-sale card carries the whole
+// buyer message, so it routinely exceeds the caption limit — losing the picture is fine, losing the
+// end of the message is not.
+describe('sendCard chooses photo or text', () => {
+  const ENV = { TELEGRAM_BOT_TOKEN: 'tok', TELEGRAM_CHAT_ID: '-100' };
+  const realFetch = globalThis.fetch;
+  let calls = [];
+  const stub = (ok = true) => {
+    calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      calls.push({ method: String(url).split('/').pop(), body: JSON.parse(opts.body || '{}') });
+      return { ok: true, status: 200, text: async () => JSON.stringify(ok ? { ok: true, result: { message_id: 1 } } : { ok: false, description: 'bad photo' }) };
+    };
+  };
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  it('sends a photo when there is an image and the text fits a caption', async () => {
+    stub();
+    const r = await sendCard(ENV, { chatId: '-100', photo: 'https://img/x.jpg', text: 'short' });
+    assert.equal(calls[0].method, 'sendPhoto');
+    assert.equal(calls[0].body.caption, 'short');
+    assert.equal(r.photo, true);
+  });
+
+  it('falls back to text when the body is longer than a caption can hold', async () => {
+    stub();
+    const long = 'x'.repeat(CAPTION_LIMIT + 1);
+    const r = await sendCard(ENV, { chatId: '-100', photo: 'https://img/x.jpg', text: long });
+    assert.equal(calls[0].method, 'sendMessage');
+    assert.equal(calls[0].body.text.length, CAPTION_LIMIT + 1, 'the message must not be truncated');
+    assert.equal(r.photo, false);
+  });
+
+  it('sends text when there is no image', async () => {
+    stub();
+    await sendCard(ENV, { chatId: '-100', text: 'no picture' });
+    assert.equal(calls[0].method, 'sendMessage');
+  });
+
+  it('retries as text when the image itself is rejected, so the decision still lands', async () => {
+    stub(false);
+    const r = await sendCard(ENV, { chatId: '-100', photo: 'https://img/broken.jpg', text: 'short' });
+    assert.deepEqual(calls.map((c) => c.method), ['sendPhoto', 'sendMessage']);
+    assert.equal(r.photo, false);
+    assert.match(r.photo_failed, /bad photo/);
   });
 });

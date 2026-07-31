@@ -313,3 +313,16 @@ describe('postsale — manual approval-card push', () => {
     assert.ok(r.json.message, 'should still echo the message row back');
   });
 });
+
+// A card carries live-looking Send/Skip buttons. Pushing one for a decision that is already made
+// would put a lie in the chat: the buttons answer "Already <status>" and nothing can act on them.
+describe('postsale — push-card refuses a message in a terminal state', () => {
+  it('409s once the message has been skipped', async () => {
+    const msgs = await get('/api/postsale/messages');
+    const m = msgs.json.messages.find((x) => x.order_id === 'FB-2');
+    assert.equal((await post('/api/postsale/messages/' + m.id + '/skip')).status, 200);
+    const r = await post('/api/postsale/messages/' + m.id + '/push-card');
+    assert.equal(r.status, 409);
+    assert.match(r.json.error, /cannot push a card for a message that is skipped/);
+  });
+});
