@@ -394,6 +394,8 @@
     {label:'Backfill orders',path:'/api/postsale/backfill?months=60',tip:'Pull recent eBay orders (the last ~90 days — eBay\'s Trading API limit) into the dashboard. Data only — past buyers are never auto-messaged.'},
     {label:'Draft pending messages',path:'/api/postsale/process',tip:'Draft every message still sitting at <b>pending</b>, without waiting for the next order poll. In approve mode each one lands as an approval card; nothing is sent to a buyer without your OK.'},
     {label:'Send pack digest',path:'/api/postsale/digest/pack',tip:'Push the “📦 to pack today” Telegram digest right now, ignoring the digest hour and the once-a-day guard. Handy for checking Telegram is wired up.'},
+    {label:'Repricer scan (10)',path:'/api/repricer/scan?limit=10',tip:'Price the first 10 active listings against the market and record what it would do. <b>Read-only</b> — writes no price and creates no proposal. Spends one eBay lookup + one comps search per listing, so it is capped at 10; read the results under Repricer below.'},
+    {label:'Repricer scan (all)',path:'/api/repricer/scan',tip:'Price EVERY active listing. Still read-only, but it spends roughly two eBay calls per listing and takes a few minutes — use the 10-listing version first.'},
     {label:'Refresh baked data',path:'/api/status/refresh',tip:'Re-bake all enabled catalogs now — picks up a just-pushed seed change without waiting for the interval.'},
     {label:'Run collector pass',path:'/api/status/collect',tip:'Force one price-collector pass now. May bill metered sources (e.g. Scrydex).'},
     {label:'Backup now',path:'/api/status/backup',tip:'Snapshot the money-bearing databases immediately (VACUUM INTO + rotate).'},
