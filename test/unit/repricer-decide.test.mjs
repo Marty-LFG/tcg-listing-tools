@@ -6,7 +6,7 @@
 // scan ships a wrong price.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decideReprice, eligibleForReprice, DEFAULT_GUARDRAILS } from '../../lib/repricer-decide.mjs';
+import { decideReprice, eligibleForReprice, scaleBestOfferCents, DEFAULT_GUARDRAILS } from '../../lib/repricer-decide.mjs';
 
 const listing = (over = {}) => ({
   listingId: '168537104622', title: 'Pokemon Wailord ex 016/084 Pitch Black Double Rare Holo EN M/NM',
@@ -275,5 +275,68 @@ describe('decideReprice — purity', () => {
     const b = decide({ listing: l, identity: i, comps: c });
     assert.deepEqual(a, b);
     assert.equal(JSON.stringify({ l, i, c }), before, 'inputs must not be mutated');
+  });
+});
+
+// --- Phase 5: the Best Offer floor arithmetic ---------------------------------------------------
+// The owner set a DISCOUNT, not a dollar amount: A$8 auto-accept on a A$10 listing means "20% off is
+// fine". Raise to A$15 and leave the floor and that becomes 47% off — the same intent silently
+// re-expressed as a much worse deal. Scaling by the price ratio is what preserves what they chose.
+describe('scaleBestOfferCents — the floor keeps its ratio to the price', () => {
+  it('moves the auto-accept by the same multiple as the price', () => {
+    const r = scaleBestOfferCents({ fromPriceCents: 1000, toPriceCents: 1500, autoAcceptCents: 800 });
+    assert.equal(r.autoAcceptCents, 1200, '80% of list before, 80% of list after');
+    assert.equal(r.ratio, 1.5);
+  });
+  it('moves the auto-decline minimum too', () => {
+    const r = scaleBestOfferCents({ fromPriceCents: 1000, toPriceCents: 1500, autoAcceptCents: 800, minOfferCents: 600 });
+    assert.deepEqual([r.autoAcceptCents, r.minOfferCents], [1200, 900]);
+  });
+  it('reports nothing to move when no threshold is set', () => {
+    const r = scaleBestOfferCents({ fromPriceCents: 1000, toPriceCents: 1500 });
+    assert.deepEqual([r.autoAcceptCents, r.minOfferCents], [null, null]);
+    // …and a zero is "not set", not a floor of A$0.00 — that would auto-accept anything.
+    assert.equal(scaleBestOfferCents({ fromPriceCents: 1000, toPriceCents: 1500, autoAcceptCents: 0 }).autoAcceptCents, null);
+  });
+
+  // AGENTS.md §15 applies to the floor as much as to the price.
+  it('refuses to compute anything for a cut or a no-op', () => {
+    for (const to of [1000, 900, 0]) {
+      const r = scaleBestOfferCents({ fromPriceCents: 1000, toPriceCents: to, autoAcceptCents: 800 });
+      assert.equal(r.autoAcceptCents, null, 'to=' + to);
+      assert.equal(r.ratio, null);
+    }
+  });
+  it('never lets rounding walk a floor downwards', () => {
+    for (let from = 100; from <= 4000; from += 23) {
+      for (const mult of [1.001, 1.01, 1.1, 1.4]) {
+        const to = Math.round(from * mult);
+        if (to <= from) continue;
+        for (const frac of [0.5, 0.8, 0.95, 1]) {
+          const cur = Math.round(from * frac);
+          const r = scaleBestOfferCents({ fromPriceCents: from, toPriceCents: to, autoAcceptCents: cur });
+          if (r.autoAcceptCents == null) continue;
+          assert.ok(r.autoAcceptCents >= cur, `floor went down: ${cur} -> ${r.autoAcceptCents}`);
+          assert.ok(r.autoAcceptCents <= to, `floor above list: ${r.autoAcceptCents} > ${to}`);
+        }
+      }
+    }
+  });
+  it('keeps auto-accept at or above the auto-decline minimum, which eBay requires', () => {
+    // Equal thresholds can cross on independent rounding; the result must still be a valid pair.
+    const r = scaleBestOfferCents({ fromPriceCents: 333, toPriceCents: 397, autoAcceptCents: 333, minOfferCents: 333 });
+    assert.ok(r.autoAcceptCents >= r.minOfferCents, JSON.stringify(r));
+  });
+});
+
+describe('bestOfferScaling — the guardrail that unlocks Phase 5', () => {
+  it('is OFF by default, so an auto-accept is still refused', () => {
+    assert.equal(DEFAULT_GUARDRAILS.bestOfferScaling, false);
+    const e = eligibleForReprice(listing({ bestOfferAutoAcceptCents: 800 }), identity());
+    assert.equal(e.code, 'best_offer_auto_accept');
+  });
+  it('lets the listing through once the apply path can move the floor', () => {
+    const e = eligibleForReprice(listing({ bestOfferAutoAcceptCents: 800 }), identity(), { bestOfferScaling: true });
+    assert.equal(e.ok, true);
   });
 });

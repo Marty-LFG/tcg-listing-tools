@@ -14,16 +14,23 @@ const DB_PATH = path.join(os.tmpdir(), 'tcg-revise-test-' + process.pid + '.db')
 process.env.TCG_TRACKER_DB = DB_PATH;
 const { openDb } = await import('../../lib/db.mjs');
 const { reviseTradingListing, PRICE_SANITY_MULTIPLE } = await import('../../lib/listings.mjs');
-const { buildReviseInventoryStatusInner } = await import('../../lib/ebay-trading.mjs');
+const { buildReviseInventoryStatusInner, buildReviseFixedPriceItemInner } = await import('../../lib/ebay-trading.mjs');
 
 const ENV = { EBAY_APP_ID: 'PRD-x', EBAY_CERT_ID: 'PRD-y', EBAY_REFRESH_TOKEN: 'fake' };
 const realFetch = globalThis.fetch;
 let db, sent = [];
 
 // eBay's GetItem view of a listing. Quantity is the TOTAL (available + sold), as eBay reports it.
-function liveItem({ total = 3, sold = 2, price = '32.48', type = 'FixedPriceItem', status = 'Active' } = {}) {
+function liveItem({ total = 3, sold = 2, price = '32.48', type = 'FixedPriceItem', status = 'Active',
+  autoAccept = null, minOffer = null } = {}) {
+  const details = [
+    autoAccept == null ? '' : `<BestOfferAutoAcceptPrice currencyID="AUD">${autoAccept}</BestOfferAutoAcceptPrice>`,
+    minOffer == null ? '' : `<MinimumBestOfferPrice currencyID="AUD">${minOffer}</MinimumBestOfferPrice>`,
+  ].join('');
   return `<GetItemResponse><Ack>Success</Ack><Item><ItemID>9001</ItemID><Title>Wailord</Title><SKU>AAC-084</SKU>
     <ListingType>${type}</ListingType><Quantity>${total}</Quantity>
+    ${details ? `<ListingDetails>${details}</ListingDetails>` : ''}
+    ${autoAccept == null ? '' : '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>'}
     <SellingStatus><CurrentPrice currencyID="AUD">${price}</CurrentPrice><QuantitySold>${sold}</QuantitySold>
     <ListingStatus>${status}</ListingStatus></SellingStatus></Item></GetItemResponse>`;
 }
@@ -211,5 +218,98 @@ describe('applyReprice — up-only enforcement at the moment of the tap', () => 
     assert.equal(r.ok, false);
     assert.match(r.error, /price moved/);
     assert.equal(revised(), undefined);
+  });
+});
+
+// --- Phase 5: carrying the Best Offer floor up with the price -----------------------------------
+//
+// Auto-accept is an ABSOLUTE amount set at publish, and it is on 103 of 161 live listings. Raising
+// the price and leaving it alone turns the discount the owner agreed to into a much bigger one, so a
+// raise either moves the floor with it or does not happen at all.
+//
+// The write is ReviseFixedPriceItem because ReviseInventoryStatus cannot express Best Offer terms.
+// What the app cannot prove from here is that eBay accepts the thresholds in this container — and
+// eBay's failure mode for a field it does not want is to accept the call and IGNORE it. Hence the
+// read-back, and the revert.
+describe('reviseTradingListing — Best Offer floors move with the price (bestOffer:"scale")', () => {
+  const fixed = () => sent.find((s) => s.call === 'ReviseFixedPriceItem');
+
+  // GetItem answers differently before and after the write, which is the only way to exercise a
+  // verify step at all: one canned response can never show a value having changed.
+  function stubSeq(preflight, verify, { reviseAck = 'Success' } = {}) {
+    sent = [];
+    let gets = 0;
+    globalThis.fetch = async (url, opts = {}) => {
+      if (String(url).includes('/oauth2/token')) return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 't', expires_in: 7200 }) };
+      const call = (opts.headers && opts.headers['X-EBAY-API-CALL-NAME']) || '';
+      sent.push({ call, body: String(opts.body || '') });
+      if (call === 'GetItem') { gets++; return { ok: true, status: 200, text: async () => (gets === 1 ? preflight : verify) }; }
+      return { ok: true, status: 200, text: async () => `<${call}Response><Ack>${reviseAck}</Ack></${call}Response>` };
+    };
+  }
+
+  it('builds ListingDetails only for the thresholds it was given', () => {
+    const both = buildReviseFixedPriceItemInner({ itemId: '9001', priceCents: 4000, autoAcceptCents: 3000, minOfferCents: 2000 });
+    assert.match(both, /<ListingDetails><BestOfferAutoAcceptPrice>30\.00<\/BestOfferAutoAcceptPrice><MinimumBestOfferPrice>20\.00<\/MinimumBestOfferPrice><\/ListingDetails>/);
+    assert.doesNotMatch(buildReviseFixedPriceItemInner({ itemId: '9001', priceCents: 4000 }), /ListingDetails/);
+    assert.doesNotMatch(buildReviseFixedPriceItemInner({ itemId: '9001', priceCents: 4000, autoAcceptCents: 3000 }), /MinimumBestOffer/);
+  });
+
+  it('scales the floor by the price ratio and sends it on ReviseFixedPriceItem', async () => {
+    // A$32.48 → A$40.00 is 1.2315×; a A$25.00 auto-accept goes to A$30.79.
+    stubSeq(liveItem({ price: '32.48', autoAccept: '25.00' }), liveItem({ price: '40.00', autoAccept: '30.79' }));
+    const r = await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 4000, bestOffer: 'scale' });
+    assert.equal(r.ok, true);
+    assert.ok(fixed(), 'a floor move cannot go on ReviseInventoryStatus');
+    assert.match(fixed().body, /<StartPrice>40\.00<\/StartPrice>/);
+    assert.match(fixed().body, /<BestOfferAutoAcceptPrice>30\.79<\/BestOfferAutoAcceptPrice>/);
+    assert.deepEqual(r.bestOfferMoved, { from: 2500, to: 3079 });
+  });
+
+  // The one that matters. eBay accepting the call is NOT evidence the floor moved.
+  it('reverts the price when eBay takes the raise but ignores the floor', async () => {
+    stubSeq(liveItem({ price: '32.48', autoAccept: '25.00' }),
+      liveItem({ price: '40.00', autoAccept: '25.00' }));      // floor did not budge
+    const r = await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 4000, bestOffer: 'scale' });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'best_offer_floor_not_applied');
+    assert.equal(r.reverted, true);
+    // A revert is the whole point: the listing must not be left at A$40 auto-accepting A$25.
+    const back = sent.filter((s) => s.call === 'ReviseInventoryStatus');
+    assert.equal(back.length, 1, 'exactly one revert');
+    assert.match(back[0].body, /<StartPrice>32\.48<\/StartPrice>/, 'back to the preflight price');
+  });
+
+  it('says so loudly when the revert itself fails', async () => {
+    sent = [];
+    let gets = 0;
+    globalThis.fetch = async (url, opts = {}) => {
+      if (String(url).includes('/oauth2/token')) return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 't', expires_in: 7200 }) };
+      const call = (opts.headers && opts.headers['X-EBAY-API-CALL-NAME']) || '';
+      sent.push({ call, body: String(opts.body || '') });
+      if (call === 'GetItem') { gets++; return { ok: true, status: 200, text: async () => (gets === 1 ? liveItem({ price: '32.48', autoAccept: '25.00' }) : liveItem({ price: '40.00', autoAccept: '25.00' })) }; }
+      if (call === 'ReviseInventoryStatus') return { ok: true, status: 200, text: async () => '<ReviseInventoryStatusResponse><Ack>Failure</Ack><Errors><ErrorCode>1</ErrorCode><SeverityCode>Error</SeverityCode><ShortMessage>nope</ShortMessage></Errors></ReviseInventoryStatusResponse>' };
+      return { ok: true, status: 200, text: async () => `<${call}Response><Ack>Success</Ack></${call}Response>` };
+    };
+    const r = await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 4000, bestOffer: 'scale' });
+    assert.equal(r.ok, false);
+    assert.equal(r.reverted, false);
+    assert.match(r.error, /REVERTING THE PRICE ALSO FAILED/);
+  });
+
+  it('leaves the lighter call alone when there is no floor to move', async () => {
+    stubSeq(liveItem({ price: '32.48' }), liveItem({ price: '40.00' }));   // Best Offer not set at all
+    const r = await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 4000, bestOffer: 'scale' });
+    assert.equal(r.ok, true);
+    assert.ok(!fixed(), 'nothing to scale → stay on ReviseInventoryStatus');
+    assert.equal(r.bestOfferMoved, null);
+  });
+
+  it('does not touch Best Offer unless asked (the default)', async () => {
+    stubSeq(liveItem({ price: '32.48', autoAccept: '25.00' }), liveItem({ price: '40.00', autoAccept: '25.00' }));
+    const r = await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 4000 });
+    assert.equal(r.ok, true, 'default path is unchanged by Phase 5');
+    assert.ok(!fixed());
+    assert.equal(sent.filter((s) => s.call === 'ReviseInventoryStatus').length, 1);
   });
 });
