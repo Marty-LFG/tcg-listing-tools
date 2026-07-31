@@ -14,7 +14,7 @@ const listing = (over = {}) => ({
   listingType: 'FixedPriceItem', state: 'active', createdVia: 'manual',
   bestOffer: false, discountPricing: false, isVariation: false, ...over,
 });
-const identity = (over = {}) => ({ confidence: 'medium', game: 'pokemon', name: 'Wailord ex', number: '016/084', ...over });
+const identity = (over = {}) => ({ game: 'Pokemon', name: 'Wailord ex', number: '016/084', numberSafe: true, ...over });
 const comps = (over = {}) => ({
   matched: true, reliable: true, mode: 'asking', comparable: 20, sampleSize: 30,
   confidence: 'medium', recommended: 12.00, cheapest: 12.01, fair: 13.0, clusterRange: [12.0, 14.0],
@@ -116,15 +116,21 @@ describe('trap 2 — snapToEnding can erase (or invert) an uplift', () => {
 
 // --- trap 3: an unparseable title must never be comped ------------------------------------------
 describe('trap 3 — identity is the gate on comps precision', () => {
-  it('skips when parseCardTitle could not identify the card', () => {
-    // buildNumberRe('039a/298') compiles to /\b0*39\b/ — it fails to match the card's own title and
-    // matches "Mewtwo 39 Promo". parseCardTitle reports confidence:'none' for exactly these, so it
-    // is the gate.
-    for (const conf of ['none', null, undefined]) {
-      const r = decide({ identity: identity({ confidence: conf }) });
+  it('skips when the collector number cannot drive the comps filter', () => {
+    // buildNumberRe('039a/298') compiles to /\b0*39\b/ — it fails to match the card's own number and
+    // matches "Mewtwo 39 Promo". The scan self-tests that regex against the number and reports
+    // numberSafe:false for exactly those shapes, which is the gate here.
+    for (const over of [{ numberSafe: false }, { number: null }, { number: null, numberSafe: true }]) {
+      const r = decide({ identity: identity(over) });
       assert.equal(r.verdict, 'skip');
       assert.equal(r.code, 'title_unparseable');
     }
+  });
+  it('does NOT gate on parseCardTitle confidence, which reads "none" for good titles', () => {
+    // parseCardTitle needs a per-game SET list to reach any confidence above 'none', and the scan
+    // does not have one — so a perfectly good "Pokemon Wailord ex 016/084 …" parses to 'none'.
+    // Gating on confidence would have skipped every listing in the store, silently.
+    assert.equal(decide({ identity: identity({ confidence: 'none' }) }).verdict, 'raise');
   });
   it('skips a listing whose game could not be determined', () => {
     const r = decide({ identity: identity({ game: null }) });
