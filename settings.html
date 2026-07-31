@@ -360,7 +360,7 @@
     // Databases
     const t=dbs.tracker||{}, inv=dbs.inventory||{}, rep=dbs.repricer||{};
     box.appendChild(vital('ok','Databases','Healthy',
-      esc(t.watchlist??0)+' watched · '+esc(inv.items??0)+' stock · '+esc((psd.orders??0))+' orders · '+esc(rep.listings??0)+' listings'));
+      esc(t.watchlist??0)+' watched · '+esc(inv.items??0)+' stock · '+esc((psd.orders??0))+' orders · '+esc(rep.price_checks??0)+' price checks'));
   }
 
   /* ---------------- background systems table ---------------- */

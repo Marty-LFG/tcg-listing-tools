@@ -176,7 +176,7 @@ describe('expectPriceCents — the stale-card guard', () => {
 });
 
 describe('applyReprice — up-only enforcement at the moment of the tap', () => {
-  const proposal = (from, to) => ({ item_id: '9001', from_price: from, to_price: to });
+  const proposal = (from, to) => ({ item_id: '9001', from_price_cents: Math.round(from * 100), to_price_cents: Math.round(to * 100) });
   const upOnly = { guardrails: { never_decrease: true } };
 
   it('refuses a decrease without touching eBay', async () => {
