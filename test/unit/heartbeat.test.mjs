@@ -51,3 +51,29 @@ describe('heartbeat liveness canary', () => {
     assert.equal(globalThis.__tcgHeartbeatTimer ?? null, null);
   });
 });
+
+// The repricer scan joins the canary. A dead scan is INVISIBLE — nothing arrives to be missed, so
+// the first symptom would be nobody wondering why no cards ever come. But switching it off in
+// settings is the owner's choice and must stay silent, or the canary cries wolf every 15 minutes
+// and masks a real collector stall.
+describe('evalHealth — the repricer scan', () => {
+  const base = { collector: true, refresh: true, refreshEnabled: true };
+  it('stays quiet when scanning is switched off', () => {
+    const r = evalHealth({ ...base, scan: false, scanEnabled: false });
+    assert.equal(r.ok, true);
+    assert.match(r.detail, /repricer_scan=disabled/);
+  });
+  it('alarms when scanning is ENABLED but the loop is not running', () => {
+    const r = evalHealth({ ...base, scan: false, scanEnabled: true });
+    assert.equal(r.ok, false);
+    assert.match(r.detail, /repricer_scan=STOPPED/);
+  });
+  it('is healthy when enabled and running', () => {
+    const r = evalHealth({ ...base, scan: true, scanEnabled: true });
+    assert.equal(r.ok, true);
+    assert.match(r.detail, /repricer_scan=up/);
+  });
+  it('a stopped scan never masks a stopped collector', () => {
+    assert.equal(evalHealth({ collector: false, refresh: true, refreshEnabled: true, scan: true, scanEnabled: true }).ok, false);
+  });
+});

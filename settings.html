@@ -381,6 +381,9 @@
     const bk=j.backup||{}; h+=sysRow('DB backups','VACUUM-INTO snapshots',bk.running,bk.last_run&&(bk.last_run.finished_at||bk.last_run.at)||bk.last_backup_at,bk.next_run_at);
     const sv=j.sealed_value||{}; h+=sysRow('Sealed revaluation','nightly sealed value refresh',sv.running,sv.last_run&&(sv.last_run.finished_at||sv.last_run.at),sv.next_run_at);
     const lr=j.listing_reconcile||{}; h+=sysRow('Listing reconcile','marks ended/sold listings',lr.running,lr.last_run&&lr.last_run.at,lr.next_run_at);
+    // enabled?running:null — a config-disabled loop shows the amber "idle" pill, not a red "stopped",
+    // because the owner turning scanning off is not a fault.
+    const rs=j.repricer_scan||{}; h+=sysRow('Repricer scan','prices listings vs the market',rs.enabled?rs.running:null,rs.last_run&&(rs.last_run.finished_at||rs.last_run.at),rs.next_run_at);
     const hb=j.heartbeat||{}; h+=sysRow('Heartbeat','liveness canary',hb.running!==undefined?hb.running:true,hb.last_run&&(hb.last_run.at||hb.last_run.finished_at)||hb.last_beat_at,null);
     h+='</tbody>'; tb.innerHTML=h;
   }
