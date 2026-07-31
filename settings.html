@@ -539,6 +539,7 @@
       {p:'guardrails.min_uplift_aud',l:'Min uplift (A$)',t:'number',tip:'…and by at least this many AUD (whichever is stricter).'},
       {p:'guardrails.min_comparable',l:'Min comparables',t:'number',tip:'Require at least this many comparable sold listings before proposing a new price.'},
       {p:'guardrails.max_increase_pct_per_run',l:'Max rise %/run',t:'number',tip:'Cap any single raise to this % so a listing can’t jump wildly in one pass.'},
+      {p:'guardrails.required_confidence',l:'Min confidence',t:'select',opts:['medium','high','low'],tip:'How sure the comps have to be before a raise is proposed. <b>Sold comps are currently blocked by eBay</b>, so every lookup falls back to asking prices — which caps the score at “medium”. Setting this to “high” means nothing will ever be proposed. The real guard is that a proposal also needs the engine’s <i>reliable</i> flag and your minimum comparables.'},
       {p:'guardrails.proposal_ttl_hours',l:'Proposal TTL (h)',t:'number',tip:'How long a price proposal stays valid before it expires unapproved.'},
       {p:'telegram.digest_enabled',l:'Telegram digest',t:'toggle',tip:'Send the repricer proposal digest to Telegram.'},
       {p:'telegram.poll_enabled',l:'Telegram poll',t:'toggle',tip:'Run the Telegram approve/apply poll loop for repricer proposals.'},

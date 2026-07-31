@@ -21,8 +21,8 @@ describe('tracker.config.json', () => {
   });
 });
 
-describe('repricer.config.json', () => {
-  const c = cfg('repricer.config.json');
+describe('repricer.config.example.json', () => {
+  const c = cfg('repricer.config.example.json');   // repricer.config.json is gitignored (server-owned); validate the tracked template
   it('HARD INVARIANT: never_decrease stays true (AGENTS.md §15)', () => {
     assert.equal(c.guardrails.never_decrease, true);
   });

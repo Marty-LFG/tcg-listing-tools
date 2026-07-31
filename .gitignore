@@ -71,6 +71,11 @@ data/refresh.config.json
 # Post-sale automation runtime config — SERVER-OWNED (settings dashboard writes it). Re-seeded from
 # the tracked data/postsale.config.example.json on boot (lib/postsale.mjs ensureConfigSeeded).
 data/postsale.config.json
+# Repricer runtime config — SERVER-OWNED for the same reason. It was tracked until Phase 3, which
+# meant every settings save on the always-on box dirtied `git status` on a file a pull wants to
+# overwrite: exactly what forced skip-worktree onto refresh.config.json and then blocked pulls.
+# Re-seeded + key-backfilled from data/repricer.config.example.json (lib/repricer.mjs).
+data/repricer.config.json
 # eBay listing config — SERVER-OWNED. Holds the account's stable business-policy IDs + merchant
 # location (filled by POST /api/listings/account/bootstrap) + listing defaults; re-seeded from the
 # tracked data/ebay-listing.config.example.json on boot (lib/listings.mjs ensureConfigSeeded).
