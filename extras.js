@@ -710,14 +710,21 @@
     if (!q) { S('warn', 'Look up or enter a card first.'); return; }
     // filter: either a fixed opts.filter (e.g. Funko "conditions:{NEW}"), or a toggleable
     // set of opts.filterOptions [{key,label,filter}] with opts.filterKey selecting the active one.
-    var activeFilterKey = null, filt = '';
+    var activeFilterKey = null, rawFilt = '';
     if (opts.filterOptions && opts.filterOptions.length) {
       activeFilterKey = opts.filterKey || opts.filterOptions[0].key;
       var fo = opts.filterOptions.filter(function (o) { return o.key === activeFilterKey; })[0] || opts.filterOptions[0];
-      filt = fo.filter ? '&filter=' + encodeURIComponent(fo.filter) : '';
+      rawFilt = fo.filter || '';
     } else {
-      filt = opts.filter ? '&filter=' + encodeURIComponent(opts.filter) : '';
+      rawFilt = opts.filter || '';
     }
+    // Every comp figure here is DELIVERED (list + postage), and eBay AU Browse returns GLOBAL
+    // listings — so an overseas seller arrives with international freight baked into its "price".
+    // Measured on one live card: 78 of 102 comps were overseas at an average A$19.41 postage against
+    // A$1.18 for the 24 Australian ones, and the cluster settled on a US$2.33 card plus A$16.00 of
+    // air freight. Byte-identical to AU_ONLY in lib/comps.mjs (GR9, asserted by scripts/check-comps.mjs).
+    var AU_ONLY = 'itemLocationCountry:AU';
+    var filt = '&filter=' + encodeURIComponent(rawFilt ? rawFilt + ',' + AU_ONLY : AU_ONLY);
     act = TCG.activity('Searching eBay…');
     S('load', 'Searching eBay comps…');
     try {

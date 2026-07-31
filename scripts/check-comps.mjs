@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JUNK_RE, buildNumberRe, classifyLang, singlesFilter, recommendedFromCluster, isGraded, snapToEnding, ASK_ENDINGS } from '../lib/comps-singles.mjs';
-import { clusterValue } from '../lib/comps.mjs';
+import { clusterValue, AU_ONLY, askFilter } from '../lib/comps.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -21,6 +21,26 @@ const extras = read('extras.js');
 const m = extras.match(/var JUNK_RE = (\/.*?\/i);/);
 assert('extras.js JUNK_RE literal found', !!m, 'regex not located');
 if (m) assert('server JUNK_RE === browser JUNK_RE (byte-identical)', m[1] === JUNK_RE.toString(), 'browser=' + m[1] + '\n           server=' + JUNK_RE.toString());
+
+// Comps are DELIVERED prices and eBay AU Browse returns GLOBAL listings, so without a location clause
+// an overseas card arrives with its international postage counted as value — measured at A$19.41
+// average postage on 78 of 102 comps for one card, against A$1.18 for the 24 Australian ones. If the
+// browser engine and the server engine disagree about this, the listing builder and the repricer
+// value the same card differently, which is exactly what GR9 exists to prevent.
+console.log('\n[AU location filter parity (GR9)]');
+{
+  const bm = extras.match(/var AU_ONLY = '([^']+)';/);
+  assert('extras.js AU_ONLY literal found', !!bm, 'location filter missing from the browser engine');
+  if (bm) assert('server AU_ONLY === browser AU_ONLY', bm[1] === AU_ONLY, 'browser=' + bm[1] + ' server=' + AU_ONLY);
+  assert('askFilter appends to an existing clause', askFilter('buyingOptions:{FIXED_PRICE}') === 'buyingOptions:{FIXED_PRICE},' + AU_ONLY, askFilter('buyingOptions:{FIXED_PRICE}'));
+  assert('askFilter stands alone when there is no base clause', askFilter('') === AU_ONLY && askFilter(null) === AU_ONLY);
+  for (const name of ['lib/comps-singles.mjs', 'lib/comps.mjs']) {
+    const src = read(name);
+    assert(name + ' sends no unfiltered Browse/Insights query',
+      !src.includes("encodeURIComponent('buyingOptions:{FIXED_PRICE}')"),
+      'a raw buyingOptions filter bypasses the AU clause');
+  }
+}
 
 console.log('\n[buildNumberRe — padding tolerant both sides]');
 {
