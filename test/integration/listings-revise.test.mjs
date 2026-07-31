@@ -144,3 +144,72 @@ describe('reviseTradingListing — what it refuses', () => {
     assert.match(r.error, /Quantity must be greater than 0/);
   });
 });
+
+// --- the approve-then-apply guards (repricer Phase 4) ---
+// A Telegram card can sit for hours before someone taps it. These two guards are what stop a stale
+// tap from quietly undoing a change made in the meantime, or from cutting a price on an up-only tool.
+const { applyReprice } = await import('../../lib/repricer.mjs');
+
+describe('expectPriceCents — the stale-card guard', () => {
+  it('proceeds when eBay still agrees with the price the decision was made on', async () => {
+    stub({ item: liveItem({ price: '32.48' }) });
+    const r = await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 3500, expectPriceCents: 3248 });
+    assert.equal(r.ok, true);
+    assert.ok(revised(), 'the write should have gone out');
+  });
+
+  it('refuses, and sends NOTHING, when the price moved underneath it', async () => {
+    stub({ item: liveItem({ price: '40.00' }) });   // someone repriced after the card was built
+    const r = await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 3500, expectPriceCents: 3248 });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'price_moved');
+    assert.equal(r.currentPriceCents, 4000);
+    assert.match(r.error, /A\$32\.48/);             // what the card said
+    assert.match(r.error, /A\$40\.00/);             // what eBay says now
+    assert.equal(revised(), undefined, 'a stale apply must never reach eBay');
+  });
+
+  it('is opt-in — an ordinary revise is unaffected', async () => {
+    stub({ item: liveItem({ price: '40.00' }) });
+    assert.equal((await reviseTradingListing(ENV, db, { listingId: '9001', priceCents: 3500 })).ok, true);
+  });
+});
+
+describe('applyReprice — up-only enforcement at the moment of the tap', () => {
+  const proposal = (from, to) => ({ item_id: '9001', from_price: from, to_price: to });
+  const upOnly = { guardrails: { never_decrease: true } };
+
+  it('refuses a decrease without touching eBay', async () => {
+    stub();
+    const r = await applyReprice(ENV, proposal(32.48, 30.00), upOnly);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /up-only/);
+    assert.equal(sent.length, 0, 'a refused apply must not even read from eBay');
+  });
+
+  it('refuses a no-op (same price is not an increase)', async () => {
+    stub();
+    assert.equal((await applyReprice(ENV, proposal(32.48, 32.48), upOnly)).ok, false);
+  });
+
+  it('allows a decrease only when never_decrease is explicitly off', async () => {
+    stub({ item: liveItem({ price: '32.48' }) });
+    const r = await applyReprice(ENV, proposal(32.48, 30.00), { guardrails: { never_decrease: false } });
+    assert.equal(r.ok, true);
+  });
+
+  it('applies a genuine increase and reports eBay’s verified price', async () => {
+    stub({ item: liveItem({ price: '32.48' }) });
+    const r = await applyReprice(ENV, proposal(32.48, 35.00), upOnly);
+    assert.equal(r.ok, true);
+    assert.match(revised().body, /<StartPrice>35\.00<\/StartPrice>/);
+  });
+
+  it('passes the card price through as the precondition, so a moved listing is refused', async () => {
+    stub({ item: liveItem({ price: '40.00' }) });
+    const r = await applyReprice(ENV, proposal(32.48, 35.00), upOnly);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /price moved/);
+    assert.equal(revised(), undefined);
+  });
+});
