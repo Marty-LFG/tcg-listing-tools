@@ -4,7 +4,8 @@
 // paragraph you had to re-read to pull from.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shortTitle, renderPackDigest, renderSaleAlert } from '../../lib/telegram-cards.mjs';
+import { shortTitle, renderPullList, renderDispatchSummary, renderSaleAlert } from '../../lib/telegram-cards.mjs';
+import { buildPickSheet } from '../../lib/postsale.mjs';
 
 describe('shortTitle', () => {
   it('keeps name, number and set; drops game, rarity, finish, language, condition', () => {
@@ -27,41 +28,76 @@ describe('shortTitle', () => {
   });
 });
 
-describe('renderPackDigest', () => {
-  const order = (buyer, items, extra = {}) => ({
-    order_id: 'O-' + buyer, buyer_username: buyer, ship_city: 'Tapping', ship_state: 'WA',
-    picked_at: null, items: items.map((t) => ({ title: t, quantity: 1 })), ...extra,
+// The pull list is walked at the shelf, so what it must get right is the ORDER: box by box, and
+// within a box by SKU. It runs the real buildPickSheet() — the same function behind the printed pick
+// sheet — so these assert the shared contract rather than a second implementation of it.
+describe('renderPullList', () => {
+  const row = (order_id, sku, title, location, quantity = 1) => ({ order_id, sku, title, location, quantity });
+  const sheet = (rows) => buildPickSheet(rows, new Map());
+
+  it('groups by box and walks each box in SKU order, not buyer order', () => {
+    const ps = sheet([
+      row('B', 'AAC-012', 'Pokemon Delibird 152/132 Mega Evolution Holo EN M/NM', 'Box AAC'),
+      row('A', 'AAC-001', 'Pokemon Wailord ex 016/084 Pitch Black Holo EN M/NM', 'Box AAC'),
+      row('A', 'BKP-003', 'Pokemon Froakie 86 Ninja Spinner Holo JP M/NM', 'Box BKP'),
+    ]);
+    const t = renderPullList(ps.groups, { orderCount: 2, itemCount: ps.rows.length, unitCount: ps.unit_count });
+    assert.ok(t.indexOf('AAC-001') < t.indexOf('AAC-012'), 'SKUs must ascend within a box');
+    assert.ok(t.indexOf('Box AAC') < t.indexOf('Box BKP'));
+    assert.ok(t.indexOf('AAC-012') < t.indexOf('Box BKP'), 'a box must not be split across the list');
   });
 
-  it('gives each card its own line, grouped under its order', () => {
-    const t = renderPackDigest([order('amy', ['Pokemon Delibird 152/132 Mega Evolution Holo EN M/NM', 'Pokemon Naveen 112/088 Perfect Order Ultra Rare Holo EN M/NM'])]);
-    assert.match(t, /\n {2}Delibird 152\/132 Mega Evolution\n/);
-    assert.match(t, /\n {2}Naveen 112\/088 Perfect Order/);
-    assert.match(t, /@amy/);
+  it('puts the unmatched bucket last, so the guesswork is at the end of the walk', () => {
+    const ps = sheet([
+      row('A', null, 'Pokemon Naveen 112/088 Perfect Order Holo EN M/NM', null),
+      row('A', 'AAC-001', 'Pokemon Wailord ex 016/084 Pitch Black Holo EN M/NM', 'Box AAC'),
+    ]);
+    const t = renderPullList(ps.groups, {});
+    assert.ok(t.indexOf('Box AAC') < t.indexOf('Unsorted'));
   });
-  it('counts orders and cards, not just orders', () => {
-    const t = renderPackDigest([order('amy', ['a 1/1 Set Holo EN M/NM', 'b 2/2 Set Holo EN M/NM']), order('bob', ['c 3/3 Set Holo EN M/NM'])]);
-    assert.match(t, /2 orders · 3 cards/);
+
+  it('marks quantity above one — pulling two of something is the easy mistake', () => {
+    const ps = sheet([row('A', 'AAC-001', 'Pokemon Wailord ex 016/084 Pitch Black Holo EN M/NM', 'Box AAC', 3)]);
+    assert.match(renderPullList(ps.groups, {}), /×3/);
   });
-  it('flags an already-picked order and counts it', () => {
-    const t = renderPackDigest([order('amy', ['a 1/1 Set Holo EN M/NM'], { picked_at: '2026-07-31' })]);
-    assert.match(t, /1 already packed/);
+
+  it('counts lines and cards separately when they differ', () => {
+    const ps = sheet([row('A', 'AAC-001', 'a 1/1 Set Holo EN M/NM', 'Box AAC', 2)]);
+    const t = renderPullList(ps.groups, { orderCount: 1, itemCount: ps.rows.length, unitCount: ps.unit_count });
+    assert.match(t, /1 line · 2 cards/);
+  });
+
+  it('says so when there is nothing left to pull', () => {
+    assert.match(renderPullList([], { orderCount: 3 }), /Nothing to pull/);
+  });
+
+  it('stays under the Telegram limit and names what it dropped', () => {
+    const rows = Array.from({ length: 400 }, (_, i) =>
+      row('O' + i, 'BOX' + String(i).padStart(3, '0') + '-001', 'Pokemon Card ' + i + '/999 Some Long Set Name Illustration Rare Holo EN M/NM', 'Box ' + i));
+    const ps = sheet(rows);
+    const t = renderPullList(ps.groups, { orderCount: 400, itemCount: ps.rows.length, unitCount: ps.unit_count });
+    assert.ok(t.length <= 4096, 'must fit a Telegram message, got ' + t.length);
+    assert.match(t, /…and \d+ more lines/);
+  });
+});
+
+describe('renderDispatchSummary', () => {
+  const order = (buyer, n, extra = {}) => ({
+    buyer_username: buyer, ship_city: 'Tapping', ship_state: 'WA',
+    picked_at: null, items: Array.from({ length: n }, () => ({ quantity: 1 })), ...extra,
+  });
+  it('one line per order with destination and card count', () => {
+    const t = renderDispatchSummary([order('amy', 3), order('bob', 1)]);
+    assert.match(t, /@amy<\/b> · Tapping, WA · 3 cards/);
+    assert.match(t, /@bob<\/b> · Tapping, WA · 1 card/);
+  });
+  it('flags and counts orders already pulled', () => {
+    const t = renderDispatchSummary([order('amy', 1, { picked_at: '2026-07-31' }), order('bob', 1)]);
+    assert.match(t, /1 already pulled/);
     assert.match(t, /✅ <b>@amy/);
   });
-  it('shows quantity only when there is more than one', () => {
-    const o = order('amy', ['a 1/1 Set Holo EN M/NM']);
-    o.items[0].quantity = 3;
-    assert.match(renderPackDigest([o]), /×3/);
-    assert.doesNotMatch(renderPackDigest([order('bob', ['b 2/2 Set Holo EN M/NM'])]), /×1/);
-  });
-  it('stays under the Telegram limit and says what it dropped', () => {
-    const many = Array.from({ length: 200 }, (_, i) => order('buyer' + i, ['Pokemon Card ' + i + '/999 Some Long Set Name Illustration Rare Holo EN M/NM']));
-    const t = renderPackDigest(many);
-    assert.ok(t.length <= 4096, 'must fit a Telegram message, got ' + t.length);
-    assert.match(t, /…and \d+ more orders/);
-  });
-  it('handles an empty list without throwing', () => {
-    assert.match(renderPackDigest([]), /0 orders/);
+  it('sums quantity, not line count', () => {
+    assert.match(renderDispatchSummary([{ buyer_username: 'amy', items: [{ quantity: 4 }] }]), /4 cards/);
   });
 });
 
