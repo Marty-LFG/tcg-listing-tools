@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   xmlField, xmlFieldAll, xmlErrors,
-  xmlEscape, centsToXmlPrice, compatLevel, siteId,
+  xmlEscape, centsToXmlPrice, xmlMoneyCents, compatLevel, siteId,
   buildTradingBody, buildTradingHeaders,
   buildReviseInventoryStatusInner, buildReviseFixedPriceItemInner,
 } from '../../lib/ebay-trading.mjs';
@@ -90,5 +90,31 @@ describe('Phase-4 price-write inner builders (pure)', () => {
   });
   it('itemId is XML-escaped (defense against a hostile/odd ItemID)', () => {
     assert.match(buildReviseInventoryStatusInner({ itemId: 'a&b', priceCents: 100 }), /<ItemID>a&amp;b<\/ItemID>/);
+  });
+});
+
+// The distinction this function exists for is absent-vs-zero, and it is a money one. The parse used
+// to be `Number(String(s ?? '').replace(/[^0-9.]/g,''))`, and Number('') is 0 — so a GetItem that
+// carried no ShippingServiceCost reported FREE POSTAGE. Free postage is exactly what lets the
+// repricer treat a delivered comp as a list price, so an absent element was silently licensing the
+// one comparison the repricer must never make.
+describe('xmlMoneyCents — an absent money element is unknown, not zero', () => {
+  it('reads a real amount, ignoring the currencyID attribute value', () => {
+    assert.equal(xmlMoneyCents('8.00'), 800);
+    assert.equal(xmlMoneyCents(xmlField('<P currencyID="AUD">12.34</P>', 'P')), 1234);
+    assert.equal(xmlMoneyCents('0.00'), 0, 'an explicit zero IS zero');
+  });
+  it('returns null for anything with no digits in it', () => {
+    for (const v of [null, undefined, '', '   ', '.', 'AUD']) {
+      assert.equal(xmlMoneyCents(v), null, JSON.stringify(v) + ' must be unknown, not 0');
+    }
+  });
+  it('returns null when the element is missing entirely', () => {
+    // xmlField returns null for a tag that is not there; that null must survive the money parse.
+    assert.equal(xmlMoneyCents(xmlField('<ShippingDetails></ShippingDetails>', 'ShippingServiceCost')), null);
+  });
+  it('rounds to whole cents (GR3)', () => {
+    assert.equal(xmlMoneyCents('2.985'), 299);
+    assert.equal(xmlMoneyCents('19.99'), 1999);
   });
 });

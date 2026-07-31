@@ -30,11 +30,13 @@ let tdb, rdb, sent = [];
 // eBay's GetItem view. The four repricer-relevant blocks are optional so each can be exercised.
 function itemXml({ id = '9001', price = '10.00', qty = 3, sold = 0, type = 'FixedPriceItem', status = 'Active',
   title = 'Pokemon Wailord ex 016/084 Pitch Black Double Rare Holo EN M/NM',
-  postage = '0.00', shippingType = 'Flat', bestOffer = false, promo = false, variations = false } = {}) {
+  postage = '0.00', shippingType = 'Flat', bestOffer = false, autoAccept = null, minOffer = null,
+  promo = false, variations = false } = {}) {
   return `<GetItemResponse><Ack>Success</Ack><Item><ItemID>${id}</ItemID><Title>${title}</Title>
     <ListingType>${type}</ListingType><Quantity>${qty}</Quantity>
     <SellingStatus><CurrentPrice currencyID="AUD">${price}</CurrentPrice><QuantitySold>${sold}</QuantitySold><ListingStatus>${status}</ListingStatus></SellingStatus>
     <ShippingDetails><ShippingType>${shippingType}</ShippingType>${postage == null ? '' : `<ShippingServiceOptions><ShippingService>AU_Regular</ShippingService><ShippingServiceCost currencyID="AUD">${postage}</ShippingServiceCost></ShippingServiceOptions>`}</ShippingDetails>
+    <ListingDetails><StartTime>2026-01-01T00:00:00.000Z</StartTime>${autoAccept == null ? '' : `<BestOfferAutoAcceptPrice currencyID="AUD">${autoAccept}</BestOfferAutoAcceptPrice>`}${minOffer == null ? '' : `<MinimumBestOfferPrice currencyID="AUD">${minOffer}</MinimumBestOfferPrice>`}</ListingDetails>
     ${bestOffer ? '<BestOfferDetails><BestOfferEnabled>true</BestOfferEnabled></BestOfferDetails>' : ''}
     ${promo ? '<DiscountPriceInfo><PricingTreatment>STP</PricingTreatment></DiscountPriceInfo>' : ''}
     ${variations ? '<Variations><Variation><SKU>a</SKU></Variation></Variations>' : ''}
@@ -134,14 +136,19 @@ describe('scanListings — the pass is read-only', () => {
 
 describe('scanListings — live eBay fields reach the decision', () => {
   const cases = [
-    ['best_offer_active', { bestOffer: true }],
+    ['best_offer_auto_accept', { bestOffer: true, autoAccept: '8.00' }],
     ['discount_pricing_active', { promo: true }],
     ['multi_variation', { variations: true }],
     ['postage_unknown', { shippingType: 'Calculated', postage: null }],
+    // The defect this fixture exists to pin: a FLAT-postage listing whose GetItem carried no
+    // ShippingServiceOptions at all. That used to parse as A$0.00 — free postage — because
+    // Number('') is 0, which is precisely the assumption that prices every listing above the
+    // cluster. Unknown must stay unknown.
+    ['postage_unknown', { shippingType: 'Flat', postage: null }],
     ['not_active', { status: 'Completed' }],
   ];
   for (const [code, over] of cases) {
-    it('skips ' + code + ' — a field only GetItem exposes', async () => {
+    it('skips ' + code + ' (' + JSON.stringify(over) + ') — a field only GetItem exposes', async () => {
       stub({ item: itemXml(over) });
       seed();
       await scan();
@@ -151,6 +158,26 @@ describe('scanListings — live eBay fields reach the decision', () => {
       assert.equal(sent.filter((s) => s.call === 'browse').length, 0, 'a refused listing must not spend a comps call');
     });
   }
+
+  // Best Offer on its own is NOT a refusal — it was found on 7 of the first 10 real listings, and
+  // without a threshold every offer still reaches a human, so a raise can only improve the anchor.
+  it('prices a Best Offer listing that has no auto-accept threshold', async () => {
+    stub({ item: itemXml({ bestOffer: true }) });
+    seed();
+    await scan();
+    const [c] = checks();
+    assert.equal(c.verdict, 'raise', 'plain Best Offer must not be refused');
+    assert.equal(sent.filter((s) => s.call === 'browse').length, 1, 'and it should have cost a comps call');
+  });
+
+  // Auto-DECLINE is the harmless half: it stays where it is after a raise, which only means offers
+  // between the old floor and the new price reach a human instead of bouncing.
+  it('prices a Best Offer listing that has only an auto-decline minimum', async () => {
+    stub({ item: itemXml({ bestOffer: true, minOffer: '5.00' }) });
+    seed();
+    await scan();
+    assert.equal(checks()[0].verdict, 'raise');
+  });
 
   it('subtracts our postage from the delivered comps figure', async () => {
     stub({ item: itemXml({ postage: '4.50' }) });

@@ -149,7 +149,7 @@ describe('eligibleForReprice — refuses before a comps call is spent', () => {
     ['currency_mismatch', { currency: 'USD' }],
     ['zero_qty', { availableQty: 0 }],
     ['multi_variation', { isVariation: true }],
-    ['best_offer_active', { bestOffer: true }],
+    ['best_offer_auto_accept', { bestOffer: true, bestOfferAutoAcceptCents: 800 }],
     ['discount_pricing_active', { discountPricing: true }],
     ['postage_unknown', { postageCents: null }],
   ];
@@ -162,6 +162,32 @@ describe('eligibleForReprice — refuses before a comps call is spent', () => {
   }
   it('passes a clean listing', () => {
     assert.equal(eligibleForReprice(listing(), identity()).ok, true);
+  });
+
+  // Best Offer was on 7 of the first 10 real listings scanned, so refusing all of it refuses most of
+  // the store. The risk it stood in for is specifically the ABSOLUTE auto-accept amount; without one,
+  // every offer reaches a human and a raise only improves the anchor they answer from.
+  describe('Best Offer is refused for its threshold, not for existing', () => {
+    it('allows Best Offer with no thresholds at all', () => {
+      assert.equal(eligibleForReprice(listing({ bestOffer: true }), identity()).ok, true);
+    });
+    it('allows Best Offer with only an auto-decline minimum', () => {
+      // The minimum stays put after a raise, which strands offers into a human queue — never a sale
+      // below what the listing already accepted.
+      assert.equal(eligibleForReprice(listing({ bestOffer: true, bestOfferMinCents: 500 }), identity()).ok, true);
+    });
+    it('refuses as soon as an auto-accept amount is present', () => {
+      const e = eligibleForReprice(listing({ bestOffer: true, bestOfferAutoAcceptCents: 1 }), identity());
+      assert.equal(e.code, 'best_offer_auto_accept');
+    });
+    // An absent field must read as "not set", not as "A$0.00 auto-accept" — otherwise the refusal
+    // fires on every listing and the relaxation above is undone silently.
+    it('treats an absent auto-accept as not set, not as zero', () => {
+      for (const v of [null, undefined, 0]) {
+        assert.equal(eligibleForReprice(listing({ bestOffer: true, bestOfferAutoAcceptCents: v }), identity()).ok,
+          true, 'auto-accept ' + JSON.stringify(v) + ' must not refuse');
+      }
+    });
   });
 });
 

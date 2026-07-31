@@ -107,3 +107,57 @@ describe('the pieces, and what they refuse to guess', () => {
     assert.equal(findGrade('Pokemon Wailord 162/159 Journey Together'), null);
   });
 });
+
+// --- hash-prefixed collector numbers ------------------------------------------------------------
+// Magic and Star Wars Unlimited titles write the number as "#160". Nothing read them before, so all
+// 10 MTG listings in the live store parsed to number:null and the repricer refused every one of
+// them as title_unparseable. The pattern is tried LAST, after the slash and promo forms, so it can
+// only ever reach titles that already returned null.
+describe('findNumber — "#160", the Magic and Star Wars Unlimited shape', () => {
+  it('reads a hash number and stores it bare, without the hash', () => {
+    // Bare, because buildNumberRe and the comps query both consume the digits, not the punctuation.
+    const n = findNumber('Living End (Silver Scroll) - Strixhaven Mystical Archive (SOA) #160 MTG NM/M');
+    assert.equal(n.printed, '160');
+    assert.equal(n.numerator, '160');
+    assert.equal(n.denominator, null);
+    assert.equal(n.hash, true);
+  });
+  it('copes with no space before the trailing letters ("#107MTG" — a real title)', () => {
+    assert.equal(findNumber('Crackle with Power (JP Alt Art) - Strixhaven Mystical Archive (SOA) #107MTG NM/M').printed, '107');
+  });
+  it('reads the Star Wars Unlimited form too', () => {
+    assert.equal(findNumber('Chirrut Imwe - One With The Force (Showcase) SWU #256 - Spark of Rebellion (SOR)').printed, '256');
+  });
+  it('takes a two-digit number', () => {
+    assert.equal(findNumber("Sheoldred's Edict (JP Alt Art) - Strixhaven Mystical Archive (SOA) #97 MTG NM/M").printed, '97');
+  });
+
+  // The hash also introduces the things a title says about the SALE rather than the card.
+  it('refuses a grading cert, which is far too long to be a collector number', () => {
+    assert.equal(findNumber('Charizard Base Set PSA 10 cert #12345678'), null);
+  });
+  it('refuses the sale words that take a hash', () => {
+    for (const t of ['Bulk lot #3 of assorted cards', 'Pokemon order #12 replacement', 'Spare item #7']) {
+      assert.equal(findNumber(t), null, t);
+    }
+  });
+  it('still reads a graded card whose own number is hashed', () => {
+    // "PSA" appears, but not immediately before the hash — the blocklist looks at the word next to
+    // it, so a real number is not thrown away just because the card is graded.
+    assert.equal(findNumber('PSA 10 Charizard #4 Base Set Shadowless').printed, '4');
+  });
+  it('skips a blocked hash and keeps looking for a real one', () => {
+    assert.equal(findNumber('Order #55 - Living End (SOA) #160 MTG').printed, '160');
+  });
+
+  // Tried last, so nothing that parsed before can change shape.
+  it('never displaces a slash number or a promo code', () => {
+    assert.equal(findNumber('Pokemon Wailord ex 016/084 Pitch Black #99').printed, '016/084');
+    assert.equal(findNumber('Pokemon Zacian SWSH123 promo #99').printed, 'SWSH123');
+  });
+  it('leaves the card name free of the dangling hash', () => {
+    const p = parseCardTitle('Living End (Silver Scroll) - Strixhaven Mystical Archive (SOA) #160 MTG NM/M');
+    assert.equal(p.number, '160');
+    assert.ok(!p.name.endsWith('#'), 'name should not trail a hash: ' + JSON.stringify(p.name));
+  });
+});
