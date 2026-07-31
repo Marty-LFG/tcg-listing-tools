@@ -6,7 +6,7 @@
 // scan ships a wrong price.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decideReprice, eligibleForReprice, scaleBestOfferCents, DEFAULT_GUARDRAILS } from '../../lib/repricer-decide.mjs';
+import { decideReprice, eligibleForReprice, scaleBestOfferCents, anchorFor, DEFAULT_GUARDRAILS } from '../../lib/repricer-decide.mjs';
 
 const listing = (over = {}) => ({
   listingId: '168537104622', title: 'Pokemon Wailord ex 016/084 Pitch Black Double Rare Holo EN M/NM',
@@ -15,11 +15,19 @@ const listing = (over = {}) => ({
   bestOffer: false, discountPricing: false, isVariation: false, ...over,
 });
 const identity = (over = {}) => ({ game: 'Pokemon', name: 'Wailord ex', number: '016/084', numberSafe: true, ...over });
-const comps = (over = {}) => ({
-  matched: true, reliable: true, mode: 'asking', comparable: 20, sampleSize: 30,
-  confidence: 'medium', recommended: 12.00, cheapest: 12.01, fair: 13.0, clusterRange: [12.0, 14.0],
-  query: 'Pokemon Wailord ex 016/084 Pitch Black', ...over,
-});
+const comps = (over = {}) => {
+  const c = {
+    matched: true, reliable: true, mode: 'asking', comparable: 20, sampleSize: 30,
+    confidence: 'medium', recommended: 12.00, cheapest: 12.01, fair: 13.0, clusterRange: [12.0, 14.0],
+    query: 'Pokemon Wailord ex 016/084 Pitch Black', ...over,
+  };
+  // The default anchor is cheapest_n, so a fixture needs a low tail. Unless a test supplies its own,
+  // derive one whose THIRD entry undercuts to the same place `recommended` does — that way a test
+  // that only cares about the cap, the snap or a threshold keeps asserting what it always asserted,
+  // and only the tests that are actually ABOUT the anchor have to think about it.
+  if (!c.lowest) c.lowest = [c.recommended - 1, c.recommended - 0.5, c.recommended + 0.01];
+  return c;
+};
 const decide = (over = {}) => decideReprice({
   listing: listing(), identity: identity(), comps: comps(), guardrails: {}, context: {}, ...over,
 });
@@ -52,7 +60,7 @@ describe('trap 1 — delivered vs list price basis', () => {
     // Market delivered A$12.00. We charge A$4.50 postage, so a matching LIST price is A$7.50 —
     // below our A$10.00. Treating the comps figure as a list price would have "raised" us to
     // A$11.98 and put our delivered price A$4.50 above the whole cluster.
-    const r = decide({ listing: listing({ postageCents: 450 }) });
+    const r = decide({ listing: listing({ postageCents: 450 }), guardrails: { targetAnchor: 'cluster' } });
     assert.equal(r.verdict, 'hold');
     assert.equal(r.code, 'above_market');
     assert.equal(r.toPriceCents, 750);
@@ -71,7 +79,11 @@ describe('trap 1 — delivered vs list price basis', () => {
 
 // --- trap 2: the snap turns raises into cuts ---------------------------------------------------
 describe('trap 2 — snapToEnding can erase (or invert) an uplift', () => {
-  const loose = { minUpliftPct: 1, minUpliftCents: 1 };
+  // Pinned to the CLUSTER anchor: it is the one that hands step 9 an unsnapped number, which is the
+  // whole point of the trap. Under cheapest_n the anchor arrives already on an ending, and the same
+  // hazard reappears one step later — via the postage subtraction and the cap — which the sweep below
+  // covers under both anchors.
+  const loose = { minUpliftPct: 1, minUpliftCents: 1, targetAnchor: 'cluster' };
 
   it('holds instead of emitting a CUT when the snap lands at or below the current price', () => {
     // Measured: snapToEnding(3.20,'down') === 2.98. A 20c raise becomes a 2c cut. Without the
@@ -90,16 +102,18 @@ describe('trap 2 — snapToEnding can erase (or invert) an uplift', () => {
   it('never returns a raise whose target is below its source — across a sweep of prices', () => {
     for (let from = 100; from <= 5000; from += 37) {
       for (const mult of [1.01, 1.05, 1.2, 1.5, 2.0]) {
+       for (const anchor of ['cluster', 'cheapest_n']) {
         const r = decide({
-          listing: listing({ priceCents: from }),
+          listing: listing({ priceCents: from, postageCents: from % 300 }),
           comps: comps({ recommended: (from * mult) / 100 }),
-          guardrails: loose,
+          guardrails: { ...loose, targetAnchor: anchor },
         });
         if (r.verdict === 'raise') {
           assert.ok(r.toPriceCents > from,
-            `raise must increase: from ${from} to ${r.toPriceCents} (x${mult})`);
+            `raise must increase: from ${from} to ${r.toPriceCents} (x${mult}, ${anchor})`);
           assert.ok(r.upliftCents > 0, 'uplift must be positive');
         }
+       }
       }
     }
   });
@@ -227,6 +241,8 @@ describe('decideReprice — declines an untrustworthy market read', () => {
 });
 
 // --- the price is already right: hold -----------------------------------------------------------
+// Pinned to the cluster anchor so the arithmetic stays exact and readable — these are about the
+// thresholds and the up-only rule, not about which competitor gets undercut.
 describe('decideReprice — holds a price that does not need moving', () => {
   it('market below us', () => {
     // The live Wailord case: comps said A$1.98 against our A$2.98.
@@ -235,19 +251,19 @@ describe('decideReprice — holds a price that does not need moving', () => {
     assert.equal(r.code, 'above_market');
   });
   it('market exactly at us', () => {
-    assert.equal(decide({ comps: comps({ recommended: 10.0 }) }).code, 'at_market');
+    assert.equal(decide({ comps: comps({ recommended: 10.0 }), guardrails: { targetAnchor: 'cluster' } }).code, 'at_market');
   });
   it('uplift below the percentage floor', () => {
-    assert.equal(decide({ comps: comps({ recommended: 10.5 }) }).code, 'uplift_below_threshold');
+    assert.equal(decide({ comps: comps({ recommended: 10.5 }), guardrails: { targetAnchor: 'cluster' } }).code, 'uplift_below_threshold');
   });
   it('uplift below the dollar floor even when the percentage clears', () => {
     // A$0.50 → A$0.60 is +20% but only 10c; min_uplift_aud exists precisely to filter this out.
-    const r = decide({ listing: listing({ priceCents: 50 }), comps: comps({ recommended: 0.60 }) });
+    const r = decide({ listing: listing({ priceCents: 50 }), comps: comps({ recommended: 0.60 }), guardrails: { targetAnchor: 'cluster' } });
     assert.equal(r.verdict, 'hold');
     assert.equal(r.code, 'uplift_below_threshold');
   });
   it('NEVER clamps a decrease into a +0% no-op raise', () => {
-    const r = decide({ comps: comps({ recommended: 4.0 }) });
+    const r = decide({ comps: comps({ recommended: 4.0 }), guardrails: { targetAnchor: 'cluster' } });
     assert.notEqual(r.verdict, 'raise');
     assert.equal(r.toPriceCents, 400, 'the computed target is reported honestly, not clamped to the current price');
   });
@@ -338,5 +354,105 @@ describe('bestOfferScaling — the guardrail that unlocks Phase 5', () => {
   it('lets the listing through once the apply path can move the floor', () => {
     const e = eligibleForReprice(listing({ bestOfferAutoAcceptCents: 800 }), identity(), { bestOfferScaling: true });
     assert.equal(e.ok, true);
+  });
+});
+
+// --- the target anchor: which competitor are we trying to beat? ---------------------------------
+// Owner's rule: "we generally want to be one of, if not the cheapest seller... so we're always on the
+// first page of results if someone searches for a card." The cluster anchor cannot deliver that. It
+// undercuts the cheapest listing in the DENSEST band, and on a card with a cheap tail that band sits
+// well above the front of the queue — measured on Forest of Vitality 109/088, whose cluster started
+// at A$18.50 while five real AU listings sat between A$12.00 and A$14.50. Undercutting the cluster
+// there would have moved a 7th-cheapest listing to 18th.
+describe('anchorFor — cheapest_n keeps us at the front of the queue', () => {
+  const withLow = (lowest, over = {}) => comps({ lowest, recommended: 18.48, ...over });
+
+  it('undercuts the Nth cheapest, not the cluster', () => {
+    // The real Forest of Vitality tail. N=3 → beat A$13.00 → A$12.99 → snaps to the A$12.98 ending.
+    const a = anchorFor(withLow([12.00, 12.88, 13.00, 13.88, 14.50, 14.59]), { targetAnchor: 'cheapest_n', anchorN: 3 });
+    assert.equal(a, 12.98);
+  });
+  it('defaults to cheapest_n at N=3', () => {
+    assert.equal(DEFAULT_GUARDRAILS.targetAnchor, 'cheapest_n');
+    assert.equal(DEFAULT_GUARDRAILS.anchorN, 3);
+    assert.equal(anchorFor(withLow([12.00, 12.88, 13.00, 20.00])), 12.98);
+  });
+  it('still offers the cluster anchor for a fair-value read', () => {
+    assert.equal(anchorFor(withLow([12.00, 12.88, 13.00]), { targetAnchor: 'cluster' }), 18.48);
+  });
+
+  // N=3 rather than N=1 is the whole robustness argument: one damaged card or mis-titled listing
+  // must not set the shelf price for the entire store.
+  it('a single lowball cannot drag the anchor down', () => {
+    const withOutlier = anchorFor(withLow([0.99, 12.88, 13.00, 13.88]), { targetAnchor: 'cheapest_n', anchorN: 3 });
+    assert.equal(withOutlier, 12.98, 'the A$0.99 outlier is absorbed, not followed');
+    // …whereas chasing the very bottom does follow it, which is why N=1 is not the default.
+    assert.equal(anchorFor(withLow([0.99, 12.88, 13.00]), { targetAnchor: 'cheapest_n', anchorN: 1 }), 0.98);
+  });
+
+  it('never indexes past a short list', () => {
+    assert.equal(anchorFor(withLow([9.00, 11.00]), { targetAnchor: 'cheapest_n', anchorN: 3 }), 10.98, 'falls to the last one available');
+    assert.equal(anchorFor(withLow([]), { targetAnchor: 'cheapest_n' }), null);
+    assert.equal(anchorFor({ matched: true }, { targetAnchor: 'cheapest_n' }), null, 'comps with no tail at all');
+    assert.equal(anchorFor(null, {}), null);
+  });
+  it('ignores junk prices in the tail', () => {
+    assert.equal(anchorFor(withLow([0, -5, 12.88, 13.00, 13.88]), { targetAnchor: 'cheapest_n', anchorN: 3 }), 13.48);
+  });
+});
+
+describe('decideReprice — the anchor drives the verdict', () => {
+  // The three real survivors of the AU-only scan. Under the cluster anchor all three were raises that
+  // would have dropped them 11-20 places down the price-sorted results; under cheapest_n they hold.
+  const live = [
+    { name: 'Forest of Vitality', ours: 1498, lowest: [12.00, 12.88, 13.00, 13.88, 14.50], rec: 18.48 },
+    { name: "Boss's Orders", ours: 1498, lowest: [13.25, 14.00, 14.00, 14.98, 14.99], rec: 18.48 },
+    { name: 'Togekiss', ours: 1248, lowest: [9.00, 11.00, 11.59, 12.00, 12.50], rec: 14.98 },
+  ];
+  for (const c of live) {
+    it('holds ' + c.name + ' — already inside the cheapest three', () => {
+      const r = decide({
+        listing: listing({ priceCents: c.ours, postageCents: 0 }),
+        comps: comps({ lowest: c.lowest, recommended: c.rec }),
+      });
+      assert.equal(r.verdict, 'hold', JSON.stringify(r));
+      assert.equal(r.code, 'above_market');
+    });
+    it('raises ' + c.name + ' under the old cluster anchor (what we are moving away from)', () => {
+      const r = decide({
+        listing: listing({ priceCents: c.ours, postageCents: 0 }),
+        comps: comps({ lowest: c.lowest, recommended: c.rec }),
+        guardrails: { targetAnchor: 'cluster' },
+      });
+      assert.equal(r.verdict, 'raise');
+    });
+  }
+
+  it('raises when we really are under the third cheapest', () => {
+    // Cheapest three are A$9.00 / A$11.00 / A$11.59 and we are at A$6.98 — beat A$11.59 to A$11.58.
+    const r = decide({
+      listing: listing({ priceCents: 698, postageCents: 0 }),
+      comps: comps({ lowest: [9.00, 11.00, 11.59, 12.00], recommended: 14.98 }),
+    });
+    assert.equal(r.verdict, 'raise');
+    assert.equal(r.toPriceCents, 948, 'A$11.58 target, capped to +40% (A$9.77), snapped down to A$9.48');
+  });
+
+  it('subtracts our postage from the anchor, same as any other target', () => {
+    const r = decide({
+      listing: listing({ priceCents: 500, postageCents: 300 }),
+      comps: comps({ lowest: [12.00, 12.88, 13.00], recommended: 18.48 }),
+    });
+    // Beat A$13.00 delivered → A$12.98, minus our A$3.00 postage → A$9.98 list, then the +40%
+    // cap on a A$5.00 listing pulls it to A$7.00 and the snap lands it on A$6.98.
+    assert.equal(r.evidence.targetDeliveredCents, 1298);
+    assert.equal(r.toPriceCents, 698);
+    assert.equal(r.capped, true);
+  });
+
+  it('declines rather than guesses when the tail is missing entirely', () => {
+    const r = decide({ comps: comps({ lowest: [], recommended: 18.48 }) });
+    assert.equal(r.verdict, 'decline');
+    assert.equal(r.code, 'no_anchor');
   });
 });
