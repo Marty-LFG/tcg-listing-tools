@@ -2,7 +2,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { openRepricerDb, migrate, getMeta, setMeta, recordChat } from '../../lib/repricer-db.mjs';
+import { openRepricerDb, migrate, getMeta, setMeta, recordChat, SCHEMA_VERSION } from '../../lib/repricer-db.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
 
 const db = openRepricerDb(tmpFile('repricer-test.db'));
@@ -119,6 +119,7 @@ describe('migrate v0 -> v1', () => {
   it('is a clean no-op on a fresh database', () => {
     const d = new DatabaseSync(':memory:');
     assert.doesNotThrow(() => migrate(d));
-    assert.equal(d.prepare('PRAGMA user_version').get().user_version, 1);
+    assert.equal(d.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION,
+      'a fresh database is stamped at the CURRENT version so migrate never re-runs on it');
   });
 });

@@ -9,6 +9,7 @@
     "max_increase_pct_per_run": 40,
     "target_anchor": "cheapest_n",
     "anchor_n": 3,
+    "max_cards_per_run": 5,
     "proposal_ttl_hours": 24,
     "never_decrease": true,
     "best_offer_scaling": false
