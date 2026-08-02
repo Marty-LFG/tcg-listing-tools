@@ -180,16 +180,30 @@ console.log('\n[riftbound builder parity]');
     { f_name: 'Calm Rune', f_num: 'R02a', f_set: 'Unleashed (UNL)', f_rarity: 'Showcase', f_variant: 'Alternate Art', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Rune', f_domain: 'Calm', f_tags: '', f_e: '', f_p: '', f_m: '' },
     { f_name: 'Against the Odds', f_num: '001/221', f_set: 'Spiritforged (SFD)', f_rarity: 'Common', f_variant: '', f_finish: 'Non-foil', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Spell', f_domain: 'Fury', f_tags: '', f_e: '', f_p: '', f_m: '' },
     { f_name: 'Draven, Glory Seeker', f_num: '075/298', f_set: 'Origins (OGN)', f_rarity: 'Epic', f_variant: '', f_finish: 'Foil', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Unit', f_domain: 'Fury;Chaos', f_tags: 'Draven', f_e: '5', f_p: '4', f_m: '6' },
-    { f_name: 'Daughter of the Void', f_num: '299*/298', f_set: 'Origins (OGN)', f_rarity: 'Overnumbered', f_variant: 'Overnumbered', f_finish: 'Foil', f_lang: 'Japanese', f_cond: 'Lightly Played', f_type: 'Unit', f_domain: 'Chaos', f_tags: '', f_e: '6', f_p: '5', f_m: '7' },
+    { f_name: 'Daughter of the Void', f_num: '299*/298', f_set: 'Origins (OGN)', f_rarity: 'Showcase', f_variant: 'Signature', f_finish: 'Foil', f_lang: 'Japanese', f_cond: 'Lightly Played', f_type: 'Unit', f_domain: 'Chaos', f_tags: '', f_e: '6', f_p: '5', f_m: '7' },
+    // Over the printed total (167 of 166) — Overnumbered, and a Showcase foil despite Riot calling it a rare.
+    { f_name: 'Vi, Destructive', f_num: '167/166', f_set: 'Vendetta (VEN)', f_rarity: 'Showcase', f_variant: 'Overnumbered', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Unit', f_domain: 'Fury', f_tags: '', f_e: '2', f_p: '1', f_m: '3' },
+    // Vendetta's special showcase promo: Showcase rarity, NO variant — the SP number is the marker.
+    { f_name: "Kai'Sa, Survivor", f_num: 'SP1/006', f_set: 'Vendetta (VEN)', f_rarity: 'Showcase', f_variant: '', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Unit', f_domain: 'Mind', f_tags: '', f_e: '4', f_p: '1', f_m: '3' },
+    // Long enough to force fitTitle to shed parts — "(Signature)" must NOT be one of them (GR5):
+    // it is the difference between a US$2,739 card and a US$296 one.
+    { f_name: 'Poppy, Keeper of the Hammer', f_num: '237*/219', f_set: 'Unleashed (UNL)', f_rarity: 'Showcase', f_variant: 'Signature', f_finish: 'Foil', f_lang: 'Japanese', f_cond: 'Lightly Played', f_type: 'Legend', f_domain: 'Body', f_tags: 'Poppy', f_e: '3', f_p: '2', f_m: '4' },
   ];
   for (const fx of fixtures) {
     const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
     const ctx = builderContext('riftbound-listing-builder.html',
       ['function mapRarity(', 'function readFields()', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx,
       { curSetName: () => setName });
-    const rawRarity = fx.f_variant === 'Alternate Art' ? 'Alternate Art' : fx.f_variant === 'Overnumbered' ? 'Overnumbered' : fx.f_rarity;
+    // The variant is what distinguishes the treatments once mapRarity has flattened them all to
+    // 'Showcase' — mirrors buildRowFields()'s `riftboundPitch(f, f.variant || f.rarity)`.
+    const rawRarity = fx.f_variant || fx.f_rarity;
     const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, setName, rarity: fx.f_rarity, variant: fx.f_variant, finish: fx.f_finish, lang: fx.f_lang, cond: fx.f_cond, type: fx.f_type, domain: fx.f_domain, tags: fx.f_tags, e: fx.f_e, p: fx.f_p, m: fx.f_m };
-    check('genTitle ' + fx.f_name.slice(0, 18), LC.buildTitle('riftbound', f), vm.runInContext('genTitle()', ctx));
+    const title = vm.runInContext('genTitle()', ctx);
+    check('genTitle ' + fx.f_name.slice(0, 18), LC.buildTitle('riftbound', f), title);
+    // GR5: a shed title must never drop the treatment. fitTitle used to bin "(Signature)" first.
+    if (fx.f_variant === 'Signature' || fx.f_variant === 'Overnumbered') {
+      check('title keeps ' + fx.f_variant, '(' + fx.f_variant + ')', (title.match(/\((?:Signature|Overnumbered)\)/) || [''])[0]);
+    }
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ',' + JSON.stringify(rawRarity) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 18), LC.riftboundPitch(f, rawRarity), pitch);
     const ff = Object.assign({}, f, { pitch });

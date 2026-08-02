@@ -307,25 +307,68 @@ cert number, tries to auto-fill the card identity + grade.
 ## Riftbound — three sources (default keyless)
 
 The builder picks a `source` at runtime: **offline** (default) → **riftscribe** → **scrydex**.
-Coverage of all four sets (OGN Origins, OGS Proving Grounds, SFD Spiritforged, UNL Unleashed)
-is keyless; Scrydex is an optional pricing upgrade. An eBay AUD comps overlay works under any source.
+Coverage of every released set is keyless; Scrydex is an optional trend-graph upgrade. An eBay AUD
+comps overlay works under any source.
+
+**There is no hardcoded set list.** Codes, display names, printed totals and release order all come
+from Riot's own gallery roster and land in `data/riftbound.json`; the builder's pills (offline AND
+riftscribe lanes), the bulk enumerator and the TCGplayer price join all read from there. A new set
+therefore appears by itself on the next refresh, and `lib/refresh.mjs` Telegram-alerts when it does.
 
 ### 1. Offline baked — `data/riftbound.json` (default; no proxy, same-origin static)
 - Built by `scripts/build-riftbound-data.mjs` from the **official LoL card gallery** (keyless):
   scrape `"buildId"` from `https://riftbound.leagueoflegends.com/en-us/card-gallery/`, then
   `GET /_next/data/{buildId}/en-us/card-gallery.json`. The buildId rotates per Riot deploy, so the
   script re-scrapes it each run. **Build-time only** — no runtime proxy.
-- ~943 cards across all 4 sets, with images (Riot CDN `cmsassets.rgpub.io`) and energy/might/power
-  stats (which Scrydex does NOT carry). No prices.
+- ~1164 cards across every released set, with images (Riot CDN `cmsassets.rgpub.io`) and
+  energy/might/power stats (which Scrydex does NOT carry). No prices.
+- The gallery also ships a **set roster** beside the cards — `[{id, name, collectorNumberMax}]` in
+  release order, where `collectorNumberMax` is the printed set total. `findSets()` locates it
+  structurally (it lives under `page.blades[N]` and N moves between deploys) and it drives the set
+  ordering, the display names and the per-set `total`. If Riot ever drops it, the bake falls back to
+  the per-card `/TOTAL` denominators and first-seen order rather than failing (GR7).
 - **Image fallback (dotgg):** every Riftbound lookup (offline / riftscribe / Scrydex) falls back to
   `https://static.dotgg.gg/riftbound/cards/{SET}-{NNN}{suffix}.webp` via `rbDotgg()` — primary when the
   source has no image, `onerror` swap when its image breaks. (Runes go further — dotgg is the *primary*,
   since cmsassets only has the Origins printing; see Runes below.)
-- Shape: `{ [setCodeLower]: { name, code, cards:[{ k, num, name, rarity, type, domain, e, p, m, img }] } }`.
-  `k` mirrors the builder's `normNum` (leading zeros stripped, trailing letter/`*` kept). Alt-art
-  cards carry a `(Alternate Art)` name suffix, Overnumbered a `(Overnumbered)` one — the builder
-  strips these to derive the variant + a Foil finish (same path as Scrydex names).
-- Re-run `node scripts/build-riftbound-data.mjs` when a new set releases.
+- Shape: `{ [setCodeLower]: { name, code, total, cards:[{ k, num, name, rarity, type, domain, e, p, m, img }] } }`.
+  `k` mirrors `normNum` (leading zeros stripped, trailing letter/`*` kept; `SP1/006` → `sp1`).
+  `num` is the printed number VERBATIM (GR5), uppercase for `SP`.
+- The bake runs on the refresh timer (`lib/refresh.mjs`), so a manual re-run is only needed when you
+  want a new set immediately: `node scripts/build-riftbound-data.mjs`.
+
+#### Variant derivation (why the printed number, not the source's rarity)
+
+The source rarity field is **unreliable for exactly the premium printings**. Riot's gallery calls
+`UNL-220/219` "Pouty Poro" a *common* — TCGplayer sells it as a Showcase at US$175 — and
+`VEN-167/166` "Vi, Destructive" a *rare* (Showcase, US$125). The printed number is reliable, and
+TCGplayer's own product names confirm the mapping, so the bake derives the treatment and encodes it
+in the card name the same way alt-art already was. The builder, `lib/riftbound-data.mjs` and every
+bulk consumer read that one suffix, so all of them are correct with no duplicated rule.
+
+| Printed number | Name suffix | Rarity | Finish | TCGplayer says |
+|---|---|---|---|---|
+| `299*` of 298 | `(Signature)` | Showcase | Foil | "…(Signature)", US$2,739 |
+| `162a` of 298 | `(Alternate Art)` | Showcase | Foil | "…(Alternate Art)" |
+| `167` of 166 | `(Overnumbered)` | Showcase | Foil | "…(Overnumbered)", US$125 |
+| `SP1` of 006 | *(none)* | Showcase | Foil | untagged, rarity `Showcase` |
+
+**Order matters:** every `*` card is *also* over the set total (12/12 in each of OGN/SFD/UNL), so `*`
+is tested first — otherwise all 36 Signatures relabel as Overnumbered. No alt-art card is ever over
+the total. `test/data/riftbound-variants.test.mjs` re-checks every derived label against TCGplayer's
+product names on each run; the one known divergence is `UNL-238` Baron Nashor, which TCGplayer calls
+"(Ultimate)" and Riot gives no distinguishing field at all.
+
+#### Special showcase promos (`SP##`)
+
+Vendetta introduced a six-card showcase subset numbered `SP1/006`…`SP6/006`. They were invisible
+before: the bake's publicCode regex rejected them and the price bake dropped them into
+`dropped.special`. They now bake as ordinary cards keyed `sp1`…`sp6`, priced under `VEN-sp1` etc.
+Two things to know:
+- The `/006` is the size of the SP subset, **not** the set — the bake never takes it as a set total.
+- The dotgg CDN keys them **uppercase** (`VEN-SP1.webp` is 200, `VEN-sp1.webp` 404s), so `rbDotgg()`
+  uppercases an alpha prefix. `normNum` also strips SP zero-padding, so `SP1`/`sp1`/`SP01` are one
+  identity key rather than three.
 
 ### 2. Riftscribe — `/api/rbs` → `riftscribe.gg/api` (keyless live)
 - `GET /api/rbs/cards?limit=200&offset=N` (limit caps at 200; `X-Total-Count` header gives the total —
@@ -362,8 +405,26 @@ is keyless; Scrydex is an optional pricing upgrade. An eBay AUD comps overlay wo
 
 ### Name handling (all sources)
 - A card's `name` may include the subtitle (`"Kai'Sa - Survivor"`). Alt-art appends `"(Alternate Art)"`,
-  Overnumbered `"(Overnumbered)"`; the builder strips these for the clean name field and re-derives the
-  variant + the `(Alt Art)`/`(Overnumbered)` title tag.
+  Overnumbered `"(Overnumbered)"`, Signature `"(Signature)"`; the builder strips these for the clean
+  name field and re-derives the variant + the `(Alt Art)`/`(Overnumbered)`/`(Signature)` title tag.
+  Signature and Overnumbered carry a raised title priority so the fitter can never shed them.
+- ⚠️ Riot writes `"Kai'Sa, Survivor"` (comma) where TCGplayer writes `"Kai'Sa - Survivor"` (dash), and
+  `championTag()` splits on `" - "` — so the offline lane produces no champion tag. Known gap, left
+  as-is because changing it would rewrite tags on every existing Riftbound row.
+
+### The keyless price index — `data/riftbound-prices.json`
+- Built by `scripts/build-riftbound-prices.mjs` from TCGplayer's public search API (the Scrydex price
+  lane died at `402 SUBSCRIPTION_INACTIVE`). Keyed by tracker `identity_key` (`SETCODE-normNum`), so
+  `OGN-27a` is Origins #27 Alternate Art. Served at `/api/riftbound/prices/:key`.
+- The TCGplayer `setName` → set-code join is **derived from `data/riftbound.json`**, not hardcoded:
+  the names match for every set but one, so only `TCGP_SET_ALIAS` (`"Origins: Proving Grounds"` →
+  `"Proving Grounds"`) is written down and a new set prices itself on the next bake. Promo sets are
+  denied explicitly (their numbering collides with the main sets). A `SEED_BY_NAME` fallback covers
+  the window where the gitignored catalog has not been baked yet — without it the join would be
+  empty, nothing would index, and the bake would throw away the only price lane the tracker has.
+- A TCGplayer set name that matches nothing lands in `dropped.unknownSet` and is **named in the bake
+  summary** (visible in `/api/status` → `jobs.refresh`). That bucket is what "TCGplayer listed the set
+  before Riot's gallery did" looks like; so is the converse, reported as `no products for <CODE>`.
 
 ### Runes (`R##` reprints)
 - The 12 runes are reprinted in every set with an `R##` collector number (from Spiritforged onward;

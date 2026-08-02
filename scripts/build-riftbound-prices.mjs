@@ -26,7 +26,7 @@
 import { writeFileSync, readFileSync, mkdirSync, renameSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import { normNum } from '../lib/riftbound-data.mjs';
+import { normNum, loadRiftboundSets } from '../lib/riftbound-data.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'data', 'riftbound-prices.json');
@@ -37,21 +37,46 @@ const TCGP_URL = 'https://mp-search-api.tcgplayer.com/v1/search/request?q=&isLis
 const TCGP_LINE = 'Riftbound: League of Legends Trading Card Game';
 const PAGE = 50;   // API rejects size > 50 with HTTP 400
 
-// TCGplayer setName -> the set code the tracker's identity_key uses. Deliberately NOT derived from
-// data/riftbound.json: the bake calls Proving Grounds "Proving Grounds" while TCGplayer calls it
-// "Origins: Proving Grounds", so the join has to be explicit.
-//
-// The four promo sets TCGplayer also carries (Riftbound Organized Play Promotional Cards, Riftbound
-// Promotional Cards, Riftbound Judge Promotional Cards) are INTENTIONALLY absent: they are not in
-// the offline bake, so no identity_key can address them, and their numbering collides with the main
-// sets (two different "253/298" products live in the OP promo set alone).
-const CODE_BY_TCGP_SET = {
-  'Origins': 'OGN',
-  'Origins: Proving Grounds': 'OGS',
-  'Spiritforged': 'SFD',
-  'Unleashed': 'UNL',
-  'Vendetta': 'VEN',
-};
+// TCGplayer setName -> the set code the tracker's identity_key uses. This used to be a
+// hand-maintained map, which is why Vendetta needed a code edit before its prices showed up. Derive
+// it from data/riftbound.json instead: TCGplayer's setName already matches the baked set name for
+// every set but one, so only the exception is written down and a new set joins itself.
+const TCGP_SET_ALIAS = { 'origins: proving grounds': 'proving grounds' };
+
+// The promo sets TCGplayer also carries are EXCLUDED on purpose: they are not in the offline bake,
+// so no identity_key can address them, and their numbering collides with the main sets (two
+// different "253/298" products live in the OP promo set alone). The known names are listed
+// explicitly so a real set can never be swallowed by a regex; the catch-all only keeps a future
+// promo drop out of the "unknown set" bucket below.
+const TCGP_SET_DENY = new Set([
+  'riftbound organized play promotional cards',
+  'riftbound promotional cards',
+  'riftbound judge promotional cards',
+]);
+const DENY_RE = /\bpromo(tional)?\b/i;
+
+// data/riftbound.json is gitignored and a fresh deploy bakes it ~60s after boot. Without this
+// fallback the derived join would be EMPTY on that first pass, every row would land in unknownSet,
+// and buildRiftboundPrices would throw "no prices indexed" — wiping the only price lane the tracker
+// has. This is the roster the join used to hardcode; it exists purely to survive that window.
+const SEED_BY_NAME = { origins: 'OGN', 'proving grounds': 'OGS', spiritforged: 'SFD', unleashed: 'UNL', vendetta: 'VEN' };
+
+const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();
+
+// Baked set list -> { lowercased set name: CODE }. Exported for the unit harness.
+export function codeBySetName(sets) {
+  const list = sets || loadRiftboundSets();
+  if (!list.length) return { ...SEED_BY_NAME };
+  const out = {};
+  for (const s of list) out[norm(s.name)] = String(s.code || s.id).toUpperCase();
+  return out;
+}
+export const isPromoSet = (n) => TCGP_SET_DENY.has(norm(n)) || DENY_RE.test(String(n == null ? '' : n));
+export function resolveSetCode(setName, byName) {
+  const n = norm(setName);
+  if (!n) return null;
+  return byName[TCGP_SET_ALIAS[n] || n] || null;
+}
 
 const TCGP_HEADERS = {
   'Content-Type': 'application/json',
@@ -112,29 +137,35 @@ export async function fetchRiftboundRows(fetchImpl = fetch) {
  * it dropped — a single "unnumbered" bucket hid sealed boxes, rune reprints and tokens together,
  * which made a correct 1118 look like a broken 1240.
  */
-export function indexRows(rows) {
+export function indexRows(rows, byName = codeBySetName()) {
   const cards = {};
   const dropped = {
     promoSet: {},   // setName -> n. Not in the offline bake, so no identity_key addresses them.
+    unknownSet: {}, // setName -> n. A set TCGplayer lists that the bake has never heard of — i.e.
+                    // TCGplayer got there before Riot's gallery did. Counted BY NAME and named in
+                    // the summary rather than lumped in with the promos: a silent bucket here
+                    // reads as "we covered the line" when a whole set is missing.
     sealed: 0,      // no collector number at all: Booster Display, Showdown Decks, Promo Pack.
     token: 0,       // T## / "T## // T##" — tokens are not in the identity space.
     rune: 0,        // R##/R##a.. — per-set rune REPRINTS. riftbound-data.mjs catalogues the 12
                     // runes once under OGN and resolves R01..R06 back to it, so the reprints have
                     // no identity_key of their own. Dropping them matches the rest of the repo.
-    special: 0,     // SP#/### — special/showcase promo numbering.
+    special: 0,     // any other prefixed shape the catalog has no key for.
     unpriced: 0,    // real card, but TCGplayer has no marketPrice yet (newest set, no sales).
   };
   let collisions = 0;
   for (const r of rows) {
-    const code = CODE_BY_TCGP_SET[r.setName];
-    if (!code) { dropped.promoSet[r.setName] = (dropped.promoSet[r.setName] || 0) + 1; continue; }
+    if (isPromoSet(r.setName)) { dropped.promoSet[r.setName] = (dropped.promoSet[r.setName] || 0) + 1; continue; }
+    const code = resolveSetCode(r.setName, byName);
+    if (!code) { dropped.unknownSet[r.setName] = (dropped.unknownSet[r.setName] || 0) + 1; continue; }
     const raw = String(r.number || '').trim();
     if (!raw) { dropped.sealed++; continue; }
     if (/^T\d/i.test(raw)) { dropped.token++; continue; }
     if (/^R\d/i.test(raw)) { dropped.rune++; continue; }
-    if (/^SP\d/i.test(raw)) { dropped.special++; continue; }
+    // SP#/### is Vendetta's six-card special showcase subset. normNum maps it to 'sp1', exactly
+    // what the catalog bake keys those cards under, so it indexes like any other number.
     const n = normNum(raw);
-    if (!n || !/^\d/.test(n)) { dropped.special++; continue; }   // any other prefixed shape
+    if (!n || !/^(\d|sp\d)/i.test(n)) { dropped.special++; continue; }   // any other prefixed shape
     if (r.market == null) { dropped.unpriced++; continue; }
     const key = code + '-' + n;
     const prior = cards[key];
@@ -154,7 +185,8 @@ export function indexRows(rows) {
 
 export async function buildRiftboundPrices({ out = OUT, fetchImpl = fetch } = {}) {
   const rows = await fetchRiftboundRows(fetchImpl);          // throws on outage -> keeps existing file
-  const { cards, dropped, collisions } = indexRows(rows);
+  const byName = codeBySetName();
+  const { cards, dropped, collisions } = indexRows(rows, byName);
   if (!Object.keys(cards).length) throw new Error('no Riftbound prices indexed');
 
   const prior = readJson(out, { cards: {} });
@@ -168,10 +200,11 @@ export async function buildRiftboundPrices({ out = OUT, fetchImpl = fetch } = {}
     note: 'Keyless Riftbound market prices (USD) from TCGplayer\'s public search API. Replaces the '
       + 'Scrydex price lane, whose subscription lapsed (402 SUBSCRIPTION_INACTIVE) and which was the '
       + 'only Riftbound source carrying prices. Keys are the tracker identity_key (SETCODE-normNum), '
-      + 'so OGN-27a is Origins #27 Alternate Art. Promo sets are excluded — no identity_key addresses '
-      + 'them and their numbering collides. Regenerated by scripts/build-riftbound-prices.mjs, wired '
-      + 'into the refresh (lib/refresh.mjs) and served at /api/rbp/cards/:key. Server-owned + '
-      + 'gitignored; a missing file simply means "no price yet", never a crash.',
+      + 'so OGN-27a is Origins #27 Alternate Art. The setName -> code join is derived from '
+      + 'data/riftbound.json, so a new set prices itself. Promo sets are excluded — no identity_key '
+      + 'addresses them and their numbering collides. Regenerated by scripts/build-riftbound-prices.mjs, '
+      + 'wired into the refresh (lib/refresh.mjs) and served at /api/riftbound/prices/:key. Server-owned '
+      + '+ gitignored; a missing file simply means "no price yet", never a crash.',
     generatedAt: new Date().toISOString(),
     source: { prices: 'tcgplayer:' + TCGP_LINE, currency: 'USD', measure: 'marketPrice' },
     stats: { products: rows.length, indexed: Object.keys(cards).length, bySet, collisions, dropped },
@@ -192,10 +225,16 @@ export async function buildRiftboundPrices({ out = OUT, fetchImpl = fetch } = {}
     dropped.special ? dropped.special + ' special-numbered' : '',
     Object.keys(dropped.promoSet).length ? Object.values(dropped.promoSet).reduce((a, b) => a + b, 0) + ' promo-set' : '',
   ].filter(Boolean).join(', ');
+  // Two blind spots the counts above cannot show, both loud on purpose: a set TCGplayer carries that
+  // the catalog has never heard of, and a baked set TCGplayer has not listed a single product for.
+  const unknown = Object.keys(dropped.unknownSet);
+  const missing = Object.values(byName).filter((c) => !bySet[c]);
   const summary = `${Object.keys(cards).length} priced cards (${setBits}) from ${rows.length} products`
     + (added.length && priorKeys.size ? ` · ${added.length} new` : '')
     + (collisions ? ` · ${collisions} number collisions resolved to the base print` : '')
-    + (dropBits ? ` · skipped ${dropBits}` : '');
+    + (dropBits ? ` · skipped ${dropBits}` : '')
+    + (unknown.length ? ` · UNKNOWN set(s): ${unknown.join(', ')}` : '')
+    + (missing.length ? ` · no products for ${missing.join('/')}` : '');
   return { summary, cards, added, out, stats: body.stats };
 }
 

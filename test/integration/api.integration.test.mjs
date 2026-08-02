@@ -79,6 +79,44 @@ describe('existing API surface', () => {
   });
 });
 
+// The builders fetch these same-origin on every page load, and riftbound.json alone is ~314 KB
+// uncompressed. The gzip middleware (vite.config.js dataGzip) is what keeps that off the wire.
+describe('/data/*.json is compressed and revalidatable', () => {
+  it('serves the Riftbound catalog gzipped, and much smaller than the raw file', async () => {
+    const r = await fetch(srv.base + '/data/riftbound.json', { headers: { 'accept-encoding': 'gzip' } });
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('content-encoding'), 'gzip');
+    const raw = fs.statSync(path.join(ROOT, 'data', 'riftbound.json')).size;
+    assert.ok(+r.headers.get('content-length') < raw / 3, 'gzip should be well under a third of the raw size');
+    const j = await r.json();                                     // still parses after decompression
+    assert.ok(Object.keys(j).length >= 5);
+  });
+  it('an ETag round-trip answers 304 with no body — a warm cache costs nothing', async () => {
+    const first = await fetch(srv.base + '/data/riftbound.json');
+    const etag = first.headers.get('etag');
+    await first.arrayBuffer();
+    assert.ok(etag, 'no ETag to revalidate against');
+    const second = await fetch(srv.base + '/data/riftbound.json', { headers: { 'if-none-match': etag } });
+    assert.equal(second.status, 304);
+    assert.equal((await second.arrayBuffer()).byteLength, 0);
+  });
+  it('a client that cannot take gzip still gets the plain file', async () => {
+    const r = await fetch(srv.base + '/data/riftbound.json', { headers: { 'accept-encoding': 'identity' } });
+    assert.equal(r.status, 200);
+    assert.notEqual(r.headers.get('content-encoding'), 'gzip');
+    assert.ok(Object.keys(await r.json()).length >= 5);
+  });
+  it('a missing file falls through to Vite instead of erroring inside the middleware', async () => {
+    // Vite's dev server answers any unmatched path with the index.html fallback (so this is a 200,
+    // same as /definitely-not-a-route). What matters here is that the middleware does not blow up
+    // or claim a gzip encoding for a file it never read.
+    const r = await fetch(srv.base + '/data/does-not-exist.json');
+    await r.arrayBuffer();
+    assert.ok(r.status < 500, `middleware turned a missing file into ${r.status}`);
+    assert.notEqual(r.headers.get('content-encoding'), 'gzip');
+  });
+});
+
 describe('/api/status', () => {
   it('aggregate status: version, keys, sources, data, dbs, subsystems', async () => {
     const { status, json } = await get('/api/status');
@@ -86,7 +124,8 @@ describe('/api/status', () => {
     for (const k of ['version', 'keys', 'sources', 'data', 'dbs', 'subsystems']) assert.ok(json[k], `missing ${k}`);
     assert.ok(json.version.node.startsWith('v'));
     assert.equal(typeof json.keys.riftbound.SCRYDEX_API_KEY, 'boolean');
-    assert.ok(json.data.riftbound.count >= 900, 'riftbound catalog count');
+    assert.ok(json.data.riftbound.count >= 1150, 'riftbound catalog count');
+    assert.ok(json.data.riftbound.sets >= 5, 'riftbound set count');
     assert.equal(json.dbs.tracker.watchlist, 0, 'temp DB → empty watchlist');
     assert.equal(typeof json.subsystems.printer.enabled, 'boolean');
   });

@@ -792,6 +792,40 @@
     throw lastErr||new Error('fetch failed');
   };
 
+  // TCG.cachedJSON(url, key, onFresh) — an ETag-keyed cache for the big baked catalogs
+  // (/data/*.json). Returns the cached copy SYNCHRONOUSLY so the caller can paint with zero network,
+  // then revalidates in the background and calls onFresh(data) only if the file actually changed.
+  //
+  // Why not just let the browser do it: the server answers a conditional GET with a 304 already, so
+  // the bytes don't move — but the page still blocks on the round-trip before it can render, and it
+  // re-parses 300 KB of JSON every load. Holding the PARSED object plus its ETag skips both. The
+  // existing Pokémon caches (loadCachedIntl et al) paint from localStorage but still re-fetch,
+  // re-parse and re-write on every load; this is the piece they're missing.
+  //
+  // `cache:'no-store'` keeps the browser's own HTTP cache from answering (or silently rewriting) the
+  // conditional request, so our If-None-Match reaches the server and we see the real 200/304.
+  // GR7: every storage access is guarded — a full quota or a private-mode throw degrades to
+  // fetch-every-time, never to a broken page.
+  TCG.cachedJSON = function (url, key, onFresh) {
+    var cached = null, etag = '';
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw) { var o = JSON.parse(raw); if (o && o.data) { cached = o.data; etag = o.etag || ''; } }
+    } catch (e) {}
+    var headers = etag ? { 'If-None-Match': etag } : undefined;
+    var p = fetch(url, { cache: 'no-store', headers: headers }).then(function (r) {
+      if (r.status === 304) return null;                    // unchanged: no transfer, no parse, no write
+      if (!r.ok) throw new Error('http ' + r.status);
+      var tag = r.headers.get('etag') || '';
+      return r.json().then(function (data) {
+        try { localStorage.setItem(key, JSON.stringify({ etag: tag, data: data })); } catch (e) {}
+        if (onFresh) onFresh(data);
+        return data;
+      });
+    });
+    return { cached: cached, fresh: p };
+  };
+
   // MIRROR: condCode/langCode/fitTitle/formatCardNumber are ported verbatim in
   // lib/listing-copy.mjs (the bulk tool's shared copy — classic scripts can't import
   // ESM). If you edit any of them, edit BOTH sides and run scripts/check-listing-copy.mjs.

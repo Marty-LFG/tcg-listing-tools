@@ -1,3 +1,7 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { gzipSync } from 'node:zlib'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import { trackerPlugin } from './lib/tracker.mjs'
 import { inventoryPlugin } from './lib/inventory.mjs'
@@ -27,6 +31,50 @@ import { withRegistry } from './lib/plugin-registry.mjs'
 // locally (faster, and resilient if the upstream CDN URL ever changes).
 // The cache itself now lives in lib/img-cache.mjs so the listing-image compositor shares it: that
 // pipeline must download bytes to compute its content hash, and this keeps the repeat a local read.
+const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data')
+
+// Gzip the baked JSON catalogs. Vite's static handler sends them uncompressed, and they are big and
+// read on every page load: riftbound.json is 314 KB, riftbound-prices.json 227 KB, pokemon-intl-sets
+// .json 87 KB. The ETag already yields a 304 on a warm browser cache, so the body only moves on a
+// cold cache or after a bake rewrites the file — but that is exactly when it hurts most, and it hits
+// every consumer (both builders, catalog, bulk, stock-uploader). ~6x smaller on the wire.
+//
+// Compression is memoised by mtime+size, so a re-bake invalidates it and the cost is paid once per
+// bake rather than once per request. Registered inside configureServer (not a returned callback) so
+// it runs BEFORE Vite's static handler; anything unexpected falls through to next() rather than
+// erroring, which keeps a bad path serving the plain file instead of a 500.
+const dataGzip = {
+  name: 'data-gzip',
+  configureServer(server) {
+    const cache = new Map()   // absolute path -> { mtimeMs, size, etag, gz }
+    server.middlewares.use('/data', (req, res, next) => {
+      try {
+        const rel = decodeURIComponent(String(req.url || '').split('?')[0])
+        if (!/\.json$/i.test(rel) || rel.includes('..')) return next()
+        const file = path.join(DATA_DIR, rel)
+        const st = fs.statSync(file)
+        let hit = cache.get(file)
+        if (!hit || hit.mtimeMs !== st.mtimeMs || hit.size !== st.size) {
+          hit = {
+            mtimeMs: st.mtimeMs, size: st.size,
+            etag: 'W/"' + st.size + '-' + st.mtimeMs + '"',
+            gz: gzipSync(fs.readFileSync(file)),
+          }
+          cache.set(file, hit)
+        }
+        res.setHeader('etag', hit.etag)
+        res.setHeader('cache-control', 'no-cache')          // always revalidate; the 304 is ~100 bytes
+        res.setHeader('vary', 'accept-encoding')
+        if (req.headers['if-none-match'] === hit.etag) { res.statusCode = 304; return res.end() }
+        if (!/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) return next()
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('content-encoding', 'gzip')
+        return res.end(req.method === 'HEAD' ? undefined : hit.gz)
+      } catch { return next() }                             // missing file / odd path -> let Vite answer
+    })
+  },
+}
+
 const imgProxy = {
   name: 'img-proxy',
   configureServer(server) {
@@ -328,7 +376,7 @@ export default defineConfig(({ mode }) => {
     // report which routes this PROCESS actually owns — and flag when the sources on disk are newer
     // than the running server (a `git pull` with no restart). One wrapper, so a plugin added later
     // is covered without anyone remembering to.
-    plugins: withRegistry([imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), listingImageLabPlugin(env), riftboundPricesPlugin()]),
+    plugins: withRegistry([dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), listingImageLabPlugin(env), riftboundPricesPlugin()]),
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

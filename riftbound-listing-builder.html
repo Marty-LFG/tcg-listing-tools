@@ -102,7 +102,7 @@
 
       <label>Card number</label>
       <div class="lookup">
-        <input id="num" placeholder="e.g. 162a  or  119  or  256/298" autocomplete="off">
+        <input id="num" placeholder="e.g. 162a  or  119  or  299*  or  SP1" autocomplete="off">
         <button onclick="doLookup()">Look up</button>
       </div>
       <div class="status" id="status">Type a card number above.</div>
@@ -123,7 +123,7 @@
         <div class="f-full"><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
-      <div class="hint">Covers all five sets (Origins / Proving Grounds / Spiritforged / Unleashed / Vendetta) with images, market price and no key &mdash; via baked offline data or live Riftscribe. <b>Market price is keyless on every source</b> (TCGplayer, refreshed daily); Scrydex only adds the price-trend graph, and needs an active paid subscription. Alt-art / Showcase: type the number with its letter (e.g. <b>162a</b>); Overnumbered uses <b>*</b> (e.g. <b>299*</b>). Runes (Spiritforged onward) use <b>R##</b> &mdash; type e.g. <b>R01a</b> (Fury Rune, alt-art); reprints price only on Origins.</div>
+      <div class="hint">Covers every released set with images, market price and no key &mdash; via baked offline data or live Riftscribe. The set list comes straight from Riot's card gallery, so a new set appears on its own. <b>Market price is keyless on every source</b> (TCGplayer, refreshed daily); Scrydex only adds the price-trend graph, and needs an active paid subscription. Alt art: type the number with its letter (e.g. <b>162a</b>). <b>Signature</b> uses <b>*</b> (e.g. <b>299*</b>); a number above the set total is <b>Overnumbered</b> (e.g. <b>167</b> in a 166-card set) &mdash; both are Showcase foils. Vendetta's six special showcase cards use <b>SP#</b> (e.g. <b>SP1</b>). Runes (Spiritforged onward) use <b>R##</b> &mdash; type e.g. <b>R01a</b> (Fury Rune, alt-art); reprints price only on Origins.</div>
     </div>
 
     <div class="card">
@@ -168,7 +168,12 @@ function genTitle(){
   if(!window.TCG)return f.name;
   var numHead=((f.num||'').split('/')[0]||'');
   var isAlt=(f.variant==='Alternate Art')||/[a-z]$/i.test(numHead);
-  var altParen=(f.variant==='Overnumbered')?'(Overnumbered)':(isAlt?'(Alt Art)':'');
+  var altParen=(f.variant==='Signature')?'(Signature)':(f.variant==='Overnumbered')?'(Overnumbered)':(isAlt?'(Alt Art)':'');
+  // Signature/Overnumbered is a 10-100x price differentiator (299*/298 US$2739 vs 299/298 US$296),
+  // so it outranks the rarity token and the condition code when fitTitle has to shed parts (GR5) —
+  // an 85-char Signature title used to drop the word "(Signature)" and keep "M/NM". (Alt Art) keeps
+  // its old priority: the trailing letter in the collector number already carries it.
+  var varPrio=(f.variant==='Signature'||f.variant==='Overnumbered')?82:60;
   var code=((f.set||'').match(/\(([^)]+)\)/)||[])[1]||'';
   var rar=(f.rarity||'').trim();
   if(/common|uncommon|^rare$/i.test(rar))rar='';
@@ -177,7 +182,7 @@ function genTitle(){
   var foilTok=(!rarTok&&f.finish==='Foil')?'FOIL':'';
   var parts=[
     {text:f.name,prio:100},
-    {text:altParen,prio:60},
+    {text:altParen,prio:varPrio},
     {text:f.num,prio:88},
     {text:'- Riftbound '+(f.set||''),abbr:'- Riftbound'+(code?' ('+code+')':''),prio:72},
     {text:TCG.langCode(f.lang),prio:30},
@@ -190,7 +195,32 @@ function genTitle(){
 
 let RB_DATA={}, MAPS={}, EMBED_ORDER=[];
 function rebuildMaps(){ MAPS={}; for(const sid in RB_DATA){MAPS[sid]={}; for(const c of RB_DATA[sid].cards) MAPS[sid][c.k]=c;} EMBED_ORDER=Object.keys(RB_DATA); RUNE_BY_DOMAIN=null; }
-async function loadRB(){ try{ const r=await fetch('/data/riftbound.json'); if(!r.ok)throw new Error('http '+r.status); RB_DATA=await r.json(); rebuildMaps(); if(source==='offline'){ if(!RB_DATA[curSet]) curSet=EMBED_ORDER[0]||'ogn'; buildPills(); } }catch(e){ RB_DATA={}; const st=document.getElementById('status'); if(st){st.className='status warn'; st.textContent='Offline catalog unavailable — pick Riftscribe (live) or fill fields manually.';} } }
+// The baked catalog is ~300 KB and used to be re-fetched AND re-parsed on every page load, with the
+// set pills blocked behind the round-trip. TCG.cachedJSON hands the last copy back synchronously
+// (instant pills) and only re-parses when the ETag says a bake actually changed the file.
+const RB_CACHE_KEY='rb_catalog_v1';
+function applyRB(data){
+  RB_DATA=data||{}; rebuildMaps();
+  if(source==='offline'){ if(!RB_DATA[curSet]) curSet=EMBED_ORDER[0]||'ogn'; buildPills(); }
+  // Riftscribe's pills take their display names AND their order from this catalog, and
+  // loadRiftscribeSets() can win the race against it, so relabel them once it lands.
+  else if(source==='riftscribe'&&RBS_SETS.length){
+    RBS_SETS=RBS_SETS.map(function(x){return [x[0],rbsName(x[0])];}).sort(function(a,b){return setRank(a[0])-setRank(b[0])||a[0].localeCompare(b[0]);});
+    buildPills();
+  }
+}
+function rbCatalogFailed(){
+  RB_DATA={}; const st=document.getElementById('status');
+  if(st){st.className='status warn'; st.textContent='Offline catalog unavailable — pick Riftscribe (live) or fill fields manually.';}
+}
+function loadRB(){
+  if(!(window.TCG&&TCG.cachedJSON)){   // extras.js absent (e.g. the copy-parity harness) — plain fetch
+    return fetch('/data/riftbound.json').then(function(r){ if(!r.ok)throw new Error('http '+r.status); return r.json(); }).then(applyRB).catch(rbCatalogFailed);
+  }
+  const got=TCG.cachedJSON('/data/riftbound.json',RB_CACHE_KEY,applyRB);
+  if(got.cached) applyRB(got.cached);
+  return got.fresh.catch(function(){ if(!got.cached) rbCatalogFailed(); });
+}
 
 // source ∈ 'offline' (baked data/riftbound.json) | 'riftscribe' (live keyless) | 'scrydex' (key, live pricing)
 let source='offline', SCRY_EXP=[], RBS_BY_SET=null, RBS_SETS=[], curSet='ogn', lastHTML='';
@@ -201,19 +231,28 @@ try{ const s=localStorage.getItem('rb_cfg2'); if(s) cfg=Object.assign(cfg,JSON.p
 source=cfg.source||'offline';
 function saveCfg(){ try{ localStorage.setItem('rb_cfg2', JSON.stringify(cfg)); }catch(e){} }
 
-// Riftscribe exposes only set codes; map them to display names (release order).
-const RBS_NAMES={OGN:'Origins', OGS:'Proving Grounds', SFD:'Spiritforged', UNL:'Unleashed'};
+// Riftscribe exposes only set CODES. Display names and release order come from the baked catalog
+// (data/riftbound.json, itself ordered by Riot's own set roster), so a new set needs no edit here.
+// Falls back to the bare code while the catalog is still loading — loadRB() re-labels and rebuilds
+// the pills when it lands, so the race is self-correcting.
+function rbsName(c){const s=RB_DATA[String(c||'').toLowerCase()];return (s&&s.name)||c;}
+function setRank(c){const i=EMBED_ORDER.indexOf(String(c||'').toLowerCase());return i<0?99:i;}
 
 function val(id){return document.getElementById(id).value.trim();}
 function set(id,v){document.getElementById(id).value=(v==null?'':v);}
 function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-function mapRarity(r){return r==='Alternate Art'?'Showcase':(r||'');}
-function variantOf(r){if(r==='Alternate Art')return 'Alternate Art';if(r==='Overnumbered')return 'Overnumbered';return '';}
-function finishOf(r){return ['Epic','Alternate Art','Overnumbered'].includes(r)?'Foil':'Non-foil';}
+// The premium printings all sell as "Showcase" on TCGplayer and all come foil. 'Showcase' itself
+// is in finishOf's list for the SP promos, which carry no name suffix to be detected by.
+function mapRarity(r){return (r==='Alternate Art'||r==='Overnumbered'||r==='Signature')?'Showcase':(r||'');}
+function variantOf(r){return (r==='Alternate Art'||r==='Overnumbered'||r==='Signature')?r:'';}
+function finishOf(r){return ['Epic','Showcase','Alternate Art','Overnumbered','Signature'].includes(r)?'Foil':'Non-foil';}
 function domainDisp(d){return (d||'').split(';').join(' / ');}
 function championTag(name){const p=(name||'').split(' - ');return p.length>1?p[0]:'';}
-function normNum(s){s=(s||'').split('/')[0].trim().toLowerCase();const m=s.match(/^0*(\d+)([a-z*]*)$/);return m?m[1]+m[2]:s;}
+// Special showcase numbering (Vendetta SP1/006 …) normalises to 'sp1'. The plain branch already
+// leaves a letter-PREFIXED number alone; the sp branch also strips the zero padding, because Riot
+// prints "SP1" where a marketplace may write "SP01" and one card must not yield two identity keys.
+function normNum(s){s=(s||'').split('/')[0].trim().toLowerCase();const sp=s.match(/^(sp)0*(\d+)([a-z*]*)$/);if(sp)return sp[1]+sp[2]+sp[3];const m=s.match(/^0*(\d+)([a-z*]*)$/);return m?m[1]+m[2]:s;}
 
 // ---- runes: the 12 runes are reprinted in every set with an "R##" number (Spiritforged
 // onward) but no database carries the per-set reprints — they're catalogued once under OGN.
@@ -234,11 +273,14 @@ function curSetCode(){
   if(source==='scrydex'){const e=SCRY_EXP.find(x=>x.id===curSet);return (e&&(e.code||e.id))||curSet;}
   if(source==='riftscribe')return curSet;
   return (RB_DATA[curSet]&&RB_DATA[curSet].code)||curSet; }
-// dotgg image URL for any Riftbound card: {SET}-{NNN}{suffix}.webp (3-digit padded, like the publicCode).
+// dotgg image URL for any Riftbound card: {SET}-{NNN}{suffix}.webp (3-digit padded, like the
+// publicCode). Numbers with an alpha PREFIX (VEN-SP1, SFD-R01a) are keyed UPPERCASE on the CDN —
+// VEN-SP1.webp is 200 and VEN-sp1.webp 404s — so uppercase it. Idempotent; no-op for the padded branch.
 function rbDotgg(setCode,numStr){
   const head=String(numStr||'').split('/')[0].trim();
   const m=head.match(/^0*(\d+)([a-z*]?)$/i);
-  const code=(setCode||'').toUpperCase()+'-'+(m?String(m[1]).padStart(3,'0')+(m[2]||'').toLowerCase():head);
+  const tail=m?String(m[1]).padStart(3,'0')+(m[2]||'').toLowerCase():head.replace(/^[a-z]+/i,function(s){return s.toUpperCase();});
+  const code=(setCode||'').toUpperCase()+'-'+tail;
   return head?'https://static.dotgg.gg/riftbound/cards/'+code+'.webp':''; }
 function runeFill(raw){
   const pr=parseRune(raw); if(!pr)return false;
@@ -246,7 +288,7 @@ function runeFill(raw){
   const slot=RUNE_BY_DOMAIN[pr.dom]||{}; const r=(pr.variant==='a'?slot.alt:slot.base)||slot.base||slot.alt;
   if(!r)return false;
   const rawRarity=pr.variant==='a'?'Alternate Art':(r.rarity||'Common');
-  const name=(r.name||(pr.dom+' Rune')).replace(/\s*\((Alternate Art|Overnumbered)\)\s*$/i,'');
+  const name=(r.name||(pr.dom+' Rune')).replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,'');
   // R## is the number printed on the REPRINT sets only. Origins prints its runes with ordinary
   // collector numbers (007a Fury, 042a Calm, … 214a Order — the bake carries all 12, and no other
   // set carries any), so `R01a` is a number Origins never prints. Decide the card's real number
@@ -308,9 +350,11 @@ function curSetName(){
 function genPitch(f, rawRarity){
   const setName=f.setName, name=f.name, type=(f.type||'card'), dom=f.domain;
   const fin=f.finish==='Foil'?'foil ':'';
-  const _alt=rawRarity==='Alternate Art'||rawRarity==='Showcase'||/\(alternate art\)/i.test(name);
+  const _alt=rawRarity==='Alternate Art'||/\(alternate art\)/i.test(name);
   if(_alt) return `The Showcase alternate-art ${name} from Riftbound's ${setName} set \u2014 the premium full-art treatment and a standout chase card for collectors.`;
+  if(rawRarity==='Signature') return `The Signature ${name} from Riftbound's ${setName} set \u2014 the rarest Showcase treatment in the set and a blue-chip chase card for collectors.`;
   if(rawRarity==='Overnumbered') return `The Overnumbered full-art ${name} from Riftbound's ${setName} set \u2014 a sought-after special-rarity chase card for collectors.`;
+  if(rawRarity==='Showcase') return `The Showcase ${name} from Riftbound's ${setName} set \u2014 a premium full-art printing and a standout chase card for collectors.`;
   if(rawRarity==='Epic') return `The Epic ${fin}${name} from Riftbound's ${setName} set \u2014 a ${dom||''}${dom?'-domain ':''}${type.toLowerCase()} and a solid pickup for collectors and players.`;
   return `${name} from Riftbound's ${setName} set \u2014 a ${dom?dom+'-domain ':''}${type.toLowerCase()}${fin?', '+f.finish.toLowerCase():''}. ${mapRarity(rawRarity)} rarity.`;
 }
@@ -364,8 +408,9 @@ function embedLookup(){
   let rawRarity=c.rarity||'';
   if(/\(Alternate Art\)/i.test(name)) rawRarity='Alternate Art';
   else if(/\(Overnumbered\)/i.test(name)) rawRarity='Overnumbered';
-  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered)\)\s*$/i);
-  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':'Overnumbered'; _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered)\)\s*$/i,''); }
+  else if(/\(Signature\)/i.test(name)) rawRarity='Signature';
+  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i);
+  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':'Overnumbered'); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,''); }
   set('f_name',_nm); set('f_set',sd.name+' ('+sd.code+')'); set('f_num',c.num);
   set('f_rarity',mapRarity(rawRarity)); set('f_variant',_v); set('f_type',c.type);
   set('f_domain',domainDisp(c.domain)); set('f_tags',championTag(name)); set('f_finish',finishOf(rawRarity));
@@ -401,7 +446,7 @@ async function connectScrydex(){
     SCRY_EXP=exps.map(e=>({id:e.id,name:e.name})).filter(e=>e.id);
     if(!SCRY_EXP.length) throw new Error('no expansions');
     source='scrydex'; cfg.source='scrydex'; saveCfg(); curSet=SCRY_EXP[0].id; syncSrcUI(); buildPills();
-    cs.innerHTML='\u2713 Connected \u2014 '+SCRY_EXP.length+' sets live (incl. Unleashed). Lookups now use Scrydex with market pricing + trend.';
+    cs.innerHTML='\u2713 Connected \u2014 '+SCRY_EXP.length+' sets live. Lookups now use Scrydex with market pricing + trend.';
   }catch(e){
     source='offline'; cfg.source='offline'; saveCfg(); curSet=EMBED_ORDER[0]||'ogn'; syncSrcUI(); buildPills();
     dot.className='conn-dot err';
@@ -436,10 +481,11 @@ function mapScrydexCard(c,num){
   let rawRarity=c.rarity||'';
   if(/\(Alternate Art\)/i.test(name)) rawRarity='Alternate Art';
   else if(/\(Overnumbered\)/i.test(name)) rawRarity='Overnumbered';
+  else if(/\(Signature\)/i.test(name)) rawRarity='Signature';
   const expName=(c.expansion&&c.expansion.name)||curSetName();
   const expCode=(c.expansion&&c.expansion.code)||curSet;
-  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered)\)\s*$/i);
-  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':'Overnumbered'; _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered)\)\s*$/i,''); }
+  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i);
+  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':'Overnumbered'); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,''); }
   set('f_name',_nm);
   set('f_set',expName+' ('+expCode+')');
   set('f_num',c.printed_number||((c.number||num)+''));
@@ -565,7 +611,7 @@ async function loadRiftscribeSets(){
       arr.forEach(c=>{ const s=(c.set_id||'').toUpperCase(); if(s)(RBS_BY_SET[s]||(RBS_BY_SET[s]=[])).push(c); });
       off+=arr.length; act&&act.update('Riftscribe '+off+(total!==Infinity?'/'+total:'')+' cards…'); if(arr.length<200) break;
     }
-    RBS_SETS=Object.keys(RBS_BY_SET).sort((a,b)=>{const o=['OGN','OGS','SFD','UNL'];return (o.indexOf(a)<0?99:o.indexOf(a))-(o.indexOf(b)<0?99:o.indexOf(b));}).map(code=>[code,RBS_NAMES[code]||code]);
+    RBS_SETS=Object.keys(RBS_BY_SET).sort((a,b)=>setRank(a)-setRank(b)||a.localeCompare(b)).map(code=>[code,rbsName(code)]);
     if(RBS_SETS.length&&!RBS_SETS.find(x=>x[0]===curSet)) curSet=RBS_SETS[0][0];
     buildPills();
     const n=Object.values(RBS_BY_SET).reduce((a,x)=>a+x.length,0);
@@ -600,11 +646,17 @@ function mapRiftscribeCard(c){
   const isStar=c.variant==='star', isAlt=c.variant&&/^[a-z]$/i.test(c.variant);
   const suf=isStar?'*':(isAlt?c.variant.toLowerCase():'');
   let rawRarity=titleRb(c.rarity), name=c.name||'';
-  if(isStar){ rawRarity='Overnumbered'; name+=' (Overnumbered)'; }
+  // Same derivation the catalog bake does, and for the same reason: the printed number is reliable
+  // where the source's own rarity is not. Riftscribe carries no set total, so borrow it from the
+  // baked catalog and simply skip the over-total test when it isn't loaded (GR7).
+  const _tot=(RB_DATA[setCode.toLowerCase()]||{}).total||0;
+  const isOver=!isStar&&!isAlt&&_tot>0&&(+c.collector_number||0)>_tot;
+  if(isStar){ rawRarity='Signature'; name+=' (Signature)'; }
   else if(isAlt){ rawRarity='Alternate Art'; name+=' (Alternate Art)'; }
-  let _nm=name,_v=variantOf(rawRarity); const _mm=_nm.match(/\s*\((Alternate Art|Overnumbered)\)\s*$/i);
-  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':'Overnumbered'; _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered)\)\s*$/i,''); }
-  set('f_name',_nm); set('f_set',(RBS_NAMES[setCode]||setCode)+' ('+setCode+')');
+  else if(isOver){ rawRarity='Overnumbered'; name+=' (Overnumbered)'; }
+  let _nm=name,_v=variantOf(rawRarity); const _mm=_nm.match(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i);
+  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':'Overnumbered'); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,''); }
+  set('f_name',_nm); set('f_set',rbsName(setCode)+' ('+setCode+')');
   set('f_num',String(c.collector_number).padStart(3,'0')+suf);
   set('f_rarity',mapRarity(rawRarity)); set('f_variant',_v); set('f_type',c.type||'');
   set('f_domain', c.faction?titleRb(c.faction):''); set('f_tags',championTag(name)); set('f_finish',finishOf(rawRarity));

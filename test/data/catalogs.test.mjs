@@ -4,24 +4,52 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read } from '../helpers/extract-inline.mjs';
+import { normNum } from '../../lib/riftbound-data.mjs';
 
 describe('data/riftbound.json (build-riftbound-data.mjs)', () => {
   const rb = JSON.parse(read('data/riftbound.json'));
-  it('has all released sets, keyed by lowercase set code', () => {
-    for (const code of ['ogn', 'ogs', 'sfd', 'unl']) assert.ok(rb[code], `missing set ${code}`);
+  // Deliberately NOT a hardcoded set list: the bake takes its roster + release order straight from
+  // Riot's card gallery so a new set needs no code change, and a list here would be the one place
+  // that still went stale. Assert the shape and the release-order anchor instead.
+  it('is keyed by lowercase set code, in release order, covering every released set', () => {
+    assert.ok(Object.keys(rb).length >= 5, `only ${Object.keys(rb).length} sets`);
+    assert.equal(Object.keys(rb)[0], 'ogn', 'Origins must sort first (Riot release order)');
+    assert.ok(rb.ogn, 'missing the Origins canary');
     for (const code of Object.keys(rb)) assert.equal(code, code.toLowerCase());
   });
-  it('holds the full catalog (~943+ cards)', () => {
+  it('holds the full catalog (~1164+ cards)', () => {
     const total = Object.values(rb).reduce((n, s) => n + s.cards.length, 0);
-    assert.ok(total >= 900, `only ${total} cards`);
+    assert.ok(total >= 1150, `only ${total} cards`);
   });
   it('every card carries the slim per-card shape', () => {
     for (const [code, set] of Object.entries(rb)) {
       assert.ok(set.name && set.code, `${code}: set name/code`);
+      assert.ok(set.total > 0, `${code}: printed set total (collectorNumberMax)`);
       for (const c of set.cards) {
         for (const k of ['k', 'num', 'name', 'rarity']) {
           assert.ok(c[k] != null && c[k] !== undefined, `${code} card ${c.num || c.k}: missing ${k}`);
         }
+        assert.match(c.num, /^(\d+[a-z*]?|SP\d+[a-z*]?)\/\d+$/, `${code} card ${c.num}: printed number shape`);
+        assert.equal(c.k, normNum(c.num), `${code} card ${c.num}: lookup key must be normNum(num)`);
+      }
+    }
+  });
+  // The variant label is derived once at bake time and frozen into the name, which is what keeps the
+  // builder, lib/riftbound-data.mjs and every bulk consumer agreeing without duplicating the rule.
+  // Re-derive it here so the frozen label can never silently drift from the printed number.
+  it('name suffix matches the treatment its printed number implies', () => {
+    for (const [code, set] of Object.entries(rb)) {
+      for (const c of set.cards) {
+        const numPart = c.num.split('/')[0];
+        const sp = /^SP/i.test(numPart);
+        const star = numPart.endsWith('*');
+        const alt = !sp && /[a-z]$/i.test(numPart);
+        const over = !sp && !star && !alt && (parseInt(numPart, 10) || 0) > set.total;
+        const want = star ? ' (Signature)' : alt ? ' (Alternate Art)' : over ? ' (Overnumbered)' : '';
+        const got = (c.name.match(/\s\((Signature|Alternate Art|Overnumbered)\)$/) || [''])[0];
+        assert.equal(got, want, `${code} ${c.num} "${c.name}": wrong treatment for its number`);
+        // SP carries no suffix, so its rarity is the ONLY thing marking it as a premium printing.
+        if (sp) assert.equal(c.rarity, 'Showcase', `${code} ${c.num}: SP promos must bake as Showcase`);
       }
     }
   });

@@ -60,11 +60,17 @@ no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
 
 ## Notes
 
-- Riftbound covers all four sets (Origins, Proving Grounds, Spiritforged, Unleashed)
-  with no key — via baked offline data (`data/riftbound.json`, rebuilt with
-  `node scripts/build-riftbound-data.mjs`) or the live keyless Riftscribe source. eBay
-  supplies AUD price comps. Scrydex is optional and only adds live market price + a trend
-  graph. Pick the source in the builder's "Data source" dropdown.
+- Riftbound covers every released set with no key — via baked offline data
+  (`data/riftbound.json`, rebuilt with `node scripts/build-riftbound-data.mjs`) or the live
+  keyless Riftscribe source. The set list, names, release order and printed totals all come
+  from Riot's own card gallery, so a **new set appears on its own** after the next refresh
+  (and pings Telegram); no code change needed. Market price is keyless too, from TCGplayer,
+  and eBay supplies AUD comps. Scrydex is optional and only adds a price-trend graph. Pick
+  the source in the builder's "Data source" dropdown.
+- Riftbound premium printings are derived from the printed number, not the source's rarity
+  field (which is wrong for exactly these cards): a trailing `*` is a **Signature**, a number
+  above the set total is **Overnumbered**, a trailing letter is **Alternate Art**, and `SP#`
+  is a special showcase promo. All of them are Showcase foils.
 - SWU is entirely live via swu-db; Base URL is preset to `/api/swu`.
 - Every builder always allows manual field entry; the preview builds regardless.
 
