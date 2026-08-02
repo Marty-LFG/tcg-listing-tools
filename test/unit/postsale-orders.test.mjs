@@ -167,6 +167,158 @@ describe('parseOrders', () => {
   });
 });
 
+// The shipment side of GetOrders. eBay has always returned all of this at DetailLevel=ReturnAll and
+// parseOrders used to drop it on the floor, which is why nothing downstream could tell a free letter
+// from a paid Express, and why a tracking number bought in Seller Hub never came back to us.
+const SHIP_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
+<GetOrdersResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+  <Ack>Success</Ack>
+  <HasMoreOrders>false</HasMoreOrders>
+  <OrderArray>
+    <Order>
+      <OrderID>EXPRESS-NOT-YET-SENT</OrderID>
+      <OrderStatus>Completed</OrderStatus>
+      <ShippingServiceSelected>
+        <ShippingService>AU_Express</ShippingService>
+        <ShippingServiceCost currencyID="AUD">12.95</ShippingServiceCost>
+        <ExpeditedService>true</ExpeditedService>
+        <ShippingPackageInfo>
+          <EstimatedDeliveryTimeMin>2026-08-04T04:00:00.000Z</EstimatedDeliveryTimeMin>
+          <EstimatedDeliveryTimeMax>2026-08-06T04:00:00.000Z</EstimatedDeliveryTimeMax>
+          <HandleByTime>2026-08-03T06:59:59.000Z</HandleByTime>
+        </ShippingPackageInfo>
+      </ShippingServiceSelected>
+      <ShippingDetails>
+        <BuyerSelectedShipping>true</BuyerSelectedShipping>
+        <ShipmentTrackingDetails></ShipmentTrackingDetails>
+      </ShippingDetails>
+      <Total currencyID="AUD">55.95</Total>
+      <TransactionArray><Transaction>
+        <TransactionID>1</TransactionID>
+        <Item><ItemID>111</ItemID><SKU>AAA-001</SKU><Title>Card A</Title></Item>
+        <QuantityPurchased>1</QuantityPurchased>
+        <TransactionPrice currencyID="AUD">43.00</TransactionPrice>
+      </Transaction></TransactionArray>
+      <BuyerUserID>expressbuyer</BuyerUserID>
+      <PaidTime>2026-08-02T01:00:00.000Z</PaidTime>
+    </Order>
+    <Order>
+      <OrderID>SENT-WITH-TRACKING</OrderID>
+      <OrderStatus>Completed</OrderStatus>
+      <ShippedTime>2026-08-01T05:00:00.000Z</ShippedTime>
+      <ShippingServiceSelected>
+        <ShippingService>AU_RegularParcelWithTracking</ShippingService>
+        <ShippingServiceCost currencyID="AUD">9.45</ShippingServiceCost>
+        <ShippingPackageInfo>
+          <EstimatedDeliveryTimeMin>2026-08-05T04:00:00.000Z</EstimatedDeliveryTimeMin>
+          <ScheduledDeliveryTimeMin>2026-08-04T04:00:00.000Z</ScheduledDeliveryTimeMin>
+          <ScheduledDeliveryTimeMax>2026-08-04T08:00:00.000Z</ScheduledDeliveryTimeMax>
+          <ActualDeliveryTime>2026-08-04T06:12:00.000Z</ActualDeliveryTime>
+        </ShippingPackageInfo>
+      </ShippingServiceSelected>
+      <ShippingDetails>
+        <ShipmentTrackingDetails></ShipmentTrackingDetails>
+        <ShipmentTrackingDetails>
+          <ShipmentTrackingNumber>36LB1234567890</ShipmentTrackingNumber>
+          <ShippingCarrierUsed>Australia Post</ShippingCarrierUsed>
+        </ShipmentTrackingDetails>
+      </ShippingDetails>
+      <Total currencyID="AUD">29.45</Total>
+      <TransactionArray><Transaction>
+        <TransactionID>2</TransactionID>
+        <Item><ItemID>222</ItemID><SKU>AAB-007</SKU><Title>Card B</Title></Item>
+        <QuantityPurchased>1</QuantityPurchased>
+        <TransactionPrice currencyID="AUD">20.00</TransactionPrice>
+      </Transaction></TransactionArray>
+      <BuyerUserID>trackedbuyer</BuyerUserID>
+      <PaidTime>2026-07-31T01:00:00.000Z</PaidTime>
+    </Order>
+    <Order>
+      <OrderID>LINE-LEVEL-TRACKING</OrderID>
+      <OrderStatus>Completed</OrderStatus>
+      <ShippingServiceSelected>
+        <ShippingService>AU_Regular</ShippingService>
+        <ShippingServiceCost currencyID="AUD">0.00</ShippingServiceCost>
+      </ShippingServiceSelected>
+      <ShippingDetails><BuyerSelectedShipping>false</BuyerSelectedShipping></ShippingDetails>
+      <Total currencyID="AUD">10.00</Total>
+      <TransactionArray><Transaction>
+        <TransactionID>3</TransactionID>
+        <Item><ItemID>333</ItemID><SKU>AAC-003</SKU><Title>Card C</Title></Item>
+        <QuantityPurchased>1</QuantityPurchased>
+        <TransactionPrice currencyID="AUD">10.00</TransactionPrice>
+        <ShippingDetails><ShipmentTrackingDetails>
+          <ShipmentTrackingNumber>99XY000111222</ShipmentTrackingNumber>
+          <ShippingCarrierUsed>AusPost</ShippingCarrierUsed>
+        </ShipmentTrackingDetails></ShippingDetails>
+      </Transaction></TransactionArray>
+      <BuyerUserID>letterbuyer</BuyerUserID>
+      <PaidTime>2026-07-30T01:00:00.000Z</PaidTime>
+    </Order>
+  </OrderArray>
+</GetOrdersResponse>`;
+
+describe('parseOrders — postage + shipment', () => {
+  const by = Object.fromEntries(parseOrders(SHIP_FIXTURE).orders.map((o) => [o.orderId, o]));
+
+  it('reads the buyer-selected service, its cost and eBay\'s expedited flag', () => {
+    const o = by['EXPRESS-NOT-YET-SENT'];
+    assert.equal(o.shipService, 'AU_Express');
+    assert.equal(o.shippingCents, 1295);
+    assert.equal(o.expedited, true);
+    assert.equal(o.buyerSelectedShipping, true);
+  });
+
+  it('reads the dispatch deadline and the estimated delivery window', () => {
+    const o = by['EXPRESS-NOT-YET-SENT'];
+    assert.equal(o.handleByTime, '2026-08-03T06:59:59.000Z');
+    assert.equal(o.etaMin, '2026-08-04T04:00:00.000Z');
+    assert.equal(o.etaMax, '2026-08-06T04:00:00.000Z');
+    assert.equal(o.scheduledMin, null);
+  });
+
+  it('an empty ShipmentTrackingDetails means "not sent yet", not a blank tracking number', () => {
+    const o = by['EXPRESS-NOT-YET-SENT'];
+    assert.equal(o.trackingNumber, null);
+    assert.equal(o.carrier, null);
+  });
+
+  it('pulls back the tracking number eBay wrote when the label was bought', () => {
+    const o = by['SENT-WITH-TRACKING'];
+    assert.equal(o.trackingNumber, '36LB1234567890');
+    assert.equal(o.carrier, 'Australia Post');
+    assert.equal(o.shippedTime, '2026-08-01T05:00:00.000Z');
+  });
+
+  it('reads the scheduled window and the actual delivery once the parcel has moved', () => {
+    const o = by['SENT-WITH-TRACKING'];
+    assert.equal(o.scheduledMin, '2026-08-04T04:00:00.000Z');
+    assert.equal(o.scheduledMax, '2026-08-04T08:00:00.000Z');
+    assert.equal(o.deliveredTime, '2026-08-04T06:12:00.000Z');
+  });
+
+  it('falls back to a line item\'s tracking when the order carries none', () => {
+    const o = by['LINE-LEVEL-TRACKING'];
+    assert.equal(o.trackingNumber, '99XY000111222');
+    assert.equal(o.carrier, 'AusPost');
+  });
+
+  it('keeps BuyerSelectedShipping=false distinct from absent', () => {
+    assert.equal(by['LINE-LEVEL-TRACKING'].buyerSelectedShipping, false);
+    assert.equal(by['SENT-WITH-TRACKING'].buyerSelectedShipping, null);   // eBay simply didn't send it
+  });
+
+  it('leaves every postage field null on an order that carries none of it (the old fixture)', () => {
+    const o = parseOrders(FIXTURE).orders[0];
+    assert.equal(o.expedited, null);
+    assert.equal(o.buyerSelectedShipping, null);
+    assert.equal(o.handleByTime, null);
+    assert.equal(o.trackingNumber, null);
+    assert.equal(o.deliveredTime, null);
+    assert.equal(o.shipService, 'AU_Regular');   // unchanged
+  });
+});
+
 describe('buildGetOrdersInner', () => {
   it('windows by ModTime and paginates, defaulting to Completed orders', () => {
     const xml = buildGetOrdersInner({ modTimeFrom: '2026-07-19T00:00:00.000Z', modTimeTo: '2026-07-19T06:00:00.000Z', page: 2, entriesPerPage: 50 });

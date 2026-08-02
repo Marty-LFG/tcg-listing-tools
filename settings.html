@@ -531,6 +531,15 @@
         {p:'labels',l:'Queue labels',t:'toggle',tip:'Flag each new unshipped order for the label tool (sets its label status to “queued”).'},
         {p:'dashboard_url',l:'Dashboard URL',t:'text',wide:true,tip:'Base URL of this box, used for the Telegram “Edit in dashboard” button, e.g. http://192.168.4.200:5273.'},
       ]},
+      {name:'Postage',fields:[
+        {p:'postage.dispatch_message.enabled',l:'Dispatch message',t:'toggle',tip:'When eBay hands back a tracking number (which it does by itself the moment you buy a postage label in Seller Hub), draft a short “it’s on its way” note to the buyer. Follows the send mode above, so in <b>approve</b> mode it waits for your tap. Untracked letters get nothing — they were already promised next-business-day dispatch in the thank-you.'},
+        {p:'postage.dispatch_message.delay_min',l:'Hold for (min)',t:'number',min:0,max:1440,tip:'Wait this many minutes after the tracking number appears before drafting. Buying a label is not the same as lodging the parcel, and this stops the message going out while the satchel is still on the bench.'},
+        {p:'postage.dispatch_message.include_link',l:'Include tracking link',t:'toggle',tip:'<b>Off by default, deliberately.</b> eBay’s member-to-member contact policy bans web addresses in messages. There is a long-standing carve-out for links that help delivery, but enforcement tightened in 2024 and a message that breaks the rule is <b>dropped silently</b> — you would never know it didn’t arrive. Off = the tracking number and carrier in plain text, which eBay also shows on the buyer’s order page.'},
+        {p:'postage.delivered_message.enabled',l:'Delivered follow-up',t:'toggle',tip:'When eBay reports the parcel delivered, draft a short “did it arrive okay?” note with a light rating nudge. Skipped automatically if the buyer has already replied to us or a case is open.'},
+        {p:'postage.delivered_message.force_approve',l:'Always approve delivered',t:'toggle',tip:'Hold every delivered follow-up for a human tap in Telegram, <b>even when the send mode is auto</b>. It arrives after the transaction is done and asks for a rating, so it is the one message worth eyeballing every time.'},
+        {p:'postage.seller_hub_order_url',l:'Seller Hub order URL',t:'text',wide:true,tip:'Where the <b>Buy label on eBay</b> button on the Fulfilment dashboard points. <code>{orderId}</code> is substituted. eBay does not document this deep link, so if it ever stops resolving you can correct it here instead of waiting for a code change.'},
+        {p:'postage.tracking_url',l:'Tracking URL',t:'text',wide:true,tip:'Carrier tracking page, with <code>{tracking}</code> substituted. Used for the ↗ link on the dashboard, and for the buyer message only when “Include tracking link” is on.'},
+      ]},
     ]},
     tracker:{ title:'Price tracker', groups:[{name:null,fields:[
       {p:'cadence_hours',l:'Cadence (hrs)',t:'number',tip:'How often the price collector runs a full pass. Saving restarts the collector.'},

@@ -313,13 +313,31 @@
   function DOC(title, body) {
     return '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>'
       + '@page{margin:14mm;}'
-      + '*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:12pt;line-height:1.4;margin:0;}'
+      + '*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;color:#000;font-size:12pt;line-height:1.4;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
       + '.store{font-size:20pt;font-weight:700;}.tag{font-size:9pt;letter-spacing:2px;color:#555;margin-top:1px;}'
       + '.meta{font-family:"Courier New",monospace;font-size:9.5pt;color:#333;margin:6px 0 16px;}'
       + 'table{width:100%;border-collapse:collapse;margin:6px 0;}th{text-align:left;font-size:8.5pt;letter-spacing:.5px;color:#555;border-bottom:2px solid #000;padding:6px 5px;}td{padding:8px 5px;border-bottom:1px solid #e2e2e2;font-size:11.5pt;vertical-align:top;}'
       + '.box{font-family:"Courier New",monospace;font-weight:700;white-space:nowrap;}.qty{text-align:center;width:44px;}.chk{width:26px;}.chk::before{content:"";display:inline-block;width:14px;height:14px;border:1.5px solid #000;vertical-align:middle;}.ord{font-family:"Courier New",monospace;font-size:8.5pt;color:#666;white-space:nowrap;}'
       + '.pim{width:56px;padding:5px;}.pim img{width:46px;height:64px;object-fit:cover;border:1px solid #ccc;border-radius:3px;filter:grayscale(1);}.pim .pnone{display:inline-block;width:46px;height:64px;border-radius:3px;background:repeating-linear-gradient(135deg,#eee,#eee 3px,#f7f7f7 3px,#f7f7f7 6px);}'
       + 'h2{font-size:12pt;margin:20px 0 4px;padding-bottom:3px;border-bottom:1px solid #000;page-break-after:avoid;}h2 span{color:#888;font-weight:400;font-size:10pt;}tr{page-break-inside:avoid;}'
+      // --- postage ---
+      // Tiers are told apart by BORDER WEIGHT, not by a filled background: browsers print with
+      // "Background graphics" off by default, so a reversed block can come out as white text on white
+      // paper. Silent and invisible is the one failure mode this feature cannot have.
+      + '.tier{display:inline-block;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:7.5pt;letter-spacing:.09em;padding:1px 5px;white-space:nowrap;line-height:1.5;}'
+      + '.t-express{border:2.5px solid #000;color:#000;}'
+      + '.t-tracked{border:1.5px solid #000;color:#000;}'
+      + '.t-paid{border:1px dashed #555;color:#333;}'
+      + '.tc{width:78px;text-align:right;}'
+      // Exception banner: read before anyone walks off to the shelves, so it sits above the first box.
+      + '.upg{border:3px solid #000;margin:0 0 16px;page-break-inside:avoid;}'
+      + '.upg-hd{font-size:12pt;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:7px 10px;border-bottom:3px solid #000;background:#eee;}'
+      + '.upg table{width:100%;border-collapse:collapse;margin:0;}'
+      + '.upg td{padding:6px 10px;border-bottom:1px solid #ccc;font-size:10.5pt;vertical-align:middle;}'
+      + '.upg tr:last-child td{border-bottom:0;}'
+      + '.upg .tc{width:96px;text-align:left;}'
+      + '.upg .who{font-size:9.5pt;color:#555;}'
+      + '.upg .do{font-weight:700;text-align:right;white-space:nowrap;}'
       + '</style></head><body>' + body + '</body></html>';
   }
 
@@ -329,17 +347,55 @@
   // The date on paper is the SYDNEY date (AEST/AEDT), converted from the stored UTC timestamp — near
   // UTC midnight the raw ISO date is the wrong day here in Australia. Uses numeric Intl parts + MON so
   // the month is always "Jul" (ICU 'short' can render "July"); falls back to the raw ISO date offline.
-  function niceDate(iso) {
+  function sydParts(iso) {
     var d = iso ? new Date(iso) : null;
     if (d && !isNaN(d.getTime())) {
       try {
         var p = new Intl.DateTimeFormat('en-US', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
         var o = {}; for (var i = 0; i < p.length; i++) o[p[i].type] = p[i].value;
-        return (+o.day) + ' ' + (MON[(+o.month) - 1] || '') + ' ' + o.year;
+        return { d: +o.day, m: +o.month, y: +o.year };
       } catch (e) { /* fall through to raw ISO */ }
     }
-    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); if (!m) return '';
-    return (+m[3]) + ' ' + (MON[(+m[2]) - 1] || '') + ' ' + m[1];
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    return m ? { d: +m[3], m: +m[2], y: +m[1] } : null;
+  }
+  function niceDate(iso) {
+    var p = sydParts(iso);
+    return p ? p.d + ' ' + (MON[p.m - 1] || '') + ' ' + p.y : '';
+  }
+  // "4 Aug" — the year is noise on a delivery estimate that is always days away.
+  function shortDate(iso) {
+    var p = sydParts(iso);
+    return p ? p.d + ' ' + (MON[p.m - 1] || '') : '';
+  }
+  // A delivery window as one phrase: "4 Aug", "4–6 Aug", "30 Jul – 2 Aug".
+  function dateRange(a, b) {
+    var pa = sydParts(a), pb = sydParts(b);
+    if (!pa && !pb) return '';
+    if (!pa) pa = pb; if (!pb) pb = pa;
+    if (pa.y === pb.y && pa.m === pb.m) {
+      return pa.d === pb.d ? shortDate(a || b) : pa.d + '–' + pb.d + ' ' + (MON[pa.m - 1] || '');
+    }
+    return pa.d + ' ' + (MON[pa.m - 1] || '') + ' – ' + pb.d + ' ' + (MON[pb.m - 1] || '');
+  }
+
+  /* ---------- postage ----------------------------------------------------------------------- */
+  // lib/postage.mjs is the source of truth for these tiers and does the classifying; the server hands
+  // every order down with a ready-made `postage` object. All this side needs is the ordering, so a
+  // combined slip covering several orders can show the strongest tier across them.
+  LR.TIERS = ['standard', 'paid', 'tracked', 'express'];
+  function tierRank(t) { var i = LR.TIERS.indexOf(String(t || 'standard')); return i < 0 ? 0 : i; }
+  function strongestTier(list) {
+    return (list || []).reduce(function (best, t) { return tierRank(t) > tierRank(best) ? t : best; }, 'standard');
+  }
+  // The word that goes in the box. Short enough to read from across a packing bench.
+  var TIER_WORD = { express: 'EXPRESS', tracked: 'TRACKED', paid: 'PAID POSTAGE' };
+
+  // Print treatment is border WEIGHT, never a filled background with knocked-out text. Browsers print
+  // with "Background graphics" off by default, and an inverted block whose fill doesn't print is white
+  // text on white paper — invisible. Which is the exact failure this whole feature exists to prevent.
+  function tierChip(tier, cls) {
+    return TIER_WORD[tier] ? '<span class="' + (cls || 'tier') + ' t-' + esc(tier) + '">' + TIER_WORD[tier] + '</span>' : '';
   }
   function host(url) { return String(url || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); }
 
@@ -359,6 +415,43 @@
       + '<span class="q">' + qty + '</span>'
       + '<span class="tot">' + lineTot + '</span>'
       + '</div>';
+  }
+
+  // The POSTAGE block on a packing slip. Customer-facing wording, seller-legible weight: it reads to
+  // the buyer as confirmation that we saw what they paid for, and it is the second checkpoint for
+  // whoever is packing — the pick sheet catches it at the shelf, this catches it at the bench.
+  //
+  // A free letter (the great majority of card orders) gets one quiet grey line and no box. Only an
+  // upgrade gets a bordered block, so a sheet with a box on it is worth stopping for.
+  function postageBlockHTML(orders) {
+    var ps = orders.map(function (o) { return o.postage || {}; }).filter(function (p) { return p && p.tier; });
+    if (!ps.length) return '';
+    var tier = strongestTier(ps.map(function (p) { return p.tier; }));
+    var lead = ps[0];
+    var paid = orders.reduce(function (n, o) { return n + (+(o.postage && o.postage.paid_cents) || 0); }, 0);
+
+    var line = esc(lead.label || 'Standard delivery');
+    if (tier === 'standard' && !paid) line += ', free';
+    else if (paid) line += ' &middot; ' + esc(money(paid, orders[0].currency));
+
+    // Scheduled dates only exist once the parcel is moving, and they are the accurate ones by then, so
+    // the wording follows the source rather than promising an estimate as a fact.
+    var win = dateRange(lead.eta_min, lead.eta_max);
+    var eta = win ? (lead.eta_source === 'scheduled' ? 'Arriving ' + esc(win) : 'Estimated arrival ' + esc(win)) : '';
+
+    // Present on a reprint after the label was bought. eBay shows the buyer this on their order page
+    // too, so it is a convenience here, not the only copy.
+    var trk = lead.tracking
+      ? '<div class="ptrk">Tracking &middot; <b>' + esc(lead.tracking) + '</b>' + (lead.carrier ? ' (' + esc(lead.carrier) + ')' : '') + '</div>'
+      : '';
+
+    return '<section class="postage t-' + esc(tier) + (tier !== 'standard' ? ' up' : '') + '">'
+      + '<div class="lbl">POSTAGE</div>'
+      + (TIER_WORD[tier] ? '<div class="pblock">' + TIER_WORD[tier] + '</div>' : '')
+      + '<div class="pline">' + line + '</div>'
+      + (eta ? '<div class="peta">' + eta + '</div>' : '')
+      + trk
+      + '</section>';
   }
 
   // packingSlipHTML(order | [order, order, …]) — a single-order slip, OR a COMBINED slip when passed
@@ -382,11 +475,20 @@
     var dateStr = combined ? (d0 && d1 && d0 !== d1 ? d0 + ' &ndash; ' + d1 : d0) : niceDate(primary.paid_time);
 
     // items — combined: group under a per-order sub-header; single: flat
+    // On a combined slip the postage block shows the STRONGEST tier across the orders. When they
+    // actually differ, each order also gets its own postage note under its sub-header — otherwise one
+    // Express order silently vouches for two standard ones sharing the same satchel.
+    var tiers = orders.map(function (o) { return (o.postage && o.postage.tier) || 'standard'; });
+    var mixed = combined && tiers.some(function (t) { return t !== tiers[0]; });
+
     var itemsHTML = combined
       ? orders.map(function (o) {
+        var p = o.postage || {};
         return '<div class="ordhdr"><span>Order ' + esc(o.order_id || '')
           + (o.sales_record_number ? ' &middot; Sales #' + esc(o.sales_record_number) : '') + '</span>'
-          + '<span class="ordtot">' + esc(money(o.total_cents, o.currency)) + '</span></div>'
+          + '<span class="ordtot">'
+          + (mixed ? tierChip(p.tier, 'otier') + '<span class="opost">' + esc(p.label || '') + '</span>' : '')
+          + esc(money(o.total_cents, o.currency)) + '</span></div>'
           + (o.items || []).map(function (it) { return slipItemRow(it, o); }).join('');
       }).join('')
       : (primary.items || []).map(function (it) { return slipItemRow(it, primary); }).join('');
@@ -423,8 +525,11 @@
       // ---- thank-you + ship-to ----
       + '<div class="mid">'
       + '<div class="thanks">Thanks so much for your order' + (combined ? 's' : '') + (fn ? ', <b>' + esc(fn) + '</b>' : '') + '! Hope you love the cards.</div>'
+      + '<div class="midrow">'
       + '<section class="shipto"><div class="lbl">SHIP TO</div><div class="nm">' + esc(name) + '</div>'
       + rest.map(function (l) { return '<div class="al">' + esc(l) + '</div>'; }).join('') + '</section>'
+      + postageBlockHTML(orders)
+      + '</div>'
       + note
       + '</div>'
       // ---- items ----
@@ -475,10 +580,28 @@
       // mid: thanks + ship-to
       + '.mid{margin-top:calc(10pt*var(--s));}'
       + '.thanks{font-family:Georgia,serif;font-size:calc(13.5pt*var(--s));color:#222;margin-bottom:calc(9pt*var(--s));}'
-      + '.shipto{border-left:3px solid #111;padding-left:calc(9pt*var(--s));}'
+      + '.midrow{display:flex;align-items:flex-start;gap:calc(14pt*var(--s));}'
+      + '.shipto{flex:1;min-width:0;border-left:3px solid #111;padding-left:calc(9pt*var(--s));}'
       + '.shipto .lbl{font-size:calc(7.5pt*var(--s));letter-spacing:.2em;color:#888;margin-bottom:calc(2pt*var(--s));}'
       + '.shipto .nm{font-size:calc(14pt*var(--s));font-weight:700;line-height:1.15;}'
       + '.shipto .al{font-size:calc(11pt*var(--s));color:#333;line-height:1.3;}'
+      // postage — quiet for a free letter, a bordered block for anything the buyer paid extra for.
+      // Weight and border only: see tierChip() on why nothing here relies on a printed background.
+      + '.postage{flex:none;width:calc(64mm*var(--s));min-width:0;}'
+      + '.postage .lbl{font-size:calc(7.5pt*var(--s));letter-spacing:.2em;color:#888;margin-bottom:calc(2pt*var(--s));}'
+      + '.postage .pline{font-size:calc(11pt*var(--s));color:#333;line-height:1.3;}'
+      + '.postage .peta{font-size:calc(9.5pt*var(--s));color:#666;margin-top:calc(1pt*var(--s));}'
+      + '.postage .ptrk{font-family:"Courier New",monospace;font-size:calc(9pt*var(--s));color:#222;margin-top:calc(3pt*var(--s));word-break:break-all;}'
+      + '.postage .pblock{display:inline-block;font-weight:700;letter-spacing:.16em;line-height:1;'
+      + 'padding:calc(4pt*var(--s)) calc(8pt*var(--s));margin-bottom:calc(4pt*var(--s));}'
+      + '.postage.up{border-left:3px solid #111;padding-left:calc(9pt*var(--s));}'
+      + '.postage.up .pline{font-weight:700;color:#111;}'
+      + '.postage.t-express .pblock{border:2.5px solid #000;font-size:calc(13pt*var(--s));}'
+      + '.postage.t-tracked .pblock{border:1.5px solid #000;font-size:calc(11.5pt*var(--s));}'
+      + '.postage.t-paid .pblock{border:1px dashed #555;color:#333;font-size:calc(10.5pt*var(--s));}'
+      // combined slip, mixed tiers: a per-order marker beside each sub-header total
+      + '.otier{border:1.5px solid #000;font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:.1em;font-size:calc(7.5pt*var(--s));padding:0 calc(4pt*var(--s));margin-right:calc(6pt*var(--s));}'
+      + '.opost{font-weight:400;color:#555;margin-right:calc(8pt*var(--s));}'
       + '.note{margin-top:calc(8pt*var(--s));border:1px solid #bbb;border-radius:6px;padding:calc(6pt*var(--s)) calc(9pt*var(--s));font-size:calc(10pt*var(--s));background:#f6f6f6;}'
       // items
       + '.items{margin-top:calc(12pt*var(--s));}'
@@ -565,17 +688,53 @@
         var img = it.image_url
           ? '<img src="' + esc(it.image_url) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
           : '<span class="pnone"></span>';
+        // The tier marker is carried per LINE because one order's cards scatter across several boxes,
+        // and the picker standing at a shelf needs to know this card belongs to an Express order
+        // without cross-referencing anything. A standard order prints an EMPTY cell: nine in ten
+        // orders are plain letters, and a badge on every row would destroy the scan. Absence is the
+        // signal, and it is the fastest one to read.
         return '<tr><td class="chk"></td><td class="pim">' + img + '</td><td class="box">' + esc(it.sku || '') + '</td><td class="qty">' + (it.quantity || 1)
-          + '</td><td>' + esc(it.title || 'item') + '</td><td class="ord">' + esc(it.order_id || '') + '</td></tr>';
+          + '</td><td>' + esc(it.title || 'item') + '</td>'
+          + '<td class="tc">' + tierChip(it.postage_tier) + '</td>'
+          + '<td class="ord">' + esc(it.order_id || '') + '</td></tr>';
       }).join('');
       return '<h2>' + esc(g.location || 'Unsorted') + ' <span>(' + g.items.length + ')</span></h2>'
         + '<table class="pick"><tbody>' + rows + '</tbody></table>';
     }).join('');
     var summary = (meta.order_count || 0) + ' orders · ' + (meta.item_count || 0) + ' lines · ' + (meta.unit_count || 0) + ' units';
     return DOC('Pick sheet',
-      '<div class="store">Pick sheet</div><div class="tag">SORTED BY BOX FOR PICKING</div><div class="meta">' + esc(summary) + '</div>' + (sections || '<p>Nothing to pick.</p>')
+      '<div class="store">Pick sheet</div><div class="tag">SORTED BY BOX FOR PICKING</div><div class="meta">' + esc(summary) + '</div>'
+      + upgradeBanner(meta) + (sections || '<p>Nothing to pick.</p>')
     );
   };
+
+  // The postage exception banner, above the first box. Rendered only when this run actually contains
+  // an order that is not a plain letter, so a normal day's sheet looks exactly as it always has.
+  // Placed first because it is a packing instruction, and the moment it matters is before anyone
+  // walks off to the shelves.
+  function upgradeBanner(meta) {
+    var ups = (meta && meta.upgrades) || [];
+    if (!ups.length) return '';
+    var total = meta.order_count || ups.length;
+    var rows = ups.map(function (u) {
+      var paid = u.paid_cents ? money(u.paid_cents, u.currency) : '';
+      // The chip already carries the tier, so a label that IS the tier phrase (which is what we fall
+      // back to when eBay gave us no real service name) would just say the same thing twice.
+      var named = u.label && u.label.toUpperCase() !== String(TIER_WORD[u.tier] || '').toUpperCase() ? u.label : '';
+      var service = [named, paid].filter(Boolean).join(' · ');
+      // eBay's Australia Post deal has no API, so buying the label stays a person's job. Saying so on
+      // the sheet is the difference between a flagged order and an actioned one.
+      var todo = u.tracked ? (u.tracking ? 'Label bought · ' + u.tracking : 'Buy the label on eBay') : 'Check the postage on eBay';
+      return '<tr><td class="tc">' + tierChip(u.tier) + '</td>'
+        + '<td class="ord">' + esc(u.order_id || '') + (u.sales_record_number ? ' <span class="who">#' + esc(u.sales_record_number) + '</span>' : '') + '</td>'
+        + '<td class="who">' + esc(u.buyer_username || '') + '</td>'
+        + '<td>' + esc(service) + '</td>'
+        + '<td class="do">' + esc(todo) + '</td></tr>';
+    }).join('');
+    return '<div class="upg"><div class="upg-hd">'
+      + esc(ups.length + ' of ' + total + (total === 1 ? ' order needs' : ' orders need') + ' a postage upgrade')
+      + '</div><table><tbody>' + rows + '</tbody></table></div>';
+  }
 
   window.LR = LR;
 })();

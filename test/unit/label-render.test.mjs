@@ -106,6 +106,107 @@ test('pickSheetHTML — box-grouped seller list: tick box + image + full slot co
   assert.match(html, /SORTED BY BOX/)
 })
 
+/* ---------- postage on the printed docs ----------
+   The governing rule: only exceptions get ink. Roughly nine in ten card orders are free untracked
+   letters, so a badge on every row would destroy the scan — the default has to be silent, and the
+   upgrade has to be unmissable. These pin both halves of that.
+
+   The second rule is that no tier marker may depend on a printed background. Browsers print with
+   "Background graphics" off by default, so a reversed block can come out as white text on white
+   paper. Invisible is the one failure this feature cannot have. */
+
+const POST = (over = {}) => ({ tier: 'standard', upgrade: false, tracked: false, label: 'Standard delivery', paid_cents: 0, ...over })
+const EXPRESS = POST({ tier: 'express', upgrade: true, tracked: true, label: 'Express Post', paid_cents: 1295,
+  eta_min: '2026-08-04T04:00:00.000Z', eta_max: '2026-08-06T04:00:00.000Z', eta_source: 'estimated' })
+
+test('packing slip: a free letter gets one quiet line and no block', () => {
+  const html = LR.packingSlipHTML({ ...O1, postage: POST() })
+  assert.match(html, /POSTAGE/)
+  assert.match(html, /Standard delivery, free/)
+  assert.doesNotMatch(html, /class="pblock"/)          // no bordered block
+  assert.doesNotMatch(html, /class="postage t-standard up"/)  // no heavy left rule either
+})
+
+test('packing slip: an express order gets a bordered EXPRESS block, what they paid and the window', () => {
+  const html = LR.packingSlipHTML({ ...O1, postage: EXPRESS })
+  assert.match(html, /class="postage t-express up"/)
+  assert.match(html, /<div class="pblock">EXPRESS<\/div>/)
+  assert.match(html, /Express Post &middot; A\$12\.95/)
+  assert.match(html, /Estimated arrival 4–6 Aug/)
+})
+
+test('packing slip: once the parcel is moving, the wording stops hedging and the tracking shows', () => {
+  const html = LR.packingSlipHTML({ ...O1, postage: POST({
+    tier: 'tracked', upgrade: true, tracked: true, label: 'Parcel Post', paid_cents: 945,
+    eta_min: '2026-08-04T04:00:00.000Z', eta_max: '2026-08-04T08:00:00.000Z', eta_source: 'scheduled',
+    tracking: '36LB1234567890', carrier: 'Australia Post' }) })
+  assert.match(html, /Arriving 4 Aug/)
+  assert.doesNotMatch(html, /Estimated arrival/)
+  assert.match(html, /Tracking &middot; <b>36LB1234567890<\/b> \(Australia Post\)/)
+})
+
+test('packing slip: an order with no postage data renders exactly as it did before', () => {
+  const html = LR.packingSlipHTML(O1)
+  assert.doesNotMatch(html, /<section class="postage/)
+  assert.match(html, /SHIP TO/)
+})
+
+test('combined slip: mixed tiers get a per-order marker so one Express cannot vouch for the others', () => {
+  const html = LR.packingSlipHTML([{ ...O1, postage: EXPRESS }, { ...O2, postage: POST() }])
+  assert.match(html, /class="postage t-express up"/)                 // strongest tier leads the block
+  assert.equal((html.match(/class="otier t-express"/g) || []).length, 1)
+  assert.match(html, /class="opost"/)
+})
+
+test('combined slip: when every order is the same tier there is no per-order noise', () => {
+  const html = LR.packingSlipHTML([{ ...O1, postage: POST() }, { ...O2, postage: POST() }])
+  assert.doesNotMatch(html, /class="otier/)
+})
+
+test('pick sheet: a normal run looks exactly as it always has — no banner, empty tier cells', () => {
+  const groups = [{ location: 'Box AAB', items: [{ sku: 'AAB-012', quantity: 1, title: 'Dreepy 247/217', order_id: '27-1', postage_tier: 'standard' }] }]
+  const html = LR.pickSheetHTML(groups, { order_count: 1, item_count: 1, unit_count: 1, upgrades: [] })
+  assert.doesNotMatch(html, /class="upg"/)
+  assert.match(html, /<td class="tc"><\/td>/)          // the column exists and is deliberately blank
+  assert.doesNotMatch(html, /class="tier/)
+})
+
+test('pick sheet: an upgrade run leads with the banner and marks the line at the shelf', () => {
+  const groups = [{ location: 'Box AAB', items: [
+    { sku: 'AAB-012', quantity: 1, title: 'Dreepy', order_id: '27-1', postage_tier: 'express' },
+    { sku: 'AAB-013', quantity: 1, title: 'Blitzle', order_id: '27-2', postage_tier: 'standard' },
+  ] }]
+  const html = LR.pickSheetHTML(groups, { order_count: 14, item_count: 2, unit_count: 2, upgrades: [
+    { order_id: '27-1', buyer_username: 'archaon', tier: 'express', label: 'Express Post', paid_cents: 1295, currency: 'AUD', tracked: true },
+  ] })
+  assert.match(html, /1 OF 14 ORDERS NEED A POSTAGE UPGRADE|1 of 14 orders need a postage upgrade/i)
+  assert.match(html, /Buy the label on eBay/)          // eBay's AU labels have no API — say whose job it is
+  assert.match(html, /Express Post · A\$12\.95/)
+  assert.equal((html.match(/class="tier t-express"/g) || []).length, 2)   // banner row + the shelf line
+  // the banner sits above the first box, where it is read before anyone walks off
+  assert.ok(html.indexOf('class="upg"') < html.indexOf('Box AAB'))
+})
+
+test('pick sheet: once the label is bought the banner says so instead of repeating the instruction', () => {
+  const html = LR.pickSheetHTML([], { order_count: 1, upgrades: [
+    { order_id: '27-1', tier: 'express', label: 'Express Post', tracked: true, tracking: '36LB1234567890' },
+  ] })
+  assert.match(html, /Label bought · 36LB1234567890/)
+  assert.doesNotMatch(html, /Buy the label on eBay/)
+})
+
+test('no tier marker relies on a printed background fill', () => {
+  // If "Background graphics" is off, a reversed block prints as white text on white paper.
+  for (const css of [LR.pickSheetHTML([], {}), LR.packingSlipHTML(O1)]) {
+    const tierRules = css.match(/\.t-(?:express|tracked|paid)\s*(?:\.pblock\s*)?\{[^}]*\}/g) || []
+    assert.ok(tierRules.length >= 3, 'tier rules should be present')
+    for (const rule of tierRules) {
+      assert.doesNotMatch(rule, /background/, rule)
+      assert.doesNotMatch(rule, /color:\s*#fff/i, rule)
+    }
+  }
+})
+
 /* ---------- print nudge (offXmm/offYmm) ----------
    Both address-label callers depend on this: shipping-label.html passes the calibrated nudge into
    renderLinesToJob, and orders.html passes the same value into renderAddressLabel so a given

@@ -69,6 +69,40 @@
   .pill.combo{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);margin-left:6px;}
   .loc{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;margin-left:4px;}
   .loc.none{color:var(--faint);background:rgba(255,255,255,.03);}
+  /* --- postage --- the same four tiers as the printed docs (lib/postage.mjs is the source of truth).
+     Colour carries it here and border weight carries it there: a screen can be trusted to render a
+     tint, a print job with "Background graphics" off cannot. Standard is deliberately near-silent —
+     nine in ten card orders are plain letters, and a badge on every row destroys the scan. */
+  .pg{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;}
+  .pg.express{color:var(--red);border-color:rgba(240,102,110,.42);background:rgba(240,102,110,.12);}
+  .pg.tracked{color:var(--blue);border-color:rgba(106,176,255,.42);background:rgba(106,176,255,.11);}
+  .pg.paid{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.1);}
+  .pg.standard{color:var(--faint);border-color:transparent;background:none;padding:0;text-transform:none;letter-spacing:0;font-weight:400;}
+  .psvc{display:block;font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px;}
+  .psvc b{color:var(--muted);font-weight:600;}
+  /* The rail: a tier-tinted left edge on the row, so a column of colour reads straight down the table
+     without a single chip needing to be looked at. */
+  tbody td:first-child{border-left:3px solid transparent;}
+  tr.tier-express td:first-child{border-left-color:var(--red);}
+  tr.tier-tracked td:first-child{border-left-color:var(--blue);}
+  tr.tier-paid td:first-child{border-left-color:var(--amber);}
+  /* Dispatch deadline. eBay's HandleByTime is a committed date and missing it damages the late-
+     dispatch metric, so time remaining is drawn as a draining rule, not just written down. */
+  .due{margin-top:6px;font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap;}
+  .due .t{font-weight:600;color:var(--green);}
+  .due.soon .t{color:var(--amber);} .due.late .t{color:var(--red);}
+  .duebar{margin-top:3px;height:2px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden;}
+  .duebar i{display:block;height:100%;border-radius:2px;background:var(--green);transition:width .3s;}
+  .due.soon .duebar i{background:var(--amber);} .due.late .duebar i{background:var(--red);}
+  .trk{display:inline-block;font-family:var(--mono);font-size:10.5px;color:var(--blue);background:rgba(106,176,255,.1);border:1px solid rgba(106,176,255,.3);border-radius:6px;padding:2px 7px;margin-top:5px;cursor:pointer;}
+  .trk:hover{border-color:var(--blue);}
+  .trk .ext{color:var(--blue);text-decoration:none;margin-left:5px;opacity:.75;}
+  .trk .ext:hover{opacity:1;}
+  .runbar{display:flex;flex-wrap:wrap;gap:7px 18px;align-items:center;margin:0 0 12px;padding:11px 15px;border:1px solid var(--line);border-radius:12px;
+    background:linear-gradient(180deg,rgba(255,255,255,.022),transparent);font-family:var(--mono);font-size:12px;color:var(--muted);}
+  .runbar b{color:var(--text);font-weight:600;}
+  .runbar .up{color:var(--amber);} .runbar .exp{color:var(--red);}
+  .runbar .sep{width:1px;height:13px;background:var(--line2);}
   .items{color:var(--text);} .items .sku{color:var(--faint);font-family:var(--mono);font-size:11px;}
   .items .item{display:flex;gap:9px;align-items:flex-start;padding:3px 0;}
   .cardthumb{width:38px;height:53px;flex:0 0 auto;border-radius:4px;object-fit:cover;background:#0d0f15;border:1px solid var(--line2);}
@@ -83,6 +117,13 @@
   tr.ispicked .items,tr.ispicked .cardthumb{opacity:.62;}
   button.act.combo{color:var(--accent);border-color:rgba(67,214,160,.4);background:var(--accent-soft);}
   button.act.combo:hover{border-color:var(--accent);color:var(--text);}
+  /* An upgraded order needs an eBay-bought Australia Post label, so the eBay link becomes the primary
+     action and our thermal label demotes. Not disabled — a counter lodgement is still a thing. */
+  a.act{display:block;text-align:center;text-decoration:none;font-family:var(--mono);font-size:11px;border:1px solid var(--line2);border-radius:7px;padding:5px 9px;white-space:nowrap;transition:.15s;}
+  .act.ebay{color:var(--red);border-color:rgba(240,102,110,.45);background:rgba(240,102,110,.1);font-weight:600;}
+  .act.ebay:hover{border-color:var(--red);color:var(--text);}
+  button.act.ghost{opacity:.5;}
+  button.act.ghost:hover{opacity:1;}
   .empty{padding:34px 16px;text-align:center;color:var(--faint);font-family:var(--mono);font-size:12.5px;}
   .status{font-family:var(--mono);font-size:12px;min-height:18px;margin:2px 2px 12px;}
   .status.ok{color:var(--green);} .status.warn{color:var(--amber);} .status.err{color:var(--red);} .status.load{color:var(--muted);}
@@ -101,6 +142,11 @@
   .diagrow input{background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;flex:1;min-width:180px;outline:none;}
   .diagrow button{font-family:var(--mono);font-size:12px;background:var(--accent);color:var(--ink);border:0;border-radius:8px;padding:8px 13px;font-weight:600;cursor:pointer;}
   #diagOut{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto;padding:0 0 12px;}
+  #svcOut{font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:0 0 14px;}
+  #svcOut .h{color:var(--faint);letter-spacing:.06em;text-transform:uppercase;font-size:10px;margin-bottom:7px;}
+  #svcOut .r{display:flex;align-items:center;gap:9px;padding:3px 0;}
+  #svcOut .c{color:var(--text);min-width:190px;}
+  #svcOut .n{color:var(--faint);}
 </style>
 </head>
 <body>
@@ -109,7 +155,7 @@
     <div class="monogram">BK</div>
     <div>
       <h1>Fulfilment</h1>
-      <p>eBay orders · packing slips · address labels · pick sheet</p>
+      <p>eBay orders · postage · packing slips · address labels · pick sheet</p>
     </div>
     <a class="home" href="/">← all tools</a>
   </div>
@@ -119,6 +165,7 @@
   <div class="toolbar">
     <div class="tabs" id="tabs">
       <div class="tab active" data-tab="unshipped">To pack <span class="n" id="n_unshipped"></span></div>
+      <div class="tab" data-tab="upgrades" title="Orders where the buyer paid for something better than a plain letter">Upgrades <span class="n" id="n_upgrades"></span></div>
       <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
     </div>
     <span class="chk" title="Show a preview before sending to the printer"><input type="checkbox" id="previewChk"> Preview first</span>
@@ -142,6 +189,7 @@
       <button id="btnBackfill" title="Pull your recent eBay orders in (eBay's Trading API serves the last ~90 days). Data only — past buyers are never auto-messaged.">Backfill recent (90d)</button>
     </div>
     <div id="diagOut"></div>
+    <div id="svcOut"></div>
   </details>
 </div>
 
@@ -190,6 +238,69 @@ function renderBanner() {
   $('banner').innerHTML = chips.join('');
 }
 
+/* ---------- postage ----------
+   lib/postage.mjs classifies every order server-side and hands it down as o.postage; this side only
+   renders it. The rule shared with the printed docs: only exceptions get ink. */
+const TIER_WORD = { express:'Express', tracked:'Tracked', paid:'Paid postage', standard:'standard' };
+
+// eBay's HandleByTime — purchase time plus the listing's handling time — is the date it has committed
+// to the buyer on our behalf. The bar drains over the last 36 hours, so "how long have I got" is a
+// length before it is a number.
+function dueInfo(o) {
+  const iso = o.postage && o.postage.handle_by; if (!iso) return null;
+  const ms = new Date(iso).getTime(); if (!isFinite(ms)) return null;
+  const left = ms - Date.now();
+  const cls = left < 0 ? 'late' : left < 6*3600e3 ? 'soon' : 'ok';
+  return { iso, left, cls, pct: Math.max(0, Math.min(100, (left / (36*3600e3)) * 100)) };
+}
+function relTime(ms) {
+  const a = Math.abs(ms);
+  const d = Math.floor(a/86400e3), h = Math.floor(a/3600e3)%24, m = Math.floor(a/60000)%60;
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+const duePhrase = (left) => (left < 0 ? 'overdue by ' : 'dispatch in ');
+function postageCell(o) {
+  const p = o.postage;
+  if (!p) return '<span class="faint">—</span>';
+  const word = TIER_WORD[p.tier] || p.tier;
+  const paid = p.paid_cents ? money(p.paid_cents, o.currency) : (p.tier==='standard' ? 'free' : '');
+  // When eBay gives us no real service name the label falls back to the tier phrase, which is already
+  // what the chip says. Printing "PAID POSTAGE · Paid postage · A$22.00" helps nobody.
+  const named = p.label && p.label.toLowerCase() !== String(word).toLowerCase() ? p.label : '';
+  const svc = [named, paid].filter(Boolean).join(' · ');
+  // Click-to-copy: the number gets typed into Seller Hub or a carrier site often enough to matter.
+  const trk = p.tracking ? `<div class="trk" data-copy="${esc(p.tracking)}" title="Copy tracking number">${esc(p.tracking)}`
+    + (p.tracking_url ? `<a class="ext" href="${esc(p.tracking_url)}" target="_blank" rel="noopener" title="Track on Australia Post">↗</a>` : '')
+    + `</div>` : '';
+  const d = (o.shipped_status === 'unshipped') ? dueInfo(o) : null;
+  const due = d ? `<div class="due ${d.cls}" title="eBay's dispatch deadline · ${esc(when(d.iso))}">${duePhrase(d.left)}<span class="t">${esc(relTime(d.left))}</span>`
+    + `<div class="duebar"><i style="width:${d.pct.toFixed(0)}%"></i></div></div>` : '';
+  return `<span class="pg ${esc(p.tier)}">${esc(word)}</span>`
+    + (svc ? `<span class="psvc">${esc(svc)}</span>` : '')
+    + trk + due;
+}
+// One line above the table: what this run of orders actually needs. The next deadline is here rather
+// than buried in a row because it is the only number that decides what you do first.
+function runSummary(rows) {
+  const ups = rows.filter(o => o.postage && o.postage.upgrade);
+  const exp = ups.filter(o => o.postage.tier === 'express').length;
+  const dues = rows.filter(o => o.shipped_status==='unshipped').map(dueInfo).filter(Boolean).sort((a,b)=>a.left-b.left);
+  const bits = [`<span><b>${rows.length}</b> order${rows.length===1?'':'s'}</span>`];
+  if (ups.length) {
+    bits.push('<span class="sep"></span>');
+    bits.push(`<span class="up"><b class="up">${ups.length}</b> need${ups.length===1?'s':''} a postage upgrade</span>`);
+    if (exp) bits.push(`<span class="exp">${exp} express</span>`);
+  } else if (rows.length) {
+    bits.push('<span class="sep"></span><span>all standard postage</span>');
+  }
+  if (dues.length) {
+    bits.push('<span class="sep"></span>');
+    const d = dues[0];
+    bits.push(`<span>next dispatch deadline <b class="${d.cls==='ok'?'':d.cls==='late'?'exp':'up'}">${d.left<0?'overdue by ':'in '}${esc(relTime(d.left))}</b></span>`);
+  }
+  return `<div class="runbar">${bits.join('')}</div>`;
+}
+
 /* ---------- orders table ---------- */
 function itemsCell(items) {
   if (!items || !items.length) return '<span class="faint">—</span>';
@@ -221,13 +332,19 @@ function renderOrders() {
   computeGroups(STATE.orders);   // group across every loaded order, even ones hidden by "Hide picked"
   const rows = visibleOrders();
   if (!rows.length) {
+    if (STATE.tab==='upgrades') return `<div class="empty">No postage upgrades in the queue.<br><span class="faint">Every order waiting is going as standard postage, so the usual letter workflow covers all of them.</span></div>`;
     if (STATE.orders.length) return `<div class="empty">Everything here is picked and packed. ✅<br><span class="faint">Untick “Hide picked” to see the ${STATE.orders.length} order${STATE.orders.length===1?'':'s'} waiting to be posted.</span></div>`;
     return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders appear here after the order poll runs (Diagnostics below, or every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min).</span></div>`;
   }
-  return `<table><thead><tr><th class="selcol"><input type="checkbox" id="selAll" checked title="Include all in the pick sheet"></th><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Paid (Sydney)</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
+  return runSummary(rows)
+    + `<table><thead><tr><th class="selcol"><input type="checkbox" id="selAll" checked title="Include all in the pick sheet"></th><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Postage</th><th>Paid (Sydney)</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
     + rows.map(o => {
       const loc = [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_postal?` ${o.ship_postal}`:'');
+      // dispatch_source 'ebay' means we never touched it: eBay marked the order sent by itself when
+      // the postage label was bought, and the next poll pulled that back. Worth saying so, because
+      // "shipped" with nobody having pressed Mark shipped otherwise looks like a bug.
       const statusPill = `<span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>`
+        + (o.dispatch_source==='ebay'?` <span class="pill printed" title="eBay marked this dispatched when the postage label was bought — pulled back on the order poll">via eBay</span>`:'')
         + (o.picked_at?` <span class="pill picked" title="Pulled + packed ${esc(when(o.picked_at))}">picked ✓</span>`:'')
         + (o.label_status==='printed'?' <span class="pill printed">label ✓</span>':'');
       const shipBtn = o.shipped_status==='unshipped' ? `<button class="act ship" data-ship="${esc(o.order_id)}">✓ Mark shipped</button>` : '';
@@ -238,19 +355,32 @@ function renderOrders() {
       const grp = STATE.groupOf && STATE.groupOf.get(o.order_id);
       const buyerBadge = grp ? ` <span class="pill combo" title="This buyer has ${grp.length} orders to the same address">×${grp.length}</span>` : '';
       const comboBtn = grp ? `<button class="act combo" data-combined="${esc(o.order_id)}" title="One packing slip for all ${grp.length} of this buyer's orders">🧾 Combined slip (${grp.length})</button>` : '';
-      return `<tr class="${o.picked_at?'ispicked':''}">
+      // An upgraded order needs an Australia Post label bought through eBay — there is no API for
+      // that (Sell Logistics is USPS-only and US-only), so the honest primary action is a link into
+      // Seller Hub. Our thermal label demotes rather than disappears: it is still the right answer
+      // for a counter lodgement, just the wrong default.
+      const p = o.postage || {};
+      const isUp = !!p.upgrade && o.shipped_status === 'unshipped';
+      const ebayBtn = (isUp && p.seller_hub_url)
+        ? `<a class="act ebay" href="${esc(p.seller_hub_url)}" target="_blank" rel="noopener" title="${esc((p.label||'This order')+' needs an eBay-bought Australia Post label. Opens the order in Seller Hub.')}">📦 Buy label on eBay ↗</a>` : '';
+      const labelBtn = `<button class="act${isUp?' ghost':''}" data-label="${esc(o.order_id)}" title="${esc(isUp
+        ? 'This order is going '+(p.label||'an upgraded service')+', so the parcel normally carries an eBay label. Only use the thermal label if you are lodging it over the counter yourself.'
+        : 'Thermal address label for the AUSPRINT')}">📮 Address label</button>`;
+      return `<tr class="${o.picked_at?'ispicked':''} tier-${esc(p.tier||'standard')}">
         <td class="selcol"><input type="checkbox" class="selbox" data-order="${esc(o.order_id)}" ${isSelected(o)?'checked':''} title="Include this order in the pick sheet"></td>
         <td class="mono muted">${esc(o.order_id)}${o.sales_record_number?`<br><span class="faint">rec #${esc(o.sales_record_number)}</span>`:''}</td>
         <td class="mono">@${esc(o.buyer_username||'—')}${buyerBadge}</td>
         <td>${itemsCell(o.items)}</td>
         <td class="num">${money(o.total_cents, o.currency)}</td>
         <td class="muted">${esc(loc||'—')}</td>
+        <td>${postageCell(o)}</td>
         <td class="mono muted">${esc(when(o.paid_time))}</td>
         <td>${statusPill}</td>
         <td><div class="rowbtns">
           <button class="act" data-slip="${esc(o.order_id)}">🧾 Packing slip</button>
           ${comboBtn}
-          <button class="act" data-label="${esc(o.order_id)}">📮 Address label</button>
+          ${ebayBtn}
+          ${labelBtn}
           ${pickBtn}
           ${shipBtn}
         </div></td>
@@ -260,8 +390,10 @@ function renderOrders() {
 }
 function renderPanel() {
   const picked = STATE.orders.filter(o=>o.picked_at).length;
-  $('panel').innerHTML = `<h2>${STATE.tab==='unshipped'?'To pack':'All orders'}${picked?` · ${picked} picked`:''}</h2>` + renderOrders();
+  const heading = STATE.tab==='unshipped' ? 'To pack' : STATE.tab==='upgrades' ? 'Paid a postage upgrade' : 'All orders';
+  $('panel').innerHTML = `<h2>${heading}${picked?` · ${picked} picked`:''}</h2>` + renderOrders();
   $('n_unshipped').textContent = STATE.counts.unshipped!=null ? `(${STATE.counts.unshipped})` : '';
+  $('n_upgrades').textContent = STATE.counts.upgrades!=null ? `(${STATE.counts.upgrades})` : '';
   $('n_all').textContent = STATE.counts.all!=null ? `(${STATE.counts.all})` : '';
   $('hidePickedLbl').textContent = picked ? `Hide picked (${picked})` : 'Hide picked';
   updateSelAll(); updatePickBtn();
@@ -269,19 +401,37 @@ function renderPanel() {
 
 async function loadAll() {
   try {
-    const statusQ = STATE.tab==='unshipped' ? '?limit=300&status=unshipped' : '?limit=300';
+    // Upgrades is a lens on the pack queue, not a separate query — the filter is client-side so the
+    // count is honest even when the tab isn't open.
+    const statusQ = STATE.tab==='all' ? '?limit=300' : '?limit=300&status=unshipped';
     const [config, orders] = await Promise.all([ api('/config'), api('/orders'+statusQ) ]);
     STATE.config = config;
     STATE.orders = orders.orders || [];
-    if (STATE.tab==='unshipped') STATE.counts.unshipped = STATE.orders.length;
-    else STATE.counts.all = STATE.orders.length;
-    // fetch the other tab's count cheaply (unshipped) if we're on all
-    renderBanner(); renderPanel();
+    if (STATE.tab==='all') STATE.counts.all = STATE.orders.length;
+    else STATE.counts.unshipped = STATE.orders.length;
+    STATE.counts.upgrades = STATE.orders.filter(o => o.postage && o.postage.upgrade && o.shipped_status==='unshipped').length;
+    renderBanner(); renderPanel(); renderServices();
   } catch (e) {
     $('banner').innerHTML = `<span class="chip"><span class="dot err"></span>${esc(e.message)}</span>`;
   }
 }
 function orderById(id){ return STATE.orders.find(o => o.order_id === id); }
+
+// Every eBay shipping service this store has actually sold under, and the tier each one currently
+// reads as. This is what you look at when a service is being classified wrongly: the codes are
+// per-marketplace and per-listing, so there is no list to guess from — only what has really been used.
+// Override one under Settings → Post-sale, postage.services.
+function renderServices() {
+  const el = $('svcOut'); if (!el) return;
+  const svc = (STATE.config && STATE.config.observed_services) || [];
+  if (!svc.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="h">Shipping services seen on real orders</div>' + svc.map(s =>
+    `<div class="r"><span class="c">${esc(s.code)}</span><span class="pg ${esc(s.tier)}">${esc(TIER_WORD[s.tier]||s.tier)}</span>`
+    + `<span class="n">${esc(s.label||'')} · ${s.orders} order${s.orders===1?'':'s'}`
+    // Reads more than one way = the tier is being driven by what the buyer paid rather than by the
+    // service code. That's the case worth overriding, so it's the case worth showing.
+    + `${s.mixed?` · reads ${esc(s.mixed.join(', '))}`:''}${s.overridden?' · overridden in settings':''}</span></div>`).join('');
+}
 
 /* ---------- printing ---------- */
 function printOpts(){ return { density: STATE.density, speed: STATE.speed }; }
@@ -354,8 +504,24 @@ function printLabel(id){
   const printJobs = (nud.offXmm || nud.offYmm) ? [LR.renderAddressLabel(o, nud)] : jobs;
   handleJobs(jobs, 'address label', id, printJobs);
 }
-// Rows on screen: "Hide picked" clears the packed-and-waiting orders out of the way.
-function visibleOrders(){ return STATE.hidePicked ? STATE.orders.filter(o=>!o.picked_at) : STATE.orders; }
+// Rows on screen: "Hide picked" clears the packed-and-waiting orders out of the way, the Upgrades tab
+// narrows to what the buyer paid extra for, and the pack queue is ordered by eBay's dispatch deadline
+// rather than by when the money landed — the deadline is what actually decides what you do first.
+// Orders with no deadline (eBay doesn't always send HandleByTime) fall to the end, oldest first.
+function visibleOrders(){
+  let rows = STATE.hidePicked ? STATE.orders.filter(o=>!o.picked_at) : STATE.orders;
+  if (STATE.tab === 'upgrades') rows = rows.filter(o => o.postage && o.postage.upgrade);
+  if (STATE.tab !== 'all') {
+    rows = rows.slice().sort((a,b) => {
+      const da = dueInfo(a), db = dueInfo(b);
+      if (da && db) return da.left - db.left;
+      if (da) return -1;
+      if (db) return 1;
+      return String(a.paid_time||'').localeCompare(String(b.paid_time||''));
+    });
+  }
+  return rows;
+}
 // A picked order starts UNTICKED — it's already in the satchel, so it has no business on the next
 // pull list — unless the user deliberately ticks it back on.
 function isSelected(o){ return STATE.included.has(o.order_id) || (!STATE.excluded.has(o.order_id) && !o.picked_at); }
@@ -374,8 +540,11 @@ async function printPickSheet(){
   try {
     const ps = await api('/picksheet?ids='+encodeURIComponent(ids.join(',')));
     if (!ps.rows || !ps.rows.length){ setStatus('warn','Nothing to pick — the selected orders have no matched line items.'); return; }
-    LR.openPrintDoc(LR.pickSheetHTML(ps.groups, { order_count:ps.order_count, item_count:ps.item_count, unit_count:ps.unit_count }));
-    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')+' → print dialog (sorted by box). Once they\'re pulled and packed, hit “Mark picked”.');
+    LR.openPrintDoc(LR.pickSheetHTML(ps.groups, { order_count:ps.order_count, item_count:ps.item_count, unit_count:ps.unit_count, upgrades:ps.upgrades }));
+    const ups = (ps.upgrades||[]).length;
+    setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')
+      + (ups ? ' · '+ups+' postage upgrade'+(ups===1?'':'s')+' flagged at the top of the sheet' : '')
+      + ' → print dialog (sorted by box). Once they\'re pulled and packed, hit “Mark picked”.');
   } catch(e){ setStatus('err','Pick sheet failed: '+e.message); }
 }
 
@@ -428,6 +597,15 @@ $('panel').addEventListener('change', (e) => {
   if (all){ document.querySelectorAll('input.selbox').forEach(x=>{ x.checked=all.checked; setSelected(x.dataset.order, all.checked); }); all.indeterminate=false; updatePickBtn(); }
 });
 $('panel').addEventListener('click', (e) => {
+  // The ↗ inside a tracking chip is a real link — let it through rather than copying instead.
+  const copy = e.target.closest('[data-copy]');
+  if (copy && !e.target.closest('a')) {
+    const v = copy.dataset.copy;
+    navigator.clipboard?.writeText(v).then(
+      () => setStatus('ok', 'Tracking number copied · ' + v),
+      () => setStatus('warn', 'Could not copy — the number is ' + v));
+    return;
+  }
   const combo = e.target.closest('button[data-combined]'); if (combo) return printCombinedSlip(combo.dataset.combined);
   const slip = e.target.closest('button[data-slip]'); if (slip) return printSlip(slip.dataset.slip);
   const label = e.target.closest('button[data-label]'); if (label) return printLabel(label.dataset.label);

@@ -102,6 +102,37 @@ describe('SETTINGS validators', () => {
     // Equal is fine — eBay only objects to accept being LOWER than decline.
     assert.equal(SETTINGS['ebay-listing'].validate({ ...ok, bestOffer: { enabled: true, autoAcceptPct: 80, autoDeclinePct: 80 } }), null);
   });
+  it('postsale: the postage block is optional, but a bad one cannot be saved', () => {
+    // The whole config as the settings form posts it, minus postage — an install that predates the
+    // postage work must still validate, because loadConfig merges the defaults anyway.
+    const base = {
+      enabled: false, mode: 'approve', dry_run: true, poll_interval_min: 10, reply_poll_interval_min: 15,
+      lookback_hours: 48, max_per_run: 10, timezone: 'Australia/Sydney', digest_hour: 9,
+      ship_timing_text: 'x', signature: '-BK', brand_voice: '', style_notes: '',
+      invite_offers: true, alerts: true, labels: true, listings_sync: true, fees: false, cases: true,
+      quiet_hours: { enabled: true, start: '21:00', end: '08:00' }, holidays: [],
+    };
+    assert.equal(SETTINGS.postsale.validate(base), null);
+
+    const postage = {
+      dispatch_message: { enabled: true, include_link: false, delay_min: 20 },
+      delivered_message: { enabled: true, force_approve: true },
+      seller_hub_order_url: 'https://www.ebay.com.au/sh/ord/details?orderid={orderId}',
+      tracking_url: 'https://auspost.com.au/mypost/track/details/{tracking}',
+      services: { AU_Regular: { tier: 'tracked', label: 'Tracked letter' } },
+    };
+    assert.equal(SETTINGS.postsale.validate({ ...base, postage }), null);
+
+    // A URL template that lost its placeholder builds the same link for every order — the kind of
+    // break that looks fine in the settings box and sends you to the wrong page every time.
+    assert.match(SETTINGS.postsale.validate({ ...base, postage: { ...postage, seller_hub_order_url: 'https://www.ebay.com.au/sh/ord' } }), /\{orderId\}/);
+    assert.match(SETTINGS.postsale.validate({ ...base, postage: { ...postage, tracking_url: 'auspost.com.au/{tracking}' } }), /http\(s\) URL/);
+    assert.match(SETTINGS.postsale.validate({ ...base, postage: { ...postage, services: { AU_X: { tier: 'platinum' } } } }), /tier must be/);
+    assert.match(SETTINGS.postsale.validate({ ...base, postage: { ...postage, dispatch_message: { delay_min: -5 } } }), /delay_min/);
+    assert.match(SETTINGS.postsale.validate({ ...base, postage: { ...postage, dispatch_message: { include_link: 'yes' } } }), /include_link must be boolean/);
+    assert.match(SETTINGS.postsale.validate({ ...base, postage: [] }), /postage must be an object/);
+  });
+
   it('read-only entries are flagged and have no validators', () => {
     for (const name of ['collectr', 'grading', 'grading-companies']) {
       assert.equal(SETTINGS[name].editable, false);

@@ -326,3 +326,62 @@ describe('postsale — push-card refuses a message in a terminal state', () => {
     assert.match(r.json.error, /cannot push a card for a message that is skipped/);
   });
 });
+
+// The postage view the dashboard and both print docs read. Classification itself is unit-tested in
+// test/unit/postage.test.mjs; this is about it surviving the round trip through the API.
+describe('postsale — postage over the API', () => {
+  before(() => {
+    ingestOrder(db, mkOrder('P-STD', { shipService: 'AU_Regular', shippingCents: 0 }), cfg);
+    ingestOrder(db, mkOrder('P-EXP', {
+      shipService: 'AU_Express', shippingCents: 1295, expedited: true,
+      handleByTime: '2026-08-03T06:59:59.000Z', etaMin: '2026-08-04T04:00:00.000Z', etaMax: '2026-08-06T04:00:00.000Z',
+    }), cfg);
+  });
+
+  it('GET /orders decorates every order with its postage', async () => {
+    const orders = (await get('/api/postsale/orders?limit=300')).json.orders;
+    const std = orders.find((o) => o.order_id === 'P-STD');
+    const exp = orders.find((o) => o.order_id === 'P-EXP');
+
+    assert.equal(std.postage.tier, 'standard');
+    assert.equal(std.postage.upgrade, false, 'a free letter is not an upgrade — it gets no ink anywhere');
+    assert.equal(std.postage.tracking_url, null);
+
+    assert.equal(exp.postage.tier, 'express');
+    assert.equal(exp.postage.upgrade, true);
+    assert.equal(exp.postage.label, 'Express Post');
+    assert.equal(exp.postage.paid_cents, 1295);
+    assert.equal(exp.postage.handle_by, '2026-08-03T06:59:59.000Z');
+    assert.equal(exp.postage.eta_source, 'estimated');
+    // eBay publishes no API for an Australia Post label, so the dashboard links into Seller Hub.
+    assert.match(exp.postage.seller_hub_url, /orderid=P-EXP/);
+  });
+
+  it('GET /picksheet carries the tier onto every LINE and summarises upgrades per ORDER', async () => {
+    const ps = (await get('/api/postsale/picksheet?ids=P-STD,P-EXP')).json;
+    const line = (id) => ps.rows.find((r) => r.order_id === id);
+    assert.equal(line('P-EXP').postage_tier, 'express');
+    assert.equal(line('P-EXP').postage_upgrade, true);
+    assert.equal(line('P-STD').postage_upgrade, false);
+
+    assert.deepEqual(ps.upgrades.map((u) => u.order_id), ['P-EXP'], 'only the exception is listed');
+    assert.equal(ps.upgrades[0].tracked, true);
+    assert.equal(ps.upgrades[0].paid_cents, 1295);
+  });
+
+  it('GET /config lists the services actually sold under, so a mis-read one can be overridden', async () => {
+    const seen = (await get('/api/postsale/config')).json.observed_services;
+    const byCode = Object.fromEntries(seen.map((s) => [s.code, s]));
+    assert.equal(byCode.AU_Express.tier, 'express');
+    assert.equal(byCode.AU_Express.overridden, false);
+    assert.equal(byCode.AU_Express.mixed, null, 'every AU_Express order read the same way');
+
+    // AU_Regular has been sold both free (P-STD → standard) and with postage charged (T-1/T-2 → paid).
+    // The list reports the tier most of them actually got, and flags the split — which is the whole
+    // point of the panel: it is how you notice a service being driven by price rather than by its code.
+    // (counts are left loose: other blocks in this file seed AU_Regular orders too.)
+    assert.equal(byCode.AU_Regular.tier, 'paid');
+    assert.ok(byCode.AU_Regular.mixed.some((m) => m.startsWith('paid×')), byCode.AU_Regular.mixed);
+    assert.ok(byCode.AU_Regular.mixed.some((m) => m.startsWith('standard×')), byCode.AU_Regular.mixed);
+  });
+});

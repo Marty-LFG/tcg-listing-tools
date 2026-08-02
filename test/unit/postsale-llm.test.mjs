@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   nextBusinessDay, guardrailScrub, buildContext, systemPrompt, draftMessage,
   friendlyFirstName, cardHook, shipByPhrase, fallbackDraft,
+  followUpSystemPrompt, buildFollowUpContext, dispatchFacts, fallbackFollowUp,
 } from '../../lib/postsale-llm.mjs';
 
 describe('nextBusinessDay', () => {
@@ -200,5 +201,154 @@ describe('fallbackDraft — blank config falls back to the defaults', () => {
     const d = fallbackDraft({ order: {}, items: [], shipBy, now, cfg: { fallback_body: '{{name}}{{card}}' } });
     assert.equal(d.ok, false);
     assert.equal(d.error, 'template_empty');
+  });
+});
+
+/* ---------- dispatch + delivered follow-ups ---------- */
+
+describe('guardrailScrub — the allow list', () => {
+  const TRK = '36LB1234567890';
+
+  it('rejects a tracking number by default, because it looks exactly like a phone number', () => {
+    // This is not a hypothetical: every Australia Post article ID is a long digit run, so without an
+    // allow list a correct dispatch message would be rejected 100% of the time.
+    assert.ok(guardrailScrub('Tracking: ' + TRK).violations.includes('phone number'));
+  });
+
+  it('accepts it when the caller says it put that number there deliberately', () => {
+    assert.deepEqual(guardrailScrub('Tracking: ' + TRK, { allow: [TRK] }), { clean: true, violations: [] });
+  });
+
+  it('still rejects a real phone number sitting next to an allowed tracking number', () => {
+    const r = guardrailScrub(`Tracking: ${TRK}\nCall 0400 123 456`, { allow: [TRK] });
+    assert.ok(r.violations.includes('phone number'));
+  });
+
+  it('a url is only allowed when it is the exact one we stamped', () => {
+    const url = 'https://auspost.com.au/mypost/track/details/' + TRK;
+    assert.ok(guardrailScrub(url).violations.includes('web address / link'));
+    assert.equal(guardrailScrub(url, { allow: [url] }).clean, true);
+    assert.ok(guardrailScrub('also see mystore.com', { allow: [url] }).violations.includes('web address / link'));
+  });
+
+  it('measures length on the real body, not the masked copy', () => {
+    const long = 'x'.repeat(1995) + TRK;
+    assert.ok(guardrailScrub(long, { allow: [TRK] }).violations.includes('too long (> 2000 chars)'));
+  });
+
+  it('masking can never fuse two digit runs into a false positive', () => {
+    assert.equal(guardrailScrub(`1234${TRK}5678`, { allow: [TRK] }).clean, true);
+  });
+});
+
+describe('dispatchFacts', () => {
+  const P = { tracking: '36LB1234567890', carrier: 'Australia Post', tracking_url: 'https://auspost.com.au/t/36LB1234567890' };
+
+  it('stamps the number and carrier, and allows them past the guardrail', () => {
+    const f = dispatchFacts(P, {});
+    assert.match(f.text, /^Tracking: 36LB1234567890 \(Australia Post\)$/);
+    assert.deepEqual(f.allow, ['36LB1234567890']);
+    assert.equal(guardrailScrub('Hi there.\n\n' + f.text, { allow: f.allow }).clean, true);
+  });
+
+  it('leaves the link out by default — eBay bans web addresses in member messages', () => {
+    assert.doesNotMatch(dispatchFacts(P, {}).text, /auspost/);
+  });
+
+  it('includes the link only when the owner switches it on', () => {
+    const f = dispatchFacts(P, { dispatch_message: { include_link: true } });
+    assert.match(f.text, /auspost\.com\.au/);
+    assert.equal(guardrailScrub(f.text, { allow: f.allow }).clean, true);
+  });
+
+  it('an untracked letter gets no facts block at all', () => {
+    assert.deepEqual(dispatchFacts({}, {}), { text: '', allow: [] });
+  });
+});
+
+describe('followUpSystemPrompt', () => {
+  it('carries the same hard voice rules as the thank-you', () => {
+    for (const kind of ['dispatch', 'delivered']) {
+      const s = followUpSystemPrompt({ signature: '-BK' }, kind);
+      assert.match(s, /No em dashes/, kind);
+      assert.match(s, /not X, but Y/, kind);
+      assert.match(s, /No links/, kind);
+      assert.match(s, /-BK/, kind);
+      assert.match(s, /JSON object/, kind);
+    }
+  });
+  it('forbids the model writing the tracking number itself', () => {
+    assert.match(followUpSystemPrompt({}, 'dispatch'), /Do NOT write the number out yourself/);
+  });
+  it('does not promise a delivery date on our behalf', () => {
+    assert.match(followUpSystemPrompt({}, 'dispatch'), /Do not promise a delivery date/);
+  });
+  it('the delivered note asks for a rating without begging or bribing', () => {
+    const s = followUpSystemPrompt({}, 'delivered');
+    assert.match(s, /rating on eBay helps a small store/);
+    assert.match(s, /Do not beg, do not offer/);
+  });
+});
+
+describe('buildFollowUpContext', () => {
+  const order = { buyer_username: 'archaon', ship_name: 'Sam Lee' };
+  const items = [{ title: 'Flygon ex 222/191', quantity: 1 }];
+  it('tells the model the number is appended rather than handing it over', () => {
+    const c = buildFollowUpContext({ order, items, postage: { label: 'Express Post', tracking: '36LB1' }, kind: 'dispatch' });
+    assert.match(c, /Postage service: Express Post\./);
+    assert.match(c, /appended after your message/);
+    assert.doesNotMatch(c, /36LB1/);
+  });
+  it('says plainly when there is no tracking, so nothing is invented', () => {
+    assert.match(buildFollowUpContext({ order, items, postage: {}, kind: 'dispatch' }), /no tracking number/);
+  });
+  it('the delivered context states the parcel arrived', () => {
+    assert.match(buildFollowUpContext({ order, items, kind: 'delivered' }), /has been delivered/);
+  });
+});
+
+describe('fallbackFollowUp', () => {
+  const order = { ship_name: 'Sam Lee', buyer_username: 'archaon' };
+  const items = [{ title: 'Pokemon Flygon ex 222/191 SV', quantity: 1 }];
+
+  it('dispatch: names them, names the card, names the service, and points at the number', () => {
+    const d = fallbackFollowUp({ order, items, postage: { label: 'Express Post', tracking: '36LB1' }, cfg: { signature: '-BK' } });
+    assert.equal(d.ok, true);
+    assert.match(d.body, /Hey Sam,/);
+    assert.match(d.body, /Flygon/);
+    assert.match(d.body, /It's going Express Post\./);
+    assert.match(d.body, /tracking number is at the bottom/);
+    assert.match(d.body, /-BK$/);
+  });
+
+  it('dispatch: says nothing about tracking when there is none', () => {
+    const d = fallbackFollowUp({ order, items, postage: {}, cfg: {} });
+    assert.doesNotMatch(d.body, /tracking/i);
+  });
+
+  it('delivered: checks in and nudges once, gently', () => {
+    const d = fallbackFollowUp({ order, items, kind: 'delivered', cfg: {} });
+    assert.match(d.body, /should have landed/);
+    assert.match(d.body, /reply here/);
+    assert.match(d.body, /rating on eBay/);
+  });
+
+  it('every fallback obeys the store voice: no em dashes, no antithesis, no filler', () => {
+    for (const kind of ['dispatch', 'delivered']) {
+      for (const postage of [{}, { label: 'Express Post', tracking: '36LB1234567890' }]) {
+        const d = fallbackFollowUp({ order, items, postage, kind, cfg: {} });
+        assert.doesNotMatch(d.body, /—/, kind);
+        assert.doesNotMatch(d.body, /\bnot .*, but\b/i, kind);
+        assert.doesNotMatch(d.body, /thrilled|rest assured|we pride ourselves|valued customer|seamless|curated/i, kind);
+        assert.ok((d.body.match(/!/g) || []).length <= 1, kind);
+        assert.equal(guardrailScrub(d.body).clean, true, kind + ' body must pass the guardrail on its own');
+      }
+    }
+  });
+
+  it('degrades to no name and no card when it cannot be sure of either', () => {
+    const d = fallbackFollowUp({ order: { ship_name: 'Cardz Pty Ltd' }, items: [{ title: 'a', quantity: 2 }, { title: 'b' }], postage: {}, cfg: {} });
+    assert.match(d.body, /^Hey,/);
+    assert.match(d.body, /your order went in the post/);
   });
 });

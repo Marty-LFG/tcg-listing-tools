@@ -22,5 +22,13 @@
   "labels": true,
   "listings_sync": true,
   "fees": false,
-  "cases": true
+  "cases": true,
+  "postage": {
+    "dispatch_message": { "enabled": true, "include_link": false, "delay_min": 20 },
+    "delivered_message": { "enabled": true, "force_approve": true },
+    "seller_hub_order_url": "https://www.ebay.com.au/sh/ord/details?orderid={orderId}",
+    "seller_hub_fallback_url": "https://www.ebay.com.au/sh/ord?filter=status:AWAITING_SHIPMENT",
+    "tracking_url": "https://auspost.com.au/mypost/track/details/{tracking}",
+    "services": {}
+  }
 }
