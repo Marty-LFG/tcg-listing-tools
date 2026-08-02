@@ -435,6 +435,17 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
   keyless TCGplayer market price on **every** lane (offline / riftscribe /
   scrydex / rune), so the default offline source now shows a price and feeds
   `_trk.price`. Scrydex's only remaining exclusive is the trend graph.
+- **The Riftscribe lane lags a set behind.** riftscribe.gg carries OGN/OGS/SFD/UNL
+  (~950 cards) and has no Vendetta yet, so that source shows four pills where the
+  default offline one shows five. Nothing to do but wait — the pills, their names
+  and their order already derive from the baked catalog, so Vendetta appears there
+  by itself the moment riftscribe ingests it.
+- **`UNL-238` Baron Nashor is the one variant label we can't derive.** TCGplayer
+  calls it "(Ultimate)" (US$1,635); the bake calls it Overnumbered, because it is
+  over the set total and Riot's gallery gives it no distinguishing field at all
+  (epic / unit / portrait, same as its neighbours). It is still correctly a
+  Showcase foil — only the word differs. Recorded as a named exception in
+  `test/data/riftbound-variants.test.mjs` so the other ~1,100 labels stay guarded.
 - **Rune reprints have no price.** The index carries the 12 runes only under
   their Origins printed numbers; the per-set `R##` reprints are separate
   TCGplayer products it skips. The builder prices a rune only on OGN and says so
