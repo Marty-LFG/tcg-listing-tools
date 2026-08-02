@@ -443,6 +443,7 @@
     {id:'fx',label:'Frankfurter FX',powers:'AUD conversion',keyed:()=>null},
     {id:'pc',label:'PriceCharting',powers:'Graded ladder + pop',keyed:(k)=>k.pricecharting.PRICECHARTING_TOKEN,optional:true},
     {id:'ebay',label:'eBay Browse',powers:'Comps, Funko search',keyed:(k)=>k.ebay.EBAY_APP_ID&&k.ebay.EBAY_CERT_ID},
+    {id:'ebay-sold',label:'eBay sold comps',powers:'True sold prices (denied — every comp is an ASKING price)',keyed:(k)=>k.ebay.EBAY_APP_ID&&k.ebay.EBAY_CERT_ID,optional:true},
     {id:'psa',label:'PSA cert API',powers:'Cert auto-fill',keyed:(k)=>k.psa.PSA_API_TOKEN,optional:true},
     {id:'rebrickable',label:'Rebrickable',powers:'LEGO set lookup',keyed:(k)=>k.lego.REBRICKABLE_API_KEY},
     {id:'brickset',label:'Brickset',powers:'LEGO RRP / dims',keyed:(k)=>k.lego.BRICKSET_API_KEY},
