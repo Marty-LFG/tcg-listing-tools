@@ -66,6 +66,9 @@
   .pill.shipped{color:var(--green);border-color:rgba(67,214,160,.35);} .pill.unshipped{color:var(--amber);border-color:rgba(240,192,74,.35);}
   .pill.printed{color:var(--blue);border-color:rgba(106,176,255,.4);} .pill.queued{color:var(--muted);}
   .pill.picked{color:var(--purple);border-color:rgba(199,155,255,.4);}
+  /* eBay flips an order to "sent" the moment a postage label is bought, which is usually well before
+     the cards leave the shelf. Showing that as SHIPPED would quietly drop it out of the day's work. */
+  .pill.label_bought{color:var(--amber);border-color:rgba(240,192,74,.45);background:rgba(240,192,74,.1);}
   .pill.combo{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);margin-left:6px;}
   .loc{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;margin-left:4px;}
   .loc.none{color:var(--faint);background:rgba(255,255,255,.03);}
@@ -272,7 +275,7 @@ function postageCell(o) {
   const trk = p.tracking ? `<div class="trk" data-copy="${esc(p.tracking)}" title="Copy tracking number">${esc(p.tracking)}`
     + (p.tracking_url ? `<a class="ext" href="${esc(p.tracking_url)}" target="_blank" rel="noopener" title="Track on Australia Post">↗</a>` : '')
     + `</div>` : '';
-  const d = (o.shipped_status === 'unshipped') ? dueInfo(o) : null;
+  const d = o.in_queue ? dueInfo(o) : null;
   const due = d ? `<div class="due ${d.cls}" title="eBay's dispatch deadline · ${esc(when(d.iso))}">${duePhrase(d.left)}<span class="t">${esc(relTime(d.left))}</span>`
     + `<div class="duebar"><i style="width:${d.pct.toFixed(0)}%"></i></div></div>` : '';
   return `<span class="pg ${esc(p.tier)}">${esc(word)}</span>`
@@ -284,7 +287,7 @@ function postageCell(o) {
 function runSummary(rows) {
   const ups = rows.filter(o => o.postage && o.postage.upgrade);
   const exp = ups.filter(o => o.postage.tier === 'express').length;
-  const dues = rows.filter(o => o.shipped_status==='unshipped').map(dueInfo).filter(Boolean).sort((a,b)=>a.left-b.left);
+  const dues = rows.filter(o => o.in_queue).map(dueInfo).filter(Boolean).sort((a,b)=>a.left-b.left);
   const bits = [`<span><b>${rows.length}</b> order${rows.length===1?'':'s'}</span>`];
   if (ups.length) {
     bits.push('<span class="sep"></span>');
@@ -340,18 +343,26 @@ function renderOrders() {
     + `<table><thead><tr><th class="selcol"><input type="checkbox" id="selAll" checked title="Include all in the pick sheet"></th><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Postage</th><th>Paid (Sydney)</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
     + rows.map(o => {
       const loc = [o.ship_city, o.ship_state].filter(Boolean).join(', ') + (o.ship_postal?` ${o.ship_postal}`:'');
-      // dispatch_source 'ebay' means we never touched it: eBay marked the order sent by itself when
-      // the postage label was bought, and the next poll pulled that back. Worth saying so, because
-      // "shipped" with nobody having pressed Mark shipped otherwise looks like a bug.
-      const statusPill = `<span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>`
-        + (o.dispatch_source==='ebay'?` <span class="pill printed" title="eBay marked this dispatched when the postage label was bought — pulled back on the order poll">via eBay</span>`:'')
+      // The pill reports OUR state, not eBay's flag. eBay says "sent" the instant a postage label is
+      // bought, which is usually while the cards are still in the box — calling that SHIPPED would
+      // drop a job out of the day's work with nothing done. See fulfilment_state in lib/postsale.mjs.
+      const fs = o.fulfilment_state || (o.shipped_status==='shipped' ? 'posted' : 'to_pack');
+      const pillWord = fs==='label_bought' ? 'label bought' : fs==='posted' ? 'shipped' : 'unshipped';
+      const pillCls = fs==='label_bought' ? 'label_bought' : fs==='posted' ? 'shipped' : 'unshipped';
+      const statusPill = `<span class="pill ${pillCls}"${fs==='label_bought'?' title="eBay marked this sent when the postage label was bought. The cards still need pulling and the parcel still needs lodging."':''}>${esc(pillWord)}</span>`
+        + (fs==='label_bought'?' <span class="pill queued">still to pack</span>':'')
+        + (o.dispatch_source==='ebay'&&fs==='posted'?` <span class="pill printed" title="eBay marked this dispatched when the postage label was bought — pulled back on the order poll">via eBay</span>`:'')
         + (o.picked_at?` <span class="pill picked" title="Pulled + packed ${esc(when(o.picked_at))}">picked ✓</span>`:'')
         + (o.label_status==='printed'?' <span class="pill printed">label ✓</span>':'');
-      const shipBtn = o.shipped_status==='unshipped' ? `<button class="act ship" data-ship="${esc(o.order_id)}">✓ Mark shipped</button>` : '';
+      // eBay already has this one dispatched, so there is nothing to tell it — the only thing left is
+      // recording that the parcel actually went, which is what clears it from the queue.
+      const shipBtn = fs==='label_bought'
+        ? `<button class="act ship" data-ship="${esc(o.order_id)}" title="eBay already has this dispatched. This just records that the parcel has gone, and clears it from the queue.">✓ Packed &amp; posted</button>`
+        : (o.in_queue ? `<button class="act ship" data-ship="${esc(o.order_id)}">✓ Mark shipped</button>` : '');
       // Picked = pulled off the shelf and packed, still waiting to be posted. Local only — no eBay write.
       const pickBtn = o.picked_at
         ? `<button class="act pick" data-unpick="${esc(o.order_id)}" title="Put this back on the pull list">↺ Unpick</button>`
-        : (o.shipped_status==='unshipped' ? `<button class="act pick" data-pick="${esc(o.order_id)}" title="Pulled + packed — drop it off the pull list, keep it here to dispatch">✓ Picked</button>` : '');
+        : (o.in_queue ? `<button class="act pick" data-pick="${esc(o.order_id)}" title="Pulled + packed — drop it off the pull list, keep it here to dispatch">✓ Picked</button>` : '');
       const grp = STATE.groupOf && STATE.groupOf.get(o.order_id);
       const buyerBadge = grp ? ` <span class="pill combo" title="This buyer has ${grp.length} orders to the same address">×${grp.length}</span>` : '';
       const comboBtn = grp ? `<button class="act combo" data-combined="${esc(o.order_id)}" title="One packing slip for all ${grp.length} of this buyer's orders">🧾 Combined slip (${grp.length})</button>` : '';
@@ -360,7 +371,7 @@ function renderOrders() {
       // Seller Hub. Our thermal label demotes rather than disappears: it is still the right answer
       // for a counter lodgement, just the wrong default.
       const p = o.postage || {};
-      const isUp = !!p.upgrade && o.shipped_status === 'unshipped';
+      const isUp = !!p.upgrade && o.in_queue && fs !== 'label_bought';
       const ebayBtn = (isUp && p.seller_hub_url)
         ? `<a class="act ebay" href="${esc(p.seller_hub_url)}" target="_blank" rel="noopener" title="${esc((p.label||'This order')+' needs an eBay-bought Australia Post label. Opens the order in Seller Hub.')}">📦 Buy label on eBay ↗</a>` : '';
       const labelBtn = `<button class="act${isUp?' ghost':''}" data-label="${esc(o.order_id)}" title="${esc(isUp
@@ -409,7 +420,7 @@ async function loadAll() {
     STATE.orders = orders.orders || [];
     if (STATE.tab==='all') STATE.counts.all = STATE.orders.length;
     else STATE.counts.unshipped = STATE.orders.length;
-    STATE.counts.upgrades = STATE.orders.filter(o => o.postage && o.postage.upgrade && o.shipped_status==='unshipped').length;
+    STATE.counts.upgrades = STATE.orders.filter(o => o.postage && o.postage.upgrade && o.in_queue).length;
     renderBanner(); renderPanel(); renderServices();
   } catch (e) {
     $('banner').innerHTML = `<span class="chip"><span class="dot err"></span>${esc(e.message)}</span>`;
