@@ -635,15 +635,26 @@ function riftscribeLookup(){
   if(!raw){st.className='status warn';st.textContent='Enter a card number.';return;}
   if(/^r\d/i.test(raw)&&runeFill(raw))return;             // R##(a) rune reprint (resolved from baked rune data)
   if(!RBS_BY_SET||!RBS_BY_SET[curSet]){st.className='status warn';st.textContent='Riftscribe set not loaded — re-pick the source.';return;}
-  const mm=raw.split('/')[0].trim().toLowerCase().match(/^0*(\d+)([a-z*]?)$/);
-  if(!mm){st.className='status warn';st.textContent='Could not parse "'+raw+'".';return;}
-  const n=parseInt(mm[1],10), suf=mm[2]||'';
-  const wantVar = suf==='*'?'star' : suf;                     // 'a' alt, 'star' overnumbered, '' base
+  // Match on normNum, the same key the offline lane and the price index use, instead of parsing the
+  // typed number into (digits, suffix) here. That bespoke regex rejected Vendetta's SP1/006 outright
+  // ("Could not parse"), and riftscribe has no Vendetta yet, so its SP shape is still unknown —
+  // normalising BOTH sides means 'SP1' matches whether they publish 1/'SP1'/'SP01'.
+  const key=normNum(raw);
+  if(!key){st.className='status warn';st.textContent='Could not parse "'+raw+'".';return;}
   const list=RBS_BY_SET[curSet];
-  let card=list.find(c=>+c.collector_number===n && (c.variant||'')===wantVar);
-  if(!card&&wantVar) card=list.find(c=>+c.collector_number===n);   // fall back to base print
-  if(!card){st.className='status warn';st.textContent='No match for '+curSet+'-'+mm[1]+suf+' in Riftscribe. Fill fields manually.';return;}
+  let card=list.find(c=>rbsCardKey(c)===key);
+  const base=key.replace(/[a-z*]+$/,'');
+  if(!card&&base&&base!==key) card=list.find(c=>rbsCardKey(c)===base);   // fall back to base print
+  if(!card){st.className='status warn';st.textContent='No match for '+curSet+'-'+key+' in Riftscribe. Fill fields manually.';return;}
   mapRiftscribeCard(card);
+}
+// A riftscribe card's number in normNum form: collector_number plus the suffix its `variant` implies
+// ('star' -> *, a single letter -> that letter). Non-numeric collector numbers pass through, so an
+// SP card lands on 'sp1' whatever shape riftscribe ends up publishing.
+function rbsCardKey(c){
+  const v=c.variant||'';
+  const suf = v==='star' ? '*' : (/^[a-z]$/i.test(v) ? v.toLowerCase() : '');
+  return normNum(String(c.collector_number)+suf);
 }
 function titleRb(s){s=(s||'').toString();return s?s.charAt(0).toUpperCase()+s.slice(1):'';}
 function mapRiftscribeCard(c){
@@ -651,18 +662,32 @@ function mapRiftscribeCard(c){
   const isStar=c.variant==='star', isAlt=c.variant&&/^[a-z]$/i.test(c.variant);
   const suf=isStar?'*':(isAlt?c.variant.toLowerCase():'');
   let rawRarity=titleRb(c.rarity), name=c.name||'';
-  // Same derivation the catalog bake does, and for the same reason: the printed number is reliable
-  // where the source's own rarity is not. Riftscribe carries no set total, so borrow it from the
-  // baked catalog and simply skip the over-total test when it isn't loaded (GR7).
+  // Treatment: the bake already decided this once, from the printed number PLUS the one hardcoded
+  // override no number can imply (UNL-238 Ultimate). Reuse its answer when the baked catalog has the
+  // card, rather than re-deriving here and drifting from it — this lane used to call Baron Nashor
+  // "Overnumbered" while the offline lane called it "Ultimate", for the same physical card.
+  const _baked=((RB_DATA[setCode.toLowerCase()]||{}).cards||[]).find(x=>x.k===rbsCardKey(c));
+  const _bakedTreat=_baked&&(_baked.name||'').match(/\((Alternate Art|Overnumbered|Signature|Ultimate)\)$/);
+  // No baked row (riftscribe ahead of Riot's gallery) — fall back to deriving it, same rules the
+  // bake uses. Riftscribe carries no set total, so borrow it and skip the over-total test if absent.
   const _tot=(RB_DATA[setCode.toLowerCase()]||{}).total||0;
   const isOver=!isStar&&!isAlt&&_tot>0&&(+c.collector_number||0)>_tot;
-  if(isStar){ rawRarity='Signature'; name+=' (Signature)'; }
+  if(_baked){
+    // Take the baked RARITY too, not just the treatment: the bake forces Showcase on the SP promos,
+    // which carry no name suffix, so reading riftscribe's own field here made one physical card read
+    // "Epic" on this lane and "Showcase" on the offline one.
+    rawRarity=_bakedTreat?_bakedTreat[1]:(_baked.rarity||rawRarity);
+    if(_bakedTreat) name+=' ('+_bakedTreat[1]+')';
+  }
+  else if(isStar){ rawRarity='Signature'; name+=' (Signature)'; }
   else if(isAlt){ rawRarity='Alternate Art'; name+=' (Alternate Art)'; }
   else if(isOver){ rawRarity='Overnumbered'; name+=' (Overnumbered)'; }
   let _nm=name,_v=variantOf(rawRarity); const _mm=_nm.match(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i);
   if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':(/ultimate/i.test(_mm[1])?'Ultimate':'Overnumbered')); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i,''); }
   set('f_name',_nm); set('f_set',rbsName(setCode)+' ('+setCode+')');
-  set('f_num',String(c.collector_number).padStart(3,'0')+suf);
+  // Pad a plain collector number to 3 digits as printed; leave a prefixed one (SP1) alone, uppercase.
+  const _cn=String(c.collector_number);
+  set('f_num',(/^\d+$/.test(_cn)?_cn.padStart(3,'0'):_cn.toUpperCase())+suf);
   set('f_rarity',mapRarity(rawRarity)); set('f_variant',_v); set('f_type',c.type||'');
   set('f_domain', c.faction?titleRb(c.faction):''); set('f_tags',championTag(name)); set('f_finish',finishOf(rawRarity));
   const isUnit=/unit/i.test(c.type||''), ss=c.stats||{};
