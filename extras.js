@@ -422,9 +422,15 @@
   // return nothing). A bare "296" matches the number on a word boundary.
   function buildNumberRe(num){
     var s = String(num || '').trim(); if (!s) return null;
-    var m = s.match(/(\d{1,4})\s*\/\s*(\d{1,4})/);
-    if (m) return new RegExp('\\b0*' + String(+m[1]) + '\\s*\\/\\s*0*' + String(+m[2]) + '\\b');
-    var n = s.match(/\d{1,4}/); return n ? new RegExp('\\b0*' + String(+n[0]) + '\\b') : null;
+    var m = s.match(/^(\d{1,4})([A-Za-z])?\s*\/\s*(\d{1,4}|[A-Za-z]{2,5})$/);
+    if (m) {
+      var lhs = '0*' + String(+m[1]) + (m[2] || '');
+      var rhs = /^\d+$/.test(m[3]) ? '0*' + String(+m[3]) : m[3];
+      return new RegExp('\\b' + lhs + '\\s*/\\s*' + rhs + '\\b', 'i');
+    }
+    var b = s.match(/^(\d{1,4})([A-Za-z])?$/);
+    if (b) return new RegExp('\\b0*' + String(+b[1]) + (b[2] || '') + '\\b', 'i');
+    var n = s.match(/\d{1,4}/); return n ? new RegExp('\\b0*' + String(+n[0]) + '\\b', 'i') : null;
   }
 
   // Classify a listing TITLE's card language from text signals (no reliable eBay aspect exists —

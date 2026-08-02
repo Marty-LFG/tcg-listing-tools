@@ -209,7 +209,7 @@ describe('scanListings — live eBay fields reach the decision', () => {
 describe('scanListings — refusals that cost nothing', () => {
   it('skips an unparseable title before any API call', async () => {
     stub();
-    seed({ title: 'Mystery bundle, 10 assorted holos' });
+    seed({ title: 'Mystery bundle of assorted holos' });   // no number of any shape
     await scan();
     const [c] = checks();
     assert.equal(c.verdict, 'skip');
@@ -266,7 +266,7 @@ describe('scanListings — behaviour under stress', () => {
   it('counts verdicts and reason codes for the summary', async () => {
     stub();
     seed({ listing_id: '9001' });
-    seed({ listing_id: '9002', title: 'Mystery bundle, 10 assorted' });
+    seed({ listing_id: '9002', title: 'Mystery bundle of assorted holos' });
     const r = await scan();
     assert.equal(r.checked, 2);
     assert.equal(r.skip, 1);

@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildTitle } from '../../lib/listing-copy.mjs';
 import { parseCardTitle, findNumber, findSet, findGrade, findFinish, normSet } from '../../lib/listing-title-parse.mjs';
+import { buildNumberRe } from '../../lib/comps-singles.mjs';
 
 // A realistic slice of the EN set list, including the pairs that make naive matching fail.
 const SETS = [
@@ -159,5 +160,79 @@ describe('findNumber — "#160", the Magic and Star Wars Unlimited shape', () =>
     const p = parseCardTitle('Living End (Silver Scroll) - Strixhaven Mystical Archive (SOA) #160 MTG NM/M');
     assert.equal(p.number, '160');
     assert.ok(!p.name.endsWith('#'), 'name should not trail a hash: ' + JSON.stringify(p.name));
+  });
+});
+
+// --- the shapes that were 54 of 154 live listings ------------------------------------------------
+// A third of the catalogue was never priced at all because findNumber only understood N/M, a promo
+// code, and (since the last change) #N. Lorcana prints no denominator, Japanese Pokémon promos print
+// none either, Riftbound alt arts carry a letter, and Star Wars Unlimited puts a SET CODE where the
+// total belongs.
+describe('findNumber — the remaining live shapes', () => {
+  it('reads an alt-art letter as part of the number, not decoration', () => {
+    const n = findNumber('Jinx - Demolitionist (Alt Art) 030a/298 Riftbound Origins (OGN) ENGLISH SHOWCASE');
+    assert.equal(n.printed, '030a/298');
+    assert.equal(n.numerator, '030a');
+  });
+  it('reads a set code as the denominator (Star Wars Unlimited)', () => {
+    assert.equal(findNumber('Command 107/SOR - Star Wars Unlimited Spark of Rebellion (SOR) EN LEGENDARY').printed, '107/SOR');
+  });
+  it('reads a bare number when there is no denominator at all', () => {
+    assert.equal(findNumber('Dale - Ready for His Shot 22 - Disney Lorcana Wilds Unknown (12) EN LEG M/NM').printed, '22');
+    assert.equal(findNumber('Pokemon Dhelmise 88 Abyss Eye Art Rare Holo JP M/NM').printed, '88');
+    assert.equal(findNumber('Order Rune 214a (Alt Art) - Riftbound Origins (OGN) ENGLISH SHOWCASE NM/M').printed, '214a');
+  });
+
+  // A bare number is the weakest signal here, so what it REFUSES is most of its value.
+  it('refuses a single digit — it would match a fifth of all titles', () => {
+    assert.equal(findNumber('Pikachu 5 Promo'), null);
+  });
+  it('refuses a year', () => {
+    assert.equal(findNumber('Charizard 2026 Anniversary Holo'), null);
+  });
+  it('refuses a quantity', () => {
+    assert.equal(findNumber('Bulk 25x assorted holo cards'), null);
+    assert.equal(findNumber('Assorted holo cards x 25'), null);
+  });
+  it('refuses a parenthesised set ordinal, which Lorcana titles end with', () => {
+    assert.equal(findNumber('Kristoff - Reindeer Keeper - Disney Lorcana Promo (12)'), null);
+  });
+  it('does NOT read "ex" as a quantity — that swallowed every ex card', () => {
+    // The guard used to be a bare trailing "x", so "Mega Darkrai ex 99" and "Dustox 195" both looked
+    // like quantities and five real listings went unpriced.
+    assert.equal(findNumber('Pokemon Mega Darkrai ex 99 Abyss Eye Super Rare Holo JP M/NM').printed, '99');
+    assert.equal(findNumber('Pokemon Dustox 195 Mega Dream ex Art Rare Holo JP M/NM').printed, '195');
+    assert.equal(findNumber('Pokemon Mega Floette Ex 99 Ninja Spinner Super Rare Holo JP M/NM').printed, '99');
+  });
+  it('is still the LAST resort — a better-formed number always wins', () => {
+    assert.equal(findNumber('Pokemon Wailord ex 016/084 Pitch Black 99').printed, '016/084');
+    assert.equal(findNumber('Pokemon Zacian SWSH123 promo 99').printed, 'SWSH123');
+    assert.equal(findNumber('Living End (SOA) #160 MTG 99').printed, '160');
+  });
+});
+
+describe('buildNumberRe — the alt art and the base card are different cards', () => {
+  it('does not cross-match in either direction', () => {
+    // The old regex compiled 030a/298 to /\b0*30\b/, which missed the card's own title and matched
+    // the base card's — it excluded every correct comp and admitted the wrong ones.
+    const alt = buildNumberRe('030a/298'), base = buildNumberRe('030/298');
+    assert.equal(alt.test('Jinx - Demolitionist (Alt Art) 030a/298'), true);
+    assert.equal(alt.test('Jinx - Demolitionist 030/298'), false);
+    assert.equal(base.test('Jinx - Demolitionist 030/298'), true);
+    assert.equal(base.test('Jinx - Demolitionist (Alt Art) 030a/298'), false);
+  });
+  it('keeps zero-padding tolerance on both sides', () => {
+    assert.equal(buildNumberRe('016/084').test('Wailord ex 16/84 Pitch Black'), true);
+    assert.equal(buildNumberRe('16/84').test('Wailord ex 016/084 Pitch Black'), true);
+  });
+  it('matches a lettered denominator literally', () => {
+    assert.equal(buildNumberRe('107/SOR').test('Command 107/SOR - Star Wars Unlimited'), true);
+    assert.equal(buildNumberRe('107/SOR').test('Command 107/999 - something else'), false);
+  });
+  it('a bare number still needs a word boundary', () => {
+    assert.equal(buildNumberRe('88').test('Card 88 Set'), true);
+    assert.equal(buildNumberRe('88').test('Card 880 Set'), false);
+    assert.equal(buildNumberRe('214a').test('Order Rune 214a Alt Art'), true);
+    assert.equal(buildNumberRe('214a').test('Order Rune 214 base'), false);
   });
 });
