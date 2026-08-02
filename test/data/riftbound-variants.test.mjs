@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from '../helpers/extract-inline.mjs';
+import { TREATMENT_OVERRIDE } from '../../scripts/build-riftbound-data.mjs';
 
 const readJson = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8')); } catch { return null; } };
 const catalog = readJson('data/riftbound.json');
@@ -33,14 +34,7 @@ describe('baked variant labels vs TCGplayer', { skip: have ? false : 'bake data/
       }
     }
   }
-  const tag = (name) => (String(name || '').match(/\((Signature|Overnumbered|Alternate Art)\)/) || [, ''])[1];
-
-  // Known, deliberate exceptions: cards where TCGplayer uses a name the printed number cannot imply.
-  // UNL-238 Baron Nashor is the only "(Ultimate)" in the game — a single US$1,600 chase card. Riot's
-  // gallery gives it no distinguishing field at all (epic / unit / portrait, same as its neighbours),
-  // so there is nothing to derive it from; inventing a rule off one row would be a guess that rots.
-  // It is still correctly resolved as an over-total Showcase foil; only the word differs.
-  const KNOWN_DIFFERENT = new Set(['UNL-238']);
+  const tag = (name) => (String(name || '').match(/\((Signature|Overnumbered|Alternate Art|Ultimate)\)/) || [, ''])[1];
 
   it('joins most of the catalog onto the price index (the keys are meant to line up)', () => {
     const total = Object.values(catalog).reduce((n, s) => n + s.cards.length, 0);
@@ -48,9 +42,23 @@ describe('baked variant labels vs TCGplayer', { skip: have ? false : 'bake data/
   });
 
   it('agrees with TCGplayer on Signature vs Overnumbered vs Alternate Art', () => {
-    const bad = joined.filter(({ set, c, row }) => tag(c.name) !== tag(row.name) && !KNOWN_DIFFERENT.has(set.code + '-' + c.k))
+    const bad = joined.filter(({ c, row }) => tag(c.name) !== tag(row.name))
       .map(({ set, c, row }) => `${set.code}-${c.k}: baked "${tag(c.name) || 'base'}" vs TCGplayer "${tag(row.name) || 'base'}" (${row.name})`);
     assert.deepEqual(bad, [], `${bad.length} card(s) labelled differently from the market`);
+  });
+
+  // The fence around the one hardcoded row in the bake. A hardcode is normally how data rots; this
+  // asserts every override is still exactly what TCGplayer calls the card, and that none has been
+  // left behind after the printed number learned to imply it.
+  it('every TREATMENT_OVERRIDE entry is still backed by TCGplayer, and none is dead', () => {
+    for (const [key, treatment] of Object.entries(TREATMENT_OVERRIDE)) {
+      const row = prices.cards[key];
+      assert.ok(row, `${key}: override points at a card the price index does not carry`);
+      assert.equal(tag(row.name), treatment, `${key}: TCGplayer calls it "${row.name}", not (${treatment})`);
+      const hit = joined.find(({ set, c }) => set.code + '-' + c.k === key);
+      assert.ok(hit, `${key}: override points at a card the catalog does not carry`);
+      assert.equal(tag(hit.c.name), treatment, `${key}: the bake did not apply the override`);
+    }
   });
 
   it('every card TCGplayer calls Showcase resolves to a Showcase foil here', () => {

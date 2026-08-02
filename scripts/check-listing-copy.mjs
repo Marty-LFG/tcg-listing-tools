@@ -188,6 +188,8 @@ console.log('\n[riftbound builder parity]');
     // Long enough to force fitTitle to shed parts — "(Signature)" must NOT be one of them (GR5):
     // it is the difference between a US$2,739 card and a US$296 one.
     { f_name: 'Poppy, Keeper of the Hammer', f_num: '237*/219', f_set: 'Unleashed (UNL)', f_rarity: 'Showcase', f_variant: 'Signature', f_finish: 'Foil', f_lang: 'Japanese', f_cond: 'Lightly Played', f_type: 'Legend', f_domain: 'Body', f_tags: 'Poppy', f_e: '3', f_p: '2', f_m: '4' },
+    // The one hardcoded treatment (TREATMENT_OVERRIDE): over the set total, but Ultimate, not Overnumbered.
+    { f_name: 'Baron Nashor', f_num: '238/219', f_set: 'Unleashed (UNL)', f_rarity: 'Showcase', f_variant: 'Ultimate', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Unit', f_domain: 'Chaos', f_tags: '', f_e: '10', f_p: '3', f_m: '12' },
   ];
   for (const fx of fixtures) {
     const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
@@ -201,8 +203,8 @@ console.log('\n[riftbound builder parity]');
     const title = vm.runInContext('genTitle()', ctx);
     check('genTitle ' + fx.f_name.slice(0, 18), LC.buildTitle('riftbound', f), title);
     // GR5: a shed title must never drop the treatment. fitTitle used to bin "(Signature)" first.
-    if (fx.f_variant === 'Signature' || fx.f_variant === 'Overnumbered') {
-      check('title keeps ' + fx.f_variant, '(' + fx.f_variant + ')', (title.match(/\((?:Signature|Overnumbered)\)/) || [''])[0]);
+    if (['Signature', 'Overnumbered', 'Ultimate'].includes(fx.f_variant)) {
+      check('title keeps ' + fx.f_variant, '(' + fx.f_variant + ')', (title.match(/\((?:Signature|Overnumbered|Ultimate)\)/) || [''])[0]);
     }
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ',' + JSON.stringify(rawRarity) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 18), LC.riftboundPitch(f, rawRarity), pitch);

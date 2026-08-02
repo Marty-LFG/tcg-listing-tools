@@ -70,7 +70,8 @@ no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
 - Riftbound premium printings are derived from the printed number, not the source's rarity
   field (which is wrong for exactly these cards): a trailing `*` is a **Signature**, a number
   above the set total is **Overnumbered**, a trailing letter is **Alternate Art**, and `SP#`
-  is a special showcase promo. All of them are Showcase foils.
+  is a special showcase promo. All of them are Showcase foils. One card is hardcoded —
+  Unleashed #238 Baron Nashor is **Ultimate**, which no number can imply.
 - SWU is entirely live via swu-db; Base URL is preset to `/api/swu`.
 - Every builder always allows manual field entry; the preview builds regardless.
 

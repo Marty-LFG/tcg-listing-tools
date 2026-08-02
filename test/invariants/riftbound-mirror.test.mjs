@@ -59,7 +59,7 @@ describe('normNum parity (builder ⇄ lib/riftbound-data.mjs)', () => {
 
 describe('rarity/variant/finish parity', () => {
   const RARITIES = ['Common', 'Uncommon', 'Rare', 'Epic', 'Showcase',
-    'Alternate Art', 'Overnumbered', 'Signature', '', null, 'Unknown'];
+    'Alternate Art', 'Overnumbered', 'Signature', 'Ultimate', '', null, 'Unknown'];
   for (const r of RARITIES) {
     it(`${JSON.stringify(r)}`, () => {
       eq('mapRarity', [r], 'rarity display');
@@ -68,14 +68,16 @@ describe('rarity/variant/finish parity', () => {
     });
   }
   it('every Showcase treatment is foil — an Overnumbered chase card is not a plain non-foil', () => {
-    for (const r of ['Alternate Art', 'Overnumbered', 'Signature', 'Showcase', 'Epic']) {
+    for (const r of ['Alternate Art', 'Overnumbered', 'Signature', 'Ultimate', 'Showcase', 'Epic']) {
       assert.equal(LIB.finishOf(r), 'Foil', r);
     }
     for (const r of ['Common', 'Uncommon', 'Rare', '']) assert.equal(LIB.finishOf(r), 'Non-foil', r);
   });
-  it('Signature and Overnumbered stay DISTINCT variants (US$2739 vs US$296 on the same card)', () => {
-    assert.equal(LIB.variantOf('Signature'), 'Signature');
-    assert.equal(LIB.variantOf('Overnumbered'), 'Overnumbered');
+  it('the treatments stay DISTINCT variants (US$2739 Signature vs US$296 Overnumbered, same card)', () => {
+    for (const r of ['Signature', 'Overnumbered', 'Ultimate', 'Alternate Art']) {
+      assert.equal(LIB.variantOf(r), r, r);
+      assert.equal(LIB.mapRarity(r), 'Showcase', r);
+    }
   });
 });
 

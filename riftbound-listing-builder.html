@@ -168,12 +168,13 @@ function genTitle(){
   if(!window.TCG)return f.name;
   var numHead=((f.num||'').split('/')[0]||'');
   var isAlt=(f.variant==='Alternate Art')||/[a-z]$/i.test(numHead);
-  var altParen=(f.variant==='Signature')?'(Signature)':(f.variant==='Overnumbered')?'(Overnumbered)':(isAlt?'(Alt Art)':'');
-  // Signature/Overnumbered is a 10-100x price differentiator (299*/298 US$2739 vs 299/298 US$296),
-  // so it outranks the rarity token and the condition code when fitTitle has to shed parts (GR5) —
-  // an 85-char Signature title used to drop the word "(Signature)" and keep "M/NM". (Alt Art) keeps
-  // its old priority: the trailing letter in the collector number already carries it.
-  var varPrio=(f.variant==='Signature'||f.variant==='Overnumbered')?82:60;
+  var altParen=(f.variant==='Signature')?'(Signature)':(f.variant==='Ultimate')?'(Ultimate)':(f.variant==='Overnumbered')?'(Overnumbered)':(isAlt?'(Alt Art)':'');
+  // Signature/Ultimate/Overnumbered is a 10-100x price differentiator (299*/298 US$2739 vs 299/298
+  // US$296; UNL-238 Ultimate US$1635), so it outranks the rarity token and the condition code when
+  // fitTitle has to shed parts (GR5) — an 85-char Signature title used to drop the word
+  // "(Signature)" and keep "M/NM". (Alt Art) keeps its old priority: the trailing letter in the
+  // collector number already carries it.
+  var varPrio=(f.variant==='Signature'||f.variant==='Ultimate'||f.variant==='Overnumbered')?82:60;
   var code=((f.set||'').match(/\(([^)]+)\)/)||[])[1]||'';
   var rar=(f.rarity||'').trim();
   if(/common|uncommon|^rare$/i.test(rar))rar='';
@@ -244,9 +245,10 @@ function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&
 
 // The premium printings all sell as "Showcase" on TCGplayer and all come foil. 'Showcase' itself
 // is in finishOf's list for the SP promos, which carry no name suffix to be detected by.
-function mapRarity(r){return (r==='Alternate Art'||r==='Overnumbered'||r==='Signature')?'Showcase':(r||'');}
-function variantOf(r){return (r==='Alternate Art'||r==='Overnumbered'||r==='Signature')?r:'';}
-function finishOf(r){return ['Epic','Showcase','Alternate Art','Overnumbered','Signature'].includes(r)?'Foil':'Non-foil';}
+// Kept self-contained (no shared const): the parity harnesses extract these one at a time into a vm.
+function mapRarity(r){return ['Alternate Art','Overnumbered','Signature','Ultimate'].includes(r)?'Showcase':(r||'');}
+function variantOf(r){return ['Alternate Art','Overnumbered','Signature','Ultimate'].includes(r)?r:'';}
+function finishOf(r){return ['Epic','Showcase','Alternate Art','Overnumbered','Signature','Ultimate'].includes(r)?'Foil':'Non-foil';}
 function domainDisp(d){return (d||'').split(';').join(' / ');}
 function championTag(name){const p=(name||'').split(' - ');return p.length>1?p[0]:'';}
 // Special showcase numbering (Vendetta SP1/006 …) normalises to 'sp1'. The plain branch already
@@ -288,7 +290,7 @@ function runeFill(raw){
   const slot=RUNE_BY_DOMAIN[pr.dom]||{}; const r=(pr.variant==='a'?slot.alt:slot.base)||slot.base||slot.alt;
   if(!r)return false;
   const rawRarity=pr.variant==='a'?'Alternate Art':(r.rarity||'Common');
-  const name=(r.name||(pr.dom+' Rune')).replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,'');
+  const name=(r.name||(pr.dom+' Rune')).replace(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i,'');
   // R## is the number printed on the REPRINT sets only. Origins prints its runes with ordinary
   // collector numbers (007a Fury, 042a Calm, … 214a Order — the bake carries all 12, and no other
   // set carries any), so `R01a` is a number Origins never prints. Decide the card's real number
@@ -353,6 +355,7 @@ function genPitch(f, rawRarity){
   const _alt=rawRarity==='Alternate Art'||/\(alternate art\)/i.test(name);
   if(_alt) return `The Showcase alternate-art ${name} from Riftbound's ${setName} set \u2014 the premium full-art treatment and a standout chase card for collectors.`;
   if(rawRarity==='Signature') return `The Signature ${name} from Riftbound's ${setName} set \u2014 the rarest Showcase treatment in the set and a blue-chip chase card for collectors.`;
+  if(rawRarity==='Ultimate') return `The Ultimate ${name} from Riftbound's ${setName} set \u2014 the scarcest treatment the set has and its headline chase card for collectors.`;
   if(rawRarity==='Overnumbered') return `The Overnumbered full-art ${name} from Riftbound's ${setName} set \u2014 a sought-after special-rarity chase card for collectors.`;
   if(rawRarity==='Showcase') return `The Showcase ${name} from Riftbound's ${setName} set \u2014 a premium full-art printing and a standout chase card for collectors.`;
   if(rawRarity==='Epic') return `The Epic ${fin}${name} from Riftbound's ${setName} set \u2014 a ${dom||''}${dom?'-domain ':''}${type.toLowerCase()} and a solid pickup for collectors and players.`;
@@ -409,8 +412,9 @@ function embedLookup(){
   if(/\(Alternate Art\)/i.test(name)) rawRarity='Alternate Art';
   else if(/\(Overnumbered\)/i.test(name)) rawRarity='Overnumbered';
   else if(/\(Signature\)/i.test(name)) rawRarity='Signature';
-  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i);
-  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':'Overnumbered'); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,''); }
+  else if(/\(Ultimate\)/i.test(name)) rawRarity='Ultimate';
+  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i);
+  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':(/ultimate/i.test(_mm[1])?'Ultimate':'Overnumbered')); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i,''); }
   set('f_name',_nm); set('f_set',sd.name+' ('+sd.code+')'); set('f_num',c.num);
   set('f_rarity',mapRarity(rawRarity)); set('f_variant',_v); set('f_type',c.type);
   set('f_domain',domainDisp(c.domain)); set('f_tags',championTag(name)); set('f_finish',finishOf(rawRarity));
@@ -482,10 +486,11 @@ function mapScrydexCard(c,num){
   if(/\(Alternate Art\)/i.test(name)) rawRarity='Alternate Art';
   else if(/\(Overnumbered\)/i.test(name)) rawRarity='Overnumbered';
   else if(/\(Signature\)/i.test(name)) rawRarity='Signature';
+  else if(/\(Ultimate\)/i.test(name)) rawRarity='Ultimate';
   const expName=(c.expansion&&c.expansion.name)||curSetName();
   const expCode=(c.expansion&&c.expansion.code)||curSet;
-  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i);
-  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':'Overnumbered'); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,''); }
+  let _nm=name,_v=variantOf(rawRarity); const _mm=(_nm||'').match(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i);
+  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':(/ultimate/i.test(_mm[1])?'Ultimate':'Overnumbered')); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i,''); }
   set('f_name',_nm);
   set('f_set',expName+' ('+expCode+')');
   set('f_num',c.printed_number||((c.number||num)+''));
@@ -654,8 +659,8 @@ function mapRiftscribeCard(c){
   if(isStar){ rawRarity='Signature'; name+=' (Signature)'; }
   else if(isAlt){ rawRarity='Alternate Art'; name+=' (Alternate Art)'; }
   else if(isOver){ rawRarity='Overnumbered'; name+=' (Overnumbered)'; }
-  let _nm=name,_v=variantOf(rawRarity); const _mm=_nm.match(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i);
-  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':'Overnumbered'); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature)\)\s*$/i,''); }
+  let _nm=name,_v=variantOf(rawRarity); const _mm=_nm.match(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i);
+  if(_mm){ if(!_v)_v=/altern/i.test(_mm[1])?'Alternate Art':(/signature/i.test(_mm[1])?'Signature':(/ultimate/i.test(_mm[1])?'Ultimate':'Overnumbered')); _nm=_nm.replace(/\s*\((Alternate Art|Overnumbered|Signature|Ultimate)\)\s*$/i,''); }
   set('f_name',_nm); set('f_set',rbsName(setCode)+' ('+setCode+')');
   set('f_num',String(c.collector_number).padStart(3,'0')+suf);
   set('f_rarity',mapRarity(rawRarity)); set('f_variant',_v); set('f_type',c.type||'');

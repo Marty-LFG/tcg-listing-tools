@@ -9,7 +9,7 @@
 // ([{id, name, collectorNumberMax}] in release order), so a new set must need no code change.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupCards } from '../../scripts/build-riftbound-data.mjs';
+import { groupCards, TREATMENT_OVERRIDE } from '../../scripts/build-riftbound-data.mjs';
 
 // Minimal shape of a Riot gallery card (the Sanity CMS field wrappers the bake reads through).
 const card = (publicCode, name, o = {}) => ({
@@ -66,6 +66,33 @@ describe('groupCards — variant derivation from the printed number', () => {
   it('the * card is over the total too, so ordering the two rules matters', () => {
     // Guard against a regression to "over-total wins": that relabels every Signature.
     assert.ok(299 > 298 && find(out, 'ogn', '299*').name.endsWith('(Signature)'));
+  });
+});
+
+describe('groupCards — TREATMENT_OVERRIDE (the one label no number can imply)', () => {
+  const UNL = [{ id: 'UNL', name: 'Unleashed', collectorNumberMax: 219 }];
+  it('overrides the derived treatment for the card it names', () => {
+    // UNL-238 Baron Nashor is over the total, so the derivation alone would call it Overnumbered.
+    // TCGplayer sells it as "(Ultimate)" at ~US$1,635 — 3x the set's Signatures.
+    const out = groupCards([card('UNL-238/219', 'Baron Nashor', { setName: 'Unleashed', rarity: 'epic' })], UNL);
+    assert.equal(find(out, 'unl', '238').name, 'Baron Nashor (Ultimate)');
+  });
+  it('leaves every other over-total card alone', () => {
+    const out = groupCards([
+      card('UNL-220/219', 'Pouty Poro', { setName: 'Unleashed', rarity: 'common' }),
+      card('UNL-237/219', 'Keeper of the Hammer', { setName: 'Unleashed' }),
+    ], UNL);
+    assert.equal(find(out, 'unl', '220').name, 'Pouty Poro (Overnumbered)');
+    assert.equal(find(out, 'unl', '237').name, 'Keeper of the Hammer (Overnumbered)');
+  });
+  it('is keyed by identity, so a same-numbered card in another set is untouched', () => {
+    const out = groupCards([card('OGN-238/298', 'Some Origins Card', { setName: 'Origins' })], ROSTER);
+    assert.equal(find(out, 'ogn', '238').name, 'Some Origins Card');
+  });
+  it('holds exactly the entries we believe in — a grown list wants a second look', () => {
+    // Not a style rule: every entry here is a hardcode that test/data/riftbound-variants.test.mjs
+    // has to keep honest against TCGplayer. If this count moves, that fence needs checking too.
+    assert.deepEqual(Object.keys(TREATMENT_OVERRIDE), ['UNL-238']);
   });
 });
 

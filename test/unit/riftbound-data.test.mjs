@@ -32,6 +32,12 @@ const CATALOG = {
       { k: 'sp1', num: 'SP1/006', name: "Kai'Sa, Survivor", rarity: 'Showcase', type: 'Unit', domain: 'Mind', e: '4', p: '1', m: '3', img: 'https://riot/sp1.png' },
     ],
   },
+  unl: {
+    name: 'Unleashed', code: 'UNL', total: 219,
+    cards: [
+      { k: '238', num: '238/219', name: 'Baron Nashor (Ultimate)', rarity: 'Epic', type: 'Unit', domain: 'Chaos', e: '10', p: '3', m: '12', img: 'https://riot/238.png' },
+    ],
+  },
 };
 
 let FIXTURE;
@@ -73,6 +79,15 @@ describe('resolveRiftboundCard — variant, rarity and finish', () => {
   it('an Overnumbered card is foil even when the source called it a rare', () => {
     const c = resolve('ven', '167');
     assert.equal(c.variant, 'Overnumbered');
+    assert.equal(c.rarity, 'Showcase');
+    assert.equal(c.finish, 'Foil');
+  });
+  it('Ultimate is its own variant, not folded into Overnumbered', () => {
+    // UNL-238 is over the set total, so without the override it would read Overnumbered — and the
+    // listing would call the set's US$1,635 headline card the same thing as a US$160 poro.
+    const c = resolve('unl', '238');
+    assert.equal(c.name, 'Baron Nashor');
+    assert.equal(c.variant, 'Ultimate');
     assert.equal(c.rarity, 'Showcase');
     assert.equal(c.finish, 'Foil');
   });
@@ -123,8 +138,9 @@ describe('resolveRiftboundCard — rune reprints', () => {
 describe('the set list and the enumerator', () => {
   it('loadRiftboundSets carries id, code, name and the printed total', () => {
     const sets = loadRiftboundSets(FIXTURE);
-    assert.deepEqual(sets.map((s) => s.code), ['OGN', 'VEN']);
+    assert.deepEqual(sets.map((s) => s.code), ['OGN', 'VEN', 'UNL']);
     assert.equal(sets.find((s) => s.code === 'VEN').total, 166);
+    assert.equal(sets.find((s) => s.code === 'UNL').total, 219);
   });
   it('iterateRiftboundSet yields every card, canonicalised', () => {
     const rows = [...iterateRiftboundSet('ven', FIXTURE)];

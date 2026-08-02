@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read } from '../helpers/extract-inline.mjs';
 import { normNum } from '../../lib/riftbound-data.mjs';
+import { TREATMENT_OVERRIDE } from '../../scripts/build-riftbound-data.mjs';
 
 describe('data/riftbound.json (build-riftbound-data.mjs)', () => {
   const rb = JSON.parse(read('data/riftbound.json'));
@@ -45,8 +46,9 @@ describe('data/riftbound.json (build-riftbound-data.mjs)', () => {
         const star = numPart.endsWith('*');
         const alt = !sp && /[a-z]$/i.test(numPart);
         const over = !sp && !star && !alt && (parseInt(numPart, 10) || 0) > set.total;
-        const want = star ? ' (Signature)' : alt ? ' (Alternate Art)' : over ? ' (Overnumbered)' : '';
-        const got = (c.name.match(/\s\((Signature|Alternate Art|Overnumbered)\)$/) || [''])[0];
+        const override = TREATMENT_OVERRIDE[set.code + '-' + c.k];
+        const want = override ? ` (${override})` : star ? ' (Signature)' : alt ? ' (Alternate Art)' : over ? ' (Overnumbered)' : '';
+        const got = (c.name.match(/\s\((Signature|Alternate Art|Overnumbered|Ultimate)\)$/) || [''])[0];
         assert.equal(got, want, `${code} ${c.num} "${c.name}": wrong treatment for its number`);
         // SP carries no suffix, so its rarity is the ONLY thing marking it as a premium printing.
         if (sp) assert.equal(c.rarity, 'Showcase', `${code} ${c.num}: SP promos must bake as Showcase`);

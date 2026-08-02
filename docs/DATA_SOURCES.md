@@ -355,9 +355,16 @@ bulk consumer read that one suffix, so all of them are correct with no duplicate
 
 **Order matters:** every `*` card is *also* over the set total (12/12 in each of OGN/SFD/UNL), so `*`
 is tested first — otherwise all 36 Signatures relabel as Overnumbered. No alt-art card is ever over
-the total. `test/data/riftbound-variants.test.mjs` re-checks every derived label against TCGplayer's
-product names on each run; the one known divergence is `UNL-238` Baron Nashor, which TCGplayer calls
-"(Ultimate)" and Riot gives no distinguishing field at all.
+the total.
+
+**`TREATMENT_OVERRIDE`** (in the same script) wins over all of it, for the one treatment no number
+can imply: `UNL-238` Baron Nashor is `(Ultimate)`, ~US$1,635 and roughly 3x the set's Signatures,
+where the derivation alone would call it Overnumbered. Riot's gallery gives it nothing to go on
+(epic / unit / portrait, identical to its neighbours). The hardcode is fenced — keyed by identity,
+no Signature sibling to collide with (UNL stars stop at `237*`), and
+`test/data/riftbound-variants.test.mjs` re-checks every derived label AND every override entry
+against TCGplayer's own product names on each run, so a stale or wrong row fails loudly instead of
+quietly shipping. Only add to that map when the printed number genuinely cannot imply the treatment.
 
 #### Special showcase promos (`SP##`)
 

@@ -440,12 +440,16 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
   default offline one shows five. Nothing to do but wait — the pills, their names
   and their order already derive from the baked catalog, so Vendetta appears there
   by itself the moment riftscribe ingests it.
-- **`UNL-238` Baron Nashor is the one variant label we can't derive.** TCGplayer
-  calls it "(Ultimate)" (US$1,635); the bake calls it Overnumbered, because it is
-  over the set total and Riot's gallery gives it no distinguishing field at all
-  (epic / unit / portrait, same as its neighbours). It is still correctly a
-  Showcase foil — only the word differs. Recorded as a named exception in
-  `test/data/riftbound-variants.test.mjs` so the other ~1,100 labels stay guarded.
+- **`UNL-238` Baron Nashor is the one variant label that is hardcoded**, in
+  `TREATMENT_OVERRIDE` (`scripts/build-riftbound-data.mjs`). TCGplayer calls it
+  "(Ultimate)" at ~US$1,635 — 3x the set's Signatures — and Riot's gallery gives
+  it nothing to derive from (epic / unit / portrait, identical to its
+  neighbours), so the number alone would call it Overnumbered. The hardcode is
+  fenced: keyed by identity, no Signature sibling to collide with (UNL stars stop
+  at `237*`), and `test/data/riftbound-variants.test.mjs` asserts every override
+  entry still matches TCGplayer's own product name on each run, so a stale one
+  fails loudly. Add to that map only when the printed number genuinely cannot
+  imply the treatment.
 - **Rune reprints have no price.** The index carries the 12 runes only under
   their Origins printed numbers; the per-set `R##` reprints are separate
   TCGplayer products it skips. The builder prices a rune only on OGN and says so

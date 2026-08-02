@@ -44,6 +44,19 @@ const titleCase = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 // riftbound-data.mjs resolves R01..R06 from the canonical Origins printings instead.
 const CODE_RE = /^([A-Z]{3})-(\d+[a-z*]?|SP\d+[a-z*]?)\/(\d+)$/
 
+// The treatments the printed number CANNOT imply, keyed by identity (SETCODE-normNum).
+//
+// UNL-238 Baron Nashor is the game's only "(Ultimate)" — TCGplayer sells it at ~US$1,635, roughly
+// 3x the set's Signatures. Riot's gallery gives it nothing to derive from: epic / unit / portrait,
+// identical to its neighbours. It is over the set total, so the derivation would otherwise call it
+// Overnumbered and the listing would undersell the set's headline card.
+//
+// A hardcoded row is normally how data rots, so this one is fenced in: it is keyed by identity (not
+// by name or index), it has no Signature sibling to collide with (UNL stars stop at 237*), and
+// test/data/riftbound-variants.test.mjs asserts every entry here still matches TCGplayer's own
+// product name on each run — a stale or wrong override fails loudly instead of quietly shipping.
+export const TREATMENT_OVERRIDE = { 'UNL-238': 'Ultimate' }
+
 // Recursively find the largest array of card-like objects (those carrying a publicCode).
 function findCards(node, best = { arr: [] }) {
   if (Array.isArray(node)) {
@@ -90,6 +103,7 @@ const labelOf = (f) => (f && f.value && f.value.label != null ? f.value.label : 
  *   "162a" of 298 -> (Alternate Art)  unchanged
  *   "167"  of 166 -> (Overnumbered)   TCGplayer "Vi - Destructive (Overnumbered)"           US$125
  *   "SP1"  of 006 -> no suffix, rarity forced to Showcase (the SP number IS the marker)
+ * TREATMENT_OVERRIDE wins over all of it, for the one card whose treatment no number can imply.
  * ORDER MATTERS: every `*` card is ALSO over the total (12/12 in each of OGN/SFD/UNL), so `*` is
  * tested first or all 36 Signatures would relabel as Overnumbered. No alt-art card is ever over
  * the total; if one ever is, the letter suffix wins because it is the more specific marker.
@@ -130,8 +144,11 @@ export function groupCards(rawCards, roster = [], prior = {}) {
     const alt = !sp && /[a-z]$/i.test(numPart)
     const over = !sp && !star && !alt && total > 0 && (parseInt(numPart, 10) || 0) > total
 
+    const k = normNum(numPart)
     let name = c.name || ''
-    if (star) name += ' (Signature)'
+    const override = TREATMENT_OVERRIDE[code + '-' + k]      // wins: the number cannot imply it
+    if (override) name += ' (' + override + ')'
+    else if (star) name += ' (Signature)'
     else if (alt) name += ' (Alternate Art)'
     else if (over) name += ' (Overnumbered)'
 
@@ -146,7 +163,7 @@ export function groupCards(rawCards, roster = [], prior = {}) {
     const key = code.toLowerCase()
     const set = (sets[key] ||= { name: meta.get(code).name, code, total: meta.get(code).total, cards: [] })
     set.cards.push({
-      k: normNum(numPart),               // "66a" | "299*" | "sp1"
+      k,                                 // "66a" | "299*" | "sp1"
       num: numPart + '/' + denomStr,     // printed VERBATIM (GR5) — "066a/298", "SP1/006"
       name, rarity, type, domain,
       e: e != null ? String(e) : '',
