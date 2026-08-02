@@ -16,16 +16,19 @@ import os from 'node:os';
 
 const TDB = path.join(os.tmpdir(), 'tcg-scan-t-' + process.pid + '.db');
 const RDB = path.join(os.tmpdir(), 'tcg-scan-r-' + process.pid + '.db');
+const PDB = path.join(os.tmpdir(), 'tcg-scan-p-' + process.pid + '.db');
 process.env.TCG_TRACKER_DB = TDB;
 process.env.TCG_REPRICER_DB = RDB;
+process.env.TCG_POSTSALE_DB = PDB;
 const { openDb } = await import('../../lib/db.mjs');
 const { openRepricerDb } = await import('../../lib/repricer-db.mjs');
+const { openPostsaleDb } = await import('../../lib/postsale-db.mjs');
 const { scanListings, inferGame, compsQueryFor, guardrailsFrom } = await import('../../lib/repricer-scan.mjs');
 
 const ENV = { EBAY_APP_ID: 'PRD-x', EBAY_CERT_ID: 'PRD-y', EBAY_REFRESH_TOKEN: 'fake' };
 const CFG = { exclude_seller_username: 'omg.its.alcatrazz', guardrails: { min_comparable: 8, min_uplift_pct: 10, min_uplift_aud: 1.0, required_confidence: 'medium', max_increase_pct_per_run: 40, never_decrease: true } };
 const realFetch = globalThis.fetch;
-let tdb, rdb, sent = [];
+let tdb, rdb, pdb, sent = [];
 
 // eBay's GetItem view. The four repricer-relevant blocks are optional so each can be exercised.
 function itemXml({ id = '9001', price = '10.00', qty = 3, sold = 0, type = 'FixedPriceItem', status = 'Active',
@@ -88,15 +91,26 @@ const scan = (opts = {}) => scanListings({ env: ENV, rdb, tdb, cfg: CFG, base: '
 const checks = () => rdb.prepare('SELECT * FROM price_checks ORDER BY id').all();
 
 before(() => {
-  for (const f of [TDB, RDB]) { try { fs.unlinkSync(f); } catch {} }
-  tdb = openDb(); rdb = openRepricerDb();
+  for (const f of [TDB, RDB, PDB]) { try { fs.unlinkSync(f); } catch {} }
+  tdb = openDb(); rdb = openRepricerDb(); pdb = openPostsaleDb();
 });
+// Corroboration defaults to `require`: a raise built purely from ASKING prices is refused unless
+// something that actually transacted seconds it. Most tests here are about other things, so they get
+// a past sale of listing 9001 at A$12.00 — enough to support the A$11.98 target. The tests that ARE
+// about corroboration clear this first.
+const seedOwnSale = (cents = 1200, itemId = '9001') => {
+  pdb.prepare(`INSERT OR REPLACE INTO buyers (id, ebay_username) VALUES (1, 'buyer1')`).run();
+  pdb.prepare(`INSERT OR REPLACE INTO orders (order_id, buyer_id, paid_time, total_cents) VALUES ('o1', 1, '2026-07-01 00:00:00', ?)`).run(cents);
+  pdb.prepare(`INSERT INTO order_line_items (order_id, ebay_item_id, title, quantity, unit_price_cents)
+               VALUES ('o1', ?, 'Wailord', 1, ?)`).run(itemId, cents);
+};
 afterEach(() => {
   globalThis.fetch = realFetch;
   rdb.exec('DELETE FROM price_checks');
   tdb.exec('DELETE FROM ebay_seller_listings');
+  pdb.exec('DELETE FROM order_line_items'); pdb.exec('DELETE FROM orders');
 });
-after(() => { for (const f of [TDB, RDB, TDB + '-wal', TDB + '-shm', RDB + '-wal', RDB + '-shm']) { try { fs.unlinkSync(f); } catch {} } });
+after(() => { for (const f of [TDB, RDB, PDB]) for (const x of ['', '-wal', '-shm']) { try { fs.unlinkSync(f + x); } catch {} } });
 
 describe('scanListings — the pass is read-only', () => {
   it('NEVER sends a write, whatever it decides', async () => {
@@ -118,7 +132,7 @@ describe('scanListings — the pass is read-only', () => {
 
   it('records a raise with the numbers it would propose', async () => {
     stub();
-    seed();
+    seed(); seedOwnSale();
     await scan();
     const [c] = checks();
     assert.equal(c.verdict, 'raise');
@@ -163,7 +177,7 @@ describe('scanListings — live eBay fields reach the decision', () => {
   // without a threshold every offer still reaches a human, so a raise can only improve the anchor.
   it('prices a Best Offer listing that has no auto-accept threshold', async () => {
     stub({ item: itemXml({ bestOffer: true }) });
-    seed();
+    seed(); seedOwnSale();
     await scan();
     const [c] = checks();
     assert.equal(c.verdict, 'raise', 'plain Best Offer must not be refused');
@@ -174,7 +188,7 @@ describe('scanListings — live eBay fields reach the decision', () => {
   // between the old floor and the new price reach a human instead of bouncing.
   it('prices a Best Offer listing that has only an auto-decline minimum', async () => {
     stub({ item: itemXml({ bestOffer: true, minOffer: '5.00' }) });
-    seed();
+    seed(); seedOwnSale();
     await scan();
     assert.equal(checks()[0].verdict, 'raise');
   });
@@ -273,5 +287,58 @@ describe('scan helpers', () => {
   it('omits absent guardrails rather than passing undefined over the defaults', () => {
     assert.deepEqual(guardrailsFrom({}), {});
     assert.equal(guardrailsFrom({ guardrails: { min_uplift_aud: 1.5 } }).minUpliftCents, 150);
+  });
+});
+
+// --- corroboration, end to end ------------------------------------------------------------------
+// Every comp the engine can reach is an ASKING price, and asking prices of unsold stock sit above the
+// clearing price. This is the gate that stopped a A$44.98 proposal on a card whose last real sale was
+// A$25.00 — proven here through the real database lookup rather than an injected value.
+describe('scanListings — a raise must be seconded by something that transacted', () => {
+  it('declines when nothing has ever sold', async () => {
+    stub();
+    seed();                       // deliberately no seedOwnSale()
+    await scan();
+    const [c] = checks();
+    assert.equal(c.verdict, 'decline');
+    assert.equal(c.code, 'no_corroboration');
+    assert.equal(c.target_cents, 1198, 'the price it wanted is still recorded, so the refusal is auditable');
+  });
+
+  it('raises once a real sale of that listing exists', async () => {
+    stub();
+    seed(); seedOwnSale(1200);
+    await scan();
+    assert.equal(checks()[0].verdict, 'raise');
+  });
+
+  it('declines when the only sale is far below the target', async () => {
+    // The Sett shape: market asking well above what the card actually trades at.
+    stub();
+    seed(); seedOwnSale(500);
+    await scan();
+    const [c] = checks();
+    assert.equal(c.verdict, 'decline');
+    assert.equal(c.code, 'not_corroborated');
+  });
+
+  it('reads the sale by eBay item id, not by title', async () => {
+    // order_line_items carries the item id, so no identity resolution is needed — and a sale of a
+    // DIFFERENT listing must not vouch for this one.
+    stub();
+    seed(); seedOwnSale(1200, '9999');
+    await scan();
+    assert.equal(checks()[0].code, 'no_corroboration');
+  });
+
+  it('advisory lets an unsupported raise through, and still blocks a contradicted one', async () => {
+    const advisory = { ...CFG, guardrails: { ...CFG.guardrails, corroboration: 'advisory' } };
+    stub(); seed();
+    await scan({ cfg: advisory });
+    assert.equal(checks()[0].verdict, 'raise', 'absence of evidence is not evidence of absence');
+    rdb.exec('DELETE FROM price_checks');
+    stub(); seedOwnSale(500);
+    await scan({ cfg: advisory });
+    assert.equal(checks()[0].code, 'not_corroborated', 'a source that exists and disagrees still blocks');
   });
 });

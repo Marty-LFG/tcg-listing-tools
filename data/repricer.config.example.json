@@ -11,11 +11,14 @@
     "anchor_n": 3,
     "beat_cheapest_within_aud": 0.5,
     "beat_cheapest_within_pct": 5,
+    "corroboration": "require",
+    "corroboration_tolerance_pct": 30,
     "max_cards_per_run": 5,
     "proposal_ttl_hours": 24,
     "never_decrease": true,
     "best_offer_scaling": false
   },
+  "corroborate_pricecharting": false,
   "exclude_seller_username": "omg.its.alcatrazz",
   "telegram": {
     "digest_enabled": true,

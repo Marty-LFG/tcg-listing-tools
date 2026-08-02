@@ -6,7 +6,7 @@
 // scan ships a wrong price.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decideReprice, eligibleForReprice, scaleBestOfferCents, anchorFor, DEFAULT_GUARDRAILS } from '../../lib/repricer-decide.mjs';
+import { decideReprice, eligibleForReprice, scaleBestOfferCents, anchorFor, corroborate, DEFAULT_GUARDRAILS } from '../../lib/repricer-decide.mjs';
 
 const listing = (over = {}) => ({
   listingId: '168537104622', title: 'Pokemon Wailord ex 016/084 Pitch Black Double Rare Holo EN M/NM',
@@ -28,9 +28,17 @@ const comps = (over = {}) => {
   if (!c.lowest) c.lowest = [c.recommended - 1, c.recommended - 0.5, c.recommended + 0.01];
   return c;
 };
-const decide = (over = {}) => decideReprice({
-  listing: listing(), identity: identity(), comps: comps(), guardrails: {}, context: {}, ...over,
-});
+// Corroboration defaults to `require`, so a fixture that wants a RAISE has to supply something that
+// transacted — otherwise every test here would decline for a reason it is not about. Unless a test
+// passes its own `context`, it gets an own-sale at the comps figure, which supports any target the
+// pipeline can produce from it. Tests that ARE about corroboration pass `context` explicitly.
+const decide = (over = {}) => {
+  const args = { listing: listing(), identity: identity(), comps: comps(), guardrails: {}, context: undefined, ...over };
+  if (args.context === undefined) {
+    args.context = { corroborators: [{ name: 'own_sale', cents: Math.round((args.comps?.recommended || 0) * 100) }] };
+  }
+  return decideReprice(args);
+};
 
 describe('decideReprice — the happy path', () => {
   it('raises, and reports the price it will actually send', () => {
@@ -276,8 +284,11 @@ describe('decideReprice — context guards', () => {
   });
   it('skips inside the cooldown after a recent apply, and allows it after', () => {
     const nowIso = '2026-07-31T12:00:00.000Z';
-    const recent = { nowIso, lastAppliedAt: '2026-07-31T09:00:00.000Z', cooldownHours: 24 };
-    const old = { nowIso, lastAppliedAt: '2026-07-25T09:00:00.000Z', cooldownHours: 24 };
+    // Carries a corroborator because this test is about the COOLDOWN — an explicit context opts out of
+    // the fixture's default, and without one the `old` case would decline for the wrong reason.
+    const corroborators = [{ name: 'own_sale', cents: 1200 }];
+    const recent = { nowIso, corroborators, lastAppliedAt: '2026-07-31T09:00:00.000Z', cooldownHours: 24 };
+    const old = { nowIso, corroborators, lastAppliedAt: '2026-07-25T09:00:00.000Z', cooldownHours: 24 };
     assert.equal(decide({ context: recent }).code, 'cooldown');
     assert.equal(decide({ context: old }).verdict, 'raise');
   });
@@ -538,5 +549,120 @@ describe('anchorFor — beat the cheapest when the top of the market is bunched'
           `anchor ${a} must undercut the listing it targets (lo=${lo / 100}, spread=${spread})`);
       }
     }
+  });
+});
+
+// --- corroboration: does anything that transacted support this price? ---------------------------
+// Every comp is an ASKING price — eBay's sold API is entitlement-gated and this keyset is not
+// entitled. Asking prices of unsold inventory sit above the clearing price, and the gap widens with
+// supply. Sett - Brawler 164/298 is the case that forced this: eleven active AU listings asking
+// A$34-47, last actual sale A$25.00, and the repricer proposed A$38.98 -> A$44.98.
+describe('corroborate — a raise needs a second opinion from a real transaction', () => {
+  const src = (name, cents) => ({ name, cents });
+
+  it('passes a target the best source supports', () => {
+    const r = corroborate({ targetCents: 3000, sources: [src('own_sale', 2500)], guardrails: {} });
+    assert.equal(r.ok, true);
+    assert.equal(r.agreedWith, 'own_sale');
+    assert.equal(r.ceilingCents, 3250, 'A$25.00 sale + 30% tolerance');
+  });
+
+  it('refuses the live Sett number against its real sale price', () => {
+    const r = corroborate({ targetCents: 4498, sources: [src('own_sale', 2500)], guardrails: {} });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'not_corroborated');
+    assert.equal(r.best, 'own_sale');
+  });
+
+  // One agreeing source is enough — the question is "does ANYTHING support this", so a thin or stale
+  // source must not veto a price a better one endorses.
+  it('takes the highest source, so one low reading cannot veto', () => {
+    const r = corroborate({ targetCents: 4000, sources: [src('own_sale', 2000), src('pricecharting_ungraded', 3500)], guardrails: {} });
+    assert.equal(r.ok, true);
+    assert.equal(r.agreedWith, 'pricecharting_ungraded');
+  });
+
+  it('ignores sources with no usable number', () => {
+    const r = corroborate({ targetCents: 3000, sources: [null, { name: 'x', cents: 0 }, { name: 'y', cents: null }], guardrails: {} });
+    assert.equal(r.code, 'no_corroboration');
+    assert.deepEqual(r.evidence, []);
+  });
+
+  describe('modes', () => {
+    const none = { targetCents: 4498, sources: [] };
+    it('require refuses when nothing transacted is known', () => {
+      assert.equal(corroborate({ ...none, guardrails: {} }).code, 'no_corroboration');
+    });
+    it('advisory lets it through but marks it', () => {
+      const r = corroborate({ ...none, guardrails: { corroboration: 'advisory' } });
+      assert.equal(r.ok, true);
+      assert.equal(r.uncorroborated, true);
+    });
+    it('advisory still refuses an ACTIVE disagreement', () => {
+      // Absence of evidence is not evidence of absence; a source that exists and disagrees is.
+      const r = corroborate({ targetCents: 4498, sources: [src('own_sale', 2500)], guardrails: { corroboration: 'advisory' } });
+      assert.equal(r.ok, false);
+      assert.equal(r.code, 'not_corroborated');
+    });
+    it('off disables the check entirely', () => {
+      assert.equal(corroborate({ targetCents: 99999, sources: [src('own_sale', 100)], guardrails: { corroboration: 'off' } }).ok, true);
+    });
+  });
+
+  it('tolerance is configurable and 0 means the sale price is a hard ceiling', () => {
+    const at = (pct) => corroborate({ targetCents: 2600, sources: [src('own_sale', 2500)], guardrails: { corroborationTolerancePct: pct } }).ok;
+    assert.equal(at(30), true);
+    assert.equal(at(0), false, 'a A$26.00 target cannot clear a A$25.00 ceiling');
+  });
+});
+
+describe('decideReprice — corroboration is the last gate', () => {
+  const withComps = (over = {}) => ({
+    listing: listing({ priceCents: 1000, postageCents: 0 }),
+    comps: comps({ lowest: [12.00, 12.88, 13.00, 20.00] }),
+    ...over,
+  });
+
+  it('declines an uncorroborated raise rather than holding it', () => {
+    // decline, not hold: the market read is fine, it is the SUPPORT that is missing, and collapsing
+    // the two makes the shadow data unreadable.
+    const r = decide(withComps({ context: { corroborators: [] } }));
+    assert.equal(r.verdict, 'decline');
+    assert.equal(r.code, 'no_corroboration');
+    assert.equal(r.toPriceCents, 1298, 'the price it wanted to send is still reported');
+  });
+
+  it('raises when a real sale backs it', () => {
+    const r = decide(withComps({ context: { corroborators: [{ name: 'own_sale', cents: 1200 }] } }));
+    assert.equal(r.verdict, 'raise');
+    assert.equal(r.evidence.corroboration.agreedWith, 'own_sale');
+  });
+
+  it('declines when the sale price is far below the target', () => {
+    const r = decide(withComps({ context: { corroborators: [{ name: 'own_sale', cents: 500 }] } }));
+    assert.equal(r.verdict, 'decline');
+    assert.equal(r.code, 'not_corroborated');
+  });
+
+  // It runs LAST, against the price actually being sent — cap and snap both move the number, and
+  // corroborating a figure we will not use proves nothing.
+  it('checks the post-cap, post-snap price, not the raw target', () => {
+    const r = decideReprice({
+      listing: listing({ priceCents: 1000, postageCents: 0 }),
+      identity: identity(),
+      comps: comps({ lowest: [50, 50, 50] }),
+      guardrails: {},
+      // Raw target A$49.98 but the +40% cap pulls it to A$14.00, snapped A$13.98. A ceiling of
+      // A$13.00 x1.3 = A$16.90 clears the SENT price while refusing the raw one.
+      context: { corroborators: [{ name: 'own_sale', cents: 1300 }] },
+    });
+    assert.equal(r.verdict, 'raise');
+    assert.equal(r.toPriceCents, 1398);
+  });
+
+  it('records the evidence either way, so a refusal can be argued with', () => {
+    const r = decide(withComps({ context: { corroborators: [{ name: 'own_sale', cents: 500 }] } }));
+    assert.equal(r.evidence.corroboration.ceilingCents, 650);
+    assert.deepEqual(r.evidence.corroboration.sources, [{ name: 'own_sale', cents: 500, at: null }]);
   });
 });
