@@ -456,3 +456,87 @@ describe('decideReprice — the anchor drives the verdict', () => {
     assert.equal(r.code, 'no_anchor');
   });
 });
+
+// --- coupons: a price that is really an upper bound ---------------------------------------------
+// eBay's Browse API says `availableCoupons: true` but never what the coupon is worth. Measured on
+// Sett - Brawler 164/298: a listing the API prices at A$45.40 delivered reads "AU $30.00 with coupon"
+// in the browser — A$35.40, CHEAPER than ours, while the engine had ranked it dearest of the three
+// and anchored on it. That one bad input turned a hold into a +15% raise on a card whose last
+// recorded sale was A$25.00.
+describe('anchorFor — a couponed listing is a rival, not a price', () => {
+  const SETT = { lowestRows: [
+    { delivered: 34.00, coupon: false },
+    { delivered: 37.99, coupon: false },
+    { delivered: 45.40, coupon: true },     // "AU $30.00 with coupon" — really ~A$35.40
+    { delivered: 46.48, coupon: false },
+    { delivered: 47.00, coupon: false },
+  ] };
+
+  it('counts it as undercutting us, so it consumes a top-3 slot', () => {
+    // N=3 minus one couponed rival → beat the 2nd cheapest priceable listing, A$37.99.
+    assert.equal(anchorFor(SETT, {}), 37.98);
+  });
+
+  it('the live Sett proposal becomes a hold', () => {
+    const r = decide({ listing: listing({ priceCents: 3898, postageCents: 0 }), comps: comps({ ...SETT, recommended: 45.39 }) });
+    assert.equal(r.verdict, 'hold');
+    assert.equal(r.code, 'above_market');
+  });
+
+  // The instinct to just drop the row is WRONG and this pins why: removing a cheap rival moves the
+  // anchor UP, which is the opposite of what knowing about a discount should do.
+  it('dropping it instead of counting it would have raised the anchor', () => {
+    const dropped = { lowestRows: SETT.lowestRows.filter((r) => !r.coupon) };
+    assert.equal(anchorFor(dropped, {}), 45.98, 'excluding the couponed row anchors on A$46.48 — dearer, not cheaper');
+  });
+
+  it('declines when every listing is couponed and nothing can be priced', () => {
+    assert.equal(anchorFor({ lowestRows: [{ delivered: 10, coupon: true }, { delivered: 12, coupon: true }] }, {}), null);
+  });
+
+  it('still works on a comps object with no coupon information at all', () => {
+    assert.equal(anchorFor({ lowest: [12.00, 12.88, 13.00, 20.00] }, {}), 12.98, 'the plain tail keeps its old meaning');
+  });
+});
+
+// --- take the top slot when it is nearly free ----------------------------------------------------
+// Owner's rule: top three keeps us on page one, but when the whole top of the market is bunched,
+// third place buys almost nothing and being cheapest wins the click — so beat the cheapest by 1c.
+describe('anchorFor — beat the cheapest when the top of the market is bunched', () => {
+  const rows = (...ds) => ({ lowestRows: ds.map((d) => ({ delivered: d, coupon: false })) });
+
+  it('takes the top slot when third place is only cents better', () => {
+    // A$37.99 / A$38.20 / A$38.50 — beating the 3rd would earn 51c and cost the cheapest slot.
+    assert.equal(anchorFor(rows(37.99, 38.20, 38.50, 60.00), {}), 37.98);
+  });
+
+  it('keeps the third slot when the gap is worth real money', () => {
+    assert.equal(anchorFor(rows(10.00, 20.00, 30.00), {}), 29.98);
+  });
+
+  it('the percentage governs a dear card, the cents govern a cheap one', () => {
+    // A$300 card, A$4 spread: 1.3% — inside 5%, so take the top slot.
+    assert.equal(anchorFor(rows(300.00, 302.00, 304.00), {}), 299.98);
+    // A$3 card, 40c spread: 13% — outside 5%, but inside the 50c floor, so still take the top slot.
+    assert.equal(anchorFor(rows(3.00, 3.20, 3.40), {}), 2.98);
+    // A$3 card, A$1.50 spread: outside both, so third place it is.
+    assert.equal(anchorFor(rows(3.00, 4.00, 4.50), {}), 4.48);
+  });
+
+  it('is configurable, and switching it off restores plain Nth-cheapest', () => {
+    const bunched = rows(37.99, 38.20, 38.50);
+    assert.equal(anchorFor(bunched, { beatCheapestWithinCents: 0, beatCheapestWithinPct: 0 }), 38.48);
+    assert.equal(anchorFor(rows(10.00, 20.00, 30.00), { beatCheapestWithinPct: 300 }), 9.98, 'a wide window always takes the top slot');
+  });
+
+  it('never proposes above the cheapest listing it decided to beat', () => {
+    for (let lo = 100; lo <= 20000; lo += 137) {
+      for (const spread of [0.001, 0.01, 0.05, 0.2, 1.0]) {
+        const a = anchorFor(rows(lo / 100, (lo * (1 + spread)) / 100, (lo * (1 + 2 * spread)) / 100), {});
+        if (a == null) continue;
+        assert.ok(Math.round(a * 100) < Math.round(lo * (1 + 2 * spread)),
+          `anchor ${a} must undercut the listing it targets (lo=${lo / 100}, spread=${spread})`);
+      }
+    }
+  });
+});

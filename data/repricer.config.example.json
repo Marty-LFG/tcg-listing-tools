@@ -9,6 +9,8 @@
     "max_increase_pct_per_run": 40,
     "target_anchor": "cheapest_n",
     "anchor_n": 3,
+    "beat_cheapest_within_aud": 0.5,
+    "beat_cheapest_within_pct": 5,
     "max_cards_per_run": 5,
     "proposal_ttl_hours": 24,
     "never_decrease": true,
