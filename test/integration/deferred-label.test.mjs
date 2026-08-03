@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDbAt } from '../../lib/db.mjs';
 import { runPublish } from '../../lib/listings.mjs';
-import { isProvisionalSku, nextProvisionalSku, peekStockLabel, commitStockLabel, seedStockLabels, stockLabelState } from '../../lib/inventory.mjs';
+import { isProvisionalSku, nextProvisionalSku, peekStockLabel, upcomingStockLabels, commitStockLabel, seedStockLabels, stockLabelState } from '../../lib/inventory.mjs';
 
 const ENV = { EBAY_REFRESH_TOKEN: 'fake', EBAY_CERT_ID: 'c' };
 const CFG = {
@@ -127,6 +127,43 @@ describe('provisional sku + peek/commit primitives', () => {
   it('returns null when the series was never seeded, rather than starting at AAA-001', () => {
     db.exec("DELETE FROM sku_counter");
     assert.equal(peekStockLabel(db), null);
+  });
+});
+
+// The batch runner shows every queued row the number it is heading for, so it needs the whole run in
+// one read. Counting up from `next` client-side is what this exists to prevent: the series skips
+// labels that are already spoken for, so next+1 is not the next row's label.
+describe('upcomingStockLabels — a peek for a whole batch', () => {
+  it('hands out a DIFFERENT label per row, in order', () => {
+    assert.deepEqual(upcomingStockLabels(db, 4), ['AAC-097', 'AAC-098', 'AAC-099', 'AAD-001']);
+  });
+
+  it('is read-only — the counter has not moved', () => {
+    const before = counterSeq();
+    upcomingStockLabels(db, 10);
+    assert.equal(counterSeq(), before);
+  });
+
+  it('skips numbers already taken, so the run is not simply next+1, next+2', () => {
+    db.prepare(`INSERT INTO inventory_items (sku, game, name, status) VALUES ('AAC-098','pokemon','On a shelf','in_stock')`).run();
+    db.prepare(`INSERT INTO inventory_items (sku, game, name, status) VALUES ('AAD-001','pokemon','Also held','in_stock')`).run();
+    assert.deepEqual(upcomingStockLabels(db, 3), ['AAC-097', 'AAC-099', 'AAD-002']);
+  });
+
+  it('agrees with peekStockLabel about the first one, whatever is in the way', () => {
+    db.prepare(`INSERT INTO inventory_items (sku, game, name, status) VALUES ('AAC-097','pokemon','Held','in_stock')`).run();
+    assert.equal(upcomingStockLabels(db, 5)[0], peekStockLabel(db).label);
+  });
+
+  it('an unseeded series yields nothing rather than starting at AAA-001', () => {
+    db.exec("DELETE FROM sku_counter");
+    assert.deepEqual(upcomingStockLabels(db, 5), []);
+  });
+
+  it('clamps a silly ask instead of walking the whole series', () => {
+    assert.equal(upcomingStockLabels(db, 100000).length, 500);
+    assert.equal(upcomingStockLabels(db, 0).length, 1);
+    assert.equal(upcomingStockLabels(db, -3).length, 1);
   });
 });
 

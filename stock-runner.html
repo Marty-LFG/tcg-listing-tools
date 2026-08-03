@@ -355,7 +355,8 @@ let SETS = [], setObj = null, QUEUE = [], cursor = -1, mode = 'pile';
 let connected = false, acctReady = false, uid = 1, undoStack = [];
 let STORE_CATS = [], STORE_MAX = 2, storePick = [];
 let SORT = { k: '', dir: 1 }, VERIFY = false, DISAGREE_ONLY = false;
-let labelNext = null, labelSeeded = false;
+let labelSeeded = false, labelUpcoming = [];   // upcoming[0] is the next free label, [1] the one after
+const LABEL_PEEK = 250;           // labels fetched ahead — one per row, so this caps a single batch's preview
 const ROWEL = new Map();          // uid -> <tr>, so a row is patched in place instead of re-rendered
 
 const IDX_KEY = 'tcg_runner_idx1:';
@@ -413,10 +414,16 @@ function renderMirrorBar() {
   });
 }
 
+// A RUN of upcoming labels, not just the next one: the grid gives every row its own number, so it
+// needs as many as the batch will spend. The server walks the series and skips anything already on a
+// shelf or a live listing, which is why this is asked for rather than counted up from `next`.
 async function loadLabelState() {
   try {
-    const j = await fetch('/api/inventory/labels').then((r) => r.json());
-    labelSeeded = !!j.seeded; labelNext = j.next || null;
+    const j = await fetch('/api/inventory/labels?peek=' + LABEL_PEEK).then((r) => r.json());
+    labelSeeded = !!j.seeded;
+    // An older server has no `upcoming`; fall back to the single `next` so the first row is still
+    // right and the rest read '…' rather than repeating it (GR7: degrade visibly, never guess).
+    labelUpcoming = Array.isArray(j.upcoming) && j.upcoming.length ? j.upcoming : (j.next ? [j.next] : []);
   } catch (e) { /* GR7: a missing label series never blocks entry */ }
 }
 
@@ -742,6 +749,20 @@ function applyDupe(r, m) {
 function curMedian() { return medianOf(QUEUE.filter((r) => !r.staged && !r.published).map((r) => r.askAud)); }
 function stateOf(r) { return deriveState(r, curMedian()); }
 
+// The two questions the whole batch turns on, asked wherever they are needed and never stored:
+//
+//   rowTickable — COULD this row hold a tick? Already listed, no. Staged, yes: it is waiting on
+//                 Publish, not on a decision, and a re-run never double-lists. Still PRICING, yes —
+//                 that is a moment mid-flight, and "Tick ready" pressed over a pile that is still
+//                 filling in must not untick the rows that were a second from being ready.
+//   rowInBatch  — IS it going out on this run? Ticked, and actually ready to be sent. PRICING is not
+//                 ready (there is no ask yet), which is the one place the two answers differ.
+//
+// Keeping both derived is the point. A row spends a second or two in PRICING and a while in STAGED,
+// and neither is a reason to forget that its box was ticked.
+function rowTickable(r, st) { const s = st || stateOf(r); return !r.published && (r.staged || s === 'PRICING' || isPublishable(s)); }
+function rowInBatch(r, st) { const s = st || stateOf(r); return !!r.inc && !r.published && (r.staged || isPublishable(s)); }
+
 function rowHtml(r) {
   const c = r.card;
   const numDisp = TCG.formatCardNumber(c.number, c.set || {}, { source: 'ptcg', rarity: c.rarity });
@@ -780,8 +801,14 @@ function patchRow(r) {
   const tr = ROWEL.get(r.uid); if (!tr) return;
   const st = stateOf(r), flags = flagsFor(r, curMedian());
   const idx = QUEUE.findIndex((x) => x.uid === r.uid);
-  r.inc = r.inc && isPublishable(st);
-  tr.className = 'st-' + st + (idx === cursor ? ' cur' : '') + (r.inc ? ' sel' : '');
+  // r.inc is the OPERATOR'S INTENT and nothing here may overwrite it. This used to read
+  // `r.inc = r.inc && isPublishable(st)`, which looks harmless and is not: a row is PRICING for the
+  // second or two its comps take, PRICING is not publishable, so every row arrived silently unticked
+  // and could never recover — the flag only ever moved one way. The same line untickd a row the
+  // moment it went STAGED, and Publish asks for `staged && inc`, so a staged batch had nothing left
+  // to publish. Whether a row can actually GO is a question for the moment it is asked (rowInBatch),
+  // never a value written back over what the operator chose.
+  tr.className = 'st-' + st + (idx === cursor ? ' cur' : '') + (rowInBatch(r, st) ? ' sel' : '');
 
   setCell(tr, 'state', '<span class="st ' + st + '"><span class="dot"></span>' + st + '</span>');
 
@@ -819,21 +846,36 @@ function patchRow(r) {
   const qty = tr.querySelector('input.qty');
   if (qty && document.activeElement !== qty && qty.value !== String(r.qty)) qty.value = String(r.qty);
   const inc = tr.querySelector('input.inc');
-  if (inc) { inc.checked = !!r.inc; inc.disabled = !isPublishable(st); }
+  // Checked shows what the operator chose; disabled shows whether the row could go if they left it
+  // ticked. A staged row stays tickable so one card can be pulled out of a publish run — and so a
+  // queue restored from before this was fixed, carrying inc=false on rows that are already staged,
+  // can be ticked again instead of being stuck out of every run.
+  if (inc) { inc.checked = !!r.inc; inc.disabled = !rowTickable(r, st); }
 
   setCell(tr, 'title', '<span style="font-size:12px;">' + esc(r.title || '') + '</span> <span class="pill ' + ((r.title || '').length >= 80 ? 'over' : 'medium') + '">' + (r.title || '').length + '/80</span>');
   // Gold means the label is BOUND — eBay ties a Custom label to a listing for life. A staged row
   // only holds a provisional STG-* placeholder until it lists, so it shows the number it is heading
   // for, muted, exactly like an unstaged row. Nothing is spent until the listing is live.
   const provisionalSku = /^STG-\d{6}$/.test(String(r.sku || ''));
-  setCell(tr, 'label', r.sku && !provisionalSku ? '<span style="color:var(--gold)">' + esc(r.sku) + '</span>' : '<span class="muted">' + esc(labelSeeded && labelNext ? labelNext : 'BK-…') + '</span>');
+  const bound = !!(r.sku && !provisionalSku);
+  const heading = bound ? null : labelPreview(r);
+  setCell(tr, 'label', bound
+    ? '<span style="color:var(--gold)" title="Bound to this listing for life — eBay never lets a Custom label change">' + esc(r.sku) + '</span>'
+    : '<span class="muted" title="' + esc(!labelSeeded ? 'The label series is not seeded, so this row would get a BK-… sku. Seed it under Settings → labels.'
+        : heading ? 'Heading for this number — one label per listing, however many copies are on it. Nothing is spent until the row lists.'
+        : 'Not in this batch, so no shelf number is lined up for it. Tick the row and it takes the next one.') + '">'
+      + esc(!labelSeeded ? 'BK-…' : (heading || '—')) + '</span>');
 
   const q = (r.priceInfo && r.priceInfo.query) || ['Pokemon', r.card.name, TCG.formatCardNumber(r.card.number, r.card.set || {}, { source: 'ptcg', rarity: r.card.rarity }), r.setLabel].filter(Boolean).join(' ');
-  let acts = '<a class="linkbtn" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, cheapest first" href="' + esc(ebaySearchUrl(q, false)) + '">↗</a>'
-    + ' <a class="linkbtn" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU" href="' + esc(ebaySearchUrl(q, true)) + '">sold</a>';
+  // What it is selling for now, and what it actually sold for — both Australian sellers only. The
+  // pair stays on the row after it lists, because the first thing you want after listing a card is
+  // to see where you landed against the ones you are competing with.
+  const comps = '<a class="linkbtn" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, Australian sellers only, cheapest first" href="' + esc(ebaySearchUrl(q, false)) + '">BIN</a>'
+    + ' <a class="linkbtn" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU, Australian sellers only" href="' + esc(ebaySearchUrl(q, true)) + '">sold</a>';
+  let acts = comps;
   if (st === 'CHECK') acts += ' <button class="btn sm rel" title="Approve this row for publishing">OK</button>';
   if (st === 'HELD') acts += ' <button class="btn sm open" title="Open in the single uploader, where you can add real photos">open</button>';
-  if (r.listingUrl) acts = '<a class="linkbtn" target="_blank" rel="noopener" href="' + esc(r.listingUrl) + '">view ↗</a>';
+  if (r.listingUrl) acts = comps + ' <a class="linkbtn" target="_blank" rel="noopener" href="' + esc(r.listingUrl) + '">view ↗</a>';
   acts += ' <button class="btn sm drop" title="Remove from the batch">×</button>';
   setCell(tr, 'acts', acts);
 
@@ -846,7 +888,7 @@ function patchRow(r) {
     if (r.serverBlocked && r.serverBlocked.length) for (const m of r.serverBlocked) msgs.push('<span class="w-x">Server held this row:</span> ' + esc(m));
     else if (r.note) msgs.push('<span style="color:var(--muted)">' + esc(r.note) + '</span>');
     else if (st === 'HELD') msgs.push('<span class="w-x">Held:</span> a ' + esc(r.cond) + ' card cannot be listed with the catalog image — eBay bans stock photos on used items. Open it in the single uploader and add real front/back photos.');
-    else if (st === 'EYES' && !r.pricing) msgs.push('<span class="w-x">Needs eyes:</span> no confident eBay AU comps' + (r.comps && r.comps.reason ? ' (' + esc(r.comps.reason) + ')' : '') + '. Check the ↗ links and type a price, or drop the row.');
+    else if (st === 'EYES' && !r.pricing) msgs.push('<span class="w-x">Needs eyes:</span> no confident eBay AU comps' + (r.comps && r.comps.reason ? ' (' + esc(r.comps.reason) + ')' : '') + '. Check the BIN and sold links and type a price, or drop the row.');
     else if (st === 'CHECK' || st === 'CHECKED') for (const f of flags) msgs.push((st === 'CHECK' ? '<span class="w-x">Check:</span> ' : '<span style="color:var(--green)">Approved:</span> ') + esc(f.why));
     if (msgs.length) { div.innerHTML = msgs.join('<br>'); div.style.display = ''; } else { div.innerHTML = ''; div.style.display = 'none'; }
     const dr = whyTr.querySelector('.drawer');
@@ -854,6 +896,26 @@ function patchRow(r) {
   }
   // Row visibility is applyVisibility()'s job alone — deciding it here as well would give two
   // places that can disagree about whether a row is on screen.
+}
+// The shelf label a row is HEADING for. One label per LISTING, and a row is a listing — three copies
+// of the same card ride one number and go live as quantity 3 — so every row in the batch is heading
+// for a DIFFERENT label. Showing them all the same next number (which this used to do) is the one
+// thing the column must not say: it reads as "these four cards share a label" on a shelf system where
+// the label IS the card's address.
+//
+// The server hands the numbers out at publish, in the order the rows are sent, so this walks the
+// queue in the same order and mirrors the same filter. A row that is not going out has no number
+// lined up for it and says so, rather than borrowing one that will go to the row above it.
+function labelPreview(r) {
+  if (!labelSeeded) return null;
+  const med = curMedian();          // hoisted — stateOf() would recompute it for every row we walk
+  let n = 0;
+  for (const x of QUEUE) {
+    if (!rowInBatch(x, deriveState(x, med))) continue;
+    if (x.uid === r.uid) return labelUpcoming[n] || '…';   // '…' = further ahead than we fetched
+    n++;
+  }
+  return null;
 }
 function priceScale(r) {
   const c = r.comps || {};
@@ -882,8 +944,8 @@ function drawerHtml(r) {
   const chosen = r.storeOverride || null;
   return '<div class="d-grid">'
     + '<div><h5>Comps query (as the server ran it)</h5><div class="q">' + esc(q || '—') + '</div>'
-      + (q ? '<div class="chips"><a class="btn sm" target="_blank" rel="noopener" href="' + esc(ebaySearchUrl(q, false)) + '">Active ↗</a>'
-             + '<a class="btn sm" target="_blank" rel="noopener" href="' + esc(ebaySearchUrl(q, true)) + '">Sold ↗</a></div>' : '')
+      + (q ? '<div class="chips"><a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(ebaySearchUrl(q, false)) + '">Active BIN ↗</a>'
+             + '<a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(ebaySearchUrl(q, true)) + '">Sold ↗</a></div>' : '')
       + '</div>'
     + '<div><h5>Set the ask</h5>'
       + '<div class="chips">'
@@ -925,7 +987,9 @@ function refreshNow() {
   $('counts').innerHTML = order.filter((k) => bands[k]).map((k) => '<span class="st ' + k + '"><span class="dot"></span>' + bands[k] + ' ' + k.toLowerCase() + '</span>').join('');
   $('qNote').textContent = QUEUE.length ? QUEUE.length + ' row' + (QUEUE.length > 1 ? 's' : '') + ' · ' + QUEUE.reduce((a, r) => a + r.qty, 0) + ' cards' : 'nothing queued yet';
 
-  const ticked = QUEUE.filter((r) => r.inc && isPublishable(stateOf(r)));
+  // What Stage would send: in the batch and not already in inventory. The footer's money reads off
+  // the same set, so it says what this next step costs rather than what is already committed.
+  const ticked = QUEUE.filter((r) => !r.staged && rowInBatch(r));
   const totalAsk = ticked.reduce((a, r) => a + (r.askAud || 0) * r.qty, 0);
   const fees = ticked.reduce((a, r) => a + feeAU(r.askAud || 0) * r.qty, 0);
   const dearest = ticked.reduce((a, r) => (r.askAud || 0) > (a ? a.askAud : 0) ? r : a, null);
@@ -945,7 +1009,9 @@ function refreshNow() {
 
   renderSanity(med);
 
-  const staged = QUEUE.filter((r) => r.staged && !r.published);
+  // Exactly what Publish will send — the same filter the button's own handler uses. A count that
+  // includes rows the handler then drops is how "Publish 3" ends in "nothing staged and ticked".
+  const staged = QUEUE.filter((r) => r.staged && rowInBatch(r));
   $('canaryBtn').disabled = !staged.length || !connected || !acctReady;
   $('stageBtn').disabled = !ticked.length;
   $('stageBtn').textContent = ticked.length ? 'Stage ' + ticked.length + ' to inventory' : 'Stage to inventory';
@@ -1020,14 +1086,20 @@ document.addEventListener('keydown', (e) => {
 
 function syncHdr() {
   const el = $('hdrChk'); if (!el) return;
-  const able = QUEUE.filter((r) => isPublishable(stateOf(r)));
+  const able = QUEUE.filter((r) => rowTickable(r));
   const on = able.filter((r) => r.inc).length;
   el.checked = able.length > 0 && on === able.length;
   el.indeterminate = on > 0 && on < able.length;
 }
+// LH_PrefLoc=1 pins the results to items LOCATED IN AUSTRALIA. Without it the page fills with US and
+// Japanese sellers, and their prices say nothing about what a card fetches here — postage and the
+// exchange rate put them in a different market. rt=nc stops eBay rewriting the query on arrival.
+// Both links carry it: the sold prices you compare against and the BIN prices you undercut have to
+// come from the same pool of sellers, or the comparison is meaningless.
 function ebaySearchUrl(q, sold) {
   const p = new URLSearchParams({ _nkw: q, LH_BIN: '1', _sop: sold ? '13' : '15' });
   if (sold) { p.set('LH_Sold', '1'); p.set('LH_Complete', '1'); }
+  p.set('rt', 'nc'); p.set('LH_PrefLoc', '1');
   return 'https://www.ebay.com.au/sch/i.html?' + p.toString();
 }
 
@@ -1093,8 +1165,8 @@ $('qBody').addEventListener('click', (e) => {
     enqueueDupe(r); refresh();
   }
 });
-$('hdrChk').addEventListener('change', () => { const on = $('hdrChk').checked; for (const r of QUEUE) if (isPublishable(stateOf(r))) r.inc = on; refresh(); });
-$('selReady').addEventListener('click', () => { for (const r of QUEUE) r.inc = isPublishable(stateOf(r)); refresh(); });
+$('hdrChk').addEventListener('change', () => { const on = $('hdrChk').checked; for (const r of QUEUE) if (rowTickable(r)) r.inc = on; refresh(); });
+$('selReady').addEventListener('click', () => { for (const r of QUEUE) r.inc = rowTickable(r); refresh(); });
 $('selNone').addEventListener('click', () => { for (const r of QUEUE) r.inc = false; refresh(); });
 $('clearQ').addEventListener('click', () => {
   if (!QUEUE.length) return;
@@ -1428,17 +1500,23 @@ function closeModal() { $('modal').classList.remove('on'); focusCatch(); }
 $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
 
 $('stageBtn').addEventListener('click', () => {
-  const rows = QUEUE.filter((r) => r.inc && isPublishable(stateOf(r)) && !r.staged && !r.published);
+  const rows = QUEUE.filter((r) => !r.staged && rowInBatch(r));
   if (!rows.length) return;
   const cards = rows.reduce((a, r) => a + r.qty, 0);
-  // Shelf labels are monotonic and NEVER reused (lib/sku-labels.mjs), so staging spends a
-  // permanent slice of the series. Name the exact range before it is spent.
-  const range = labelSeeded && labelNext ? '<div class="kv"><span>Shelf labels</span><span class="mono">' + esc(labelNext) + ' onward — ' + rows.length + ' label' + (rows.length > 1 ? 's' : '') + ', permanently</span></div>' : '<div class="kv"><span>Shelf labels</span><span class="mono">series not seeded — these get BK-… labels</span></div>';
+  // Shelf labels are monotonic and NEVER reused (lib/sku-labels.mjs). Staging itself does not spend
+  // them — each row earns its number when it lists — but these are the numbers it is queued for, so
+  // name them exactly rather than saying "onward": the series skips anything already taken, so the
+  // last one is not simply the first plus N.
+  const run = labelUpcoming.slice(0, rows.length);
+  const range = labelSeeded && run.length
+    ? '<div class="kv"><span>Shelf labels</span><span class="mono">' + esc(run.length > 1 ? run[0] + ' … ' + run[run.length - 1] : run[0])
+      + ' — ' + rows.length + ' label' + (rows.length > 1 ? 's' : '') + ', one per row</span></div>'
+    : '<div class="kv"><span>Shelf labels</span><span class="mono">series not seeded — these get BK-… labels</span></div>';
   modal('<h4>Stage ' + rows.length + ' rows to inventory</h4>'
     + '<div class="kv"><span>Listings</span><span class="mono">' + rows.length + '</span></div>'
     + '<div class="kv"><span>Cards (some listings hold several)</span><span class="mono">' + cards + '</span></div>'
     + range
-    + '<p class="muted" style="margin-top:12px;">One label per listing. A listing holding 3 copies takes one label and goes live with quantity 3. Labels are never reused, so a row staged by mistake retires its label with it.</p>'
+    + '<p class="muted" style="margin-top:12px;">One label per listing, whatever the quantity — a listing holding 3 copies takes one number and goes live with quantity 3. The number is bound when the row lists, not now, so a row staged by mistake costs nothing until it does.</p>'
     + '<div class="acts"><button class="btn" id="mCancel">Cancel</button><button class="btn primary" id="mGo">Stage ' + rows.length + '</button></div>');
   $('mCancel').addEventListener('click', closeModal);
   $('mGo').addEventListener('click', () => { closeModal(); runStage(rows); });
@@ -1576,7 +1654,7 @@ $('canaryBtn').addEventListener('click', async () => {
 });
 
 $('pubBtn').addEventListener('click', async () => {
-  const rows = QUEUE.filter((r) => r.staged && !r.published && r.inc);
+  const rows = QUEUE.filter((r) => r.staged && rowInBatch(r));
   if (!rows.length) { toast('Nothing staged and ticked'); return; }
   // Re-run the free pre-flight right before showing the numbers, so what the modal promises is what
   // the server has just agreed to — not a verdict from before the last edit.
@@ -1725,6 +1803,9 @@ async function consumeJob(resp, rows) {
     refresh(); return;
   }
   RUNNING = false; $('stopBtn').style.display = 'none'; JOB_ID = null;
+  // Publishing is where labels are actually spent, so the run of upcoming numbers has moved. Refetch
+  // before the rows repaint, or the ones still queued would preview numbers that were just taken.
+  await loadLabelState();
   const s = summary || stats;
   const held = (s.failed || 0) + (s.refused || 0);
   act && (held ? act.fail(held + ' held') : act.done(s.listed + ' live'));
