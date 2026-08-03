@@ -299,11 +299,13 @@ describe('followUpSystemPrompt', () => {
     }
   });
 
-  it('still invites a FUTURE offer on the dispatch note, because repeat business is the point', () => {
-    const s = followUpSystemPrompt({}, 'dispatch');
-    assert.match(s, /inviting them to send an offer NEXT time/);
-    assert.match(s, /clearly about a future order, never about this one/);
-    assert.doesNotMatch(followUpSystemPrompt({ invite_offers: false }, 'dispatch'), /send an offer NEXT time/);
+  it('invites a FUTURE offer on both follow-ups, because repeat business is the point', () => {
+    for (const kind of ['dispatch', 'delivered']) {
+      const s = followUpSystemPrompt({}, kind);
+      assert.match(s, /inviting them to send an offer NEXT time/, kind);
+      assert.match(s, /clearly about a future order, never about this one/, kind);
+      assert.doesNotMatch(followUpSystemPrompt({ invite_offers: false }, kind), /send an offer NEXT time/, kind);
+    }
   });
 
   it('does not leak style_notes into a follow-up, but does carry brand_voice', () => {
@@ -357,21 +359,31 @@ describe('fallbackFollowUp', () => {
     assert.doesNotMatch(d.body, /tracking/i);
   });
 
-  it('dispatch: invites a future offer, and never a bundle on a parcel already sealed', () => {
-    const d = fallbackFollowUp({ order, items, postage: { label: 'Express Post', tracking: '36LB1' }, cfg: {} });
-    assert.match(d.body, /Next time there's something you're after, send an offer through/);
-    assert.doesNotMatch(d.body, /bundle|combin|add(ing)? to (your|this) order|anything else you'?re after/i);
-    // …and it reads as its own thought, not tacked onto the tracking line.
-    assert.match(d.body, /order page too\.\n\nNext time/);
+  it('both follow-ups invite a future offer, and never a bundle on a parcel already sealed', () => {
+    for (const [kind, postage] of [['dispatch', { label: 'Express Post', tracking: '36LB1' }], ['delivered', {}]]) {
+      const d = fallbackFollowUp({ order, items, postage, kind, cfg: {} });
+      assert.match(d.body, /Next time there's something you're after, send an offer through/, kind);
+      assert.doesNotMatch(d.body, /bundle|combin|add(ing)? to (your|this) order|anything else you'?re after/i, kind);
+      // …and it reads as its own thought, not tacked onto the line above it.
+      assert.match(d.body, /\n\nNext time there's/, kind);
+    }
   });
 
-  it('dispatch: the offer line follows invite_offers', () => {
-    assert.doesNotMatch(fallbackFollowUp({ order, items, postage: {}, cfg: { invite_offers: false } }).body, /send an offer/);
+  it('the two follow-ups word the nudge identically, so the store sounds like one store', () => {
+    const line = (kind) => fallbackFollowUp({ order, items, kind, cfg: {} }).body.split('\n').find((l) => l.startsWith('Next time'));
+    assert.equal(line('dispatch'), line('delivered'));
   });
 
-  it('delivered: no sales ask beyond the rating nudge', () => {
+  it('the offer line follows invite_offers on both', () => {
+    for (const kind of ['dispatch', 'delivered']) {
+      assert.doesNotMatch(fallbackFollowUp({ order, items, postage: {}, kind, cfg: { invite_offers: false } }).body, /send an offer/, kind);
+    }
+  });
+
+  it('delivered: the rating nudge comes before the offer, and stays a separate thought', () => {
     const d = fallbackFollowUp({ order, items, kind: 'delivered', cfg: {} });
-    assert.doesNotMatch(d.body, /bundle|send an offer/i);
+    assert.ok(d.body.indexOf('rating on eBay') < d.body.indexOf('Next time'), 'this order first, next order after');
+    assert.match(d.body, /helps a small store like ours\.\n\nNext time/);
   });
 
   it('delivered: checks in and nudges once, gently', () => {

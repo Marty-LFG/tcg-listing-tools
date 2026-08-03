@@ -508,7 +508,7 @@
         {p:'digest_hour',l:'Digest hour',t:'number',min:0,max:23,tip:'Hour of day (0–23, in the timezone below) to send the “📦 to pack today” Telegram digest.'},
         {p:'timezone',l:'Timezone',t:'text',tip:'IANA timezone for quiet hours + digest timing, e.g. Australia/Sydney.'},
         {p:'signature',l:'Signature',t:'text',tip:'Sign-off appended to buyer messages, e.g. -BK.'},
-        {p:'invite_offers',l:'Invite offers',t:'toggle',tip:'Invite the buyer to make offers. In the <b>thank-you</b> that means bundle deals, since the order has not gone yet. In the <b>dispatch note</b> it is a nudge about a <b>future</b> order only, because nothing can be added to a parcel that is already sealed.'},
+        {p:'invite_offers',l:'Invite offers',t:'toggle',tip:'Invite the buyer to make offers. In the <b>thank-you</b> that means bundle deals, since the order has not gone yet. In the <b>dispatch and delivered notes</b> it is a nudge about a <b>future</b> order only, because nothing can be added to a parcel that is already sealed. One switch, all three messages.'},
         {p:'brand_voice',l:'Brand voice',t:'textarea',wide:true,tip:'Tone guidance for the AI — e.g. “casual, warm, an Aussie TCG store owner who loves the hobby”. This is voice, so it applies to <b>every</b> message: thank-you, dispatch and delivered.'},
         {p:'style_notes',l:'Style notes',t:'textarea',wide:true,tip:'Extra content rules for the <b>thank-you only</b> (length, what to mention, what to avoid). Deliberately not applied to the dispatch or delivered notes: guidance like “give the ship timing” or “invite bundle deals” is wrong once the parcel has gone.'},
       ]},
