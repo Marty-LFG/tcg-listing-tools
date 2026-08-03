@@ -1,16 +1,16 @@
-// test/unit/runner-labels.test.mjs — the Batch Runner's label column and its eBay comps links.
+// test/unit/runner-labels.test.mjs — the Batch Runner's label column.
 //
 // stock-runner.html is a standalone page whose module script cannot be imported, so this uses the
-// repo's extract-inline idiom to pull the REAL functions out of the HTML and exercise them.
+// repo's extract-inline idiom to pull the REAL function out of the HTML and exercise it.
 //
 // THE BUG THIS LOCKS DOWN (2026-08-03): every unlisted row printed the SAME next label. On a shelf
 // system where the label IS the card's address, four rows reading AAD-024 says "these four cards
 // share a slot". One label per LISTING is the rule — copies of one card ride a single number as a
 // quantity — so each ROW must preview its own.
 //
-// The links half is the same page's other promise: comps have to come from Australian sellers. A
-// sold price from a US seller is not a comparable — different postage, different currency, different
-// market — so both links carry LH_PrefLoc=1.
+// The page's comps links used to be tested here too. They are lib/ebay-links.mjs's job now (one
+// implementation for the pages and the Telegram cards), so they are covered by
+// test/unit/ebay-links.test.mjs and test/invariants/ebay-links-single-source.test.mjs.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read, extractFn } from '../helpers/extract-inline.mjs';
@@ -29,8 +29,6 @@ function makePreview({ queue, upcoming, seeded = true, median = 10 }) {
   return new Function('QUEUE', 'labelUpcoming', 'labelSeeded', 'curMedian', 'deriveState', 'rowInBatch',
     'return (' + src + ')')(queue, upcoming, seeded, () => median, deriveState, rowInBatch);
 }
-const ebaySearchUrl = new Function('return (' + extractFn(html, 'function ebaySearchUrl') + ')')();
-
 // A row the runner would call READY: near mint, priced, nothing to flag at this median.
 let seq = 0;
 const row = (over = {}) => Object.assign({ uid: ++seq, cond: 'Near Mint', askAud: 10, inc: true }, over);
@@ -106,24 +104,13 @@ describe('labelPreview — one number per row, never the same one twice', () => 
   });
 });
 
-describe('ebaySearchUrl — Australian sellers, both halves of the comparison', () => {
-  const q = 'Pokemon Palafin 200/197 Obsidian Flames';
-
-  it('the sold link filters to items located in Australia', () => {
-    assert.equal(ebaySearchUrl(q, true),
-      'https://www.ebay.com.au/sch/i.html?_nkw=Pokemon+Palafin+200%2F197+Obsidian+Flames'
-      + '&LH_BIN=1&_sop=13&LH_Sold=1&LH_Complete=1&rt=nc&LH_PrefLoc=1');
-  });
-
-  it('so does the active BIN link — comparing AU sold against worldwide asking is not a comparison', () => {
-    const u = new URL(ebaySearchUrl(q, false));
-    assert.equal(u.searchParams.get('LH_PrefLoc'), '1');
-    assert.equal(u.searchParams.get('LH_BIN'), '1');
-    assert.equal(u.searchParams.get('_sop'), '15', 'price + postage, lowest first');
-    assert.equal(u.searchParams.get('LH_Sold'), null, 'active listings, not completed ones');
-  });
-
-  it('stays on the AU site', () => {
-    for (const sold of [true, false]) assert.match(ebaySearchUrl(q, sold), /^https:\/\/www\.ebay\.com\.au\//);
+describe('the grid links through the shared builder', () => {
+  // Not a URL test — that is lib/ebay-links.mjs's. This only pins that the grid still calls it for
+  // BOTH halves, active and sold, since a row with one of them is half a comparison.
+  it('both the row pair and the drawer chips call searchUrl', () => {
+    const active = (html.match(/searchUrl\(q\)/g) || []).length;
+    const sold = (html.match(/searchUrl\(q, \{ sold: true \}\)/g) || []).length;
+    assert.equal(active, 2, 'row pair + drawer chip');
+    assert.equal(sold, 2, 'row pair + drawer chip');
   });
 });

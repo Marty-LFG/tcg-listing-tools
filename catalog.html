@@ -259,6 +259,9 @@
    from /api/inventory (graded) + /api/sealed. Vanilla JS, matches the app.
    =========================================================================== */
 
+// Every eBay link in the suite is built by this one module — see its header for why.
+import { itemUrl } from '/lib/ebay-links.mjs';
+
 // [code, label, dataLang] — mirrors pokemon-listing-builder.html LANGS.
 const LANGS=[['EN','English','en'],['JP','Japanese','ja'],['CN','Chinese · Simp.','zh-cn'],['TW','Chinese · Trad.','zh-tw'],['KO','Korean','ko']];
 const LANG_ACC={en:'#f0c04a',ja:'#f0666e','zh-cn':'#f0c04a','zh-tw':'#43d6a0',ko:'#6ab0ff'};
@@ -552,7 +555,7 @@ function ownedBlock(own){
         '<div style="min-width:0;flex:1;"><div class="on">'+esc(it.name||'Card')+(it.number?' · #'+esc(it.number):'')+'</div>'+
         '<div class="om">'+esc(it.sku||'')+(it.condition?' · '+esc(String(it.condition).replace(/^ungraded,\s*/i,'')):'')+
           (it.variant?' · '+esc(it.variant):'')+(it.quantity>1?' · qty '+it.quantity:'')+'</div></div>'+
-        (it.ebay_listing_id?'<a class="olink" href="https://www.ebay.com.au/itm/'+esc(it.ebay_listing_id)+'" target="_blank" rel="noopener">view ↗</a>':'')+
+        (it.ebay_listing_id?'<a class="olink" href="'+esc(itemUrl(it.ebay_listing_id))+'" target="_blank" rel="noopener">view ↗</a>':'')+
         '<span class="ostate '+st.k+'">'+st.label+'</span>'+
         ((it.grading_company)?'<span class="og">'+esc(it.grading_company+(it.grade!=null?' '+it.grade:''))+'</span>':'')+'</div>');
     }

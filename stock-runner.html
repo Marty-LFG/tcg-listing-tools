@@ -330,6 +330,9 @@
 <script type="module">
 import { buildTitle, rowToFields } from '/lib/listing-copy.mjs';
 import { feeAU } from '/lib/fees.mjs';
+// The comps links. Shared with the server's Telegram cards and the single uploader — see the header
+// of lib/ebay-links.mjs for why there is exactly one implementation of these URLs.
+import { searchUrl } from '/lib/ebay-links.mjs';
 import {
   numKeys, numRank, cmpRank, printingsFor, finishFromRarity, pickPrinting, parseCatch,
   isNearMint, medianOf, flagsFor, deriveState, isPublishable, rowKey,
@@ -870,8 +873,8 @@ function patchRow(r) {
   // What it is selling for now, and what it actually sold for — both Australian sellers only. The
   // pair stays on the row after it lists, because the first thing you want after listing a card is
   // to see where you landed against the ones you are competing with.
-  const comps = '<a class="linkbtn" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, Australian sellers only, cheapest first" href="' + esc(ebaySearchUrl(q, false)) + '">BIN</a>'
-    + ' <a class="linkbtn" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU, Australian sellers only" href="' + esc(ebaySearchUrl(q, true)) + '">sold</a>';
+  const comps = '<a class="linkbtn" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, Australian sellers only, cheapest first" href="' + esc(searchUrl(q)) + '">BIN</a>'
+    + ' <a class="linkbtn" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU, Australian sellers only" href="' + esc(searchUrl(q, { sold: true })) + '">sold</a>';
   let acts = comps;
   if (st === 'CHECK') acts += ' <button class="btn sm rel" title="Approve this row for publishing">OK</button>';
   if (st === 'HELD') acts += ' <button class="btn sm open" title="Open in the single uploader, where you can add real photos">open</button>';
@@ -944,8 +947,8 @@ function drawerHtml(r) {
   const chosen = r.storeOverride || null;
   return '<div class="d-grid">'
     + '<div><h5>Comps query (as the server ran it)</h5><div class="q">' + esc(q || '—') + '</div>'
-      + (q ? '<div class="chips"><a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(ebaySearchUrl(q, false)) + '">Active BIN ↗</a>'
-             + '<a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(ebaySearchUrl(q, true)) + '">Sold ↗</a></div>' : '')
+      + (q ? '<div class="chips"><a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(searchUrl(q)) + '">Active BIN ↗</a>'
+             + '<a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(searchUrl(q, { sold: true })) + '">Sold ↗</a></div>' : '')
       + '</div>'
     + '<div><h5>Set the ask</h5>'
       + '<div class="chips">'
@@ -1091,18 +1094,6 @@ function syncHdr() {
   el.checked = able.length > 0 && on === able.length;
   el.indeterminate = on > 0 && on < able.length;
 }
-// LH_PrefLoc=1 pins the results to items LOCATED IN AUSTRALIA. Without it the page fills with US and
-// Japanese sellers, and their prices say nothing about what a card fetches here — postage and the
-// exchange rate put them in a different market. rt=nc stops eBay rewriting the query on arrival.
-// Both links carry it: the sold prices you compare against and the BIN prices you undercut have to
-// come from the same pool of sellers, or the comparison is meaningless.
-function ebaySearchUrl(q, sold) {
-  const p = new URLSearchParams({ _nkw: q, LH_BIN: '1', _sop: sold ? '13' : '15' });
-  if (sold) { p.set('LH_Sold', '1'); p.set('LH_Complete', '1'); }
-  p.set('rt', 'nc'); p.set('LH_PrefLoc', '1');
-  return 'https://www.ebay.com.au/sch/i.html?' + p.toString();
-}
-
 // Delegated handlers — one listener for the whole grid, so appending a row costs nothing extra.
 //
 // A row is TWO <tr>s: the row itself (data-uid) and its reason/drawer row (data-why). The drawer's

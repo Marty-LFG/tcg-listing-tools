@@ -550,9 +550,15 @@ function renderStock(){
   // List. Warn here instead, and include hand-made listings — those are not in stock at all, which is
   // how [25002] got hit in the first place.
   const live=(m.onEbay||[]).filter(l=>l.state==='active');
-  const dupe=live.length?'<div class="stk-warn">Already on eBay — '+live.map(l=>
-      '<a href="'+esc(l.listing_url||('https://www.ebay.com.au/itm/'+l.listing_id))+'" target="_blank" rel="noopener">'
-      +esc(l.sku||l.listing_id)+' ↗</a>'+(l.created_via==='manual'?' <span class="muted">(made by hand)</span>':'')).join(', ')
+  // The server's own listing_url when it has one, otherwise built from the id by the shared module
+  // (TCG.ebayItemUrl, from the shim at the foot of this page). A row with neither still has to say
+  // the card is already up — that warning is the point, the link is the convenience.
+  const dupe=live.length?'<div class="stk-warn">Already on eBay — '+live.map(l=>{
+      const u=l.listing_url||(window.TCG&&TCG.ebayItemUrl?TCG.ebayItemUrl(l.listing_id):null);
+      const name=esc(l.sku||l.listing_id);
+      return (u?'<a href="'+esc(u)+'" target="_blank" rel="noopener">'+name+' ↗</a>':name)
+        +(l.created_via==='manual'?' <span class="muted">(made by hand)</span>':'');
+    }).join(', ')
     +'. eBay won’t take a second listing for the same card, so add to that one instead of making a new one.</div>':'';
   box.innerHTML='<div class="stkwrap">'+dupe
     +(m.exact.length
@@ -637,26 +643,24 @@ function renderStoreCats(){
 
 // ---- eBay search shortcuts ----
 // Open the same population the recommendation was built from: the server echoes back the exact query
-// it searched (/price → .query), so these never drift from the comps line above them. Fixed-price
-// only, matching the comps filter (buyingOptions:{FIXED_PRICE}); no location filter, because eBay AU
-// comps include international sellers shipping here.
+// it searched (/price → .query), so these never drift from the comps line above them.
 function compsQuery(){
   if(priceInfo&&priceInfo.query) return priceInfo.query;
   if(!card) return '';
   return ['Pokemon',card.name,card.number,card.set_name].filter(Boolean).join(' ');   // same parts the server joins
 }
-function ebaySearchUrl(q,sold){
-  const p=new URLSearchParams({_nkw:q,LH_BIN:'1',_sop:sold?'13':'15'});   // 13 ended recently · 15 price+post lowest
-  if(sold){ p.set('LH_Sold','1'); p.set('LH_Complete','1'); }
-  return 'https://www.ebay.com.au/sch/i.html?'+p.toString();
-}
+// The URLs come from lib/ebay-links.mjs, handed to this classic script by the module shim at the
+// bottom of the page — one implementation, shared with the batch runner and the Telegram cards.
+// Until it lands (a tick after parse) there is no URL to give, so the links sit dimmed rather than
+// pointing at a search this page invented.
 function syncEbayLinks(){
   const q=compsQuery(), a=$('ebayActive'), s=$('ebaySold');
   if(!a||!s) return;
-  a.href=q?ebaySearchUrl(q,false):'#'; s.href=q?ebaySearchUrl(q,true):'#';
-  a.title=q?'Active Buy It Now on eBay AU, cheapest first — "'+q+'"':'';
-  s.title=q?'Sold in the last 90 days on eBay AU, most recent first — "'+q+'"':'';
-  a.style.opacity=s.style.opacity=q?'':'.5';
+  const url=window.TCG&&TCG.ebaySearchUrl, on=!!(q&&url);
+  a.href=on?url(q,false):'#'; s.href=on?url(q,true):'#';
+  a.title=on?'Active Buy It Now on eBay AU, Australian sellers only, cheapest first — "'+q+'"':'';
+  s.title=on?'Sold in the last 90 days on eBay AU, Australian sellers only, most recent first — "'+q+'"':'';
+  a.style.opacity=s.style.opacity=on?'':'.5';
 }
 function setPrice(v){ $('price').value=(Math.round(v*100)/100).toFixed(2); refreshSummary(); }
 $('price').addEventListener('input',refreshSummary);
@@ -961,6 +965,19 @@ async function applyDeepLink(){
 
 // ---- boot ----
 (async function(){ await loadSets(); await checkAccount(); if(window.TCG&&TCG.loadFx) TCG.loadFx(); await applyDeepLink(); })();
+</script>
+
+<!-- The comps URLs, from the one module that owns them (lib/ebay-links.mjs) — the same code the
+     batch runner imports and the Telegram cards call. The script above is CLASSIC on purpose: its
+     buttons use inline onclick= handlers, which need functions in the global scope, so this hands
+     the module over instead of converting the page. Modules run after the document is parsed, so
+     syncEbayLinks() is redrawn here for any card that was already on screen. -->
+<script type="module">
+import { searchUrl, itemUrl } from '/lib/ebay-links.mjs';
+window.TCG = window.TCG || {};
+TCG.ebaySearchUrl = (q, sold) => searchUrl(q, { sold: !!sold });
+TCG.ebayItemUrl = (id) => itemUrl(id);
+if (window.syncEbayLinks) window.syncEbayLinks();
 </script>
 </body>
 </html>
