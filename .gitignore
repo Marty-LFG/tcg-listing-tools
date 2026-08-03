@@ -26,10 +26,13 @@ data/exports/
 data/pc-cache/
 data/img-cache/
 data/pkm-cache/
-# One file per set, written once and kept — lib/pkm-cards-cache.mjs + lib/lorcana-cards-cache.mjs.
+# One file per set, written once and kept — lib/*-cards-cache.mjs over lib/set-cache.mjs.
 # Refetchable, so not source.
 data/pkm-cards/
 data/lorcana-cards/
+data/swu-cards/
+data/mtg-cards/
+data/onepiece-cards/
 
 # Rotated SQLite snapshots written by lib/backup.mjs (VACUUM INTO tracker.db/repricer.db + a
 # config bundle). Local disaster-recovery copies, not source — and they may contain data/.env if
