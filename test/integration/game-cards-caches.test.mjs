@@ -31,19 +31,21 @@ const dead = { ok: false, status: 500, text: async () => 'nope' };
 function mount(plugin, at) {
   const MW = {};
   plugin.configureServer({ middlewares: { use: (p, h) => { MW[p] = h; } } });
-  return (url) => new Promise((resolve) => {
+  return (url, headers = {}) => new Promise((resolve) => {
     const chunks = [];
     const res = {
       statusCode: 0, headers: {},
       setHeader(k, v) { this.headers[k.toLowerCase()] = v; },
       end(b) { chunks.push(b); resolve({ status: this.statusCode, headers: this.headers, json: JSON.parse(chunks.join('') || 'null') }); },
     };
-    MW[at]({ method: 'GET', url }, res, () => resolve({ status: 'next', headers: {}, json: null }));
+    MW[at]({ method: 'GET', url, headers }, res, () => resolve({ status: 'next', headers: {}, json: null }));
   });
 }
 const callSwu = mount(swu.swuCardsPlugin(), '/api/swu/cards');
 const callMtg = mount(mtg.mtgCardsPlugin(), '/api/mtg/cards');
 const callOp = mount(op.onepieceCardsPlugin(), '/api/op/sets/card');
+// What the price tracker's collector sends.
+const callSwuFresh = (url) => callSwu(url, { 'x-tcg-cache-bypass': '1' });
 
 after(() => {
   globalThis.fetch = realFetch;
@@ -127,6 +129,16 @@ describe('SWU-DB', () => {
     await callSwu('/' + SET + '/2');
     await new Promise((res) => setTimeout(res, 50));
     assert.equal(calls.length, 0, 'no background traffic for a copy taken minutes ago');
+  });
+
+  // The price tracker records history. A snapshot taken from a stored copy would repeat the last
+  // one until the copy changed, so the collector sends the bypass header and every cache steps
+  // aside — see lib/set-cache.mjs BYPASS_HEADER and lib/collector.mjs.
+  it('steps aside for the price tracker, even with the set on disk', async () => {
+    stub(3);
+    await callSwu('/' + SET + '/1');
+    assert.equal((await callSwu('/' + SET + '/2')).headers['x-tcg-cache'], 'disk', 'cached for everyone else');
+    assert.equal((await callSwuFresh('/' + SET + '/2')).status, 'next', 'but the tracker goes to the source');
   });
 });
 
