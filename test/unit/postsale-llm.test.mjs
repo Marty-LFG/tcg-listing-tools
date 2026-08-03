@@ -289,6 +289,14 @@ describe('followUpSystemPrompt', () => {
     assert.match(s, /Do not beg, do not offer/);
   });
 
+  it('the delivered note is told to stay positive and not go fishing for faults', () => {
+    const s = followUpSystemPrompt({}, 'delivered');
+    assert.match(s, /Do NOT invite them to check the cards over/);
+    assert.match(s, /Never mention\s+damage, faults, mistakes, problems, issues, refunds, returns/);
+    assert.match(s, /Assume it arrived well/);
+    assert.doesNotMatch(s, /if anything is not right/i);
+  });
+
   // The parcel is sealed. Anything about bundles or combining items is an offer we cannot honour, and
   // it reads as careless to someone who has already paid.
   it('forbids bundles and adding to the order, on both follow-ups', () => {
@@ -386,11 +394,22 @@ describe('fallbackFollowUp', () => {
     assert.match(d.body, /helps a small store like ours\.\n\nNext time/);
   });
 
-  it('delivered: checks in and nudges once, gently', () => {
+  it('delivered: lands warm and nudges once, gently', () => {
     const d = fallbackFollowUp({ order, items, kind: 'delivered', cfg: {} });
     assert.match(d.body, /should have landed/);
-    assert.match(d.body, /reply here/);
+    assert.match(d.body, /Hope you love it/);
     assert.match(d.body, /rating on eBay/);
+  });
+
+  // Asking "is anything wrong?" immediately before asking for a rating hands someone a reason to go
+  // looking for a fault they were not thinking about. A buyer with a real problem already knows how
+  // to reach us, so the message stays positive and assumes it arrived well.
+  it('delivered: never puts the idea of a problem in the buyer\'s head', () => {
+    const d = fallbackFollowUp({ order, items, kind: 'delivered', cfg: {} }).body;
+    for (const re of [/not right/i, /anything wrong/i, /damage/i, /fault/i, /issue/i, /problem/i,
+      /refund/i, /return/i, /sort it out/i, /if you'?re happy/i, /good shape/i]) {
+      assert.doesNotMatch(d, re, `delivered copy must not say ${re}`);
+    }
   });
 
   it('every fallback obeys the store voice: no em dashes, no antithesis, no filler', () => {
