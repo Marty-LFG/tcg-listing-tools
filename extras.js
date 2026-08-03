@@ -659,6 +659,51 @@
     });
   }
 
+  // ---- the two comps windows ------------------------------------------------
+  // BIN and Sold open in two REUSED WINDOWS, not a pile of tabs. Working a pile you punch in a card,
+  // tap both links, read the answer off a second screen and move on — so the windows have to stay
+  // put and repaint. A named target does the reusing; the geometry is only ever applied when a
+  // window is CREATED (the spec says features are ignored for a window that already exists), so drag
+  // them where you want them once and they stay there for the session.
+  //
+  // No noopener here, deliberately: it makes window.open return null, and without the handle there
+  // is nothing to reuse. eBay is the only destination these ever carry.
+  var COMPS_WIN = {};
+  var COMPS_NAME = { bin: 'bk-comps-bin', sold: 'bk-comps-sold' };
+  function compsFeatures(slot) {
+    var s = window.screen || {};
+    var availW = s.availWidth || 1280, availH = s.availHeight || 800;
+    var w = Math.max(520, Math.floor(availW / 2)), h = Math.max(480, availH - 80);
+    var left = (s.availLeft || 0) + (slot === 'sold' ? availW - w : 0);   // BIN left, Sold right
+    return 'popup=yes,width=' + w + ',height=' + h + ',left=' + left + ',top=' + (s.availTop || 0);
+  }
+  // Returns false if the browser refused (popup blocker, mostly) so the caller can let the link fall
+  // back to its own target — a blocked click that silently does nothing is worse than a stray tab.
+  TCG.openComps = function (url, slot) {
+    if (!url) return false;
+    var name = COMPS_NAME[slot] || COMPS_NAME.bin;
+    var held = COMPS_WIN[name];
+    var fresh = !held || held.closed;             // never opened, closed by hand, or we reloaded
+    var w = null;
+    try { w = window.open(url, name, compsFeatures(slot)); } catch (e) { w = null; }
+    if (!w) { COMPS_WIN[name] = null; return false; }
+    COMPS_WIN[name] = w;
+    // Raise a window we just made, so it is not born behind the tool. NEVER raise one that is
+    // already open: the keyboard belongs to the grid, and losing focus mid-pile is maddening.
+    if (fresh) { try { w.focus(); } catch (e) {} }
+    return true;
+  };
+  // One listener for any page that renders these links, however it renders them: mark an anchor
+  // data-comps="bin"|"sold" and it lands in the right window. Modified clicks are left alone, so
+  // ctrl/⌘-click still opens a throwaway tab when that is what you want.
+  TCG.wireCompsWindows = function () {
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[data-comps]') : null;
+      if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button) return;
+      if (TCG.openComps(a.href, a.getAttribute('data-comps'))) e.preventDefault();
+    });
+  };
+
   TCG.openCompsModal = function(){
     if (!_lastComps) return; var a = _lastComps.analysis, ctx = _lastComps.ctx || {}, card = ctx.card || {};
     if (a.fair == null) return; // no priceable cluster — renderCompsPro shows the inline note instead

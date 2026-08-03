@@ -172,6 +172,12 @@
   .modal .kv{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line);}
   .modal .kv:last-of-type{border-bottom:none;}
   .modal .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;}
+  /* The results list. A batch can be sixty rows, so it scrolls inside the box rather than pushing
+     the buttons off the bottom of the screen. */
+  .modal .rlist{max-height:44vh;overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px;}
+  .modal .rrow{display:flex;gap:12px;align-items:baseline;justify-content:space-between;padding:7px 10px;border-bottom:1px solid var(--line);font-size:12.5px;}
+  .modal .rrow:last-child{border-bottom:none;}
+  .modal .rwhy{padding:0 10px 8px;font-size:11.5px;color:var(--red);border-bottom:1px solid var(--line);}
   .result{background:var(--panel2);border:1px solid var(--green);border-radius:10px;padding:14px;margin-top:12px;font-size:13px;}
   .result a{color:var(--green);font-weight:700;word-break:break-all;}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#0c1430;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99;}
@@ -462,21 +468,9 @@ function setCodes() { return new Set(SETS.map((s) => s.code).filter(Boolean)); }
 // mode renders it as a tick list. That is why the box break costs no extra fetch.
 // ---------------------------------------------------------------------------
 
-// Only the fields rowFor()/publishBodyFor() actually need. The raw pokemontcg.io payload for a
-// big set is 1–2 MB, against a ~5 MB origin quota already shared with the set list.
-function trimCard(c) {
-  const p = (c.tcgplayer && c.tcgplayer.prices) || null;
-  let prices = null;
-  if (p) { prices = {}; for (const k of Object.keys(p)) { const v = p[k] || {}; prices[k] = { market: v.market ?? null, mid: v.mid ?? null, low: v.low ?? null }; } }
-  return {
-    id: c.id, name: c.name, number: c.number, rarity: c.rarity || '', artist: c.artist || '',
-    supertype: c.supertype || '', subtypes: c.subtypes || [], types: c.types || [], hp: c.hp != null ? String(c.hp) : '',
-    nationalPokedexNumbers: c.nationalPokedexNumbers || [], regulationMark: c.regulationMark || '', evolvesFrom: c.evolvesFrom || '',
-    images: { small: (c.images && c.images.small) || '', large: (c.images && c.images.large) || '' },
-    set: c.set ? { id: c.set.id, name: c.set.name, series: c.set.series || '', ptcgoCode: c.set.ptcgoCode || '', releaseDate: c.set.releaseDate || '', printedTotal: c.set.printedTotal ?? null } : {},
-    tcgplayer: prices ? { prices } : null,
-  };
-}
+// The cards arrive already trimmed to the fields rowFor()/publishBodyFor() need — lib/pkm-cards-
+// cache.mjs does it server-side, where the raw 1–2 MB payload for a big set can stay on disk instead
+// of crossing the wire into a ~5 MB origin quota already shared with the set list.
 function buildIndex(setMeta, cards) {
   const byNum = new Map(), byName = [];
   for (const c of cards) {
@@ -493,54 +487,74 @@ function cacheIndex(setId, cards) {
     try { for (const k of Object.keys(localStorage)) if (k.startsWith(IDX_KEY) && k !== IDX_KEY + setId) localStorage.removeItem(k); localStorage.setItem(IDX_KEY + setId, JSON.stringify({ v: 1, at: Date.now(), cards })); } catch (e2) {}
   }
 }
-async function loadSetIndex(setMeta) {
+// A set's cards, from the nearest copy that exists. A released set's card list never changes, so
+// nothing here re-fetches on its own: memory, then this browser's own copy, then the server's
+// (/api/pkm/set/:id/cards, which keeps its own copy on disk forever). Only ↻ goes upstream.
+//
+// This used to page pokemontcg.io directly on every single set pick — even when localStorage already
+// held the set, which meant the cached copy shortened the wait without ever avoiding it.
+async function loadSetIndex(setMeta, { refresh = false } = {}) {
   const setId = setMeta.value;
-  if (INDEX.has(setId)) return INDEX.get(setId);
-  // Cache first, so a repeat pile works even with pokemontcg.io down (GR7).
+  if (INDEX.has(setId) && !refresh) return INDEX.get(setId);
+  if (!refresh) {
+    try {
+      const c = JSON.parse(localStorage.getItem(IDX_KEY + setId) || 'null');
+      if (c && Array.isArray(c.cards) && c.cards.length) {
+        const ix = buildIndex(setMeta, c.cards); INDEX.set(setId, ix); refreshIdxNote();
+        setCacheAge(setId, c.at || 0);
+        return ix;                       // no network at all — this is the whole point
+      }
+    } catch (e) {}
+  }
+  const act = TCG.activity ? TCG.activity((refresh ? 'Refreshing ' : 'Loading ') + setMeta.label) : null;
   try {
-    const c = JSON.parse(localStorage.getItem(IDX_KEY + setId) || 'null');
-    if (c && Array.isArray(c.cards) && c.cards.length) { const ix = buildIndex(setMeta, c.cards); INDEX.set(setId, ix); refreshIdxNote(); }
-  } catch (e) {}
-  const act = TCG.activity ? TCG.activity('Loading ' + setMeta.label) : null;
-  try {
-    // PAGED, because one request truncates any set over 250 cards — lib/enumerate.mjs:75 loops for
-    // exactly this reason and Paldea Evolved (279) would silently lose its last 29 cards.
-    let page = 1, all = [], total = Infinity;
-    while (all.length < total && page <= 20) {
-      const r = await TCG.fetchJson('/api/pkm/cards?q=' + encodeURIComponent('set.id:' + setId) + '&pageSize=250&page=' + page + '&orderBy=number',
-        { onRetry: (n) => act && act.update('retry ' + n) });
-      if (!r.ok) throw new Error('http ' + r.status);
-      const j = await r.json();
-      const batch = (j.data || []).map(trimCard);
-      if (!batch.length) break;
-      all = all.concat(batch);
-      total = typeof j.totalCount === 'number' ? j.totalCount : all.length;
-      act && act.update(all.length + (isFinite(total) ? ' / ' + total : '') + ' cards');
-      page++;
-    }
+    // ONE request: the server does the paging (a set over 250 cards needs several) and answers from
+    // its own disk copy unless we ask it not to.
+    const r = await TCG.fetchJson('/api/pkm/set/' + encodeURIComponent(setId) + '/cards' + (refresh ? '?refresh=1' : ''),
+      { onRetry: (n) => act && act.update('retry ' + n) });
+    if (!r.ok) throw new Error('http ' + r.status);
+    const j = await r.json();
+    const all = Array.isArray(j.cards) ? j.cards : [];
     if (!all.length) throw new Error('no cards returned');
     const ix = buildIndex(setMeta, all);
-    INDEX.set(setId, ix); cacheIndex(setId, all);
+    INDEX.set(setId, ix); cacheIndex(setId, all); setCacheAge(setId, Date.parse(j.cachedAt) || Date.now());
     act && act.done(all.length + ' cards');
+    // The server saying "stale" means it could not reach pokemontcg.io and served its own copy —
+    // worth saying out loud on a refresh, since the operator asked for new data and did not get it.
+    if (j.stale) stat($('setStatus'), 'warn', 'pokemontcg.io is not answering — this is the stored copy of ' + esc(setMeta.label) + '.');
+    else if (j.partial) stat($('setStatus'), 'warn', 'pokemontcg.io returned only part of this set. Try ↻ again in a minute.');
     return ix;
   } catch (e) {
     act && act.fail('source down');
-    if (INDEX.has(setId)) { stat($('setStatus'), 'warn', 'Using the cached copy of this set — pokemontcg.io is not answering.'); return INDEX.get(setId); }
+    if (INDEX.has(setId)) { stat($('setStatus'), 'warn', 'Keeping the copy of this set already loaded — the refresh did not get through.'); return INDEX.get(setId); }
     stat($('setStatus'), 'err', 'Could not load this set: ' + esc(String(e && e.message || e)) + ' — try again.');
     return null;
   } finally { refreshIdxNote(); }
+}
+// When each loaded set's copy was taken, so the status line can say how old it is. Nothing expires;
+// the age is there to make ↻ an informed choice rather than a superstition.
+const SET_AGE = new Map();
+function setCacheAge(setId, at) { if (at) SET_AGE.set(setId, at); }
+function cacheAgeNote(setId) {
+  const at = SET_AGE.get(setId); if (!at) return '';
+  const days = Math.floor((Date.now() - at) / 86400000);
+  return days < 1 ? ' · copied today' : days === 1 ? ' · copy is a day old' : ' · copy is ' + days + ' days old';
 }
 function refreshIdxNote() {
   const n = INDEX.size;
   $('idxNote').textContent = n ? (n + ' set' + (n > 1 ? 's' : '') + ' loaded · ' + [...INDEX.values()].reduce((a, ix) => a + ix.cards.length, 0) + ' cards in memory') : '';
   $('residentNote').innerHTML = n > 1 ? 'Loaded: ' + [...INDEX.values()].map((ix) => '<b class="mono">' + esc((ix.set.code || ix.set.value)) + '</b>').join(' · ') + '<br>Type a set code in the card box to switch without leaving the keyboard.' : '';
 }
-async function selectSet(s) {
+async function selectSet(s, { refresh = false } = {}) {
   setObj = s; $('setCode').value = s.label;
-  stat($('setStatus'), 'load', 'Loading ' + esc(s.label) + '…');
-  const ix = await loadSetIndex(s);
+  stat($('setStatus'), 'load', (refresh ? 'Refreshing ' : 'Loading ') + esc(s.label) + '…');
+  const ix = await loadSetIndex(s, { refresh });
   if (!ix) return;
-  stat($('setStatus'), 'ok', ix.cards.length + ' cards ready — no lookup delay from here.');
+  // The ↻ is the only thing in the tool that goes to pokemontcg.io for a set, so it says what it is
+  // for: a set that gained cards after release (they trickle in for a few weeks) is the case.
+  stat($('setStatus'), 'ok', ix.cards.length + ' cards ready — no lookup delay from here.' + esc(cacheAgeNote(s.value))
+    + ' <button class="btn sm" id="setRefresh" title="Fetch this set from pokemontcg.io again. Worth doing for a set released in the last few weeks, which can still be gaining cards.">↻ refresh</button>');
+  const rb = $('setRefresh'); if (rb) rb.addEventListener('click', () => selectSet(s, { refresh: true }));
   $('catch').disabled = false; renderGhost(); focusCatch();
   if (mode === 'set') renderTickList();
 }
@@ -873,8 +887,8 @@ function patchRow(r) {
   // What it is selling for now, and what it actually sold for — both Australian sellers only. The
   // pair stays on the row after it lists, because the first thing you want after listing a card is
   // to see where you landed against the ones you are competing with.
-  const comps = '<a class="linkbtn" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, Australian sellers only, cheapest first" href="' + esc(searchUrl(q)) + '">BIN</a>'
-    + ' <a class="linkbtn" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU, Australian sellers only" href="' + esc(searchUrl(q, { sold: true })) + '">sold</a>';
+  const comps = '<a class="linkbtn" data-comps="bin" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, Australian sellers only, cheapest first — opens in the BIN window and reuses it" href="' + esc(searchUrl(q)) + '">BIN</a>'
+    + ' <a class="linkbtn" data-comps="sold" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU, Australian sellers only — opens in the Sold window and reuses it" href="' + esc(searchUrl(q, { sold: true })) + '">sold</a>';
   let acts = comps;
   if (st === 'CHECK') acts += ' <button class="btn sm rel" title="Approve this row for publishing">OK</button>';
   if (st === 'HELD') acts += ' <button class="btn sm open" title="Open in the single uploader, where you can add real photos">open</button>';
@@ -947,8 +961,8 @@ function drawerHtml(r) {
   const chosen = r.storeOverride || null;
   return '<div class="d-grid">'
     + '<div><h5>Comps query (as the server ran it)</h5><div class="q">' + esc(q || '—') + '</div>'
-      + (q ? '<div class="chips"><a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(searchUrl(q)) + '">Active BIN ↗</a>'
-             + '<a class="btn sm" target="_blank" rel="noopener" title="Australian sellers only" href="' + esc(searchUrl(q, { sold: true })) + '">Sold ↗</a></div>' : '')
+      + (q ? '<div class="chips"><a class="btn sm" data-comps="bin" target="_blank" rel="noopener" title="Australian sellers only — opens in the BIN window and reuses it" href="' + esc(searchUrl(q)) + '">Active BIN ↗</a>'
+             + '<a class="btn sm" data-comps="sold" target="_blank" rel="noopener" title="Australian sellers only — opens in the Sold window and reuses it" href="' + esc(searchUrl(q, { sold: true })) + '">Sold ↗</a></div>' : '')
       + '</div>'
     + '<div><h5>Set the ask</h5>'
       + '<div class="chips">'
@@ -1159,13 +1173,20 @@ $('qBody').addEventListener('click', (e) => {
 $('hdrChk').addEventListener('change', () => { const on = $('hdrChk').checked; for (const r of QUEUE) if (rowTickable(r)) r.inc = on; refresh(); });
 $('selReady').addEventListener('click', () => { for (const r of QUEUE) r.inc = rowTickable(r); refresh(); });
 $('selNone').addEventListener('click', () => { for (const r of QUEUE) r.inc = false; refresh(); });
+// Empty the grid. The queue is a worksheet, not a record — anything that listed is on eBay and in
+// inventory either way — so this only ever costs unfinished work.
+function clearQueue() {
+  QUEUE = []; ROWEL.clear(); cursor = -1;
+  $('qBody').innerHTML = '<tr><td colspan="14"><div class="empty">Nothing queued yet — pick a set and start typing numbers.</div></td></tr>';
+  refresh(); focusCatch();
+}
+// The toolbar button asks first, because from there you cannot see what you are about to lose. The
+// results modal's own clear button does not: it is showing you exactly that, row by row.
 $('clearQ').addEventListener('click', () => {
   if (!QUEUE.length) return;
   const live = QUEUE.filter((r) => r.published).length;
   if (!confirm('Clear all ' + QUEUE.length + ' rows from the queue?' + (live ? '\n\n' + live + ' already published — clearing the queue does not touch the live listings.' : ''))) return;
-  QUEUE = []; ROWEL.clear(); cursor = -1;
-  $('qBody').innerHTML = '<tr><td colspan="14"><div class="empty">Nothing queued yet — pick a set and start typing numbers.</div></td></tr>';
-  refresh(); focusCatch();
+  clearQueue();
 });
 
 // Sortable headers (the listings.html idiom).
@@ -1811,6 +1832,48 @@ async function consumeJob(resp, rows) {
     + (failures.length ? '<br><span class="muted">Held: ' + failures.map((f) => esc(f.card.name) + ' — ' + esc(f.failed)).join('<br>') + '</span>' : '') + '</div>'
     + (failures.length ? failureDetail(failures.find((f) => f.lastFailure) ? failures.find((f) => f.lastFailure).lastFailure : null) : '');
   refresh();
+  batchResults(rows, s);
+}
+
+// The receipt for a run. Everything here is in the grid already, but "what went live, and what did
+// not" is THE question at the end of a batch, and hunting it row by row down sixty rows is not an
+// answer. Each listed row carries the two things worth having: the shelf label, which goes on the
+// sleeve as you pack, and a link to the listing, to check it looks the way you meant.
+function batchResults(rows, s) {
+  if (!rows || !rows.length) return;
+  const listed = rows.filter((r) => r.published && r.listingUrl);
+  const already = rows.filter((r) => r.published && !r.listingUrl);      // server skipped: already live
+  const held = rows.filter((r) => r.failed);
+  const line = (r, right) => '<div class="rrow"><span style="min-width:0;">'
+    + (r.sku ? '<span class="mono" style="color:var(--gold)">' + esc(r.sku) + '</span> ' : '')
+    + esc(r.card.name) + ' <span class="muted">' + esc(TCG.formatCardNumber(r.card.number, r.card.set || {}, { source: 'ptcg', rarity: r.card.rarity }) || '') + '</span>'
+    + (r.qty > 1 ? ' <span class="muted">×' + r.qty + '</span>' : '')
+    + '</span>' + right + '</div>';
+
+  const body = listed.map((r) => line(r, '<span style="white-space:nowrap;">' + money(r.askAud)
+      + ' <a class="linkbtn" target="_blank" rel="noopener" href="' + esc(r.listingUrl) + '">view ↗</a></span>')).join('')
+    + already.map((r) => line(r, '<span class="muted" style="white-space:nowrap;">already live</span>')).join('')
+    + held.map((r) => line(r, '<span style="color:var(--red);white-space:nowrap;">held</span>')
+        + '<div class="rwhy">' + esc(r.failed) + '</div>').join('');
+
+  // Which button is the safe one depends on what happened. With nothing left to finish, clearing is
+  // simply the next thing you do; with rows still to fix, clearing throws that work away, so the
+  // quiet button takes the emphasis and the loud one says exactly what it costs. The count is the
+  // whole QUEUE, not this run — clearing takes rows added while the batch was going out too.
+  const unfinished = QUEUE.filter((r) => !r.published).length;
+  const risky = unfinished > 0;
+  modal('<h4>' + (s && s.cancelled ? 'Batch stopped' : 'Batch finished') + '</h4>'
+    + '<div class="kv"><span>Listed on eBay</span><span class="mono">' + listed.length + ' of ' + rows.length + '</span></div>'
+    + (already.length ? '<div class="kv"><span>Already live, left alone</span><span class="mono">' + already.length + '</span></div>' : '')
+    + (held.length ? '<div class="kv"><span style="color:var(--red)">Held</span><span class="mono">' + held.length + '</span></div>' : '')
+    + (listed.length ? '<div class="kv"><span>Value listed</span><span class="mono">' + money(listed.reduce((a, r) => a + (r.askAud || 0) * r.qty, 0)) + '</span></div>' : '')
+    + '<div class="rlist">' + (body || '<div class="rrow"><span class="muted">Nothing was sent.</span></div>') + '</div>'
+    + (risky ? '<p class="muted" style="margin-top:10px;"><b>' + unfinished + '</b> row' + (unfinished === 1 ? ' has' : 's have') + ' not listed. Clearing drops '
+        + (unfinished === 1 ? 'it' : 'them') + ' — fix and press Publish again instead if you want them. Either way the cards themselves are untouched, and a re-run never double-lists.</p>' : '')
+    + '<div class="acts"><button class="btn' + (risky ? ' primary' : '') + '" id="mClose">Close</button>'
+    + '<button class="btn' + (risky ? '' : ' primary') + '" id="mClear">Close and clear ' + QUEUE.length + ' row' + (QUEUE.length === 1 ? '' : 's') + '</button></div>');
+  $('mClose').addEventListener('click', closeModal);
+  $('mClear').addEventListener('click', () => { closeModal(); clearQueue(); });
 }
 // Verbatim in spirit from stock-uploader.html showFailureDetail: a bare red line is not enough to
 // act on — the HTTP status says whose fault it is, and the rlogid is the only id eBay can trace.
@@ -1895,6 +1958,10 @@ window.addEventListener('beforeunload', (e) => {
 // Boot
 // ---------------------------------------------------------------------------
 (async function () {
+  // BIN and Sold go to two windows that get reused card after card, so a pile can be worked with the
+  // comps parked on a second screen. Wired before anything renders — the grid's links are HTML
+  // strings, and this listens on the document rather than on each row.
+  if (window.TCG && TCG.wireCompsWindows) TCG.wireCompsWindows();
   if (window.TCG && TCG.loadFx) await TCG.loadFx();
   await loadSets();
   await checkAccount();

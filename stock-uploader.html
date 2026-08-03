@@ -157,8 +157,8 @@
         <div class="comps" id="compsLine">fetching eBay AU comps…</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
           <button class="ghost" onclick="loadPrice()">↻ Re-check comps</button>
-          <a class="ghost" id="ebayActive" href="#" target="_blank" rel="noopener">Active BIN ↗</a>
-          <a class="ghost" id="ebaySold" href="#" target="_blank" rel="noopener">Sold ↗</a>
+          <a class="ghost" id="ebayActive" data-comps="bin" href="#" target="_blank" rel="noopener">Active BIN ↗</a>
+          <a class="ghost" id="ebaySold" data-comps="sold" href="#" target="_blank" rel="noopener">Sold ↗</a>
         </div>
       </div>
 
@@ -658,8 +658,8 @@ function syncEbayLinks(){
   if(!a||!s) return;
   const url=window.TCG&&TCG.ebaySearchUrl, on=!!(q&&url);
   a.href=on?url(q,false):'#'; s.href=on?url(q,true):'#';
-  a.title=on?'Active Buy It Now on eBay AU, Australian sellers only, cheapest first — "'+q+'"':'';
-  s.title=on?'Sold in the last 90 days on eBay AU, Australian sellers only, most recent first — "'+q+'"':'';
+  a.title=on?'Active Buy It Now on eBay AU, Australian sellers only, cheapest first — opens in the BIN window and reuses it — "'+q+'"':'';
+  s.title=on?'Sold in the last 90 days on eBay AU, Australian sellers only, most recent first — opens in the Sold window and reuses it — "'+q+'"':'';
   a.style.opacity=s.style.opacity=on?'':'.5';
 }
 function setPrice(v){ $('price').value=(Math.round(v*100)/100).toFixed(2); refreshSummary(); }
@@ -964,6 +964,9 @@ async function applyDeepLink(){
 }
 
 // ---- boot ----
+// Same two reused comps windows as the batch runner — the pair is shared by name, so a card checked
+// here repaints the windows a card checked there opened.
+if(window.TCG&&TCG.wireCompsWindows) TCG.wireCompsWindows();
 (async function(){ await loadSets(); await checkAccount(); if(window.TCG&&TCG.loadFx) TCG.loadFx(); await applyDeepLink(); })();
 </script>
 
