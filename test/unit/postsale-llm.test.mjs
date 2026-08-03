@@ -288,6 +288,37 @@ describe('followUpSystemPrompt', () => {
     assert.match(s, /rating on eBay helps a small store/);
     assert.match(s, /Do not beg, do not offer/);
   });
+
+  // The parcel is sealed. Anything about bundles or combining items is an offer we cannot honour, and
+  // it reads as careless to someone who has already paid.
+  it('forbids bundles and adding to the order, on both follow-ups', () => {
+    for (const kind of ['dispatch', 'delivered']) {
+      const s = followUpSystemPrompt({}, kind);
+      assert.match(s, /NOTHING can be added to it now/, kind);
+      assert.match(s, /never\s+mention bundles, combining items, adding to the order/, kind);
+    }
+  });
+
+  it('still invites a FUTURE offer on the dispatch note, because repeat business is the point', () => {
+    const s = followUpSystemPrompt({}, 'dispatch');
+    assert.match(s, /inviting them to send an offer NEXT time/);
+    assert.match(s, /clearly about a future order, never about this one/);
+    assert.doesNotMatch(followUpSystemPrompt({ invite_offers: false }, 'dispatch'), /send an offer NEXT time/);
+  });
+
+  it('does not leak style_notes into a follow-up, but does carry brand_voice', () => {
+    // style_notes is content guidance for the THANK-YOU ("give the ship timing, invite bundle deals").
+    // Both are wrong once the parcel has gone; the shipped config really does say exactly that.
+    const cfg = { brand_voice: 'warm aussie store owner', style_notes: 'invite bundle deals or offers, give the ship timing' };
+    for (const kind of ['dispatch', 'delivered']) {
+      const s = followUpSystemPrompt(cfg, kind);
+      assert.doesNotMatch(s, /invite bundle deals/, kind);
+      assert.doesNotMatch(s, /give the ship timing/, kind);
+      assert.match(s, /warm aussie store owner/, kind);
+    }
+    // …and the thank-you, where it belongs, still gets it.
+    assert.match(systemPrompt(cfg), /invite bundle deals/);
+  });
 });
 
 describe('buildFollowUpContext', () => {
@@ -324,6 +355,23 @@ describe('fallbackFollowUp', () => {
   it('dispatch: says nothing about tracking when there is none', () => {
     const d = fallbackFollowUp({ order, items, postage: {}, cfg: {} });
     assert.doesNotMatch(d.body, /tracking/i);
+  });
+
+  it('dispatch: invites a future offer, and never a bundle on a parcel already sealed', () => {
+    const d = fallbackFollowUp({ order, items, postage: { label: 'Express Post', tracking: '36LB1' }, cfg: {} });
+    assert.match(d.body, /Next time there's something you're after, send an offer through/);
+    assert.doesNotMatch(d.body, /bundle|combin|add(ing)? to (your|this) order|anything else you'?re after/i);
+    // …and it reads as its own thought, not tacked onto the tracking line.
+    assert.match(d.body, /order page too\.\n\nNext time/);
+  });
+
+  it('dispatch: the offer line follows invite_offers', () => {
+    assert.doesNotMatch(fallbackFollowUp({ order, items, postage: {}, cfg: { invite_offers: false } }).body, /send an offer/);
+  });
+
+  it('delivered: no sales ask beyond the rating nudge', () => {
+    const d = fallbackFollowUp({ order, items, kind: 'delivered', cfg: {} });
+    assert.doesNotMatch(d.body, /bundle|send an offer/i);
   });
 
   it('delivered: checks in and nudges once, gently', () => {
