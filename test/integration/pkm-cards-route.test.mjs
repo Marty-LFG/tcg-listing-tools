@@ -11,23 +11,23 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { pkmCardsPlugin, readSetCache } from '../../lib/pkm-cards-cache.mjs';
-
-const DIR = path.resolve('data', 'pkm-cards');
+// A throwaway cache folder, set before the module is imported. Stubbed cards must never reach the
+// real one: it does not expire, so anything written there stays written.
+const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-cards-route-'));
+process.env.PKM_CARDS_CACHE_DIR = DIR;
+const { pkmCardsPlugin, readSetCache } = await import('../../lib/pkm-cards-cache.mjs');
 const IDS = ['zzzroute1', 'zzzroute2', 'zzzroute3', 'zzzroute4', 'zzzroute5'];
 const realFetch = globalThis.fetch;
 
-// The middleware, pulled out of the plugin the same way Vite would install it.
-function handlerOf() {
-  let fn = null;
-  pkmCardsPlugin({ POKEMONTCG_API_KEY: 'test-key' }).configureServer({ middlewares: { use: (_p, h) => { fn = h; } } });
-  return fn;
-}
-const handler = handlerOf();
+// The middlewares, pulled out of the plugin the same way Vite would install them — keyed by mount
+// path, because the plugin registers two: the set list and the single-card stand-in.
+const MW = {};
+pkmCardsPlugin({ POKEMONTCG_API_KEY: 'test-key' }).configureServer({ middlewares: { use: (p, h) => { MW[p] = h; } } });
 
-// A request through the mounted middleware: connect strips the mount path, so url is /:id/cards.
-function call(url) {
+// A request through a mounted middleware: connect strips the mount path, so the url is what is left.
+function through(mount, url) {
   return new Promise((resolve) => {
     const chunks = [];
     const res = {
@@ -35,9 +35,11 @@ function call(url) {
       setHeader(k, v) { this.headers[k.toLowerCase()] = v; },
       end(body) { chunks.push(body); resolve({ status: this.statusCode, headers: this.headers, json: JSON.parse(chunks.join('') || 'null') }); },
     };
-    handler({ method: 'GET', url }, res, () => resolve({ status: 'next', headers: {}, json: null }));
+    MW[mount]({ method: 'GET', url }, res, () => resolve({ status: 'next', headers: {}, json: null }));
   });
 }
+const call = (url) => through('/api/pkm/set', url);
+const callCard = (url) => through('/api/pkm/cards', url);
 
 const card = (setId, n) => ({
   id: setId + '-' + n, name: 'Card ' + n, number: String(n), rarity: 'Common', hp: 60,
@@ -65,7 +67,7 @@ function stubUpstream(setId, total, { fail = false, keyed = [] } = {}) {
 
 const clean = () => { for (const id of IDS) { try { fs.unlinkSync(path.join(DIR, id + '.json')); } catch {} } };
 before(clean);
-after(() => { globalThis.fetch = realFetch; clean(); });
+after(() => { globalThis.fetch = realFetch; try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });
 beforeEach(clean);
 
 describe('GET /api/pkm/set/:id/cards', () => {
@@ -160,5 +162,42 @@ describe('GET /api/pkm/set/:id/cards', () => {
     for (const url of ['/zzzroute1/cards/extra', '/zzzroute1', '/']) {
       assert.equal((await call(url)).status, 'next', url + ' should not be claimed');
     }
+  });
+});
+
+// Every single-card lookup in the suite goes through /api/pkm/cards/:id first (extras.js
+// pkmLookupCard, shared by the builder, the uploader and the grader). Listing thirty cards out of
+// one set was thirty round trips to pokemontcg.io for cards already in a file on this machine.
+describe('GET /api/pkm/cards/:id — answered from the set we already hold', () => {
+  it('serves a card out of the cached set, shaped like pokemontcg.io', async () => {
+    stubUpstream('zzzroute1', 10);
+    await call('/zzzroute1/cards');                       // the set is now on disk
+    const calls = stubUpstream('zzzroute1', 10);          // fresh counter
+    const r = await callCard('/zzzroute1-7');
+    assert.equal(calls.length, 0, 'no upstream call for a card we already have');
+    assert.equal(r.status, 200);
+    assert.equal(r.headers['x-tcg-cache'], 'disk');
+    assert.equal(r.json.data.id, 'zzzroute1-7', 'the callers read j.data');
+    assert.ok(r.json.data.attacks, 'RAW, because this stands in for the upstream response');
+  });
+
+  it('falls through to the proxy for a set we do not hold', async () => {
+    assert.equal((await callCard('/zzznothing-1')).status, 'next');
+  });
+
+  it('falls through for a card that is not in the set we hold', async () => {
+    stubUpstream('zzzroute2', 5);
+    await call('/zzzroute2/cards');
+    assert.equal((await callCard('/zzzroute2-999')).status, 'next', 'never invent a 404 of our own');
+  });
+
+  it('leaves search queries and anything deeper to the proxy', async () => {
+    for (const url of ['/', '/zzzroute1-1/extra']) {
+      assert.equal((await callCard(url)).status, 'next', url);
+    }
+  });
+
+  it('a card id that could escape the cache directory falls through', async () => {
+    assert.equal((await callCard('/..%2F..%2Fetc-1')).status, 'next');
   });
 });

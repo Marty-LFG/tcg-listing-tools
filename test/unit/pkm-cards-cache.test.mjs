@@ -10,8 +10,13 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { isSetId, trimCard, isCompleteSet, decideCardsResponse, readSetCache, writeSetCache } from '../../lib/pkm-cards-cache.mjs';
+// A throwaway cache folder, set before the module is imported: this cache never expires, so a test
+// fixture written into the real one would still be there next month.
+const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-cards-unit-'));
+process.env.PKM_CARDS_CACHE_DIR = DIR;
+const { isSetId, trimCard, isCompleteSet, decideCardsResponse, readSetCache, writeSetCache } = await import('../../lib/pkm-cards-cache.mjs');
 
 const NOW = '2026-08-03T00:00:00.000Z';
 const card = (n) => ({
@@ -116,10 +121,10 @@ describe('decideCardsResponse', () => {
 });
 
 describe('the disk cache round trip', () => {
-  const DIR = path.resolve('data', 'pkm-cards');
   const ids = ['zzztest1', 'zzztest2'];
   const clean = () => { for (const id of ids) { try { fs.unlinkSync(path.join(DIR, id + '.json')); } catch {} } };
-  before(clean); after(clean); beforeEach(clean);
+  before(clean); beforeEach(clean);
+  after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });
 
   it('writes and reads back the RAW cards', () => {
     assert.equal(writeSetCache('zzztest1', NOW, [card(1), card(2)]), true);

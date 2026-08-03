@@ -5,7 +5,17 @@
 // 1st Edition vintage keys; (3) a failing page degrades to partial rows +
 // warnings, never a throw (GR7).
 // Run: node --disable-warning=ExperimentalWarning scripts/check-enumerate.mjs
-import { ENUMERATORS, rarityFilterClass } from '../lib/enumerate.mjs';
+//
+// The Pokémon enumerator reads lib/pkm-cards-cache.mjs now instead of paging pokemontcg.io itself,
+// so this points that cache at a throwaway folder before importing anything. Without it the stubbed
+// Charizard below would be written into the real cache as the whole of base1 — and that cache never
+// expires, so it would still be there next month.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-enum-check-'));
+process.env.PKM_CARDS_CACHE_DIR = TMP;
+const { ENUMERATORS, rarityFilterClass } = await import('../lib/enumerate.mjs');
 
 let failures = 0;
 function assert(label, cond, detail) {
@@ -30,17 +40,22 @@ const PAGE1 = {
   ],
 };
 
+// text(), because the cache reads the body as text and parses it itself (an HTML error page dressed
+// as a 200 is a thing pokemontcg.io does, and JSON.parse is where that gets caught).
 function stubFetch(behaviour) {
   return async (url) => {
-    if (behaviour === 'fail-page' ) return { ok: false, status: 500 };
-    return { ok: true, status: 200, json: async () => PAGE1 };
+    if (behaviour === 'fail-page') return { ok: false, status: 500, text: async () => 'upstream is unwell' };
+    return { ok: true, status: 200, text: async () => JSON.stringify(PAGE1) };
   };
 }
 
 async function run(behaviour, filters) {
   const rows = [], warnings = [];
   globalThis.fetch = stubFetch(behaviour);
-  for await (const out of ENUMERATORS.pokemon({ base: 'http://stub', setId: 'base1', filters })) {
+  // A fresh cache per run: these checks are about what the ENUMERATOR does with the cards, so each
+  // one starts cold rather than reading what the previous check happened to store.
+  try { fs.rmSync(path.join(TMP, 'base1.json')); } catch {}
+  for await (const out of ENUMERATORS.pokemon({ base: 'http://stub', env: {}, setId: 'base1', filters })) {
     if (out.warning) warnings.push(out.warning);
     if (out.row) rows.push(out.row);
   }
@@ -76,6 +91,7 @@ try {
   assert('failed page → zero rows + warning, no throw', d.rows.length === 0 && d.warnings.length === 1, JSON.stringify(d.warnings));
 } finally {
   globalThis.fetch = realFetch;
+  try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
 }
 
 console.log(failures ? '\n' + failures + ' FAILURE(S)' : '\nALL ENUMERATE CHECKS PASSED');
