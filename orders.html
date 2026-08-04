@@ -33,7 +33,20 @@
   .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--faint);}
   .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.55);} .dot.warn{background:var(--amber);} .dot.err{background:var(--red);} .dot.info{background:var(--blue);}
   .banner b{color:var(--text);font-weight:600;}
-  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  /* Two deliberate rows rather than one ragged wrap: what you're LOOKING AT, then what you PRINT.
+     The controls sorted themselves into those two groups anyway — the toolbar just never said so. */
+  .toolbar{display:flex;flex-direction:column;gap:9px;margin-bottom:14px;}
+  .trow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .trow+.trow{padding-top:9px;border-top:1px solid var(--line);}
+  /* The three print actions are one object, not three: a segmented pill, primary segment filled.
+     Eleven peers at identical weight is what made this row unreadable, not the pixel count. */
+  .group{display:inline-flex;align-items:center;border:1px solid var(--line2);border-radius:10px;background:var(--panel);box-shadow:var(--shadow);}
+  .group .btn{border:0;border-radius:0;background:transparent;}
+  .group .btn:first-child{border-radius:9px 0 0 9px;}
+  .group .btn:last-child{border-radius:0 9px 9px 0;}
+  .group .btn+.btn{border-left:1px solid var(--line);}
+  .group .btn:hover{background:rgba(67,214,160,.09);color:var(--accent);}
+  .group .btn.solid:hover{background:var(--accent);color:var(--ink);opacity:.92;}
   .tabs{display:flex;gap:8px;}
   .tab{font-family:var(--mono);font-size:12px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;transition:.15s;}
   .tab:hover{border-color:var(--line2);color:var(--text);}
@@ -166,21 +179,29 @@
   <div class="banner" id="banner"><span class="chip">loading…</span></div>
 
   <div class="toolbar">
-    <div class="tabs" id="tabs">
-      <div class="tab active" data-tab="unshipped">To pack <span class="n" id="n_unshipped"></span></div>
-      <div class="tab" data-tab="upgrades" title="Orders where the buyer paid for something better than a plain letter">Upgrades <span class="n" id="n_upgrades"></span></div>
-      <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
+    <div class="trow">
+      <div class="tabs" id="tabs">
+        <div class="tab active" data-tab="unshipped">To pack <span class="n" id="n_unshipped"></span></div>
+        <div class="tab" data-tab="upgrades" title="Orders where the buyer paid for something better than a plain letter">Upgrades <span class="n" id="n_upgrades"></span></div>
+        <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
+      </div>
+      <div class="spacer"></div>
+      <span class="chk" title="Orders already pulled off the shelf and packed — they still need posting, they're just off the pull list"><input type="checkbox" id="hidePickedChk"> <span id="hidePickedLbl">Hide picked</span></span>
     </div>
-    <span class="chk" title="Show a preview before sending to the printer"><input type="checkbox" id="previewChk"> Preview first</span>
-    <span class="chk" title="Orders already pulled off the shelf and packed — they still need posting, they're just off the pull list"><input type="checkbox" id="hidePickedChk"> <span id="hidePickedLbl">Hide picked</span></span>
-    <div class="spacer"></div>
-    <span class="stepper" title="Darkness (TSPL DENSITY)">Dark <button class="s" id="densDn">&minus;</button><span class="v" id="densV">–</span><button class="s" id="densUp">+</button></span>
-    <span class="stepper" title="Print speed (TSPL SPEED)">Spd <button class="s" id="spdDn">&minus;</button><span class="v" id="spdV">–</span><button class="s" id="spdUp">+</button></span>
-    <button class="btn solid" id="pickBtn">🖨 Pick sheet</button>
-    <button class="btn" id="slipsBtn" title="Every ticked order's packing slip in one document, one slip per page. A buyer with several orders to the same address gets a single combined slip.">🧾 Slips</button>
-    <button class="btn" id="labelsBtn" title="Every ticked order's address label in one run to the AUSPRINT, one label per parcel. Tracked and Express orders are skipped — those travel on an eBay-bought Australia Post label.">📮 Labels</button>
-    <button class="btn" id="pickedBtn" title="Mark the ticked orders as pulled + packed — they drop off the pull list but stay here to dispatch">✓ Mark picked</button>
-    <button class="btn" id="refreshBtn" title="Reload orders">↻</button>
+
+    <div class="trow">
+      <span class="chk" title="Show a preview before sending to the printer"><input type="checkbox" id="previewChk"> Preview first</span>
+      <span class="stepper" title="Darkness (TSPL DENSITY)">Dark <button class="s" id="densDn">&minus;</button><span class="v" id="densV">–</span><button class="s" id="densUp">+</button></span>
+      <span class="stepper" title="Print speed (TSPL SPEED)">Spd <button class="s" id="spdDn">&minus;</button><span class="v" id="spdV">–</span><button class="s" id="spdUp">+</button></span>
+      <div class="spacer"></div>
+      <div class="group">
+        <button class="btn solid" id="pickBtn">🖨 Pick sheet</button>
+        <button class="btn" id="slipsBtn" title="Every ticked order's packing slip in one document, one slip per page. A buyer with several orders to the same address gets a single combined slip.">🧾 Slips</button>
+        <button class="btn" id="labelsBtn" title="Every ticked order's address label in one run to the AUSPRINT, one label per parcel. Tracked and Express orders are skipped — those travel on an eBay-bought Australia Post label.">📮 Labels</button>
+      </div>
+      <button class="btn" id="pickedBtn" title="Mark the ticked orders as pulled + packed — they drop off the pull list but stay here to dispatch">✓ Mark picked</button>
+      <button class="btn" id="refreshBtn" title="Reload orders">↻</button>
+    </div>
   </div>
 
   <div class="status load" id="status">&nbsp;</div>
