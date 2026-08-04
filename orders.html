@@ -177,6 +177,8 @@
     <span class="stepper" title="Darkness (TSPL DENSITY)">Dark <button class="s" id="densDn">&minus;</button><span class="v" id="densV">–</span><button class="s" id="densUp">+</button></span>
     <span class="stepper" title="Print speed (TSPL SPEED)">Spd <button class="s" id="spdDn">&minus;</button><span class="v" id="spdV">–</span><button class="s" id="spdUp">+</button></span>
     <button class="btn solid" id="pickBtn">🖨 Pick sheet</button>
+    <button class="btn" id="slipsBtn" title="Every ticked order's packing slip in one document, one slip per page. A buyer with several orders to the same address gets a single combined slip.">🧾 Slips</button>
+    <button class="btn" id="labelsBtn" title="Every ticked order's address label in one run to the AUSPRINT, one label per parcel. Tracked and Express orders are skipped — those travel on an eBay-bought Australia Post label.">📮 Labels</button>
     <button class="btn" id="pickedBtn" title="Mark the ticked orders as pulled + packed — they drop off the pull list but stay here to dispatch">✓ Mark picked</button>
     <button class="btn" id="refreshBtn" title="Reload orders">↻</button>
   </div>
@@ -459,36 +461,45 @@ function labelNudge(){
   if (sy == null && pc.offYmm != null) sy = pc.offYmm;
   return { offXmm: parseFloat(sx) || 0, offYmm: parseFloat(sy) || 0 };
 }
+// The AUSPRINT is a raw 9100 socket and takes one job at a time — there is no queue anywhere on the
+// print path, so two overlapping POSTs mean two sockets and the printer only accepts one. Every route
+// to the printer goes through sendToPrinter, so the guard lives there.
+let BATCH_BUSY = false;
 // Send jobs to the printer (or download PNG when unconfigured). Optionally record label-printed.
+// `orderIds` is one id or many — a batch reaches the printer as ONE job, so it's recorded as one write.
 // printJobs (optional) are the nudged rasters that go to the sticker; `jobs` stays unshifted for
 // the PNG fallback, which is headed for some other printer where our nudge means nothing.
-async function sendToPrinter(jobs, label, orderId, printJobs){
+async function sendToPrinter(jobs, label, orderIds, printJobs, note){
   if (!jobs.length) { setStatus('warn','Nothing to print.'); return; }
+  if (BATCH_BUSY) { setStatus('warn','Still printing — the AUSPRINT takes one job at a time.'); return; }
+  const ids = orderIds == null ? [] : (Array.isArray(orderIds) ? orderIds : [orderIds]);
   if (STATE.printCfg && STATE.printCfg.enabled){
     setStatus('load','Printing '+label+'…');
+    BATCH_BUSY = true; updatePickBtn();
     try {
       const res = await LR.printJobs(printJobs || jobs, printOpts());
       if (res && res.ok){
-        setStatus('ok','Printed '+label+' ('+res.printed+' label'+(res.printed>1?'s':'')+').');
-        if (orderId){ try { await api('/orders/'+encodeURIComponent(orderId)+'/label-printed', { method:'POST' }); } catch(e){} loadAll(); }
+        setStatus('ok','Printed '+label+' ('+res.printed+' label'+(res.printed>1?'s':'')+').'+(note||''));
+        if (ids.length){ try { await api('/orders/label-printed', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ids }) }); } catch(e){} loadAll(); }
       } else { setStatus('err','Print failed: '+((res&&res.message)||'printer error')); }
     } catch(e){ setStatus('err','Print failed (printer offline?): '+e.message); }
+    finally { BATCH_BUSY = false; updatePickBtn(); }
   } else {
     jobs.forEach((j,i)=> LR.downloadJob(j, label.replace(/[^\w]+/g,'-')+(jobs.length>1?('-'+(i+1)):'')+'.png'));
-    setStatus('warn','Printer not configured — downloaded '+label+' as PNG'+(jobs.length>1?'s':'')+'.');
+    setStatus('warn','Printer not configured — downloaded '+label+' as PNG'+(jobs.length>1?'s':'')+'.'+(note||''));
   }
 }
 // Preview modal → confirm-print. When "Preview first" is off, prints straight away.
 // The preview shows `jobs` (unshifted): the nudge cancels out a printer that lays ink down off
 // its origin, so an unshifted preview is what the finished sticker actually looks like.
-function handleJobs(jobs, label, orderId, printJobs){
+function handleJobs(jobs, label, orderIds, printJobs, note){
   if (!jobs.length){ setStatus('warn','Nothing to print.'); return; }
-  if (!$('previewChk').checked){ sendToPrinter(jobs, label, orderId, printJobs); return; }
+  if (!$('previewChk').checked){ sendToPrinter(jobs, label, orderIds, printJobs, note); return; }
   const body = $('pv_body'); body.innerHTML='';
   jobs.forEach(j => body.appendChild(LR.jobToCanvas(j)));
   $('pv_title').textContent = 'Preview · '+label+(jobs.length>1?(' ('+jobs.length+' pages)'):'');
   $('overlay').classList.add('open');
-  $('pv_print').onclick = () => { closePreview(); sendToPrinter(jobs, label, orderId, printJobs); };
+  $('pv_print').onclick = () => { closePreview(); sendToPrinter(jobs, label, orderIds, printJobs, note); };
   $('pv_download').onclick = () => { jobs.forEach((j,i)=>LR.downloadJob(j, label.replace(/[^\w]+/g,'-')+(jobs.length>1?('-'+(i+1)):'')+'.png')); };
 }
 function closePreview(){ $('overlay').classList.remove('open'); }
@@ -504,6 +515,18 @@ function printCombinedSlip(id){
   LR.openPrintDoc(LR.packingSlipHTML(orders), { selfPrint:true });
   setStatus('ok',`Combined packing slip for ${orders.length} orders → print dialog (opens once card images load).`);
 }
+// Every ticked shipment's slip in ONE document, one slip per page — same paper path as a single slip,
+// just stacked. A buyer with two orders still gets one combined sheet, not two.
+function printAllSlips(){
+  const ships = selectedShipments();
+  if (!ships.length){ setStatus('warn','No orders ticked — tick the rows you want packing slips for.'); return; }
+  const orderCount = ships.reduce((s,g)=>s+g.length,0);
+  const combos = ships.filter(g=>g.length>1).length;
+  LR.openPrintDoc(LR.packingSlipBatchHTML(ships), { selfPrint:true });
+  setStatus('ok', `${ships.length} packing slip${ships.length===1?'':'s'} for ${orderCount} order${orderCount===1?'':'s'}`
+    + (combos ? ` (${combos} combined)` : '')
+    + ' → print dialog, one slip per page (opens once the card images load).');
+}
 // Two rasters when a nudge is set: the plain one for the preview and the PNG fallback, and a
 // shifted one for the AUSPRINT. Without this the dashboard printed every address label at offset
 // 0 while shipping-label.html printed the same address at the calibrated offset — same printer,
@@ -514,6 +537,33 @@ function printLabel(id){
   const jobs = [LR.renderAddressLabel(o)];
   const printJobs = (nud.offXmm || nud.offYmm) ? [LR.renderAddressLabel(o, nud)] : jobs;
   handleJobs(jobs, 'address label', id, printJobs);
+}
+// Every ticked shipment's address label in ONE run: one label per parcel, one POST carrying every
+// raster (buildTSPL concatenates them down a single socket). Tracked and Express parcels are skipped
+// and NAMED — they travel on an eBay-bought Australia Post label, so a thermal sticker would be a
+// second address on the same satchel. Skipping them quietly is how you find out at the post office.
+function printAllLabels(){
+  const ships = selectedShipments();
+  if (!ships.length){ setStatus('warn','No orders ticked — tick the rows you want address labels for.'); return; }
+  const skipped = ships.filter(isTrackedShipment);
+  const going = ships.filter(g => !isTrackedShipment(g));
+  const skipNote = skipped.length
+    ? ` · ${skipped.length} tracked parcel${skipped.length===1?'':'s'} skipped — buy those labels on eBay.` : '';
+  if (!going.length){
+    setStatus('warn', 'Nothing to print — every ticked order is going tracked, so its label is bought on eBay.'); return;
+  }
+  // ~116 KB of base64 per 100×50 label at 300 dpi against the 16 MB cap on /api/print. Ask before
+  // building a batch big enough to be a misclick, rather than letting it come back as a 400.
+  if (going.length > 60 && !confirm(`Print ${going.length} address labels in one run?`)) return;
+  // Printer off means one PNG download per label, and twenty downloads at once is nobody's intention.
+  if (!(STATE.printCfg && STATE.printCfg.enabled) && going.length > 5
+      && !confirm(`The printer isn't configured, so this downloads ${going.length} PNGs instead. Continue?`)) return;
+  const nud = labelNudge();
+  const jobs = going.map(g => LR.renderAddressLabel(g[0]));
+  const printJobs = (nud.offXmm || nud.offYmm) ? going.map(g => LR.renderAddressLabel(g[0], nud)) : jobs;
+  // Every order in a printed parcel gets the label recorded, not just the one the address came from.
+  const ids = going.reduce((a,g) => a.concat(g.map(o=>o.order_id)), []);
+  handleJobs(jobs, 'address labels', ids, printJobs, skipNote);
 }
 // Rows on screen: "Hide picked" clears the packed-and-waiting orders out of the way, the Upgrades tab
 // narrows to what the buyer paid extra for, and the pack queue is ordered by eBay's dispatch deadline
@@ -538,10 +588,31 @@ function visibleOrders(){
 function isSelected(o){ return STATE.included.has(o.order_id) || (!STATE.excluded.has(o.order_id) && !o.picked_at); }
 // Order ids ticked for the pick sheet (all displayed orders minus the ones unticked).
 function selectedOrderIds(){ return visibleOrders().filter(isSelected).map(o=>o.order_id); }
+// A SHIPMENT is what physically goes in one satchel: same buyer, same cleaned ship-to (shipGroupKey,
+// the same key the ×2 badge and the combined slip use). Grouped over the TICKED orders only — if you
+// ticked one of a buyer's two, you meant that one parcel, not a combined slip covering an order you
+// deliberately left out. Insertion order follows visibleOrders(), so a batch of slips comes off the
+// printer in the same dispatch-deadline order as the pick sheet.
+function selectedShipments(){
+  const byKey = new Map();
+  visibleOrders().filter(isSelected).forEach(o => {
+    const k = shipGroupKey(o);
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(o);
+  });
+  return [...byKey.values()].map(g => g.slice().sort((a,b)=> String(a.paid_time||'').localeCompare(String(b.paid_time||''))));
+}
+// One tracked order settles it for the whole parcel — it is one satchel and it carries one label.
+function isTrackedShipment(g){ return g.some(o => o.postage && o.postage.tracked); }
 function updatePickBtn(){
   const n=selectedOrderIds().length, total=visibleOrders().length;
   const b=$('pickBtn'); if(b) b.textContent = n && n<total ? `🖨 Pick sheet (${n})` : '🖨 Pick sheet';
   const pb=$('pickedBtn'); if(pb){ pb.textContent = n ? `✓ Mark picked (${n})` : '✓ Mark picked'; pb.disabled = !n; }
+  // These two count PARCELS, not orders, and Labels counts only the parcels that actually get a
+  // sticker — a button promising 7 and printing 5 reads as a bug rather than as the tracked ones.
+  const ships = selectedShipments(), lab = ships.filter(g=>!isTrackedShipment(g)).length;
+  const sb=$('slipsBtn'); if(sb){ sb.textContent = ships.length ? `🧾 Slips (${ships.length})` : '🧾 Slips'; sb.disabled = !ships.length; }
+  const lb=$('labelsBtn'); if(lb){ lb.textContent = lab ? `📮 Labels (${lab})` : '📮 Labels'; lb.disabled = !lab || BATCH_BUSY; }
 }
 function updateSelAll(){ const all=$('selAll'); if(!all) return; const boxes=[...document.querySelectorAll('input.selbox')]; const on=boxes.filter(b=>b.checked).length; all.checked=on===boxes.length; all.indeterminate=on>0&&on<boxes.length; }
 async function printPickSheet(){
@@ -625,6 +696,8 @@ $('panel').addEventListener('click', (e) => {
   const ship = e.target.closest('button[data-ship]'); if (ship) return markShipped(ship.dataset.ship, ship);
 });
 $('pickBtn').addEventListener('click', printPickSheet);
+$('slipsBtn').addEventListener('click', printAllSlips);
+$('labelsBtn').addEventListener('click', printAllLabels);
 $('pickedBtn').addEventListener('click', () => markPicked(selectedOrderIds(), true, $('pickedBtn')));
 $('hidePickedChk').addEventListener('change', () => { STATE.hidePicked = $('hidePickedChk').checked; try{localStorage.setItem('ff_hide_picked', STATE.hidePicked?'1':'');}catch(e){} renderPanel(); });
 $('refreshBtn').addEventListener('click', loadAll);

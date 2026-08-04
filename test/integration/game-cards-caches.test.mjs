@@ -131,6 +131,27 @@ describe('SWU-DB', () => {
     assert.equal(calls.length, 0, 'no background traffic for a copy taken minutes ago');
   });
 
+  // The ↻ beside Look up in every builder. A card cannot be refreshed on its own — the set is the
+  // unit this stores — so the button re-fetches the set behind the card and answers from that.
+  it('?refresh=1 re-fetches the set and answers from the new copy', async () => {
+    stub(3);
+    await callSwu('/' + SET + '/1');
+    const calls = stub(5);                                   // the set gained two cards
+    const r = await callSwu('/' + SET + '/5?refresh=1');
+    assert.equal(calls.length, 1, 'the button actually went and looked');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.Name, 'Card 5', 'a card that did not exist in the stored copy');
+    assert.equal(swu.readSetCache(SET).count, 5, 'and the new copy replaced the old one');
+  });
+
+  it('a normal lookup after a refresh is served from the new copy, not refetched', async () => {
+    stub(3);
+    await callSwu('/' + SET + '/1?refresh=1');
+    const calls = stub(3);
+    assert.equal((await callSwu('/' + SET + '/2')).headers['x-tcg-cache'], 'disk');
+    assert.equal(calls.length, 0);
+  });
+
   // The price tracker records history. A snapshot taken from a stored copy would repeat the last
   // one until the copy changed, so the collector sends the bypass header and every cache steps
   // aside — see lib/set-cache.mjs BYPASS_HEADER and lib/collector.mjs.

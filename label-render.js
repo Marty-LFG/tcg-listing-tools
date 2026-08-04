@@ -454,13 +454,14 @@
       + '</section>';
   }
 
-  // packingSlipHTML(order | [order, order, …]) — a single-order slip, OR a COMBINED slip when passed
-  // several orders for the same buyer (multiple eBay orders shipping together): one ship-to, items
-  // grouped under a per-order sub-header, and a combined total. Everything else (brand + marketing
-  // band) is identical, so a buyer with two orders needs one sheet, not two.
-  LR.packingSlipHTML = function (orderOrOrders) {
+  // slipSheetHTML(order | [order, order, …]) — the <div class="sheet"> for ONE physical shipment: a
+  // single-order slip, OR a COMBINED slip when passed several orders for the same buyer (multiple eBay
+  // orders shipping together): one ship-to, items grouped under a per-order sub-header, and a combined
+  // total. Everything else (brand + marketing band) is identical, so a buyer with two orders needs one
+  // sheet, not two. Returned bare of the document shell so a batch can stack many sheets in one doc.
+  function slipSheetHTML(orderOrOrders) {
     var orders = (Array.isArray(orderOrOrders) ? orderOrOrders.slice() : [orderOrOrders]).filter(Boolean);
-    if (!orders.length) return slipDOC('Packing slip', '<div class="sheet"></div>');
+    if (!orders.length) return '<div class="sheet"></div>';
     var combined = orders.length > 1;
     var primary = orders[0];
     var cfg = LR.config || {}, links = cfg.links || {}, disc = cfg.discount || {};
@@ -552,18 +553,52 @@
       + '</section>'
       + '</div>';   // .sheet
 
-    return slipDOC('Packing slip ' + (combined ? (orders.length + ' orders for ' + (primary.buyer_username || name)) : (primary.order_id || '')), body);
+    return body;
+  }
+
+  // Print-dialog title / suggested PDF filename for one shipment.
+  function slipTitle(orders) {
+    if (!orders.length) return 'Packing slip';
+    var primary = orders[0];
+    if (orders.length > 1) {
+      var addr = cleanAddressLines(primary);
+      return 'Packing slip ' + orders.length + ' orders for ' + (primary.buyer_username || (addr.length ? addr[0] : ''));
+    }
+    return 'Packing slip ' + (primary.order_id || '');
+  }
+
+  // One shipment, one document — the per-row 🧾 buttons.
+  LR.packingSlipHTML = function (orderOrOrders) {
+    var orders = (Array.isArray(orderOrOrders) ? orderOrOrders.slice() : [orderOrOrders]).filter(Boolean);
+    return slipDOC(slipTitle(orders), slipSheetHTML(orders));
+  };
+
+  // packingSlipBatchHTML(shipments) — a whole run of orders as ONE document, one slip per page. Each
+  // entry of `shipments` is an array of orders that physically ship together (see selectedShipments in
+  // orders.html), so a buyer with two orders gets one combined sheet here, not two sheets.
+  LR.packingSlipBatchHTML = function (shipments) {
+    var groups = (shipments || []).filter(function (g) { return g && g.length; });
+    if (!groups.length) return slipDOC('Packing slips', '');
+    if (groups.length === 1) return LR.packingSlipHTML(groups[0]);
+    var orderCount = groups.reduce(function (s, g) { return s + g.length; }, 0);
+    var title = 'Packing slips ' + groups.length + (orderCount !== groups.length ? ' (' + orderCount + ' orders)' : '');
+    return slipDOC(title, groups.map(slipSheetHTML).join(''), groups.length);
   };
 
   // A4 shell for the packing slip: greyscale, everything scales with --s so the fit pass can shrink a
   // big order to a single page while keeping the marketing band. Self-prints once images load + it fits.
-  function slipDOC(title, body) {
+  // `sheets` (batch only) is how many slips are in the document — it only stretches the image wait.
+  function slipDOC(title, body, sheets) {
     var css = ''
       + '@page{size:A4;margin:0;}'
       + '*{box-sizing:border-box;margin:0;padding:0;}'
       + ':root{--s:1;}'
       + 'html,body{background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
       + '.sheet{width:210mm;min-height:297mm;margin:0 auto;padding:calc(13mm*var(--s)) calc(14mm*var(--s)) calc(10mm*var(--s));display:flex;flex-direction:column;}'
+      // Batch: break BEFORE every sheet after the first, never after — a break-after on the last sheet
+      // is exactly what produces a blank final page. A single slip is untouched: the sibling selector
+      // has nothing to match.
+      + '.sheet + .sheet{break-before:page;page-break-before:always;}'
       // header
       + '.hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:calc(8pt*var(--s));border-bottom:2px solid #111;}'
       + '.brand{display:flex;align-items:center;gap:calc(10pt*var(--s));min-width:0;}'
@@ -652,25 +687,34 @@
       + '.fb{flex:1;display:flex;align-items:center;font-size:calc(10pt*var(--s));color:#333;background:#f2f2f2;border-radius:8px;padding:calc(6pt*var(--s)) calc(11pt*var(--s));line-height:1.35;}'
       + '@media screen{body{background:#e9e9ee;padding:16px 0;}.sheet{box-shadow:0 8px 30px rgba(0,0,0,.25);background:#fff;}}';
 
-    // self-print: wait for card thumbnails, shrink to one page, then print.
+    // A 20-slip batch pulls ~100 thumbnails, and the flat 4s that suited one slip would print half of
+    // them blank. Never shorter than the single-slip wait, never longer than 15s.
+    var waitMs = Math.min(15000, Math.max(4000, 2000 + 400 * (sheets || 1)));
+
+    // self-print: wait for card thumbnails, shrink each slip to one page, then print.
     var script = '(function(){'
       + 'function A4px(){var p=document.createElement("div");p.style.cssText="position:absolute;visibility:hidden;height:297mm;";document.body.appendChild(p);var h=p.offsetHeight;p.remove();return h;}'
       // .sheet has min-height:297mm, so a fitting page measures EXACTLY one A4 (never less); only a
       // genuine overflow exceeds it. Threshold sits +2px above the page so a fitting page is left at s=1.
       // Ladder for big orders: scale down → drop thumbnails → two-column items → compact marketing.
-      + 'function fit(){var root=document.documentElement,sheet=document.querySelector(".sheet"),max=A4px()+2,s=1;'
+      // --s is set on the SHEET, not on :root, so in a batch one fat order shrinks alone instead of
+      // dragging every other slip down with it. Every calc(…*var(--s)) lives on .sheet or a descendant,
+      // and a property set on an element applies to that element's own declarations, so .sheet's own
+      // padding still resolves.
+      + 'function fitSheet(sheet,max){var s=1;'
       + 'function over(){return sheet.scrollHeight>max;}'
-      + 'function shrink(f){while(over()&&s>f){s=Math.round((s-0.03)*100)/100;root.style.setProperty("--s",s);}}'
-      + 'root.style.setProperty("--s",1);shrink(0.62);'
+      + 'function shrink(f){while(over()&&s>f){s=Math.round((s-0.03)*100)/100;sheet.style.setProperty("--s",s);}}'
+      + 'sheet.style.setProperty("--s",1);shrink(0.62);'
       + 'if(over()){sheet.classList.add("nothumb");shrink(0.52);}'
       + 'if(over()){sheet.classList.add("twocol");shrink(0.46);}'
       + 'if(over()){sheet.classList.add("compact");shrink(0.36);}}'
+      + 'function fit(){var max=A4px()+2;[].slice.call(document.querySelectorAll(".sheet")).forEach(function(sh){fitSheet(sh,max);});}'
       + 'function done(){try{fit();}catch(e){}try{window.focus();window.print();}catch(e){}}'
       + 'var imgs=[].slice.call(document.images).filter(function(im){return !im.complete;});'
       + 'if(!imgs.length){setTimeout(done,40);return;}'
       + 'var n=imgs.length,fired=false;function one(){if(--n<=0&&!fired){fired=true;done();}}'
       + 'imgs.forEach(function(im){im.addEventListener("load",one);im.addEventListener("error",one);});'
-      + 'setTimeout(function(){if(!fired){fired=true;done();}},4000);'
+      + 'setTimeout(function(){if(!fired){fired=true;done();}},' + waitMs + ');'
       + '})();';
 
     return '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>' + css

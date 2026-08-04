@@ -79,7 +79,7 @@
       <label>Card number</label>
       <div class="lookup">
         <input id="num" placeholder="e.g. 10  or  104" autocomplete="off">
-        <button onclick="doLookup()">Look up</button>
+        <button onclick="doLookup()">Look up</button><button style="padding:0 12px;background:transparent;border:1px solid var(--line);color:var(--gold);border-radius:10px;font-weight:700;cursor:pointer;font-size:15px;" onclick="doLookup({refresh:true})" title="Fetch this set from its source again. Card lists are stored once and kept, so this is how a set that gained cards — or moved on price — gets pulled in.">↻</button>
       </div>
       <div class="status load" id="status">Pick a set, enter a number, hit Look up.</div>
 
@@ -251,7 +251,9 @@ function render(){
   document.getElementById('preview').srcdoc='<body style="margin:0;background:#fff;padding:16px;">'+lastHTML+'</body>';if(typeof syncTitle==="function")syncTitle();
 }
 
-async function doLookup(){
+async function doLookup(opts){
+  // opts.refresh comes from the ↻ button beside Look up: re-fetch the set behind this lookup.
+  opts=opts||{};
   const raw=document.getElementById('num').value.trim();
   const st=document.getElementById('status');
   if(!raw){st.className='status warn';st.textContent='Enter a card number first.';return;}
@@ -259,7 +261,7 @@ async function doLookup(){
   st.className='status load'; st.textContent='Looking up '+curSet.toUpperCase()+' '+num+' \u2026';
   const act=window.TCG?TCG.activity('Looking up '+curSet.toUpperCase()+' '+num+'\u2026'):null;
   try{
-    const res=await fetch(`${swuBase.replace(/\/$/,'')}/cards/${curSet}/${num}`);
+    const res=await fetch(`${swuBase.replace(/\/$/,'')}/cards/${curSet}/${num}${opts.refresh?"?refresh=1":""}`);
     if(!res.ok){
       let msg='No match for '+curSet.toUpperCase()+' '+num+'. Fill fields manually \u2014 preview still works.';
       try{ const b=await res.clone().json(); if(b&&/authentication token/i.test(b.message||'')) msg='Proxy route error: swu-db didn\'t recognise the path. Is `pnpm dev` running from this project? The /swu prefix must be stripped by vite.config.js \u2014 restart the dev server if you just added it.'; }catch(e){}

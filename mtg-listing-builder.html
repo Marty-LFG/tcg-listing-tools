@@ -72,7 +72,7 @@
       </div>
 
       <label>Collector number</label>
-      <div class="lookup"><input id="num" placeholder="e.g. 1  or  234" autocomplete="off"><button onclick="doLookup()">Look up</button></div>
+      <div class="lookup"><input id="num" placeholder="e.g. 1  or  234" autocomplete="off"><button onclick="doLookup()">Look up</button><button style="padding:0 12px;background:transparent;border:1px solid var(--line);color:var(--gold);border-radius:10px;font-weight:700;cursor:pointer;font-size:15px;" onclick="doLookup({refresh:true})" title="Fetch this set from its source again. Card lists are stored once and kept, so this is how a set that gained cards — or moved on price — gets pulled in.">↻</button></div>
       <div class="status load" id="status">Pick a set, type a number, hit Look up.</div>
 
       <div class="fields">
@@ -231,14 +231,16 @@ async function loadSets(){
     if(mtgCombo) mtgCombo.refresh();
   }catch(e){}
 }
-async function doLookup(){
+async function doLookup(opts){
+  // opts.refresh comes from the ↻ button beside Look up: re-fetch the set behind this lookup.
+  opts=opts||{};
   const code=val('setCode').toLowerCase(), num=val('num').replace(/\s/g,''), st=document.getElementById('status');
   if(!code){st.className='status warn';st.textContent='Pick a set first.';return;}
   if(!num){st.className='status warn';st.textContent='Enter a collector number.';return;}
   st.className='status load';st.textContent='Looking up '+code+' '+num+'\u2026';
   const act=window.TCG?TCG.activity('Looking up '+code+' '+num+'\u2026'):null;
   try{
-    const r=await fetch(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(code)+'/'+encodeURIComponent(num));
+    const r=await fetch(base.replace(/\/$/,'')+'/cards/'+encodeURIComponent(code)+'/'+encodeURIComponent(num)+(opts.refresh?'?refresh=1':''));
     if(!r.ok){act&&act.fail('no match');st.className='status warn';st.textContent='No match for '+code+' '+num+'. Check the set code/number or fill manually.';return;}
     const c=await r.json();
     if(!c||c.object==='error'||!c.name){act&&act.fail('no card');st.className='status warn';st.textContent='No card found. Fill fields manually.';return;}

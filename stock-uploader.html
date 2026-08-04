@@ -108,7 +108,7 @@
           <div id="setMenu" class="setmenu"></div>
         </div>
         <label>Card number</label>
-        <div class="lookup"><input id="num" placeholder="e.g. 25  or  199/165" autocomplete="off"><button onclick="doLookup()">Look up</button></div>
+        <div class="lookup"><input id="num" placeholder="e.g. 25  or  199/165" autocomplete="off"><button onclick="doLookup()">Look up</button><button style="padding:0 12px;background:transparent;border:1px solid var(--line);color:var(--gold);border-radius:10px;font-weight:700;cursor:pointer;font-size:15px;" onclick="doLookup({refresh:true})" title="Fetch this set from its source again. Card lists are stored once and kept, so this is how a set that gained cards — or moved on price — gets pulled in.">↻</button></div>
         <div class="status load" id="status">Pick a set, type a number, hit Look up.</div>
         <div id="cardview" style="display:none;" class="cardview"></div>
         <div id="stockBox" style="display:none;"></div>
@@ -317,7 +317,9 @@ async function loadSets(){
 }
 
 // ---- card lookup (EN, pokemontcg.io) ----
-async function doLookup(){
+async function doLookup(opts){
+  // opts.refresh comes from the ↻ button beside Look up: re-fetch the set behind this lookup.
+  opts=opts||{};
   const code=$('setCode').value.trim(), num=$('num').value.trim();
   if(!setObj){ // let the user type a raw set id
     setObj=SETS.find(s=>s.code===code.toUpperCase()||s.label.toLowerCase()===code.toLowerCase());
@@ -329,7 +331,7 @@ async function doLookup(){
   try{
     // Never `setId+'-'+typed`: promo/gallery/vault sets carry the prefix + padding upstream
     // (swshp-SWSH284, bwp-BW004), so the printed number has to resolve through the roster.
-    const res=await TCG.pkmLookupCard(setObj.value,num,{onRetry:n=>stat($('status'),'load','Looking up… (retry '+n+')')});
+    const res=await TCG.pkmLookupCard(setObj.value,num,{refresh:!!opts.refresh,onRetry:n=>stat($('status'),'load','Looking up… (retry '+n+')')});
     if(res.error==='source-down'){ act&&act.fail('source down'); stat($('status'),'warn','pokemontcg.io is flaky right now — hit Look up again.'); return; }
     if(res.error==='no-match'){ act&&act.fail('no match'); stat($('status'),'warn','No card found in '+setObj.label+(res.hint?' — '+res.hint:'')+'. Check the number.'); return; }
     const c=res.card;

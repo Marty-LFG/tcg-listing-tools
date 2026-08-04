@@ -1024,8 +1024,14 @@
 
   // Roster for one EN set, memoised in-process and mirrored to localStorage so a reload (or a
   // pokemontcg.io outage) doesn't re-fetch. Returns null when the roster is genuinely unavailable.
-  TCG.pkmRoster=async function(setId){
+  TCG.pkmRoster=async function(setId,opts){
     if(!setId)return null;
+    // A refresh drops BOTH copies of the roster before asking again — the one in this tab and the
+    // one in localStorage. Leaving either behind is how a refresh button appears to do nothing.
+    if(opts&&opts.refresh){
+      delete PKM_ROSTER[setId];
+      try{localStorage.removeItem(PKM_ROSTER_KEY+':'+setId);}catch(e){}
+    }
     if(PKM_ROSTER[setId])return PKM_ROSTER[setId];
     try{
       var raw=localStorage.getItem(PKM_ROSTER_KEY+':'+setId);
@@ -1050,8 +1056,11 @@
     var t=String(typed==null?'':typed).trim().replace(/\s/g,'').replace(/\/.*$/,'');
     if(!setId||!t)return {error:'no-match',hint:''};
     var index=null;
+    // opts.refresh is the builders' ↻: the server re-fetches the whole set behind this URL (the set
+    // is the unit the cache stores), and the roster copies are dropped alongside it.
+    var bust=opts.refresh?'?refresh=1':'';
     async function get(numRaw){
-      var r=await TCG.fetchJson('/api/pkm/cards/'+encodeURIComponent(setId+'-'+numRaw),{onRetry:opts.onRetry});
+      var r=await TCG.fetchJson('/api/pkm/cards/'+encodeURIComponent(setId+'-'+numRaw)+bust,{onRetry:opts.onRetry});
       if(r.ok){
         var j=await r.json();
         var c=j&&(j.data||j);
@@ -1064,7 +1073,7 @@
       var direct=await get(t);
       if(direct)return direct;                 // hit, or a real upstream outage
     }
-    index=await TCG.pkmRoster(setId);
+    index=await TCG.pkmRoster(setId,{refresh:!!opts.refresh});
     if(!index){
       // No roster AND the direct id missed. The roster call is the same upstream, so treat an
       // unavailable roster as the source being down rather than claiming the card doesn't exist.

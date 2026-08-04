@@ -74,7 +74,7 @@
       <div class="lookup">
         <select id="setpick" onchange="onSetChange()"></select>
         <input id="num" placeholder="e.g. 1  or  OP01-001" autocomplete="off">
-        <button onclick="doLookup()">Look up</button>
+        <button onclick="doLookup()">Look up</button><button style="padding:0 12px;background:transparent;border:1px solid var(--line);color:var(--gold);border-radius:10px;font-weight:700;cursor:pointer;font-size:15px;" onclick="doLookup({refresh:true})" title="Fetch this set from its source again. Card lists are stored once and kept, so this is how a set that gained cards — or moved on price — gets pulled in.">↻</button>
       </div>
       <div class="status load" id="status">Pick a set, enter a card number (or a full code like OP01-001), hit Look up.</div>
 
@@ -260,7 +260,9 @@ function renderExtrasFor(c){
             {source:'optcgapi',measure:'inventory (asking)',group:'asking',amount:c.inventory_price,currency:'USD'}],history:null});
 }
 
-async function doLookup(){
+async function doLookup(opts){
+  // opts.refresh comes from the ↻ button beside Look up: re-fetch the set behind this lookup.
+  opts=opts||{};
   const raw=val('num');
   const st=document.getElementById('status');
   if(!raw){st.className='status warn';st.textContent='Enter a card number (or a full code like OP01-001).';return;}
@@ -270,7 +272,7 @@ async function doLookup(){
   st.className='status load'; st.textContent='Looking up '+code+' …';
   const act=window.TCG?TCG.activity('Looking up '+code+'…'):null;
   try{
-    const res=await fetch(opBase.replace(/\/$/,'')+'/sets/card/'+encodeURIComponent(code)+'/');
+    const res=await fetch(opBase.replace(/\/$/,'')+'/sets/card/'+encodeURIComponent(code)+'/'+(opts.refresh?'?refresh=1':''));
     if(!res.ok){ act&&act.fail('no match'); st.className='status warn';
       st.textContent='No match for '+code+'. Check the set + number, or fill fields manually — preview still works.'; return; }
     const arr=await res.json();

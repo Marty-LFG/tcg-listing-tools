@@ -116,7 +116,7 @@
           <div id="setMenu"></div>
         </div>
         <label>Card number</label>
-        <div class="lookup fld"><input id="num" placeholder="e.g. 294  or  294/217" autocomplete="off"><button class="btn solid" onclick="doLookup()">Look up</button></div>
+        <div class="lookup fld"><input id="num" placeholder="e.g. 294  or  294/217" autocomplete="off"><button class="btn solid" onclick="doLookup()">Look up</button><button style="padding:0 12px;background:transparent;border:1px solid var(--line);color:var(--gold);border-radius:10px;font-weight:700;cursor:pointer;font-size:15px;" onclick="doLookup({refresh:true})" title="Fetch this set from its source again. Card lists are stored once and kept, so this is how a set that gained cards — or moved on price — gets pulled in.">↻</button></div>
         <div class="status load" id="idStatus">Pick a set + number and look up, or fill the fields manually.</div>
         <div class="row2 fld" style="margin-top:12px;">
           <div style="grid-column:1/3;"><label>Card name</label><input id="f_name"></div>
@@ -256,7 +256,9 @@ function renderSetMenu(typed){ var menu=$('setMenu'); if(!menu)return; var list=
 function pickSet(id){ var s=PKM_SETS.find(function(x){return x.id===id;}); if(!s)return; selectedSet=s; $('setCode').value=s.name+(s.ptcgoCode?' ('+s.ptcgoCode+')':''); $('setMenu').classList.remove('open'); }
 
 /* ============================ card lookup + valuation ============================ */
-async function doLookup(){
+async function doLookup(opts){
+  // opts.refresh comes from the ↻ button beside Look up: re-fetch the set behind this lookup.
+  opts=opts||{};
   var _set=selectedSet||resolveSet(val('setCode')); var setId=_set?_set.id:''; var n=val('num').replace(/\s/g,'').replace(/\/.*$/,''); var st=$('idStatus');
   if(!setId){ st.className='status warn'; st.textContent='Pick a set (try a name or code), or fill the fields manually below.'; return; }
   if(!n){ st.className='status warn'; st.textContent='Enter a card number.'; return; }
@@ -266,7 +268,7 @@ async function doLookup(){
     // Never `setId+'-'+n`: promo/gallery/vault sets carry the prefix + padding upstream
     // (swshp-SWSH284, bwp-BW004), so the printed number has to resolve through the roster.
     var res=await TCG.pkmLookupCard(setId,n,
-      {onRetry:function(k){st.textContent='Looking up '+setId+'-'+n+'… (retry '+k+')';}});
+      {refresh:!!opts.refresh,onRetry:function(k){st.textContent='Looking up '+setId+'-'+n+'… (retry '+k+')';}});
     if(res.error){ var down=res.error==='source-down';   // source down ≠ missing card
       act&&act.fail(down?'source down':'no match'); st.className='status warn';
       st.textContent=down

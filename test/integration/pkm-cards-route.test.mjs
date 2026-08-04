@@ -185,6 +185,28 @@ describe('GET /api/pkm/cards/:id — answered from the set we already hold', () 
     assert.equal((await callCard('/zzznothing-1')).status, 'next');
   });
 
+  // The ↻ button in the Pokémon builder, the uploader and the grader. A card cannot be refreshed on
+  // its own — the set is the unit stored — so the whole set is re-fetched behind the card.
+  it('?refresh=1 re-fetches the set behind the card and says so', async () => {
+    stubUpstream('zzzroute4', 5);
+    await call('/zzzroute4/cards');
+    const calls = stubUpstream('zzzroute4', 7);            // the set gained two
+    const r = await callCard('/zzzroute4-7?refresh=1');
+    assert.ok(calls.length >= 1, 'the button actually went and looked');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.data.id, 'zzzroute4-7', 'a card the stored copy did not have');
+    assert.equal(r.headers['x-tcg-cache'], 'upstream', 'and it reports where the answer came from');
+  });
+
+  it('a refresh that fails says stale rather than pretending it worked', async () => {
+    stubUpstream('zzzroute5', 4);
+    await call('/zzzroute5/cards');
+    stubUpstream('zzzroute5', 0, { fail: true });
+    const r = await callCard('/zzzroute5-2?refresh=1');
+    assert.equal(r.status, 200, 'the old copy still answers');
+    assert.equal(r.headers['x-tcg-cache'], 'stale', 'the one outcome the person pressing it must see');
+  });
+
   it('falls through for a card that is not in the set we hold', async () => {
     stubUpstream('zzzroute2', 5);
     await call('/zzzroute2/cards');

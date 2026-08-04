@@ -94,7 +94,7 @@
       </div>
 
       <label>Card number</label>
-      <div class="lookup"><input id="num" placeholder="e.g. 25  or  191" autocomplete="off"><button onclick="doLookup()">Look up</button></div>
+      <div class="lookup"><input id="num" placeholder="e.g. 25  or  191" autocomplete="off"><button onclick="doLookup()">Look up</button><button style="padding:0 12px;background:transparent;border:1px solid var(--line);color:var(--gold);border-radius:10px;font-weight:700;cursor:pointer;font-size:15px;" onclick="doLookup({refresh:true})" title="Fetch this set from its source again. Card lists are stored once and kept, so this is how a set that gained cards — or moved on price — gets pulled in.">↻</button></div>
       <div class="status load" id="status">Pick a set, type a number, hit Look up.</div>
 
       <div class="fields">
@@ -610,7 +610,9 @@ function pcEnrich(el,ex,baseRows,c,typedNum){
     }).catch(function(){act&&act.fail('PriceCharting blocked');});
   }catch(e){}
 }
-async function doLookup(){
+async function doLookup(opts){
+  // opts.refresh comes from the ↻ button beside Look up: re-fetch the set behind this lookup.
+  opts=opts||{};
   const _setObj=selectedSet||resolveSet(val('setCode')); const num=val('num').replace(/\s/g,''), st=document.getElementById('status');
   const dl=activeDataLang();
   if(!_setObj){st.className='status warn';st.textContent='Pick a set — try a name or the printed code'+(dl==='en'?' (e.g. PAR).':' (e.g. M5).');return;}
@@ -630,7 +632,7 @@ async function doLookup(){
     // Never `setId+'-'+num`: promo/gallery/vault sets carry the prefix + padding upstream
     // (swshp-SWSH284, bwp-BW004), so the printed number has to resolve through the roster.
     const res=await TCG.pkmLookupCard(setId,num,
-      {onRetry:function(n){st.textContent='Looking up '+setId+'-'+num+'… (retry '+n+')';}});
+      {refresh:!!opts.refresh,onRetry:function(n){st.textContent='Looking up '+setId+'-'+num+'… (retry '+n+')';}});
     if(res.error){
       // pokemontcg.io flakes with 500s — after the retries that is the SOURCE being down,
       // not a missing card. Saying "no match" for it sends people hunting a typo (GR7).
