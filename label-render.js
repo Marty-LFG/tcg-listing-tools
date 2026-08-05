@@ -593,13 +593,27 @@
   // A4 shell for the packing slip: greyscale, everything scales with --s so the fit pass can shrink a
   // big order to a single page while keeping the marketing band. Self-prints once images load + it fits.
   // `sheets` (batch only) is how many slips are in the document — it only stretches the image wait.
+  // How tall a slip is allowed to be, in millimetres. A4 is 297 — this is deliberately LESS.
+  //
+  // The sheet used to be min-height:297mm and the fit pass shrank until it was <= 297mm, so a fitting
+  // slip landed on exactly 100% of the page. That is the one height guaranteed to be fragile: the
+  // floor and the ceiling were the same number, so the ladder could never do better than exact, and
+  // anything that shaves even a hair off the printable area tips it onto a second page. Print-engine
+  // rounding does it. So does a browser drawing its own header and footer — Safari's "Print headers
+  // and footers" reserves real space no @page{margin:0} can claw back.
+  //
+  // 283mm keeps ~14mm in hand, which costs a busy slip a few percent of type size and buys a slip that
+  // is one page whatever the browser does around it. Used for BOTH the CSS floor and the fit target,
+  // because moving one without the other changes nothing.
+  var SLIP_PAGE_MM = 283;
+
   function slipDOC(title, body, sheets) {
     var css = ''
       + '@page{size:A4;margin:0;}'
       + '*{box-sizing:border-box;margin:0;padding:0;}'
       + ':root{--s:1;}'
       + 'html,body{background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-      + '.sheet{width:210mm;min-height:297mm;margin:0 auto;padding:calc(13mm*var(--s)) calc(14mm*var(--s)) calc(10mm*var(--s));display:flex;flex-direction:column;}'
+      + '.sheet{width:210mm;min-height:' + SLIP_PAGE_MM + 'mm;margin:0 auto;padding:calc(13mm*var(--s)) calc(14mm*var(--s)) calc(10mm*var(--s));display:flex;flex-direction:column;}'
       // Batch: break BEFORE every sheet after the first, never after — a break-after on the last sheet
       // is exactly what produces a blank final page. A single slip is untouched: the sibling selector
       // has nothing to match.
@@ -698,9 +712,11 @@
 
     // self-print: wait for card thumbnails, shrink each slip to one page, then print.
     var script = '(function(){'
-      + 'function A4px(){var p=document.createElement("div");p.style.cssText="position:absolute;visibility:hidden;height:297mm;";document.body.appendChild(p);var h=p.offsetHeight;p.remove();return h;}'
-      // .sheet has min-height:297mm, so a fitting page measures EXACTLY one A4 (never less); only a
-      // genuine overflow exceeds it. Threshold sits +2px above the page so a fitting page is left at s=1.
+      + 'function A4px(){var p=document.createElement("div");p.style.cssText="position:absolute;visibility:hidden;height:' + SLIP_PAGE_MM + 'mm;";document.body.appendChild(p);var h=p.offsetHeight;p.remove();return h;}'
+      // Measured against SLIP_PAGE_MM, which is SHORTER than A4 on purpose — see the constant. The
+      // sheet's min-height is the same number, so a fitting slip measures exactly that and stops, which
+      // still leaves the real page with millimetres to spare for print chrome and rounding.
+      // Threshold sits +2px above it so a fitting page is left at s=1.
       // Ladder for big orders: scale down → drop thumbnails → two-column items → compact marketing.
       // --s is set on the SHEET, not on :root, so in a batch one fat order shrinks alone instead of
       // dragging every other slip down with it. Every calc(…*var(--s)) lives on .sheet or a descendant,

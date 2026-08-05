@@ -264,3 +264,32 @@ test('print nudge: the job still reports the stock size, so TSPL SIZE is unaffec
   assert.equal(job.widthDots, 1000)
   assert.equal(job.heightDots, 500)
 })
+
+// The packing slip must be ONE page, and the way it used to fail was subtle: the sheet's min-height
+// and the fit pass's ceiling were both 297mm, so the ladder's best possible outcome was a sheet
+// occupying exactly 100% of the page. Print-engine rounding tips that onto a second page, and so does
+// any browser drawing its own header and footer. The floor and the ceiling have to be the same number
+// as each other AND smaller than A4 -- these pin both halves, because moving one alone fixes nothing.
+test('packing slip: the height floor and the fit ceiling agree, and both sit under A4', () => {
+  const html = LR.packingSlipHTML({ order_id: '10-1-1', buyer_username: 'amy', items: [] })
+  const floor = html.match(/\.sheet\{[^}]*min-height:(\d+)mm/)
+  const ceiling = html.match(/height:(\d+)mm;";document\.body\.appendChild\(p\)/)
+  assert.ok(floor, 'the sheet must declare a min-height')
+  assert.ok(ceiling, 'the fit pass must probe a page height')
+  assert.equal(floor[1], ceiling[1], 'a fit target the sheet cannot shrink below is not a target')
+  assert.ok(Number(floor[1]) < 297, 'exactly A4 is the one height guaranteed to spill')
+  // Enough slack to survive print chrome, without throwing away so much page that type shrinks for it.
+  const slack = 297 - Number(floor[1])
+  assert.ok(slack >= 8 && slack <= 25, `slack should be 8-25mm, got ${slack}mm`)
+})
+
+test('packing slip: a batch breaks BEFORE each sheet, never after the last', () => {
+  // A break-after on the final sheet is the other way to produce a blank trailing page.
+  const html = LR.packingSlipBatchHTML([
+    [{ order_id: 'a', buyer_username: 'amy', items: [] }],
+    [{ order_id: 'b', buyer_username: 'bob', items: [] }],
+  ])
+  assert.match(html, /\.sheet \+ \.sheet\{break-before:page/)
+  assert.doesNotMatch(html, /break-after:\s*page/)
+  assert.doesNotMatch(html, /page-break-after:\s*always/)
+})
