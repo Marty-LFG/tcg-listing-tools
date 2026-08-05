@@ -338,6 +338,11 @@
       + '.upg .tc{width:96px;text-align:left;}'
       + '.upg .who{font-size:9.5pt;color:#555;}'
       + '.upg .do{font-weight:700;text-align:right;white-space:nowrap;}'
+      // The hold banner is the same block, shouting. These print on a mono laser, so the separation
+      // has to survive greyscale: a heavier rule and a solid black header, not a colour.
+      + '.upg.hold{border-width:5px;}'
+      + '.upg.hold .upg-hd{background:#000;color:#fff;}'
+      + '.upg.hold .tc{width:44px;font-size:14pt;text-align:center;}'
       + '</style></head><body>' + body + '</body></html>';
   }
 
@@ -748,36 +753,72 @@
     var summary = (meta.order_count || 0) + ' orders · ' + (meta.item_count || 0) + ' lines · ' + (meta.unit_count || 0) + ' units';
     return DOC('Pick sheet',
       '<div class="store">Pick sheet</div><div class="tag">SORTED BY BOX FOR PICKING</div><div class="meta">' + esc(summary) + '</div>'
-      + upgradeBanner(meta) + (sections || '<p>Nothing to pick.</p>')
+      + holdBanner(meta) + upgradeBanner(meta) + (sections || '<p>Nothing to pick.</p>')
     );
   };
 
-  // The postage exception banner, above the first box. Rendered only when this run actually contains
-  // an order that is not a plain letter, so a normal day's sheet looks exactly as it always has.
-  // Placed first because it is a packing instruction, and the moment it matters is before anyone
-  // walks off to the shelves.
+  // A BANNER is an exception called out above the first box: something about this run that has to be
+  // read before anyone walks off to the shelves. There are two kinds today (postage upgrades, and
+  // orders on hold) and they are the same table with different words in it — so the markup lives once
+  // here and each banner supplies only what genuinely differs: its heading, and per order a chip, a
+  // description and the action. `.upg.hold` in the CSS is a modifier for exactly this reason.
+  function bannerRow(r) {
+    return '<tr><td class="tc">' + (r.chip || '') + '</td>'
+      + '<td class="ord">' + esc(r.order_id || '') + (r.sales_record_number ? ' <span class="who">#' + esc(r.sales_record_number) + '</span>' : '') + '</td>'
+      + '<td class="who">' + esc(r.buyer_username || '') + '</td>'
+      + '<td>' + esc(r.detail || '') + '</td>'
+      + '<td class="do">' + esc(r.todo || '') + '</td></tr>';
+  }
+  function bannerBlock(cls, heading, rows) {
+    if (!rows.length) return '';
+    return '<div class="' + cls + '"><div class="upg-hd">' + esc(heading) + '</div>'
+      + '<table><tbody>' + rows.map(bannerRow).join('') + '</tbody></table></div>';
+  }
+
+  // The DO-NOT-PACK banner, printed ABOVE the postage one. Cards for these orders are deliberately not
+  // in the sections below — an order with a cancellation in flight, or a payment that bounced after
+  // eBay said it was paid, must not be packed by muscle memory while somebody walks the shelves.
+  function holdBanner(meta) {
+    var holds = (meta && meta.holds) || [];
+    return bannerBlock('upg hold',
+      'DO NOT PACK — ' + holds.length + (holds.length === 1 ? ' order is' : ' orders are') + ' on hold',
+      holds.map(function (h) {
+        // Why it is held, then what to do about it. Approving or rejecting a cancellation is a Seller
+        // Hub action — eBay does not expose the Cancel ID over the API we use — so the sheet says where
+        // to go rather than implying the tool can settle it.
+        return {
+          chip: '⛔', order_id: h.order_id, sales_record_number: h.sales_record_number,
+          buyer_username: h.buyer_username,
+          detail: [h.why, h.cancel_reason].filter(Boolean).join(' · '),
+          todo: h.cancel_state === 'requested' ? 'Approve or reject it on eBay'
+            : h.payment_state === 'failed' ? 'Payment failed — check it on eBay before packing'
+              : h.cancel_state === 'unknown' ? 'Unrecognised eBay status — check it on eBay'
+                : 'Cancelled — put these cards back',
+        };
+      }));
+  }
+
+  // The postage exception banner. Rendered only when this run actually contains an order that is not a
+  // plain letter, so a normal day's sheet looks exactly as it always has.
   function upgradeBanner(meta) {
     var ups = (meta && meta.upgrades) || [];
-    if (!ups.length) return '';
-    var total = meta.order_count || ups.length;
-    var rows = ups.map(function (u) {
-      var paid = u.paid_cents ? money(u.paid_cents, u.currency) : '';
-      // The chip already carries the tier, so a label that IS the tier phrase (which is what we fall
-      // back to when eBay gave us no real service name) would just say the same thing twice.
-      var named = u.label && u.label.toUpperCase() !== String(TIER_WORD[u.tier] || '').toUpperCase() ? u.label : '';
-      var service = [named, paid].filter(Boolean).join(' · ');
-      // eBay's Australia Post deal has no API, so buying the label stays a person's job. Saying so on
-      // the sheet is the difference between a flagged order and an actioned one.
-      var todo = u.tracked ? (u.tracking ? 'Label bought · ' + u.tracking : 'Buy the label on eBay') : 'Check the postage on eBay';
-      return '<tr><td class="tc">' + tierChip(u.tier) + '</td>'
-        + '<td class="ord">' + esc(u.order_id || '') + (u.sales_record_number ? ' <span class="who">#' + esc(u.sales_record_number) + '</span>' : '') + '</td>'
-        + '<td class="who">' + esc(u.buyer_username || '') + '</td>'
-        + '<td>' + esc(service) + '</td>'
-        + '<td class="do">' + esc(todo) + '</td></tr>';
-    }).join('');
-    return '<div class="upg"><div class="upg-hd">'
-      + esc(ups.length + ' of ' + total + (total === 1 ? ' order needs' : ' orders need') + ' a postage upgrade')
-      + '</div><table><tbody>' + rows + '</tbody></table></div>';
+    var total = (meta && meta.order_count) || ups.length;
+    return bannerBlock('upg',
+      ups.length + ' of ' + total + (total === 1 ? ' order needs' : ' orders need') + ' a postage upgrade',
+      ups.map(function (u) {
+        var paid = u.paid_cents ? money(u.paid_cents, u.currency) : '';
+        // The chip already carries the tier, so a label that IS the tier phrase (which is what we fall
+        // back to when eBay gave us no real service name) would just say the same thing twice.
+        var named = u.label && u.label.toUpperCase() !== String(TIER_WORD[u.tier] || '').toUpperCase() ? u.label : '';
+        return {
+          chip: tierChip(u.tier), order_id: u.order_id, sales_record_number: u.sales_record_number,
+          buyer_username: u.buyer_username,
+          detail: [named, paid].filter(Boolean).join(' · '),
+          // eBay's Australia Post deal has no API, so buying the label stays a person's job. Saying so
+          // on the sheet is the difference between a flagged order and an actioned one.
+          todo: u.tracked ? (u.tracking ? 'Label bought · ' + u.tracking : 'Buy the label on eBay') : 'Check the postage on eBay',
+        };
+      }));
   }
 
   window.LR = LR;

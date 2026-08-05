@@ -4,7 +4,7 @@
 // paragraph you had to re-read to pull from.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shortTitle, renderPullList, renderDispatchSummary, renderSaleAlert } from '../../lib/telegram-cards.mjs';
+import { shortTitle, renderPullList, renderDispatchSummary, renderSaleAlert, renderHoldAlert } from '../../lib/telegram-cards.mjs';
 import { buildPickSheet } from '../../lib/postsale.mjs';
 
 describe('shortTitle', () => {
@@ -115,5 +115,65 @@ describe('renderSaleAlert', () => {
   });
   it('omits the repeat flag for a first-time buyer', () => {
     assert.doesNotMatch(renderSaleAlert({ items: [], totalText: 'A$5', buyerUsername: 'bob' }), /repeat/);
+  });
+});
+
+describe('renderHoldAlert', () => {
+  const items = [{ title: 'Pokemon Charizard 006/165 151 Holo EN M/NM', sku: 'AAC-012', quantity: 1, location: 'Box AAC' }];
+  const base = { orderId: '10-14989-43407', salesRecordNumber: 812, buyerUsername: 'amy', totalText: 'A$510.00', items };
+
+  it('a confirmed cancellation leads with the verdict and says DO NOT POST', () => {
+    const t = renderHoldAlert({ ...base, kind: 'cancel', state: 'cancelled',
+      initiator: 'Buyer', reason: 'Ordered by mistake', restock: { reversed: 1, skipped: [] }, watching: true });
+    assert.match(t, /ORDER CANCELLED/);
+    assert.match(t, /Do not post this/);
+    assert.match(t, /Buyer cancelled it — Ordered by mistake/);
+    // The SKU and the SHELF are the actual physical job: these cards have to go back somewhere.
+    assert.match(t, /AAC-012/);
+    assert.match(t, /Box AAC/);
+    assert.match(t, /1 line put back on the shelf/);
+    assert.match(t, /Watching for the new listing|watching for the new listing/i);
+  });
+
+  it('NEVER claims a restock it could not do', () => {
+    // A line decremented before the effect log existed cannot be put back faithfully. Rounding that up
+    // to "done" is how stock silently drifts and eventually oversells.
+    const t = renderHoldAlert({ ...base, kind: 'cancel', state: 'cancelled',
+      restock: { reversed: 0, skipped: [{ sku: 'AAC-012', why: 'no record of what the sale did' }] } });
+    assert.doesNotMatch(t, /put back on the shelf/);
+    assert.match(t, /could not be put back automatically/);
+    assert.match(t, /AAC-012<\/code> — no record of what the sale did/);
+  });
+
+  it('a request is a HOLD, keeps the stock, and says who actually owns the decision', () => {
+    const t = renderHoldAlert({ ...base, kind: 'cancel', state: 'requested', initiator: 'Buyer' });
+    assert.match(t, /CANCELLATION REQUESTED/);
+    assert.match(t, /Hold off packing/);
+    assert.match(t, /has <b>not<\/b> been put back/);
+    // Without this the "Got it" button reads as "approve", which is precisely what it is not — eBay
+    // does not expose the Cancel ID over the API this app uses.
+    assert.match(t, /Seller Hub job/);
+    assert.doesNotMatch(t, /Do not post this/);
+  });
+
+  it('a failed payment is its own message, not a cancellation', () => {
+    const t = renderHoldAlert({ ...base, kind: 'payment', state: 'failed' });
+    assert.match(t, /PAYMENT FAILED/);
+    assert.match(t, /payment failed after the order was marked paid/);
+    assert.doesNotMatch(t, /Seller Hub job/);   // nothing to approve or reject here
+  });
+
+  it('stamps who cleared it once acknowledged', () => {
+    const t = renderHoldAlert({ ...base, kind: 'cancel', state: 'cancelled' }, { icon: '✅', status: 'acknowledged', who: '@marty' });
+    assert.match(t, /acknowledged/);
+    assert.match(t, /@marty/);
+  });
+
+  it('escapes a hostile buyer name and card title', () => {
+    const t = renderHoldAlert({ ...base, buyerUsername: '<script>', state: 'cancelled',
+      items: [{ title: 'A & B <b>', sku: 'X', quantity: 1 }] });
+    assert.doesNotMatch(t, /<script>/);
+    assert.match(t, /&lt;script&gt;/);
+    assert.match(t, /A &amp; B/);
   });
 });

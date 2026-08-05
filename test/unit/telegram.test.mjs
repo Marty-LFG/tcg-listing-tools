@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   escapeHtml, telegramEnabled, telegramChatConfigured, sendMessage, editMessageText,
   isAllowedUser, parseUserIds, denyCallbackText, sendCard, CAPTION_LIMIT,
+  pinChatMessage, unpinChatMessage,
 } from '../../lib/telegram.mjs';
 
 describe('escapeHtml', () => {
@@ -42,6 +43,18 @@ describe('degradation without a token (no network)', () => {
   });
   it('editMessageText requires chatId + messageId', async () => {
     const r = await editMessageText({ TELEGRAM_BOT_TOKEN: 't' }, { text: 'x' });
+    assert.equal(r.ok, false);
+    assert.match(r.description, /chatId \+ messageId/);
+  });
+  it('pin/unpin degrade like everything else', async () => {
+    assert.deepEqual(await pinChatMessage({}, { chatId: '-100', messageId: 5 }),
+      { ok: false, disabled: true, description: 'TELEGRAM_BOT_TOKEN not set' });
+    assert.deepEqual(await unpinChatMessage({}, { chatId: '-100', messageId: 5 }),
+      { ok: false, disabled: true, description: 'TELEGRAM_BOT_TOKEN not set' });
+  });
+  it('unpin REQUIRES a message id, even though Telegram treats it as optional', async () => {
+    // Omitting it unpins whatever happens to be pinned in the chat, which may be somebody else's.
+    const r = await unpinChatMessage({ TELEGRAM_BOT_TOKEN: 't' }, { chatId: '-100' });
     assert.equal(r.ok, false);
     assert.match(r.description, /chatId \+ messageId/);
   });

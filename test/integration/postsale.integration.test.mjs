@@ -402,3 +402,91 @@ describe('postsale — postage over the API', () => {
     assert.ok(byCode.AU_Regular.mixed.some((m) => m.startsWith('standard×')), byCode.AU_Regular.mixed);
   });
 });
+
+// A cancelled order has to leave every work surface at once. The queue predicate is one exported
+// constant precisely so that happens in one edit — these assert it actually did, over the API the
+// dashboard and the pick sheet really call.
+describe('postsale — a cancelled order leaves the work queues', () => {
+  const ORD = 'T-CANCEL';
+
+  before(() => {
+    ingestOrder(db, mkOrder(ORD, {
+      items: [{ orderLineItemId: ORD + '-1', transactionId: 'tx-c', itemId: '999C', sku: 'AAC-777', title: 'Cancelled Card', quantity: 1, unitPriceCents: 4200 }],
+    }), cfg);
+  });
+
+  it('starts life on the pack queue and the pick sheet like any other order', async () => {
+    const q = await get('/api/postsale/orders?status=unshipped');
+    assert.ok(q.json.orders.some((o) => o.order_id === ORD));
+    const ps = await get('/api/postsale/picksheet');
+    assert.ok(ps.json.rows.some((r) => r.order_id === ORD));
+  });
+
+  it('a cancellation takes it off the pack queue AND the pick sheet', async () => {
+    db.prepare(`UPDATE orders SET cancel_state='cancelled', cancel_status='CancelComplete',
+                cancel_initiator='Buyer', cancel_reason='OrderMistake' WHERE order_id=?`).run(ORD);
+    const q = await get('/api/postsale/orders?status=unshipped');
+    assert.ok(!q.json.orders.some((o) => o.order_id === ORD));
+    const ps = await get('/api/postsale/picksheet');
+    assert.ok(!ps.json.rows.some((r) => r.order_id === ORD));
+  });
+
+  it('and does NOT reappear under "shipped" — the tab is the queue\'s literal negation', async () => {
+    // Without an explicit exclusion this is where a cancelled order lands, labelled as posted. That
+    // moves the bug instead of fixing it, and it is the failure this whole test exists to catch.
+    const s = await get('/api/postsale/orders?status=shipped');
+    assert.ok(!s.json.orders.some((o) => o.order_id === ORD), 'a cancelled order must not read as shipped');
+  });
+
+  it('is findable under its own filter, with the reason eBay gave', async () => {
+    const c = await get('/api/postsale/orders?status=cancelled');
+    const row = c.json.orders.find((o) => o.order_id === ORD);
+    assert.ok(row, 'a cancelled order must still be findable');
+    assert.equal(row.fulfilment_state, 'cancelled');
+    assert.equal(row.cancel_initiator, 'Buyer');
+    assert.equal(row.in_queue, false);
+  });
+
+  it('still prints a DO-NOT-PACK banner if somebody ticks it by hand', async () => {
+    // The ids= branch is taken at face value on purpose (it is how a re-print works), so the sheet
+    // says why rather than silently dropping the order and leaving a person hunting for it.
+    const ps = await get('/api/postsale/picksheet?ids=' + ORD);
+    assert.equal(ps.json.rows.length, 0, 'its cards must not be on the pull list');
+    assert.equal(ps.json.holds.length, 1);
+    assert.equal(ps.json.holds[0].order_id, ORD);
+    assert.match(ps.json.holds[0].why, /cancelled/);
+  });
+});
+
+describe('postsale — a cancellation REQUEST holds rather than hides', () => {
+  const ORD = 'T-HOLD';
+
+  before(() => {
+    ingestOrder(db, mkOrder(ORD, {
+      items: [{ orderLineItemId: ORD + '-1', transactionId: 'tx-h', itemId: '999H', sku: 'AAC-778', title: 'Held Card', quantity: 1, unitPriceCents: 4200 }],
+    }), cfg);
+    db.prepare(`UPDATE orders SET cancel_state='requested', cancel_status='CancelRequested' WHERE order_id=?`).run(ORD);
+  });
+
+  it('stays in the pack queue — the seller can still reject the request', async () => {
+    const q = await get('/api/postsale/orders?status=unshipped');
+    const row = q.json.orders.find((o) => o.order_id === ORD);
+    assert.ok(row, 'a held order must not vanish from the queue');
+    assert.equal(row.on_hold, true);
+    assert.equal(row.hold_reason, 'cancel requested');
+    assert.equal(row.pickable, false);
+  });
+
+  it('but is off the default pull list, with a banner instead of rows', async () => {
+    const ps = await get('/api/postsale/picksheet');
+    assert.ok(!ps.json.rows.some((r) => r.order_id === ORD));
+  });
+
+  it('a failed payment holds the same way and says something different', async () => {
+    db.prepare(`UPDATE orders SET cancel_state=NULL, cancel_status=NULL, payment_state='failed' WHERE order_id=?`).run(ORD);
+    const q = await get('/api/postsale/orders?status=held');
+    const row = q.json.orders.find((o) => o.order_id === ORD);
+    assert.ok(row);
+    assert.equal(row.hold_reason, 'payment failed');
+  });
+});

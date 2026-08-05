@@ -35,7 +35,9 @@ describe('decrementInventoryItem', () => {
   });
   it('already-sold is a no-op (idempotent)', () => {
     const id = db.prepare(`INSERT INTO inventory_items (sku, game, name, quantity, status) VALUES ('BK-PKM-2','pokemon','X',0,'sold')`).run().lastInsertRowid;
-    assert.deepEqual(decrementInventoryItem(db, id, 1), { ok: true, sold: true, already: true, newQty: 0 });
+    // effect:null is the marker for "nothing changed, so there is nothing to reverse" — a second
+    // cancellation of an already-sold row must not invent a restore out of a decrement that never ran.
+    assert.deepEqual(decrementInventoryItem(db, id, 1), { ok: true, sold: true, already: true, newQty: 0, effect: null });
   });
 });
 

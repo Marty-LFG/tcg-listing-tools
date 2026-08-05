@@ -51,6 +51,8 @@
   .pill.sent{color:var(--green);border-color:rgba(67,214,160,.4);} .pill.skipped{color:var(--faint);} .pill.failed{color:var(--red);border-color:rgba(240,102,110,.4);}
   .pill.replied{color:var(--purple);border-color:rgba(199,155,255,.4);} .pill.closed{color:var(--faint);}
   .pill.shipped{color:var(--green);border-color:rgba(67,214,160,.35);} .pill.unshipped{color:var(--amber);border-color:rgba(240,192,74,.35);} .pill.queued{color:var(--blue);}
+  .pill.cancelled{color:var(--red);border-color:rgba(240,102,110,.4);text-decoration:line-through;}
+  .pill.hold{color:#12100e;background:var(--red);border-color:var(--red);}
   .repeat{color:var(--gold);font-size:11px;font-family:var(--mono);}
   button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.15s;}
   button.act:hover{border-color:var(--pink);color:var(--text);}
@@ -218,8 +220,10 @@ function renderOrders() {
         <td class="num">${money(o.total_cents, o.currency)}</td>
         <td class="muted">${esc(loc||'—')}</td>
         <td class="mono muted">${esc(when(o.paid_time))}</td>
-        <td><span class="pill ${esc(o.shipped_status)}">${esc(o.shipped_status)}</span>${o.label_status==='queued'?' <span class="pill queued">label</span>':''}</td>
-        <td>${o.shipped_status==='unshipped'?`<button class="act" data-ship="${esc(o.order_id)}">Mark shipped</button>`:''}</td>
+        <!-- fulfilment_state / in_queue, not the raw eBay flag: shipped_status still says "unshipped"
+             for a cancelled order, which would show it here with a live Mark shipped button. -->
+        <td><span class="pill ${esc(o.fulfilment_state||o.shipped_status)}">${esc(o.fulfilment_state==='cancelled'?'cancelled':o.shipped_status)}</span>${o.on_hold?` <span class="pill hold" title="${esc(o.hold_reason||'')}">hold</span>`:''}${o.label_status==='queued'?' <span class="pill queued">label</span>':''}</td>
+        <td>${o.in_queue?`<button class="act" data-ship="${esc(o.order_id)}">Mark shipped</button>`:''}</td>
       </tr>`;
     }).join('')
     + `</tbody></table>`;

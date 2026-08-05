@@ -23,6 +23,10 @@
   "listings_sync": true,
   "fees": false,
   "cases": true,
+  "hold_alerts": true,
+  "hold_pin": true,
+  "cancel_restock": true,
+  "sweep_interval_min": 60,
   "postage": {
     "dispatch_message": { "enabled": true, "include_link": false, "delay_min": 20 },
     "delivered_message": { "enabled": true, "force_approve": true },

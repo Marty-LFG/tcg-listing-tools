@@ -5,8 +5,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseOrders, buildGetOrdersInner, xmlAmount, decodeEntities,
   buildAddMemberMessageAAQToPartnerInner, parseMemberMessages, buildGetMemberMessagesInner,
-  buildCompleteSaleInner, parseItemImage } from '../../lib/ebay-trading.mjs';
-import { matchLineItem, buildPickSheet, PICK_UNSORTED, skuGroupLabel } from '../../lib/postsale.mjs';
+  buildCompleteSaleInner, parseItemImage, parseRelistedItemId } from '../../lib/ebay-trading.mjs';
+import { matchLineItem, buildPickSheet, PICK_UNSORTED, skuGroupLabel, redactOrderXml } from '../../lib/postsale.mjs';
 
 // Two orders: #1 PAID (multi-line, one card title with an &), #2 UNPAID (no PaidTime).
 const FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -320,15 +320,68 @@ describe('parseOrders — postage + shipment', () => {
 });
 
 describe('buildGetOrdersInner', () => {
-  it('windows by ModTime and paginates, defaulting to Completed orders', () => {
+  // This assertion used to require <OrderStatus>Completed</OrderStatus>, which pinned a bug rather than
+  // a behaviour: a specific status filter returns ONLY orders in that state, so a cancelled order fell
+  // out of the ModTime window and sat in the pack queue forever with nothing able to see it again.
+  // Omitting the element is eBay's documented default of "All".
+  it('windows by ModTime and paginates, and asks for orders in EVERY state', () => {
     const xml = buildGetOrdersInner({ modTimeFrom: '2026-07-19T00:00:00.000Z', modTimeTo: '2026-07-19T06:00:00.000Z', page: 2, entriesPerPage: 50 });
     assert.match(xml, /<OrderRole>Seller<\/OrderRole>/);
-    assert.match(xml, /<OrderStatus>Completed<\/OrderStatus>/);
+    assert.doesNotMatch(xml, /<OrderStatus>/);
     assert.match(xml, /<ModTimeFrom>2026-07-19T00:00:00\.000Z<\/ModTimeFrom>/);
     assert.match(xml, /<ModTimeTo>2026-07-19T06:00:00\.000Z<\/ModTimeTo>/);
     assert.match(xml, /<EntriesPerPage>50<\/EntriesPerPage>/);
     assert.match(xml, /<PageNumber>2<\/PageNumber>/);
     assert.doesNotMatch(xml, /CreateTimeFrom/);
+  });
+
+  it('still sends an explicit status when a caller genuinely wants one state', () => {
+    const xml = buildGetOrdersInner({ orderStatus: 'Completed', modTimeFrom: '2026-07-19T00:00:00.000Z' });
+    assert.match(xml, /<OrderStatus>Completed<\/OrderStatus>/);
+  });
+
+  it('asks by OrderIDArray and drops the filters eBay would ignore anyway', () => {
+    const xml = buildGetOrdersInner({ orderIds: ['10-14989-43407', '10-11111-22222'],
+      modTimeFrom: '2026-07-19T00:00:00.000Z', modTimeTo: '2026-07-19T06:00:00.000Z', orderStatus: 'Completed' });
+    assert.match(xml, /<OrderIDArray><OrderID>10-14989-43407<\/OrderID><OrderID>10-11111-22222<\/OrderID><\/OrderIDArray>/);
+    // A populated OrderIDArray makes eBay ignore every other filter. Sending them would only imply
+    // they matter — and the whole point of the by-id read is that no filter can hide the order.
+    assert.doesNotMatch(xml, /<OrderStatus>/);
+    assert.doesNotMatch(xml, /ModTime(From|To)/);
+    assert.match(xml, /<DetailLevel>ReturnAll<\/DetailLevel>/);
+  });
+
+  it('escapes an order id rather than pasting it into the document', () => {
+    const xml = buildGetOrdersInner({ orderIds: ['10-1<script>-4'] });
+    assert.match(xml, /<OrderID>10-1&lt;script&gt;-4<\/OrderID>/);
+  });
+});
+
+describe('redactOrderXml', () => {
+  it('empties the buyer\'s personal fields but keeps every tag, so the shape still parses', () => {
+    const xml = `<Order><OrderID>10-1-4</OrderID><ShippingAddress><Name>Jane Smith</Name>`
+      + `<Street1>12 Example St</Street1><Street2></Street2><CityName>Sydney</CityName>`
+      + `<PostalCode>2000</PostalCode><Phone>0400111222</Phone><StateOrProvince>NSW</StateOrProvince>`
+      + `</ShippingAddress><Buyer><Email>jane@example.com</Email></Buyer>`
+      + `<CancelStatus>CancelComplete</CancelStatus></Order>`;
+    const out = redactOrderXml(xml);
+    for (const gone of ['Jane Smith', '12 Example St', 'Sydney', '2000', '0400111222', 'jane@example.com']) {
+      assert.ok(!out.includes(gone), `"${gone}" should have been redacted`);
+    }
+    // Tags survive — the parser is being tested on WHERE things sit, so an empty element is the useful
+    // redaction and a deleted one is a different document.
+    assert.match(out, /<Name><\/Name>/);
+    assert.match(out, /<Street1><\/Street1>/);
+    assert.match(out, /<Buyer><!-- redacted --><\/Buyer>/);
+    // Everything that is not the buyer is untouched — including the field the fixture exists for.
+    assert.match(out, /<OrderID>10-1-4<\/OrderID>/);
+    assert.match(out, /<StateOrProvince>NSW<\/StateOrProvince>/);
+    assert.match(out, /<CancelStatus>CancelComplete<\/CancelStatus>/);
+  });
+
+  it('is a no-op on empty input', () => {
+    assert.equal(redactOrderXml(''), '');
+    assert.equal(redactOrderXml(null), '');
   });
 });
 
@@ -408,6 +461,25 @@ describe('buildCompleteSaleInner', () => {
     const xml = buildCompleteSaleInner({ orderLineItemId: '296123456789-1122334455' });
     assert.match(xml, /<OrderLineItemID>296123456789-1122334455<\/OrderLineItemID>/);
     assert.doesNotMatch(xml, /<OrderID>/);
+  });
+});
+
+// eBay writes the NEW item's id onto the OLD listing when an item is relisted, which is the entire
+// mechanism behind adopting an auto-relist after a cancellation.
+describe('parseRelistedItemId (GetItem old→new pointer)', () => {
+  it('reads it out of the ListingDetails container', () => {
+    const xml = '<Item><ItemID>296111</ItemID><ListingDetails><StartTime>2026-08-01T00:00:00.000Z</StartTime>'
+      + '<RelistedItemID>296999</RelistedItemID></ListingDetails></Item>';
+    assert.equal(parseRelistedItemId(xml), '296999');
+  });
+  it('is null when the listing was never relisted', () => {
+    assert.equal(parseRelistedItemId('<Item><ListingDetails><StartTime>x</StartTime></ListingDetails></Item>'), null);
+  });
+  it('is null when ListingDetails was not requested at all', () => {
+    // The default OutputSelector is PictureDetails, which trims the container out of the response —
+    // so the existing callers get null here, which is correct for them and keeps them unchanged.
+    assert.equal(parseRelistedItemId('<Item><PictureDetails><GalleryURL>g.jpg</GalleryURL></PictureDetails></Item>'), null);
+    assert.equal(parseRelistedItemId(''), null);
   });
 });
 

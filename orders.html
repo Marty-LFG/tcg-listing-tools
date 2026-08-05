@@ -84,6 +84,11 @@
   /* eBay flips an order to "sent" the moment a postage label is bought, which is usually well before
      the cards leave the shelf. Showing that as SHIPPED would quietly drop it out of the day's work. */
   .pill.label_bought{color:var(--amber);border-color:rgba(240,192,74,.45);background:rgba(240,192,74,.1);}
+  /* A dead order and one that needs a decision are different facts, so they read differently: the
+     cancelled pill is flat and spent, the hold pill is filled so it pulls the eye down the table. */
+  .pill.cancelled{color:var(--red);border-color:rgba(240,102,110,.4);text-decoration:line-through;}
+  .pill.hold{color:#12100e;background:var(--red);border-color:var(--red);}
+  tr.heldrow{background:rgba(240,102,110,.08);}
   .pill.combo{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);margin-left:6px;}
   .loc{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;margin-left:4px;}
   .loc.none{color:var(--faint);background:rgba(255,255,255,.03);}
@@ -185,6 +190,7 @@
       <div class="tabs" id="tabs">
         <div class="tab active" data-tab="unshipped">To pack <span class="n" id="n_unshipped"></span></div>
         <div class="tab" data-tab="upgrades" title="Orders where the buyer paid for something better than a plain letter">Upgrades <span class="n" id="n_upgrades"></span></div>
+        <div class="tab" data-tab="held" title="Orders that need a decision before they can be packed — a cancellation the buyer has asked for, or a payment that failed after eBay said it was paid">Held <span class="n" id="n_held"></span></div>
         <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
       </div>
       <div class="spacer"></div>
@@ -362,7 +368,9 @@ function shipGroupKey(o){
 }
 function computeGroups(rows){
   const byKey = new Map();
-  rows.forEach(o=>{ const k=shipGroupKey(o); if(!byKey.has(k)) byKey.set(k,[]); byKey.get(k).push(o); });
+  // A cancelled order is not part of anybody's parcel. Leaving it in would put its cards on a combined
+  // packing slip for the buyer's OTHER order — the one that is genuinely going out.
+  rows.filter(o=>!o.cancelled).forEach(o=>{ const k=shipGroupKey(o); if(!byKey.has(k)) byKey.set(k,[]); byKey.get(k).push(o); });
   STATE.groupOf = new Map();
   byKey.forEach(g=>{ if(g.length>1) g.forEach(o=> STATE.groupOf.set(o.order_id, g)); });
 }
@@ -371,6 +379,7 @@ function renderOrders() {
   const rows = visibleOrders();
   if (!rows.length) {
     if (STATE.tab==='upgrades') return `<div class="empty">No postage upgrades in the queue.<br><span class="faint">Every order waiting is going as standard postage, so the usual letter workflow covers all of them.</span></div>`;
+    if (STATE.tab==='held') return `<div class="empty">Nothing on hold. 👍<br><span class="faint">Orders land here when a buyer asks to cancel, or when eBay reports the payment failed after the order was marked paid. They stay in the queue but off the pull list until you decide.</span></div>`;
     if (STATE.orders.length) return `<div class="empty">Everything here is picked and packed. ✅<br><span class="faint">Untick “Hide picked” to see the ${STATE.orders.length} order${STATE.orders.length===1?'':'s'} waiting to be posted.</span></div>`;
     return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders land here every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min on their own — hit ↻ to ask eBay right now.</span></div>`;
   }
@@ -382,9 +391,15 @@ function renderOrders() {
       // bought, which is usually while the cards are still in the box — calling that SHIPPED would
       // drop a job out of the day's work with nothing done. See fulfilment_state in lib/postsale.mjs.
       const fs = o.fulfilment_state || (o.shipped_status==='shipped' ? 'posted' : 'to_pack');
-      const pillWord = fs==='label_bought' ? 'label bought' : fs==='posted' ? 'shipped' : 'unshipped';
-      const pillCls = fs==='label_bought' ? 'label_bought' : fs==='posted' ? 'shipped' : 'unshipped';
-      const statusPill = `<span class="pill ${pillCls}"${fs==='label_bought'?' title="eBay marked this sent when the postage label was bought. The cards still need pulling and the parcel still needs lodging."':''}>${esc(pillWord)}</span>`
+      const pillWord = fs==='cancelled' ? 'cancelled' : fs==='label_bought' ? 'label bought' : fs==='posted' ? 'shipped' : 'unshipped';
+      const pillCls = fs==='cancelled' ? 'cancelled' : fs==='label_bought' ? 'label_bought' : fs==='posted' ? 'shipped' : 'unshipped';
+      // Why it was cancelled, in eBay's own words where it gave any — the difference between "gone"
+      // and "the buyer ordered the wrong card", which is worth knowing before you message them.
+      const cancelWhy = [o.cancel_initiator, o.cancel_reason_detail || o.cancel_reason].filter(Boolean).join(' · ');
+      const statusPill = `<span class="pill ${pillCls}"${fs==='label_bought'?' title="eBay marked this sent when the postage label was bought. The cards still need pulling and the parcel still needs lodging."':fs==='cancelled'&&cancelWhy?` title="${esc(cancelWhy)}"`:''}>${esc(pillWord)}</span>`
+        // The hold pill is the loud one: this order is still in the queue on purpose, and the whole
+        // point is that nobody packs it without deciding to.
+        + (o.on_hold?` <span class="pill hold" title="${esc(cancelWhy || 'Sort this out on eBay before packing')}">⛔ ${esc(o.hold_reason || 'on hold')}</span>`:'')
         + (fs==='label_bought'?' <span class="pill queued">still to pack</span>':'')
         + (o.dispatch_source==='ebay'&&fs==='posted'?` <span class="pill printed" title="eBay marked this dispatched when the postage label was bought — pulled back on the order poll">via eBay</span>`:'')
         + (o.picked_at?` <span class="pill picked" title="Pulled + packed ${esc(when(o.picked_at))}">picked ✓</span>`:'')
@@ -409,10 +424,13 @@ function renderOrders() {
       const isUp = !!p.upgrade && o.in_queue && fs !== 'label_bought';
       const ebayBtn = (isUp && p.seller_hub_url)
         ? `<a class="act ebay" href="${esc(p.seller_hub_url)}" target="_blank" rel="noopener" title="${esc((p.label||'This order')+' needs an eBay-bought Australia Post label. Opens the order in Seller Hub.')}">📦 Buy label on eBay ↗</a>` : '';
-      const labelBtn = `<button class="act${isUp?' ghost':''}" data-label="${esc(o.order_id)}" title="${esc(isUp
+      // No address label for a cancelled order. Nothing is being posted, and a printed label sitting on
+      // the bench is exactly how a cancelled parcel goes out anyway. The packing slip stays — that one
+      // is a record of what happened, not an instruction to send something.
+      const labelBtn = fs==='cancelled' ? '' : `<button class="act${isUp?' ghost':''}" data-label="${esc(o.order_id)}" title="${esc(isUp
         ? 'This order is going '+(p.label||'an upgraded service')+', so the parcel normally carries an eBay label. Only use the thermal label if you are lodging it over the counter yourself.'
         : 'Thermal address label for the AUSPRINT')}">📮 Address label</button>`;
-      return `<tr class="${o.picked_at?'ispicked':''} tier-${esc(p.tier||'standard')}">
+      return `<tr class="${o.picked_at?'ispicked':''} ${o.on_hold?'heldrow':''} tier-${esc(p.tier||'standard')}">
         <td class="selcol"><input type="checkbox" class="selbox" data-order="${esc(o.order_id)}" ${isSelected(o)?'checked':''} title="Include this order in the pick sheet"></td>
         <td class="mono muted">${esc(o.order_id)}${o.sales_record_number?`<br><span class="faint">rec #${esc(o.sales_record_number)}</span>`:''}</td>
         <td class="mono">@${esc(o.buyer_username||'—')}${buyerBadge}</td>
@@ -436,10 +454,12 @@ function renderOrders() {
 }
 function renderPanel() {
   const picked = STATE.orders.filter(o=>o.picked_at).length;
-  const heading = STATE.tab==='unshipped' ? 'To pack' : STATE.tab==='upgrades' ? 'Paid a postage upgrade' : 'All orders';
+  const heading = STATE.tab==='unshipped' ? 'To pack' : STATE.tab==='upgrades' ? 'Paid a postage upgrade'
+    : STATE.tab==='held' ? 'Held — sort these out on eBay before packing' : 'All orders';
   $('panel').innerHTML = `<h2>${heading}${picked?` · ${picked} picked`:''}</h2>` + renderOrders();
   $('n_unshipped').textContent = STATE.counts.unshipped!=null ? `(${STATE.counts.unshipped})` : '';
   $('n_upgrades').textContent = STATE.counts.upgrades!=null ? `(${STATE.counts.upgrades})` : '';
+  $('n_held').textContent = STATE.counts.held ? `(${STATE.counts.held})` : '';
   $('n_all').textContent = STATE.counts.all!=null ? `(${STATE.counts.all})` : '';
   $('hidePickedLbl').textContent = picked ? `Hide picked (${picked})` : 'Hide picked';
   updateSelAll(); updatePickBtn();
@@ -456,6 +476,7 @@ async function loadAll() {
     if (STATE.tab==='all') STATE.counts.all = STATE.orders.length;
     else STATE.counts.unshipped = STATE.orders.length;
     STATE.counts.upgrades = STATE.orders.filter(o => o.postage && o.postage.upgrade && o.in_queue).length;
+    STATE.counts.held = STATE.orders.filter(o => o.on_hold && o.in_queue).length;
     renderBanner(); renderPanel(); renderServices();
   } catch (e) {
     $('banner').innerHTML = `<span class="chip"><span class="dot err"></span>${esc(e.message)}</span>`;
@@ -605,6 +626,10 @@ function printAllLabels(){
 function visibleOrders(){
   let rows = STATE.hidePicked ? STATE.orders.filter(o=>!o.picked_at) : STATE.orders;
   if (STATE.tab === 'upgrades') rows = rows.filter(o => o.postage && o.postage.upgrade);
+  // Held is a lens on the same pack queue, like Upgrades — these orders are still IN the queue, which
+  // is the point. A cancelled order is not here because it has left the queue entirely; it lives under
+  // All with a struck-through pill, because there is nothing left to do about it.
+  if (STATE.tab === 'held') rows = rows.filter(o => o.on_hold);
   if (STATE.tab !== 'all') {
     rows = rows.slice().sort((a,b) => {
       const da = dueInfo(a), db = dueInfo(b);
@@ -616,9 +641,11 @@ function visibleOrders(){
   }
   return rows;
 }
-// A picked order starts UNTICKED — it's already in the satchel, so it has no business on the next
-// pull list — unless the user deliberately ticks it back on.
-function isSelected(o){ return STATE.included.has(o.order_id) || (!STATE.excluded.has(o.order_id) && !o.picked_at); }
+// What starts ticked is `o.pickable` — the server's own answer, computed by attachFulfilment from the
+// same predicates the pick sheet and the digest use. Re-deriving it here (picked? held? cancelled?) is
+// how the client ends up one term behind the server: this used to spell it out and had already dropped
+// the cancelled case, so on the All tab a cancelled order arrived pre-ticked.
+function isSelected(o){ return STATE.included.has(o.order_id) || (!STATE.excluded.has(o.order_id) && !!o.pickable); }
 // Order ids ticked for the pick sheet (all displayed orders minus the ones unticked).
 function selectedOrderIds(){ return visibleOrders().filter(isSelected).map(o=>o.order_id); }
 // A SHIPMENT is what physically goes in one satchel: same buyer, same cleaned ship-to (shipGroupKey,
