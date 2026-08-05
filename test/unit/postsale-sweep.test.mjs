@@ -201,3 +201,38 @@ describe('sweepDue — when a poll also sweeps by id', () => {
     assert.equal(sweepDue('schedule', {}, null), false, 'a missing key reads as off, not as every tick');
   });
 });
+
+// The sweep set is wider than the pack queue on purpose (parcels in transit need delivery dates too),
+// and on an established store those outnumber the queue many times over. If `limit` is spent on them,
+// the sweep never asks about the orders that actually need a decision -- which is not a smaller
+// version of the feature, it is the feature never running on the rows it exists for.
+describe('the pack queue is never crowded out by the in-transit tail', () => {
+  it('asks about every queue order first, even when the cap is far smaller than the tail', async () => {
+    // 80 parcels in transit, all OLDER than the two orders still waiting to be packed.
+    for (let i = 0; i < 80; i++) {
+      seedOrder('transit-' + String(i).padStart(2, '0'), {
+        shipped_status: 'shipped', shipped_time: '2026-07-20T00:00:00.000Z', paid_time: '2026-07-20T00:00:00.000Z' });
+    }
+    seedOrder('queue-new', { paid_time: '2026-08-05T00:00:00.000Z' });
+    seedOrder('held-new', { paid_time: '2026-08-05T01:00:00.000Z', cancel_state: 'requested' });
+
+    const asked = [];
+    await sweepOpenOrders({}, db, { limit: 60, fetchOrders: async (env, opts) => { asked.push(...opts.orderIds); return { ok: true, orders: [] }; } });
+
+    assert.equal(asked.length, 60, 'the cap still applies');
+    assert.ok(asked.includes('queue-new'), 'an order waiting to be packed must always be asked about');
+    assert.ok(asked.includes('held-new'), 'so must one already flagged for a decision');
+    // And they are asked FIRST, so a smaller cap could not drop them either.
+    assert.ok(asked.indexOf('queue-new') < 2 && asked.indexOf('held-new') < 2, 'actionable orders lead the batch');
+  });
+
+  it('still covers the in-transit tail with whatever budget is left', async () => {
+    seedOrder('queue-1');
+    for (let i = 0; i < 5; i++) {
+      seedOrder('t-' + i, { shipped_status: 'shipped', shipped_time: new Date().toISOString() });
+    }
+    const asked = [];
+    await sweepOpenOrders({}, db, { limit: 60, fetchOrders: async (env, opts) => { asked.push(...opts.orderIds); return { ok: true, orders: [] }; } });
+    assert.equal(asked.length, 6, 'nothing in scope is dropped when the budget is not tight');
+  });
+});
