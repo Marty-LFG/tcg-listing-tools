@@ -186,6 +186,23 @@ describe('postsale — safety', () => {
     assert.ok(r.json && r.json.error);
   });
 
+  // The dashboard's ↻ drives this one, so unlike the diagnostics trigger it is deliberately ungated.
+  // Its guard is a cooldown, and a request inside that window must read as "nothing to do" rather
+  // than an error — the page still reloads on the back of it. postsale is disabled in the test
+  // config, so no eBay call is made here; the poll short-circuits at the enabled check.
+  it('POST /sync runs without a token, then reports the cooldown instead of polling twice', async () => {
+    const first = await post('/api/postsale/sync');
+    assert.equal(first.status, 200);
+    assert.equal(first.json.ok, true);
+    assert.notEqual(first.json.skipped, 'cooldown', 'the first sync should have actually run');
+    assert.ok(first.json.state, 'state.order_poll echoed back for the last-checked chip');
+
+    const second = await post('/api/postsale/sync');
+    assert.equal(second.status, 200);
+    assert.equal(second.json.skipped, 'cooldown');
+    assert.ok(second.json.retry_in_ms > 0 && second.json.retry_in_ms <= 20_000);
+  });
+
   it('GET /api/status surfaces the postsale db + jobs', async () => {
     const { status, json } = await get('/api/status');
     assert.equal(status, 200);

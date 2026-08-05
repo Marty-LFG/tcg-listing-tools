@@ -58,6 +58,8 @@
   .btn.solid{background:var(--accent);color:var(--ink);border-color:var(--accent);}
   .btn.solid:hover{opacity:.9;color:var(--ink);}
   .btn:disabled{opacity:.4;cursor:not-allowed;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .spin{display:inline-block;animation:spin .8s linear infinite;}
   .stepper{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;color:var(--muted);}
   .stepper .s{width:26px;height:26px;border:1px solid var(--line2);background:var(--panel);color:var(--text);border-radius:7px;font-size:15px;font-weight:700;cursor:pointer;line-height:1;padding:0;}
   .stepper .s:hover{border-color:var(--accent);color:var(--accent);}
@@ -200,7 +202,7 @@
         <button class="btn" id="labelsBtn" title="Every ticked order's address label in one run to the AUSPRINT, one label per parcel. Tracked and Express orders are skipped — those travel on an eBay-bought Australia Post label.">📮 Labels</button>
       </div>
       <button class="btn" id="pickedBtn" title="Mark the ticked orders as pulled + packed — they drop off the pull list but stay here to dispatch">✓ Mark picked</button>
-      <button class="btn" id="refreshBtn" title="Reload orders">↻</button>
+      <button class="btn" id="refreshBtn" title="Check eBay for new orders, then reload"><span id="refreshIcon">↻</span></button>
     </div>
   </div>
 
@@ -258,6 +260,15 @@ function renderBanner() {
   const chips = [];
   chips.push(`<span class="chip"><span class="dot ${cfg.enabled?'ok':'warn'}"></span>${cfg.enabled?'<b>Order sync on</b>':'Order sync off'}</span>`);
   chips.push(`<span class="chip"><span class="dot ${ebay.connected?'ok':'err'}"></span>eBay ${ebay.connected?'connected':'<a href="/api/repricer/oauth">connect →</a>'}</span>`);
+  // When eBay was last actually asked. Without this the page can't distinguish "no new orders" from
+  // "nobody has looked since breakfast" — they render identically, which is what made ↻ feel dead.
+  // Stale = past two poll intervals, i.e. the scheduler has missed a turn.
+  const lastRun = ((c.state||{}).order_poll||{}).last_run;
+  const seenAt = lastRun && (lastRun.finished_at || lastRun.at);
+  if (seenAt) {
+    const stale = (Date.now() - new Date(seenAt).getTime()) > Math.max(1, cfg.poll_interval_min||10) * 2 * 60000;
+    chips.push(`<span class="chip" title="${esc(seenAt)}"><span class="dot ${lastRun.ok===false?'err':stale?'warn':'ok'}"></span>eBay checked ${agoWord(seenAt)}</span>`);
+  }
   const pc = STATE.printCfg||{};
   chips.push(`<span class="chip"><span class="dot ${pc.enabled?'ok':'warn'}"></span>Printer ${pc.enabled?('AUSPRINT '+(pc.ip||'')):'off (download only)'}</span>`);
   if (cfg.dry_run) chips.push(`<span class="chip"><span class="dot warn"></span><b>DRY-RUN</b> — Mark shipped won't write to eBay</span>`);
@@ -285,6 +296,7 @@ function relTime(ms) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 const duePhrase = (left) => (left < 0 ? 'overdue by ' : 'dispatch in ');
+const agoWord = (iso) => { const ms = Date.now() - new Date(iso).getTime(); return (!isFinite(ms) || ms < 60000) ? 'just now' : relTime(ms) + ' ago'; };
 function postageCell(o) {
   const p = o.postage;
   if (!p) return '<span class="faint">—</span>';
@@ -360,7 +372,7 @@ function renderOrders() {
   if (!rows.length) {
     if (STATE.tab==='upgrades') return `<div class="empty">No postage upgrades in the queue.<br><span class="faint">Every order waiting is going as standard postage, so the usual letter workflow covers all of them.</span></div>`;
     if (STATE.orders.length) return `<div class="empty">Everything here is picked and packed. ✅<br><span class="faint">Untick “Hide picked” to see the ${STATE.orders.length} order${STATE.orders.length===1?'':'s'} waiting to be posted.</span></div>`;
-    return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders appear here after the order poll runs (Diagnostics below, or every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min).</span></div>`;
+    return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders land here every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min on their own — hit ↻ to ask eBay right now.</span></div>`;
   }
   return runSummary(rows)
     + `<table><thead><tr><th class="selcol"><input type="checkbox" id="selAll" checked title="Include all in the pick sheet"></th><th>Order</th><th>Buyer</th><th>Items</th><th>Total</th><th>Ship to</th><th>Postage</th><th>Paid (Sydney)</th><th>Status</th><th>Print / dispatch</th></tr></thead><tbody>`
@@ -721,7 +733,40 @@ $('slipsBtn').addEventListener('click', printAllSlips);
 $('labelsBtn').addEventListener('click', printAllLabels);
 $('pickedBtn').addEventListener('click', () => markPicked(selectedOrderIds(), true, $('pickedBtn')));
 $('hidePickedChk').addEventListener('change', () => { STATE.hidePicked = $('hidePickedChk').checked; try{localStorage.setItem('ff_hide_picked', STATE.hidePicked?'1':'');}catch(e){} renderPanel(); });
-$('refreshBtn').addEventListener('click', loadAll);
+// ↻ means "check eBay now", not "re-read what we already hold". The scheduled poll only runs every
+// poll_interval_min, so a plain reload could never surface an order placed a minute ago — which is
+// precisely when someone reaches for this button. The server keeps it to one poll at a time with a
+// floor between manual runs; this side only has to be honest about what came back. "Nothing new" is
+// a result and gets said out loud: a silent no-op is indistinguishable from a broken button.
+let syncing = false;
+async function syncNow() {
+  if (syncing) return;
+  syncing = true;
+  const btn = $('refreshBtn');
+  btn.disabled = true; $('refreshIcon').classList.add('spin');
+  setStatus('load', 'checking eBay for new orders…');
+  try {
+    const r = await fetch('/api/postsale/sync', { method:'POST' });
+    const j = await r.json().catch(()=>({}));
+    await loadAll();
+    if (!r.ok) return setStatus('err', j.error || ('sync failed — HTTP ' + r.status));
+    if (j.skipped === 'cooldown') return setStatus('warn', `eBay was just checked — reloaded from here (can ask again in ${Math.ceil((j.retry_in_ms||0)/1000)}s)`);
+    const res = j.result || {};
+    if (res.skipped === 'disabled') return setStatus('warn', 'order sync is switched off — turn it on under Settings → Post-sale');
+    if (res.ok === false) return setStatus('err', 'eBay refused the poll — ' + (res.error || 'unknown error'));
+    const bits = [];
+    if (res.ingested) bits.push(`${res.ingested} new order${res.ingested===1?'':'s'}`);
+    if (res.refreshed) bits.push(`${res.refreshed} updated`);
+    if (res.tracking_found) bits.push(`${res.tracking_found} tracking number${res.tracking_found===1?'':'s'}`);
+    setStatus(bits.length?'ok':'load', bits.length ? ('eBay checked · ' + bits.join(' · ')) : 'eBay checked · nothing new');
+  } catch (e) {
+    setStatus('err', 'could not reach the server — ' + e.message);
+    await loadAll();
+  } finally {
+    syncing = false; btn.disabled = false; $('refreshIcon').classList.remove('spin');
+  }
+}
+$('refreshBtn').addEventListener('click', syncNow);
 $('pv_close').addEventListener('click', closePreview);
 $('pv_cancel').addEventListener('click', closePreview);
 $('overlay').addEventListener('click', (e)=>{ if (e.target===$('overlay')) closePreview(); });
