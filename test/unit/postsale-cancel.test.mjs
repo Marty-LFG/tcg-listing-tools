@@ -298,3 +298,46 @@ describe('cancelReasonText — eBay reason codes in words', () => {
     assert.equal(cancelReasonText(null), null);
   });
 });
+
+// The repeat-buyer copy asserts the buyer HAS the card ("hope it looks right at home with your X").
+// So a cancelled order must never reach it: warmly listing three cards somebody was just refunded for
+// is worse than saying nothing at all. This is the bug that actually shipped to a buyer.
+describe('a cancelled order never reaches the buyer-facing copy', () => {
+  let db, tmpDir, ps;
+  before(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-prior-'));
+    const { openPostsaleDbAt } = await import('../../lib/postsale-db.mjs');
+    db = openPostsaleDbAt(path.join(tmpDir, 'p.db'));
+    ps = await import('../../lib/postsale.mjs');
+    db.prepare('INSERT INTO buyers (ebay_username) VALUES (?)').run('taikonirvana');
+    const order = (id, over = {}) => {
+      const cols = { order_id: id, buyer_id: 1, buyer_username: 'taikonirvana', paid_time: '2026-08-0' + id.slice(-1) + 'T00:00:00Z', ...over };
+      const keys = Object.keys(cols);
+      db.prepare(`INSERT INTO orders (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...keys.map((k) => cols[k]));
+    };
+    const line = (id, title) => db.prepare('INSERT INTO order_line_items (order_id, title) VALUES (?,?)').run(id, title);
+    order('live-1'); line('live-1', "Pokemon N's Plan 163/086 Black Bolt Ultra Rare Holo EN M/NM");
+    order('good-2'); line('good-2', 'Pokemon Pikachu 025/165 151 Holo EN M/NM');
+    order('dead-3', { cancel_state: 'cancelled' });
+    line('dead-3', 'Pokemon Dewgong 097/094 Phantasmal Flames Illustration Rare Holo EN M/NM');
+    line('dead-3', "Pokemon Boss's Orders 256/217 Ascended Heroes Ultra Rare Holo EN M/NM");
+    line('dead-3', "Pokemon Giovanni's Charisma 204/165 151 Special Illustration Rare Holo EN M/NM");
+    order('held-4', { cancel_state: 'requested' });
+    line('held-4', 'Pokemon Mewtwo 150/165 151 Holo EN M/NM');
+  });
+  after(() => { try { db.close(); } catch {} try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
+
+  it('leaves out the cards from a cancelled order', () => {
+    // draftAndRoute is the only consumer, and it feeds this straight to the model as "what they own".
+    const titles = ps.priorCardsFor(db, 1, 'live-1').join(' | ');
+    assert.ok(!/Dewgong|Boss's Orders|Giovanni/.test(titles),
+      'cancelled cards must not be offered to the model as things the buyer owns — got: ' + titles);
+    assert.match(titles, /Pikachu/, 'a genuine earlier purchase is still worth mentioning');
+  });
+
+  it('leaves out an order whose cancellation is still in flight', () => {
+    // It may never become a card in their hands, so it cannot be spoken about as one.
+    const titles = ps.priorCardsFor(db, 1, 'live-1').join(' | ');
+    assert.ok(!/Mewtwo/.test(titles), 'a held order is not a completed purchase');
+  });
+});
