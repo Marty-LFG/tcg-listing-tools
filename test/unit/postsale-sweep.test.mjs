@@ -10,7 +10,7 @@
 //
 // TCG_CONFIG_DIR / TCG_POSTSALE_DB must be set BEFORE lib/postsale.mjs loads (both resolve at module
 // scope), hence the dynamic import — same pattern as postsale-sync.test.mjs.
-import { describe, it, after, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,7 +21,7 @@ fs.mkdirSync(DIR, { recursive: true });
 fs.writeFileSync(path.join(DIR, 'postsale.config.json'), JSON.stringify({ enabled: true, messaging: false }, null, 2));
 process.env.TCG_CONFIG_DIR = DIR;
 process.env.TCG_POSTSALE_DB = path.join(DIR, 'postsale.db');
-const { sweepOpenOrders } = await import('../../lib/postsale.mjs');
+const { sweepOpenOrders, sweepDue } = await import('../../lib/postsale.mjs');
 const { openPostsaleDb } = await import('../../lib/postsale-db.mjs');
 
 const db = openPostsaleDb();
@@ -167,5 +167,37 @@ describe('a cancellation is never swallowed by a same-poll payment change', () =
       fetchOrders: async () => ({ ok: true, orders: [parsed('10-3-3', { paidStatus: 'PayPalPaymentInProcess' })] }),
     });
     assert.deepEqual(r.holdMoves, [], 'ordinary payment chatter must not run a settle round');
+  });
+});
+
+// The ↻ on the dashboard promises "ask eBay right now". The windowed query cannot answer that for a
+// change that happened before the cursor — which is the usual reason somebody presses it — so the
+// manual path has to sweep by id, whatever the background clock says.
+describe('sweepDue — when a poll also sweeps by id', () => {
+  const cfg = { sweep_interval_min: 60 };
+  const justNow = new Date().toISOString();
+
+  it('a manual sync sweeps even though it swept a moment ago', () => {
+    assert.equal(sweepDue('manual', cfg, justNow), true, 'a person asking is not the schedule');
+  });
+
+  it('a manual sync sweeps even when the background timer is switched off', () => {
+    // sweep_interval_min: 0 means "do not do this on a timer". It does not mean the button should
+    // stop being able to answer the one question it exists to answer.
+    assert.equal(sweepDue('manual', { sweep_interval_min: 0 }, justNow), true);
+  });
+
+  it('a scheduled tick keeps its clock', () => {
+    assert.equal(sweepDue('schedule', cfg, justNow), false);
+    assert.equal(sweepDue('schedule', cfg, new Date(Date.now() - 61 * 60_000).toISOString()), true);
+  });
+
+  it('a scheduled tick sweeps once on a fresh install, then waits', () => {
+    assert.equal(sweepDue('schedule', cfg, null), true);
+  });
+
+  it('0 turns the SCHEDULED sweep off entirely', () => {
+    assert.equal(sweepDue('schedule', { sweep_interval_min: 0 }, null), false);
+    assert.equal(sweepDue('schedule', {}, null), false, 'a missing key reads as off, not as every tick');
   });
 });

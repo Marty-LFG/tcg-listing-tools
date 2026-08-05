@@ -785,9 +785,20 @@ async function syncNow() {
     if (res.ok === false) return setStatus('err', 'eBay refused the poll — ' + (res.error || 'unknown error'));
     const bits = [];
     if (res.ingested) bits.push(`${res.ingested} new order${res.ingested===1?'':'s'}`);
-    if (res.refreshed) bits.push(`${res.refreshed} updated`);
+    // The windowed pass and the by-id sweep both report updates, and the sweep's are the ones a person
+    // pressing ↻ is usually hunting for — an order that changed on eBay before the cursor moved past it.
+    const updated = (res.refreshed||0) + ((res.sweep && res.sweep.refreshed)||0);
+    if (updated) bits.push(`${updated} updated`);
     if (res.tracking_found) bits.push(`${res.tracking_found} tracking number${res.tracking_found===1?'':'s'}`);
-    setStatus(bits.length?'ok':'load', bits.length ? ('eBay checked · ' + bits.join(' · ')) : 'eBay checked · nothing new');
+    // Cancellations and payment holds are the whole reason the sweep exists, so they get said out loud
+    // rather than being folded into "N updated".
+    const holds = (res.holds||[]);
+    const dead = holds.filter(h => h.state === 'cancelled').length;
+    const held = holds.filter(h => h.state === 'requested' || h.state === 'failed').length;
+    if (dead) bits.push(`${dead} cancelled`);
+    if (held) bits.push(`${held} now on hold`);
+    setStatus(dead||held ? 'warn' : bits.length ? 'ok' : 'load',
+      bits.length ? ('eBay checked · ' + bits.join(' · ')) : 'eBay checked · nothing new');
   } catch (e) {
     setStatus('err', 'could not reach the server — ' + e.message);
     await loadAll();
