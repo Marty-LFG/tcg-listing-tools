@@ -260,3 +260,41 @@ describe('messagingBlocked — one gate, every reason', () => {
     assert.match(messagingBlocked(db, 'chat-1', 'delivered'), /already in contact/);
   });
 });
+
+// eBay has two documented vocabularies for the same handful of reasons, and the value this account
+// actually received (BuyerAskedCancel) is in NEITHER verbatim — it is the Post-Order idea spelled in
+// the Trading API's CamelCase. So the fallback matters more than the map.
+describe('cancelReasonText — eBay reason codes in words', () => {
+  it('handles the code the live order actually returned', async () => {
+    const { cancelReasonText } = await import('../../lib/postsale.mjs');
+    assert.equal(cancelReasonText('BuyerAskedCancel'), 'the buyer asked to cancel');
+  });
+
+  it('maps BOTH vocabularies to the same phrase', async () => {
+    const { cancelReasonText } = await import('../../lib/postsale.mjs');
+    // Trading API CamelCase and Post-Order SCREAMING_SNAKE for one idea.
+    assert.equal(cancelReasonText('OrderPlacedByMistake'), cancelReasonText('ORDER_MISTAKE'));
+    assert.equal(cancelReasonText('AddressIssues'), cancelReasonText('ADDRESS_ISSUES'));
+    assert.equal(cancelReasonText('FoundCheaperPrice'), cancelReasonText('FOUND_CHEAPER_PRICE'));
+  });
+
+  it('warns that an out-of-stock cancellation costs a seller defect', async () => {
+    const { cancelReasonText } = await import('../../lib/postsale.mjs');
+    assert.match(cancelReasonText('OutOfStock'), /defect/);
+  });
+
+  it('splits an UNDOCUMENTED code into words instead of printing the enum', async () => {
+    const { cancelReasonText } = await import('../../lib/postsale.mjs');
+    // This is the case that will actually happen again: eBay is already sending values its own
+    // reference does not list, so an unmapped code has to still read like an answer.
+    assert.equal(cancelReasonText('BuyerChangedTheirMind'), 'buyer changed their mind');
+    assert.equal(cancelReasonText('SOME_NEW_REASON'), 'some new reason');
+  });
+
+  it('says nothing rather than something useless', async () => {
+    const { cancelReasonText } = await import('../../lib/postsale.mjs');
+    assert.equal(cancelReasonText('Other'), null);      // eBay deprecated it; it carries no information
+    assert.equal(cancelReasonText(''), null);
+    assert.equal(cancelReasonText(null), null);
+  });
+});

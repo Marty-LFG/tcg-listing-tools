@@ -395,7 +395,9 @@ function renderOrders() {
       const pillCls = fs==='cancelled' ? 'cancelled' : fs==='label_bought' ? 'label_bought' : fs==='posted' ? 'shipped' : 'unshipped';
       // Why it was cancelled, in eBay's own words where it gave any — the difference between "gone"
       // and "the buyer ordered the wrong card", which is worth knowing before you message them.
-      const cancelWhy = [o.cancel_initiator, o.cancel_reason_detail || o.cancel_reason].filter(Boolean).join(' · ');
+      // cancel_reason_text is resolved server-side (see cancelReasonText) so this reads "the buyer
+      // asked to cancel" rather than eBay's raw BuyerAskedCancel.
+      const cancelWhy = [o.cancel_initiator, o.cancel_reason_text].filter(Boolean).join(' · ');
       const statusPill = `<span class="pill ${pillCls}"${fs==='label_bought'?' title="eBay marked this sent when the postage label was bought. The cards still need pulling and the parcel still needs lodging."':fs==='cancelled'&&cancelWhy?` title="${esc(cancelWhy)}"`:''}>${esc(pillWord)}</span>`
         // The hold pill is the loud one: this order is still in the queue on purpose, and the whole
         // point is that nobody packs it without deciding to.
