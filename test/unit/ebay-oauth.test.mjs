@@ -2,7 +2,7 @@
 // No network, no token store writes — only the pure/crypto pieces.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildConsentUrl, keysConfigured, runameConfigured, encryptSecret, decryptSecret, CONSENT_SCOPES } from '../../lib/ebay-oauth.mjs';
+import { buildConsentUrl, keysConfigured, runameConfigured, encryptSecret, decryptSecret, missingScopes, CONSENT_SCOPES } from '../../lib/ebay-oauth.mjs';
 
 const ENV = { EBAY_APP_ID: 'app-id-123', EBAY_CERT_ID: 'cert-id-456', EBAY_RUNAME: 'My_RuName' };
 
@@ -59,5 +59,42 @@ describe('refresh-token encryption at rest (AES-256-GCM)', () => {
   it('garbage input → null', () => {
     assert.equal(decryptSecret(ENV, null), null);
     assert.equal(decryptSecret(ENV, 'not-a-blob'), null);
+  });
+});
+
+// A seller's grant is frozen at the moment they consented. Adding a scope to CONSENT_SCOPES does not
+// reach them — and must not break them either, which is why the refresh sends the STORED set. What it
+// does mean is that the new capability will fail the first time it is used, so the gap has to be
+// visible before then rather than discovered by an eBay error nobody was watching for.
+describe('missingScopes — what a seller consented to vs what we would ask for today', () => {
+  it('nothing missing when the grant already covers the ask', () => {
+    assert.deepEqual(missingScopes(CONSENT_SCOPES.join(' ')), []);
+  });
+
+  it('names the scopes a re-consent would add', () => {
+    const partial = CONSENT_SCOPES.slice(0, 1).join(' ');
+    const missing = missingScopes(partial);
+    assert.deepEqual(missing, CONSENT_SCOPES.slice(1));
+    assert.ok(missing.length > 0, 'a partial grant must report the shortfall');
+  });
+
+  it('treats an absent or empty grant as missing everything, not as satisfied', () => {
+    // The dangerous direction: a falsy grant reading as "nothing missing" would hide the banner
+    // exactly when it matters most.
+    for (const empty of [null, undefined, '', '   ']) {
+      assert.deepEqual(missingScopes(empty), CONSENT_SCOPES, `grant ${JSON.stringify(empty)}`);
+    }
+  });
+
+  it('is whitespace-shaped, not substring-shaped', () => {
+    // eBay returns the grant as one space-joined string; irregular spacing must not create phantom
+    // gaps, and a scope must never count as granted because it is a prefix of another.
+    assert.deepEqual(missingScopes('  ' + CONSENT_SCOPES.join('   ') + '\n'), []);
+    assert.ok(missingScopes(CONSENT_SCOPES[0].slice(0, -3)).includes(CONSENT_SCOPES[0]),
+      'a truncated scope string must not satisfy the full scope');
+  });
+
+  it('ignores extra scopes the seller granted beyond our ask', () => {
+    assert.deepEqual(missingScopes(CONSENT_SCOPES.join(' ') + ' https://api.ebay.com/oauth/api_scope/sell.marketing'), []);
   });
 });
