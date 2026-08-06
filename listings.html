@@ -63,7 +63,10 @@
      which is a different thing from a broken one and should not read as an error. */
   .litem{display:flex;gap:9px;align-items:flex-start;}
   .ltxt{flex:1;min-width:0;}
-  .lthumb{width:38px;height:53px;flex:0 0 auto;display:block;border-radius:4px;object-fit:cover;background:var(--panel2);border:1px solid var(--line2);}
+  /* 48×67 keeps the 2.5:3.5 card ratio and is the largest that stays SHARP: eBay hands us the
+     s-l140 gallery thumb (140px on the long side), and 67px doubles to 134 on a HiDPI screen. Going
+     bigger than this means asking eBay for a larger rendition, not stretching this one. */
+  .lthumb{width:48px;height:67px;flex:0 0 auto;display:block;border-radius:4px;object-fit:cover;background:var(--panel2);border:1px solid var(--line2);}
   a:hover>.lthumb{border-color:var(--gold-dim);}
   .lthumb.none{background:repeating-linear-gradient(135deg,#12151d,#12151d 4px,#0d0f15 4px,#0d0f15 8px);}
   .meta{color:var(--muted);font-size:11px;font-family:var(--mono);}
