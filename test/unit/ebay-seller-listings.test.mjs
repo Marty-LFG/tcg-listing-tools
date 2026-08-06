@@ -15,12 +15,15 @@ const XML = `<GetMyeBaySellingResponse><Ack>Success</Ack>
    <Item><ItemID>158112049713</ItemID><SKU>AAC-084</SKU>
      <Title>Pokemon Wailord 162/159 Journey Together Illustration Rare Holo EN M/NM</Title>
      <Quantity>1</Quantity><ViewItemURL>https://www.ebay.com.au/itm/158112049713</ViewItemURL>
+     <PictureDetails><GalleryURL>https://i.ebayimg.com/00/s/thumb.jpg?set_id=88&amp;x=1</GalleryURL>
+       <PictureURL>https://i.ebayimg.com/00/s/full.jpg</PictureURL></PictureDetails>
      <SellingStatus><CurrentPrice currencyID="AUD">32.48</CurrentPrice><QuantitySold>0</QuantitySold></SellingStatus>
    </Item>
    <Item><ItemID>158119929614</ItemID><SKU>BK-PKM-000010</SKU><Title>Pokemon Radiant Gardevoir</Title>
      <Quantity>1</Quantity><StartPrice currencyID="AUD">4.98</StartPrice>
      <SellingStatus><QuantitySold>0</QuantitySold></SellingStatus></Item>
    <Item><ItemID>158000000001</ItemID><Title>No custom label on this one</Title><Quantity>3</Quantity>
+     <PictureDetails><PictureURL>https://i.ebayimg.com/00/s/nogallery.jpg</PictureURL></PictureDetails>
      <SellingStatus><CurrentPrice currencyID="AUD">9.95</CurrentPrice><QuantitySold>1</QuantitySold></SellingStatus></Item>
  </ItemArray></ActiveList>
  <SoldList><ItemArray><OrderTransaction><Transaction>
@@ -54,6 +57,15 @@ describe('parseSellerListings', () => {
     assert.equal(by['158000000001'].sku, null);
     assert.equal(by['158000000001'].quantity, 3);
     assert.equal(by['158000000001'].sold_qty, 1);
+  });
+
+  it('takes the listing picture, gallery thumbnail first, with its URL entity-decoded', () => {
+    // An EPS URL carries a query string, so eBay escapes the & — undecoded it is a broken <img>.
+    assert.equal(by['158112049713'].image_url, 'https://i.ebayimg.com/00/s/thumb.jpg?set_id=88&x=1');
+    // No gallery thumb generated yet: the full-size picture is still the listing's first image.
+    assert.equal(by['158000000001'].image_url, 'https://i.ebayimg.com/00/s/nogallery.jpg');
+    // Not "this listing has no picture" — this SCAN didn't carry one. The mirror backfills those.
+    assert.equal(by['158119929614'].image_url, null);
   });
 
   it('picks up sold listings from their nested Transaction container', () => {

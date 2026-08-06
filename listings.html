@@ -58,6 +58,14 @@
   tbody tr.done{opacity:.42;}
   tbody tr.done:hover{opacity:.72;}
   .lbl{font-family:var(--mono);font-size:11.5px;color:var(--gold);white-space:nowrap;letter-spacing:.4px;}
+  /* The listing's own first picture, card-shaped like the order thumbnails in orders.html — a square
+     crop takes the corners off the art, and these are cards. The hatched box is "no picture yet",
+     which is a different thing from a broken one and should not read as an error. */
+  .litem{display:flex;gap:9px;align-items:flex-start;}
+  .ltxt{flex:1;min-width:0;}
+  .lthumb{width:38px;height:53px;flex:0 0 auto;display:block;border-radius:4px;object-fit:cover;background:var(--panel2);border:1px solid var(--line2);}
+  a:hover>.lthumb{border-color:var(--gold-dim);}
+  .lthumb.none{background:repeating-linear-gradient(135deg,#12151d,#12151d 4px,#0d0f15 4px,#0d0f15 8px);}
   .meta{color:var(--muted);font-size:11px;font-family:var(--mono);}
   .money{font-family:var(--mono);font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;}
   .chip,.btn,.mini{transition:background .13s,border-color .13s,color .13s;}
@@ -175,12 +183,16 @@ function sortRows(rows){
 async function load(){
   $('status').className='status'; $('status').textContent='loading…';
   try{
-    const j=await fetch('/api/listings/mirror?limit=1000').then(r=>r.json());
+    // images=1 lets the server fill in any thumbnails the import did not carry, a capped batch per
+    // load. `pending` is what it did NOT get to — said out loud rather than left as blank boxes.
+    const j=await fetch('/api/listings/mirror?limit=1000&images=1').then(r=>r.json());
     ALL=j.listings||[];
     const li=j.lastImport;
-    $('status').textContent=ALL.length
+    const pend=(j.images&&j.images.pending)||0;
+    $('status').textContent=(ALL.length
       ? (li&&li.at?'Last import '+new Date(li.at).toLocaleString():'Never imported — press Import from eBay')
-      : 'Nothing mirrored yet. Press Import from eBay to pull your listings in.';
+      : 'Nothing mirrored yet. Press Import from eBay to pull your listings in.')
+      +(pend?' · '+pend+' picture'+(pend===1?'':'s')+' still to fetch from eBay — reload to carry on':'');
     tiles(); render();
   }catch(e){ $('status').className='status err'; $('status').textContent=String(e&&e.message||e); }
 }
@@ -194,6 +206,15 @@ function tiles(){
     +t('Made by hand',manual,'of '+ALL.length)+t('Not linked',unlinked,'to stock');
 }
 const isDone=l=>l.state==='ended'||l.state==='sold'||l.state==='unsold';
+// The listing's first picture, straight off eBay's own CDN — the same one a buyer sees in search.
+// It doubles as the second way into the listing, because a picture is what you actually recognise a
+// card by. A hidden broken image beats an alt-text box: eBay expires picture URLs on old listings.
+function thumb(l){
+  const img=l.image_url
+    ? '<img class="lthumb" src="'+esc(l.image_url)+'" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">'
+    : '<span class="lthumb none" title="no picture from eBay yet"></span>';
+  return l.listing_url?'<a href="'+esc(l.listing_url)+'" target="_blank" rel="noopener">'+img+'</a>':img;
+}
 function render(){
   const q=$('q').value.trim().toLowerCase();
   const rows=sortRows(ALL.filter(l=>{
@@ -220,8 +241,8 @@ function render(){
     const avail=l.available_qty!=null?l.available_qty:(l.quantity!=null&&l.sold_qty!=null?l.quantity-l.sold_qty:l.quantity);
     return '<tr'+(isDone(l)?' class="done"':'')+'>'
       +'<td class="lbl">'+esc(l.sku||'—')+'</td>'
-      +'<td><div>'+esc(l.title||'(no title)')+'</div>'
-        +'<div class="meta">'+esc(l.listing_id)+' · <span class="via">'+(l.created_via==='tool'?'listed here':'made by hand')+'</span></div></td>'
+      +'<td><div class="litem">'+thumb(l)+'<div class="ltxt"><div>'+esc(l.title||'(no title)')+'</div>'
+        +'<div class="meta">'+esc(l.listing_id)+' · <span class="via">'+(l.created_via==='tool'?'listed here':'made by hand')+'</span></div></div></div></td>'
       +'<td class="money">'+aud(l.price_cents)+'</td>'
       +'<td class="money">'+(avail==null?'—':avail)+(l.sold_qty?'<div class="meta">'+l.sold_qty+' sold</div>':'')+'</td>'
       +'<td><span class="st '+esc(l.state||'')+'">'+esc(String(l.state||'?').toUpperCase())+'</span></td>'

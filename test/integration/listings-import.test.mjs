@@ -14,13 +14,14 @@ const DB_PATH = path.join(os.tmpdir(), 'tcg-import-test-' + process.pid + '.db')
 process.env.TCG_TRACKER_DB = DB_PATH;
 
 const { openDb } = await import('../../lib/db.mjs');
-const { importSellerListings, linkMirrorListings } = await import('../../lib/listings.mjs');
+const { importSellerListings, linkMirrorListings, resolveMirrorImages } = await import('../../lib/listings.mjs');
 
 const ENV = { EBAY_APP_ID: 'PRD-x', EBAY_CERT_ID: 'PRD-y', EBAY_REFRESH_TOKEN: 'fake' };
 const realFetch = globalThis.fetch;
 let db, live = [];
 
 const activeItem = (l) => `<Item><ItemID>${l.id}</ItemID>${l.sku ? `<SKU>${l.sku}</SKU>` : ''}<Title>t ${l.id}</Title>`
+  + (l.img ? `<PictureDetails><GalleryURL>${l.img}</GalleryURL></PictureDetails>` : '')
   + `<Quantity>1</Quantity><SellingStatus><CurrentPrice currencyID="AUD">4.98</CurrentPrice><QuantitySold>0</QuantitySold></SellingStatus></Item>`;
 const soldItem = (l) => `<OrderTransaction><Transaction><Item><ItemID>${l.id}</ItemID><SKU>${l.sku}</SKU><Title>s</Title>`
   + `<SellingStatus><QuantitySold>1</QuantitySold></SellingStatus></Item></Transaction></OrderTransaction>`;
@@ -46,6 +47,7 @@ after(() => { try { fs.unlinkSync(DB_PATH); } catch {} });
 
 const rowsNow = () => Object.fromEntries(db.prepare('SELECT listing_id, sku, state, created_via, item_id FROM ebay_seller_listings').all()
   .map((r) => [r.listing_id, r]));
+const imageOf = (id) => db.prepare('SELECT image_url FROM ebay_seller_listings WHERE listing_id = ?').get(id).image_url;
 
 describe('importSellerListings', () => {
   it('mirrors the shop and links a listing whose custom label matches stock', async () => {
@@ -90,6 +92,57 @@ describe('importSellerListings', () => {
     const r = await importSellerListings(ENV, db);
     assert.equal(r.truncated, true);
     assert.equal(r.ended, 0, 'a partial scan must not mass-end the shop');
+  });
+
+  it('mirrors the listing picture, and a scan that carries none never wipes one', async () => {
+    live = [{ id: '1001', sku: 'AAC-084', state: 'active', img: 'https://i.ebayimg.com/1001.jpg' }];
+    stub();
+    await importSellerListings(ENV, db);
+    assert.equal(imageOf('1001'), 'https://i.ebayimg.com/1001.jpg');
+
+    // GetMyeBaySelling does not carry PictureDetails on every item. Silence is not "no picture", and
+    // overwriting on it would throw away a thumbnail already paid for with a GetItem.
+    live = [{ id: '1001', sku: 'AAC-084', state: 'active' }];
+    stub();
+    await importSellerListings(ENV, db);
+    assert.equal(imageOf('1001'), 'https://i.ebayimg.com/1001.jpg');
+  });
+
+  it('backfills the missing pictures with GetItem, and stops asking once eBay has answered', async () => {
+    // 1001 already has its picture from the import, so it must not cost a call.
+    const seen = [];
+    globalThis.fetch = async (u, opts = {}) => {
+      if (String(u).includes('/oauth2/token')) return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 't', expires_in: 7200 }) };
+      const id = (/<ItemID>(\d+)<\/ItemID>/.exec(String(opts.body)) || [])[1];
+      seen.push(id);
+      return { ok: true, status: 200, text: async () => id === '1003'
+        // An old ended listing eBay will not talk about: an ANSWER, and one we must not re-ask.
+        ? '<GetItemResponse><Ack>Failure</Ack><Errors><LongMessage>Item not available</LongMessage></Errors></GetItemResponse>'
+        : `<GetItemResponse><Ack>Success</Ack><Item><PictureDetails><GalleryURL>https://i.ebayimg.com/${id}.jpg</GalleryURL></PictureDetails></Item></GetItemResponse>` };
+    };
+    const rows = db.prepare('SELECT * FROM ebay_seller_listings ORDER BY listing_id').all();
+    const r = await resolveMirrorImages(ENV, db, rows);
+    assert.equal(r.pending, 0);
+    assert.deepEqual(seen.sort(), ['1002', '1003'], '1001 already had a picture — no call for it');
+    assert.equal(imageOf('1002'), 'https://i.ebayimg.com/1002.jpg');
+    assert.equal(imageOf('1003'), null);
+    assert.ok(rows.find((x) => x.listing_id === '1002').image_url, 'the rows are updated in place too');
+
+    const again = await resolveMirrorImages(ENV, db, db.prepare('SELECT * FROM ebay_seller_listings').all());
+    assert.equal(again.fetched, 0);
+    assert.deepEqual(seen.sort(), ['1002', '1003'], 'a listing eBay has answered about is never re-asked');
+  });
+
+  it('reports what it did not get to rather than silently capping', async () => {
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,title,state,created_via) VALUES ('4001','a','active','manual')`).run();
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,title,state,created_via) VALUES ('4002','b','active','manual')`).run();
+    globalThis.fetch = async (u) => String(u).includes('/oauth2/token')
+      ? { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 't', expires_in: 7200 }) }
+      : { ok: true, status: 200, text: async () => '<GetItemResponse><Ack>Success</Ack><Item><PictureDetails><GalleryURL>https://i.ebayimg.com/x.jpg</GalleryURL></PictureDetails></Item></GetItemResponse>' };
+    const rows = db.prepare("SELECT * FROM ebay_seller_listings WHERE listing_id IN ('4001','4002')").all();
+    const r = await resolveMirrorImages(ENV, db, rows, 1);
+    assert.equal(r.fetched, 1);
+    assert.equal(r.pending, 1, 'the one it did not reach is reported, not dropped');
   });
 
   it('links a mirrored listing to a card read out of its title, and refuses the unreadable ones', async () => {
