@@ -490,3 +490,44 @@ describe('postsale — a cancellation REQUEST holds rather than hides', () => {
     assert.equal(row.hold_reason, 'payment failed');
   });
 });
+
+// "Mark all shipped" is the only control on the dashboard that writes to eBay for several orders at
+// once and cannot be undone from there. What it must never do is sweep up an order somebody still has
+// to make a decision about -- same rule as the digest's bulk dispatch button.
+describe('postsale — bulk dispatch refuses what a human has not decided on', () => {
+  before(() => {
+    for (const id of ['B-OK1', 'B-HELD', 'B-DEAD', 'B-OK2']) {
+      ingestOrder(db, mkOrder(id, {
+        items: [{ orderLineItemId: id + '-1', transactionId: 'tx-' + id, itemId: '99' + id, sku: 'BULK-' + id, title: 'Card', quantity: 1, unitPriceCents: 1000 }],
+      }), cfg);
+    }
+    db.prepare(`UPDATE orders SET cancel_state='requested' WHERE order_id='B-HELD'`).run();
+    db.prepare(`UPDATE orders SET cancel_state='cancelled' WHERE order_id='B-DEAD'`).run();
+  });
+
+  it('dispatches the ordinary orders and holds the rest back BY NAME', async () => {
+    const r = await postJson('/api/postsale/orders/shipped',
+      { ids: ['B-OK1', 'B-HELD', 'B-DEAD', 'B-OK2', 'B-GHOST'] });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.shipped, 2, 'only the two ordinary orders');
+    assert.deepEqual(r.json.held.map((h) => h.order_id), ['B-HELD']);
+    assert.deepEqual(r.json.cancelled, ['B-DEAD']);
+    assert.deepEqual(r.json.missing, ['B-GHOST']);
+    // Every id that went in is accounted for by exactly one bucket, so the count on screen can never
+    // claim more than it did.
+    assert.equal(r.json.shipped + r.json.held.length + r.json.cancelled.length + r.json.missing.length, r.json.requested);
+  });
+
+  it('leaves the held and cancelled orders exactly as they were', async () => {
+    const held = await get('/api/postsale/orders?limit=300&status=held');
+    assert.ok(held.json.orders.some((o) => o.order_id === 'B-HELD'), 'still held, still waiting on a person');
+    const all = await get('/api/postsale/orders?limit=300');
+    const dead = all.json.orders.find((o) => o.order_id === 'B-DEAD');
+    assert.equal(dead.shipped_status, 'unshipped', 'a cancelled order is not dispatched, it is finished');
+  });
+
+  it('rejects a call with no ids rather than doing something ambiguous', async () => {
+    const r = await postJson('/api/postsale/orders/shipped', { ids: [] });
+    assert.equal(r.status, 400);
+  });
+});

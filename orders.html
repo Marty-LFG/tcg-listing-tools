@@ -158,6 +158,15 @@
   .modal .mbody{padding:16px 18px;max-height:60vh;overflow:auto;background:#1a1d26;text-align:center;}
   .modal .mbody canvas{background:#fff;max-width:100%;height:auto;border-radius:6px;box-shadow:0 6px 20px -8px rgba(0,0,0,.6);margin:6px 0;}
   .mfoot{display:flex;gap:9px;align-items:center;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--line);background:rgba(0,0,0,.15);}
+  /* The one button on this page that writes to eBay for several orders at once. It does not look like
+     the print buttons, because it is not one of them. */
+  .btn.danger{color:#12100e;background:var(--red);border-color:var(--red);font-weight:700;}
+  .btn.danger:hover{filter:brightness(1.08);}
+  #shipOverlay .mbody{text-align:left;}
+  .shlist{font-family:var(--mono);font-size:12px;line-height:1.7;margin:10px 0 0;max-height:34vh;overflow:auto;}
+  .shlist li{list-style:none;display:flex;gap:10px;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0;}
+  .shwarn{margin-top:12px;padding:9px 11px;border:1px solid rgba(240,102,110,.4);border-radius:8px;background:rgba(240,102,110,.08);font-size:12.5px;}
+  .shnote{margin-top:10px;font-size:12.5px;color:var(--muted);}
   details.diag{margin-top:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:0 14px;}
   details.diag summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:11px 0;letter-spacing:.03em;list-style:none;}
   details.diag summary::-webkit-details-marker{display:none;}
@@ -235,6 +244,20 @@
       <button class="btn" id="pv_cancel">Cancel</button>
       <button class="btn" id="pv_download">Download PNG</button>
       <button class="btn solid" id="pv_print">🖨 Print</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dispatch confirm. Its own overlay rather than a mode on the preview one: this is the only control
+     on the page that writes to eBay for several orders at once and cannot be undone from here, so it
+     gets to state plainly what it is about to do instead of borrowing a print dialog's buttons. -->
+<div class="overlay" id="shipOverlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sh_title">
+    <div class="mhead"><span id="sh_title">Mark shipped on eBay</span><button class="x" id="sh_close" title="Close">&times;</button></div>
+    <div class="mbody" id="sh_body"></div>
+    <div class="mfoot">
+      <button class="btn" id="sh_cancel">Cancel</button>
+      <button class="btn danger" id="sh_go">🚚 Yes, dispatch</button>
     </div>
   </div>
 </div>
@@ -666,10 +689,31 @@ function selectedShipments(){
 }
 // One tracked order settles it for the whole parcel — it is one satchel and it carries one label.
 function isTrackedShipment(g){ return g.some(o => o.postage && o.postage.tracked); }
+// Is the ticked selection ready to be posted in one go? Only when every order in it is still in the
+// queue AND already picked — i.e. the cards are in satchels and the only thing left is telling eBay.
+// A held order disqualifies the whole selection rather than being quietly dropped from it: the count
+// on the button has to be the count it acts on, or the button is lying about what it is about to do.
+function shipReady(){
+  const sel = visibleOrders().filter(isSelected).filter(o => o.in_queue);
+  const ready = sel.length > 0 && sel.every(o => o.picked_at && !o.on_hold);
+  return { ready, ids: sel.map(o => o.order_id), orders: sel };
+}
 function updatePickBtn(){
   const n=selectedOrderIds().length, total=visibleOrders().length;
   const b=$('pickBtn'); if(b) b.textContent = n && n<total ? `🖨 Pick sheet (${n})` : '🖨 Pick sheet';
-  const pb=$('pickedBtn'); if(pb){ pb.textContent = n ? `✓ Mark picked (${n})` : '✓ Mark picked'; pb.disabled = !n; }
+  // The bulk button follows the work rather than sitting on one job: pull the cards, then post them.
+  // Once every ticked order is already picked there is nothing left to mark picked, so the button
+  // becomes the next step instead of a no-op. Swapped rather than added — the toolbar earns its
+  // readability by having few buttons, and only one of these two is ever the thing you want.
+  const pb=$('pickedBtn'); if(pb){
+    const sh = shipReady();
+    pb.classList.toggle('danger', sh.ready);
+    pb.textContent = sh.ready ? `🚚 Mark shipped (${sh.ids.length})` : (n ? `✓ Mark picked (${n})` : '✓ Mark picked');
+    pb.title = sh.ready
+      ? 'Everything ticked is packed. This tells eBay all of them have been dispatched — it asks first, and it cannot be undone from here.'
+      : 'Mark the ticked orders as pulled + packed — they drop off the pull list but stay here to dispatch';
+    pb.disabled = sh.ready ? false : !n;
+  }
   // These two count PARCELS, not orders, and Labels counts only the parcels that actually get a
   // sticker — a button promising 7 and printing 5 reads as a bug rather than as the tracked ones.
   const ships = selectedShipments(), lab = ships.filter(g=>!isTrackedShipment(g)).length;
@@ -726,6 +770,49 @@ async function markShipped(id, btn){
   }
 }
 
+// Bulk dispatch. This is the only control here that writes to eBay for several orders at once and
+// cannot be undone from this page, so it always asks — and the question names the orders rather than
+// just counting them, because "dispatch 8 orders?" is not something anyone can actually check.
+function confirmShip(){
+  const { ready, ids, orders } = shipReady();
+  if (!ready || !ids.length) return;
+  const dry = !!(STATE.config && STATE.config.config && STATE.config.config.dry_run);
+  $('sh_title').textContent = `Mark ${ids.length} order${ids.length===1?'':'s'} shipped on eBay`;
+  $('sh_body').innerHTML =
+    `<div>These are packed and ready to post. eBay will be told each one has been dispatched.</div>`
+    + `<ul class="shlist">` + orders.map(o => {
+        const where = [o.ship_city, o.ship_state].filter(Boolean).join(', ');
+        return `<li><span>@${esc(o.buyer_username||'—')}${where?` · ${esc(where)}`:''}</span><span class="faint">${esc(o.order_id)}</span></li>`;
+      }).join('') + `</ul>`
+    + (dry
+        ? `<div class="shnote"><b>Dry run is on</b>, so nothing will actually be sent to eBay — they will just be recorded as posted here.</div>`
+        : `<div class="shwarn">This cannot be undone from this page. If a parcel has not actually gone, marking it shipped starts the buyer's delivery clock.</div>`);
+  $('sh_go').textContent = dry ? `🚚 Yes, record ${ids.length}` : `🚚 Yes, dispatch ${ids.length}`;
+  $('shipOverlay').classList.add('open');
+  $('sh_go').onclick = () => { closeShip(); markAllShipped(ids); };
+}
+function closeShip(){ $('shipOverlay').classList.remove('open'); }
+
+async function markAllShipped(ids){
+  const btn = $('pickedBtn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = `🚚 dispatching ${ids.length}…`;
+  setStatus('load', `telling eBay about ${ids.length} order${ids.length===1?'':'s'}…`);
+  try {
+    const r = await api('/orders/shipped', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ ids }) });
+    await loadAll();
+    const bits = [];
+    if (r.shipped) bits.push(`${r.shipped} dispatched${r.dry_run?' (dry run — nothing sent to eBay)':''}`);
+    // A failed eBay write leaves that order unshipped ON PURPOSE, so it stays in the queue to retry.
+    // Naming the ids is the difference between a retry and a hunt — same rule as the digest.
+    if (r.failed && r.failed.length) bits.push(`${r.failed.length} failed: ${r.failed.map(f=>f.order_id).join(', ')}`);
+    if (r.held && r.held.length) bits.push(`${r.held.length} held back`);
+    setStatus(r.failed && r.failed.length ? 'err' : 'ok', bits.join(' · ') || 'nothing to dispatch');
+  } catch (err) {
+    setStatus('err', 'Dispatch failed — ' + (err.message || 'unknown') + '. Nothing was marked; the orders are still in the queue.');
+    await loadAll();
+  } finally { btn.disabled = false; btn.textContent = orig; updatePickBtn(); }
+}
+
 /* ---------- events ---------- */
 $('tabs').addEventListener('click', (e) => {
   const t = e.target.closest('.tab'); if (!t) return;
@@ -760,7 +847,14 @@ $('panel').addEventListener('click', (e) => {
 $('pickBtn').addEventListener('click', printPickSheet);
 $('slipsBtn').addEventListener('click', printAllSlips);
 $('labelsBtn').addEventListener('click', printAllLabels);
-$('pickedBtn').addEventListener('click', () => markPicked(selectedOrderIds(), true, $('pickedBtn')));
+// One button, two jobs, decided by what is ticked — see updatePickBtn.
+$('pickedBtn').addEventListener('click', () => {
+  if (shipReady().ready) return confirmShip();
+  markPicked(selectedOrderIds(), true, $('pickedBtn'));
+});
+$('sh_cancel').addEventListener('click', closeShip);
+$('sh_close').addEventListener('click', closeShip);
+$('shipOverlay').addEventListener('click', (e) => { if (e.target === $('shipOverlay')) closeShip(); });
 $('hidePickedChk').addEventListener('change', () => { STATE.hidePicked = $('hidePickedChk').checked; try{localStorage.setItem('ff_hide_picked', STATE.hidePicked?'1':'');}catch(e){} renderPanel(); });
 // ↻ means "check eBay now", not "re-read what we already hold". The scheduled poll only runs every
 // poll_interval_min, so a plain reload could never surface an order placed a minute ago — which is
@@ -810,7 +904,7 @@ $('refreshBtn').addEventListener('click', syncNow);
 $('pv_close').addEventListener('click', closePreview);
 $('pv_cancel').addEventListener('click', closePreview);
 $('overlay').addEventListener('click', (e)=>{ if (e.target===$('overlay')) closePreview(); });
-document.addEventListener('keydown', (e)=>{ if (e.key==='Escape') closePreview(); });
+document.addEventListener('keydown', (e)=>{ if (e.key==='Escape') { closePreview(); closeShip(); } });
 
 // density / speed steppers (persist in this browser; seeded from the printer config)
 function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
