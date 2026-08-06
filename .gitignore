@@ -20,6 +20,10 @@ reports/
 data/ebay-oauth.json
 data/ebay-*.json
 !data/ebay-listing.config.example.json
+# The notification listener's seed. Without this negation the blanket data/ebay-*.json above swallows
+# it, ensureConfigSeeded() finds nothing to copy on a fresh clone, and the listener silently never
+# arms — with no error, because a missing config legitimately means "disabled".
+!data/ebay-notify.config.example.json
 data/exports/
 
 # Generated on-disk caches (not source): PriceCharting scrape results + proxied card images.

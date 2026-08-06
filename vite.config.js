@@ -9,6 +9,7 @@ import { sealedPlugin } from './lib/sealed.mjs'
 import { bulkPlugin } from './lib/bulk.mjs'
 import { repricerPlugin } from './lib/repricer.mjs'
 import { postsalePlugin } from './lib/postsale.mjs'
+import { ebayNotifyPlugin } from './lib/ebay-notify.mjs'
 import { listingsPlugin } from './lib/listings.mjs'
 import { statusPlugin } from './lib/status.mjs'
 import { catalogPlugin } from './lib/catalog.mjs'
@@ -381,7 +382,7 @@ export default defineConfig(({ mode }) => {
     // report which routes this PROCESS actually owns — and flag when the sources on disk are newer
     // than the running server (a `git pull` with no restart). One wrapper, so a plugin added later
     // is covered without anyone remembering to.
-    plugins: withRegistry([dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaCardsPlugin(), swuCardsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundPricesPlugin()]),
+    plugins: withRegistry([dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), listingsPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaCardsPlugin(), swuCardsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundPricesPlugin()]),
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

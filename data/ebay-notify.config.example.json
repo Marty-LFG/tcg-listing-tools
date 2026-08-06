@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "listen_host": "127.0.0.1",
+  "listen_port": 5274,
+  "path": "/ebay/notifications",
+  "account_deletion_path": "/ebay/account-deletion",
+  "public_endpoint": "",
+  "destination_name": "tcg-tools-prod",
+  "topics": ["ORDER_CONFIRMATION"],
+  "retain_days": 30,
+  "alerts": true
+}
