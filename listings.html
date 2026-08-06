@@ -183,8 +183,9 @@ function sortRows(rows){
 async function load(){
   $('status').className='status'; $('status').textContent='loading…';
   try{
-    // images=1 lets the server fill in any thumbnails the import did not carry, a capped batch per
-    // load. `pending` is what it did NOT get to — said out loud rather than left as blank boxes.
+    // images=1 lets the server fill in the ACTIVE listings' thumbnails the import did not carry, a
+    // capped batch per load. `pending` is what it did NOT get to — said out loud rather than left as
+    // blank boxes. A sold listing keeps whatever picture it had; it never gets a call of its own.
     const j=await fetch('/api/listings/mirror?limit=1000&images=1').then(r=>r.json());
     ALL=j.listings||[];
     const li=j.lastImport;

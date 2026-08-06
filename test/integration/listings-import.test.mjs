@@ -108,29 +108,34 @@ describe('importSellerListings', () => {
     assert.equal(imageOf('1001'), 'https://i.ebayimg.com/1001.jpg');
   });
 
-  it('backfills the missing pictures with GetItem, and stops asking once eBay has answered', async () => {
-    // 1001 already has its picture from the import, so it must not cost a call.
+  it('backfills the missing pictures with GetItem — active listings only, and asks once', async () => {
+    // The state of play: 1001 already has its picture from the import, 1002 has ended and 1003 has
+    // sold. Only the two new active ones are worth a Trading call.
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,title,state,created_via) VALUES ('1004','no picture yet','active','manual')`).run();
+    db.prepare(`INSERT OR REPLACE INTO ebay_seller_listings (listing_id,title,state,created_via) VALUES ('1005','eBay will not say','active','manual')`).run();
     const seen = [];
     globalThis.fetch = async (u, opts = {}) => {
       if (String(u).includes('/oauth2/token')) return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 't', expires_in: 7200 }) };
       const id = (/<ItemID>(\d+)<\/ItemID>/.exec(String(opts.body)) || [])[1];
       seen.push(id);
-      return { ok: true, status: 200, text: async () => id === '1003'
-        // An old ended listing eBay will not talk about: an ANSWER, and one we must not re-ask.
+      return { ok: true, status: 200, text: async () => id === '1005'
+        // A listing eBay will not talk about: an ANSWER, and one we must not keep re-asking.
         ? '<GetItemResponse><Ack>Failure</Ack><Errors><LongMessage>Item not available</LongMessage></Errors></GetItemResponse>'
         : `<GetItemResponse><Ack>Success</Ack><Item><PictureDetails><GalleryURL>https://i.ebayimg.com/${id}.jpg</GalleryURL></PictureDetails></Item></GetItemResponse>` };
     };
     const rows = db.prepare('SELECT * FROM ebay_seller_listings ORDER BY listing_id').all();
     const r = await resolveMirrorImages(ENV, db, rows);
     assert.equal(r.pending, 0);
-    assert.deepEqual(seen.sort(), ['1002', '1003'], '1001 already had a picture — no call for it');
-    assert.equal(imageOf('1002'), 'https://i.ebayimg.com/1002.jpg');
-    assert.equal(imageOf('1003'), null);
-    assert.ok(rows.find((x) => x.listing_id === '1002').image_url, 'the rows are updated in place too');
+    // 1001 already had one; 1002 (ended) and 1003 (sold) are over and never cost a call.
+    assert.deepEqual(seen.sort(), ['1004', '1005']);
+    assert.equal(imageOf('1004'), 'https://i.ebayimg.com/1004.jpg');
+    assert.equal(imageOf('1005'), null);
+    assert.equal(imageOf('1003'), null, 'a sold listing keeps whatever it had — it is not fetched');
+    assert.ok(rows.find((x) => x.listing_id === '1004').image_url, 'the rows are updated in place too');
 
     const again = await resolveMirrorImages(ENV, db, db.prepare('SELECT * FROM ebay_seller_listings').all());
     assert.equal(again.fetched, 0);
-    assert.deepEqual(seen.sort(), ['1002', '1003'], 'a listing eBay has answered about is never re-asked');
+    assert.deepEqual(seen.sort(), ['1004', '1005'], 'a listing eBay has answered about is never re-asked');
   });
 
   it('reports what it did not get to rather than silently capping', async () => {
