@@ -112,6 +112,19 @@
   .pill.keyed{color:var(--blue);border-color:rgba(106,176,255,.35);background:rgba(106,176,255,.07);}
   .pill.plain::before{display:none;}
 
+  /* action banner — something the operator has to go and DO, as opposed to a vital that merely
+     reports. Sits above the fold so a re-consent can't be missed the way a warn LED can. */
+  .banner{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;margin-bottom:18px;
+    border-radius:12px;border:1px solid rgba(240,192,74,.42);background:rgba(240,192,74,.08);}
+  .banner .bico{font-size:17px;line-height:1.35;}
+  .banner .btxt{flex:1;min-width:0;}
+  .banner .bttl{font-weight:650;color:var(--amber);margin-bottom:3px;}
+  .banner .bsub{color:var(--muted);font-size:13px;line-height:1.5;}
+  .banner .bsub code{font-family:var(--mono);font-size:11px;color:var(--faint);}
+  .banner .bact{display:inline-block;margin-top:9px;padding:7px 13px;border-radius:9px;font-weight:600;font-size:13px;
+    color:#1b1405;background:var(--amber);text-decoration:none;white-space:nowrap;}
+  .banner .bact:hover{filter:brightness(1.08);}
+
   /* source rows */
   .srcrow{display:grid;grid-template-columns:180px 96px 1fr auto;gap:12px;align-items:center;
     padding:10px 15px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--panel),var(--bg2));}
@@ -221,6 +234,7 @@
   </nav>
 
   <section id="overview">
+    <div id="banners"></div>
     <div class="sec-h">Vitals <span class="cap">health at a glance</span></div>
     <div class="grid g-vitals" id="vitals"></div>
 
@@ -321,13 +335,47 @@
     return el('<div class="card vital '+cls+'"><div class="top"><span class="led"></span><span class="name">'+esc(name)+'</span></div>'+
       '<div class="state">'+esc(state)+'</div><div class="detail">'+detail+'</div></div>');
   }
+  // Short name for a scope, for listing them without a wall of identical URL prefixes.
+  const scopeName = (s) => String(s||'').replace('https://api.ebay.com/oauth/api_scope/','').replace('https://api.ebay.com/oauth/api_scope','api_scope');
+
+  /* Things the operator has to go and DO. A vital reports; a banner asks.
+     The re-consent is the case that motivated this: the token keeps working perfectly on the scopes
+     it was granted, so every LED stays green, and the only symptom is that a capability added later
+     fails the first time it is used — which could be weeks after the code shipped. */
+  function renderBanners(){
+    const box=$('banners'); if(!box) return;
+    box.innerHTML='';
+    const eo=(STATUS.subsystems||{}).ebay_oauth||{};
+    if(eo.connected && eo.needs_reconsent){
+      const missing=eo.scopes_missing||[];
+      const n=missing.length;
+      box.appendChild(el(
+        '<div class="banner">'+
+          '<div class="bico">&#9888;</div>'+
+          '<div class="btxt">'+
+            '<div class="bttl">Reconnect eBay &mdash; '+esc(n)+' new permission'+(n===1?'':'s')+' to grant</div>'+
+            '<div class="bsub">The account is connected and everything currently running is fine. '+
+              'These were added to the app after you last consented, so they only arrive when you consent again:<br>'+
+              '<code>'+missing.map(s=>esc(scopeName(s))).join('</code> <code>')+'</code></div>'+
+            '<a class="bact" href="/api/repricer/oauth">Run the consent flow &rarr;</a>'+
+          '</div>'+
+        '</div>'));
+    }
+  }
+
   function renderVitals(){
     const box=$('vitals'); box.innerHTML='';
     const sub=STATUS.subsystems||{}, jobs=STATUS.jobs||{}, dbs=STATUS.dbs||{}, data=STATUS.data||{};
-    // eBay connection
+    // eBay connection. Connected-but-short-of-scopes is amber, not green: nothing is broken yet, but
+    // a capability the app already ships cannot work until the seller consents again.
     const eo=sub.ebay_oauth||{};
-    box.appendChild(vital(eo.connected?'ok':'bad','eBay account',eo.connected?'Connected':'Offline',
-      eo.connected?('token · '+esc(eo.token_source||'consent')+(eo.refresh_expires_at?' · exp '+fmtTs(eo.refresh_expires_at):'')):'<a href="/api/repricer/oauth">run consent →</a>'));
+    const eoMissing=(eo.scopes_missing||[]).length;
+    const eoCls=!eo.connected?'bad':(eo.needs_reconsent?'warn':'ok');
+    const eoWord=!eo.connected?'Offline':(eo.needs_reconsent?'Reconnect':'Connected');
+    box.appendChild(vital(eoCls,'eBay account',eoWord,
+      !eo.connected?'<a href="/api/repricer/oauth">run consent →</a>'
+        :eo.needs_reconsent?(esc(eoMissing)+' permission'+(eoMissing===1?'':'s')+' missing · <a href="/api/repricer/oauth">re-consent →</a>')
+        :('token · '+esc(eo.token_source||'consent')+(eo.refresh_expires_at?' · exp '+fmtTs(eo.refresh_expires_at):''))));
     // Order sync (postsale)
     const ps=jobs.postsale||{}, op=ps.order_poll||{};
     const psState = !op.enabled?'off':(op.running?'ok':'warn');
@@ -898,7 +946,7 @@
     $('verline').innerHTML='v<b>'+esc(v.pkg)+'</b> · commit <b>'+esc(v.commit||'—')+'</b> · node <b>'+esc(v.node)+'</b> · up <b>'+Math.round((v.uptime_s||0)/60)+'m</b> · probes cached '+esc(STATUS.probe_ttl_min)+'m';
   }
   // Live panels only — safe to re-render on the timer (they hold no user input).
-  function renderLive(){ renderVerline(); renderVitals(); renderSystems(); $('liveDot').style.background='var(--green)'; }
+  function renderLive(){ renderVerline(); renderBanners(); renderVitals(); renderSystems(); $('liveDot').style.background='var(--green)'; }
   // Timer path: refresh the status snapshot + live panels. NEVER re-renders the settings forms,
   // source probes or baked cards — doing so would wipe in-progress edits, focus and selection.
   async function refreshLive(){
