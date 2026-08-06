@@ -622,6 +622,21 @@
       {p:'enabled',l:'Auto refresh',t:'toggle',tip:'Automatically re-bake the enabled catalogs on a timer.'},
       {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to re-bake the catalogs below.'},
     ]}], bakes:true },
+    'ebay-notify':{ title:'eBay push notifications', groups:[
+      {name:null,fields:[
+        {p:'enabled',l:'Receive push notifications',t:'toggle',tip:'Bind the notification listener. Off means eBay cannot reach us and the 10-minute poll carries everything — which is exactly what it is for. Needs the Cloudflare tunnel up and <b>EBAY_NOTIFY_VERIFICATION_TOKEN</b> in .env.'},
+        {p:'public_endpoint',l:'Public endpoint',t:'text',tip:'The full https URL eBay was given, e.g. <b>https://ebay-notify.example.com/ebay/notifications</b>. Hashed <b>verbatim</b> into the challenge reply, so a trailing slash or a different path fails eBay\'s validation with no error on either side. Its path must match the Listener path below.'},
+        {p:'destination_name',l:'Destination name',t:'text',tip:'The label eBay stores this endpoint under. Cosmetic, but it is how you tell destinations apart in the API.'},
+        {p:'alerts',l:'Telegram alerts',t:'toggle',tip:'Alert when eBay marks the destination down, or when signatures start failing.'},
+        {p:'retain_days',l:'Keep events (days)',t:'number',min:1,max:365,tip:'How long a settled notification row is kept before pruning. The stored payload is only ever an audit trail — the order is always re-read from eBay.'},
+      ]},
+      {name:'Listener',fields:[
+        {p:'listen_host',l:'Bind host',t:'text',tip:'Must stay <b>127.0.0.1</b>. The tunnel is the only way in; binding this to the LAN would put an unauthenticated POST endpoint on the network. The save is refused if you change it.'},
+        {p:'listen_port',l:'Bind port',t:'number',min:1024,max:65535,tip:'Its own port, deliberately not the dev server\'s 5273 — that separation is what stops a misconfigured tunnel reaching /api/*. Give a second instance on the same box a different port.'},
+        {p:'path',l:'Listener path',t:'text',tip:'The path eBay POSTs to. Must equal the path part of the Public endpoint above.'},
+        {p:'account_deletion_path',l:'Account-deletion path',t:'text',tip:'eBay requires a marketplace-account-deletion endpoint for a production keyset. Same handshake, its own token (<b>EBAY_NOTIFY_DELETION_TOKEN</b>), served by the same listener.'},
+      ]},
+    ], json:'topics', jsonTip:'Which eBay topics to subscribe to, as a JSON array. Unknown names are refused on save — the valid set comes from the app itself.' },
     backup:{ title:'Backups', groups:[{name:null,fields:[
       {p:'enabled',l:'Scheduled backups',t:'toggle',tip:'Take VACUUM-INTO snapshots of the money-bearing databases on a timer.'},
       {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to snapshot the databases.'},
