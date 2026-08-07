@@ -343,6 +343,45 @@ describe('applyPlan — order of operations, and the refusal that matters most',
     assert.equal(sub.body.payload.deliveryProtocol, 'HTTPS');
   });
 
+  it('pins every subscription call to the user token', async () => {
+    // The application token answers GET /subscription with 200 {"total":0} instead of 403 — not an
+    // error, so nothing escalates, and the reconciler concludes an account has no subscriptions when
+    // it may have several. It would then plan duplicates of things that already exist, forever.
+    // Creating with the app token fails loudly (403 [195011]); reading fails silently, which is worse.
+    const seen = [];
+    const call = async (env, method, path, body, opts) => {
+      seen.push({ method, path, userOnly: !!opts?.userOnly });
+      return stub()(env, method, path, body);
+    };
+    await planReconcile(ENV, CFG, { call });
+    const subCalls = seen.filter((c) => c.path.startsWith('/subscription'));
+    assert.ok(subCalls.length > 0, 'expected the plan to read subscriptions');
+    for (const c of subCalls) {
+      assert.equal(c.userOnly, true, `${c.method} ${c.path} must use the user token — reads and writes have to agree about whose subscriptions they are`);
+    }
+    // Destinations and config are application-level and must NOT be forced to the user token.
+    for (const c of seen.filter((x) => x.path.startsWith('/destination') || x.path.startsWith('/config'))) {
+      assert.equal(c.userOnly, false, `${c.path} is application-level; forcing a user token would break a box that has not consented`);
+    }
+  });
+
+  it('finds the subscription id by re-reading, when eBay returns none in the body', async () => {
+    let made = false;
+    const call = async (env, method, path, body, opts) => {
+      if (method === 'POST' && path === '/subscription') { made = true; return { ok: true, httpStatus: 201, json: {} }; }
+      if (method === 'GET' && path.startsWith('/subscription')) {
+        return { ok: true, httpStatus: 200, usedToken: 'user',
+          json: { subscriptions: made ? [SUB({ subscriptionId: 'FOUND-SUB', status: 'DISABLED' })] : [] } };
+      }
+      return stub({ destinations: [DEST()] })(env, method, path, body, opts);
+    };
+    const plan = await planReconcile(ENV, CFG, { call });
+    const done = await applyPlan(ENV, CFG, plan, { call });
+    assert.deepEqual(done.errors, [], 'an empty create response must not strand the subscription');
+    assert.equal(done.created[0].id, 'FOUND-SUB');
+    assert.deepEqual(done.enabled, [{ topicId: 'ORDER_CONFIRMATION', id: 'FOUND-SUB' }]);
+  });
+
   it('finds the destination id by re-reading, when eBay returns none in the body', async () => {
     // Real behaviour: createDestination answers 201 with a Location header and an EMPTY body, so
     // there is no destinationId to read. That stranded a destination which had been created AND
