@@ -382,6 +382,29 @@ describe('applyPlan — order of operations, and the refusal that matters most',
     assert.deepEqual(done.enabled, [{ topicId: 'ORDER_CONFIRMATION', id: 'FOUND-SUB' }]);
   });
 
+  it('treats "already exists" as success and enables what is there', async () => {
+    // Apply recomputes the plan immediately before acting, and eBay's subscription list is
+    // eventually consistent — so a list that read empty a moment ago can already hold the row, and
+    // the create comes back 195012. That is the outcome we wanted. A reconciler that treats it as a
+    // failure breaks precisely when someone runs it twice trying to fix something.
+    const call = async (env, method, path, body, opts) => {
+      if (method === 'POST' && path === '/subscription') {
+        return { ok: false, httpStatus: 409, json: { errors: [{ errorId: 195012, message: 'Subscription already exists.' }] } };
+      }
+      if (method === 'GET' && path.startsWith('/subscription')) {
+        return { ok: true, httpStatus: 200, usedToken: 'user', json: { subscriptions: [SUB({ subscriptionId: 'EXISTING', status: 'DISABLED' })] } };
+      }
+      return stub({ destinations: [DEST()] })(env, method, path, body, opts);
+    };
+    // Force the create branch even though the row exists, which is the race being reproduced.
+    const plan = { ...(await planReconcile(ENV, CFG, { call })), create: [{ topicId: 'ORDER_CONFIRMATION', schemaVersion: '1.1' }], enable: [] };
+    plan.destination = { action: 'reuse', id: 'd1' };
+    const done = await applyPlan(ENV, CFG, plan, { call });
+    assert.deepEqual(done.errors, [], '195012 must not be reported as a failure');
+    assert.deepEqual(done.enabled, [{ topicId: 'ORDER_CONFIRMATION', id: 'EXISTING' }],
+      'the existing subscription must still get enabled');
+  });
+
   it('finds the destination id by re-reading, when eBay returns none in the body', async () => {
     // Real behaviour: createDestination answers 201 with a Location header and an EMPTY body, so
     // there is no destinationId to read. That stranded a destination which had been created AND
