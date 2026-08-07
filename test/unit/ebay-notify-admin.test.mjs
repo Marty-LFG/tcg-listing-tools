@@ -43,12 +43,15 @@ const SUB = (over = {}) => ({
 // (sweepOpenOrders' fetchOrders, verifyNotification's fetchKey).
 function stub({ topics = TOPICS, destinations = [], subscriptions = [], alertEmail = 'seller@example.com', configMissing = false } = {}) {
   const calls = [];
-  const NOT_CONFIGURED = { ok: false, httpStatus: 400, usedToken: 'app',
-    json: { errors: [{ errorId: 195003, message: 'Please provide configurations required for notifications.' }] } };
+  // The two DIFFERENT ways eBay reports the same missing prerequisite, verbatim from a live probe.
+  const CONFIG_404 = { ok: false, httpStatus: 404, usedToken: 'app',
+    json: { errors: [{ errorId: 195026, domain: 'API_NOTIFICATION', message: 'Configuration not found.' }] } };
+  const NOT_CONFIGURED = { ok: false, httpStatus: 409, usedToken: 'app',
+    json: { errors: [{ errorId: 195003, domain: 'API_NOTIFICATION', message: 'Please provide configurations required for notifications. Refer to documentation.' }] } };
   const call = async (env, method, path, body) => {
     calls.push({ method, path, body });
     if (method !== 'GET') return { ok: true, httpStatus: 200, json: { destinationId: 'NEW-D', subscriptionId: 'NEW-S' }, usedToken: 'app' };
-    if (path.startsWith('/config')) return configMissing ? NOT_CONFIGURED : { ok: true, httpStatus: 200, json: { alertEmail }, usedToken: 'app' };
+    if (path.startsWith('/config')) return configMissing ? CONFIG_404 : { ok: true, httpStatus: 200, json: { alertEmail }, usedToken: 'app' };
     // Until the app config exists eBay refuses the subscription endpoint outright — the real 195003
     // that the first live dry run hit.
     if (path.startsWith('/subscription') && configMissing) return NOT_CONFIGURED;
@@ -196,7 +199,28 @@ describe('planReconcile — subscriptions', () => {
 // reads like a subscription problem and is actually a missing app-level config (the alert email).
 // Nothing can be read or created until it exists.
 describe('planReconcile — the app config eBay demands first', () => {
-  it('plans to create the config when eBay says 195003, instead of giving up', async () => {
+  it('recognises BOTH error numbers eBay uses for the same missing config', async () => {
+    // 195026 from GET /config (404) and 195003 from GET /subscription (409). Matching only 195003
+    // is what made the first live dry runs fail with no explanation attached.
+    const call = stub({ configMissing: true });
+    const p = await planReconcile({}, CFG, { call });
+    assert.equal(p.ok, true);
+    assert.deepEqual(p.setConfig, { action: 'create', alertEmail: 'seller@example.com' });
+    assert.deepEqual(p.warnings.filter((w) => /unexpectedly/.test(w)), [],
+      '195026 is a KNOWN shape — it must not be reported as an unexpected failure');
+  });
+
+  it('still plans the write when getConfig fails for a reason we do not recognise', async () => {
+    const call = async (env, method, path) => {
+      if (path.startsWith('/config')) return { ok: false, httpStatus: 500, json: { errors: [{ errorId: 99999, message: 'boom' }] } };
+      return stub()(env, method, path);
+    };
+    const p = await planReconcile({}, CFG, { call });
+    assert.deepEqual(p.setConfig, { action: 'create', alertEmail: 'seller@example.com' });
+    assert.match(p.warnings.join(' '), /getConfig failed unexpectedly/, 'an unknown failure must be said out loud, not swallowed');
+  });
+
+  it('plans to create the config instead of giving up', async () => {
     const call = stub({ configMissing: true });
     const p = await planReconcile({}, CFG, { call });
     assert.equal(p.ok, true, 'a missing prerequisite we can satisfy is not a reason to abandon the plan');
