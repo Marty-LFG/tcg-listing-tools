@@ -20,14 +20,18 @@ const CFG = {
   topics: ['ORDER_CONFIRMATION'],
 };
 
+// Shapes copied VERBATIM from a live GET /topic. `format` is an array — writing these fixtures from
+// the docs instead of the wire is what let bestSchemaVersion ship a bug that its own test agreed
+// with: the code compared format as a string, the fixture supplied a string, both were wrong, and
+// eBay was quietly handed schemaVersion 1.0 for a topic that offers 1.1.
 const TOPICS = [
   { topicId: 'ORDER_CONFIRMATION', authorizationScopes: ['x/sell.fulfillment'], filterable: false,
     supportedPayloads: [
-      { schemaVersion: '1.0', format: 'JSON', deliveryProtocol: 'HTTPS' },
-      { schemaVersion: '1.1', format: 'JSON', deliveryProtocol: 'HTTPS' },
+      { format: ['JSON'], schemaVersion: '1.0', deliveryProtocol: 'HTTPS' },
+      { format: ['JSON'], schemaVersion: '1.1', deliveryProtocol: 'HTTPS' },
     ] },
   { topicId: 'NEW_MESSAGE', authorizationScopes: ['x/commerce.message'], filterable: false,
-    supportedPayloads: [{ schemaVersion: '1.0', format: 'JSON', deliveryProtocol: 'HTTPS' }] },
+    supportedPayloads: [{ format: ['JSON'], schemaVersion: '1.0', deliveryProtocol: 'HTTPS' }] },
 ];
 
 const DEST = (over = {}) => ({
@@ -71,10 +75,26 @@ describe('bestSchemaVersion — read the version from eBay, do not hardcode it',
   });
   it('ignores versions offered over a protocol or format we do not use', () => {
     assert.equal(bestSchemaVersion({ supportedPayloads: [
-      { schemaVersion: '9.9', format: 'XML', deliveryProtocol: 'HTTPS' },
-      { schemaVersion: '2.0', format: 'JSON', deliveryProtocol: 'PUBSUB' },
-      { schemaVersion: '1.0', format: 'JSON', deliveryProtocol: 'HTTPS' },
+      { schemaVersion: '9.9', format: ['XML'], deliveryProtocol: 'HTTPS' },
+      { schemaVersion: '2.0', format: ['JSON'], deliveryProtocol: 'PUBSUB' },
+      { schemaVersion: '1.0', format: ['JSON'], deliveryProtocol: 'HTTPS' },
     ] }), '1.0');
+  });
+
+  it('handles format as an array, which is what eBay actually sends', () => {
+    // The regression. An array format read as a string filtered out every payload, and the function
+    // fell through to its '1.0' default — right answer for the wrong reason on most topics, and the
+    // WRONG answer on the one topic where it matters.
+    assert.equal(bestSchemaVersion({ supportedPayloads: [
+      { format: ['JSON'], schemaVersion: '1.0', deliveryProtocol: 'HTTPS' },
+      { format: ['JSON'], schemaVersion: '1.1', deliveryProtocol: 'HTTPS' },
+    ] }), '1.1');
+  });
+
+  it('still handles a bare string, in case eBay ever sends one', () => {
+    assert.equal(bestSchemaVersion({ supportedPayloads: [
+      { format: 'JSON', schemaVersion: '2.0', deliveryProtocol: 'HTTPS' },
+    ] }), '2.0');
   });
   it('falls back rather than throwing on a topic with no payloads', () => {
     assert.equal(bestSchemaVersion({}), '1.0');
