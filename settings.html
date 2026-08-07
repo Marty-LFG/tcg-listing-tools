@@ -627,6 +627,7 @@
         {p:'enabled',l:'Receive push notifications',t:'toggle',tip:'Bind the notification listener. Off means eBay cannot reach us and the 10-minute poll carries everything — which is exactly what it is for. Needs the Cloudflare tunnel up and <b>EBAY_NOTIFY_VERIFICATION_TOKEN</b> in .env.'},
         {p:'public_endpoint',l:'Public endpoint',t:'text',tip:'The full https URL eBay was given, e.g. <b>https://ebay-notify.example.com/ebay/notifications</b>. Hashed <b>verbatim</b> into the challenge reply, so a trailing slash or a different path fails eBay\'s validation with no error on either side. Its path must match the Listener path below.'},
         {p:'destination_name',l:'Destination name',t:'text',tip:'The label eBay stores this endpoint under. Cosmetic, but it is how you tell destinations apart in the API.'},
+        {p:'alert_email',l:'Alert email',t:'text',tip:'Where eBay emails you when it marks the destination down. <b>Not optional</b> — until an app-level config exists, eBay refuses the subscription endpoints entirely with error 195003, which reads like a subscription problem rather than a missing prerequisite.'},
         {p:'alerts',l:'Telegram alerts',t:'toggle',tip:'Alert when eBay marks the destination down, or when signatures start failing.'},
         {p:'retain_days',l:'Keep events (days)',t:'number',min:1,max:365,tip:'How long a settled notification row is kept before pruning. The stored payload is only ever an audit trail — the order is always re-read from eBay.'},
       ]},

@@ -17,6 +17,7 @@ const BASE = {
   listen_host: '127.0.0.1', listen_port: 5274,
   path: '/ebay/notifications', account_deletion_path: '/ebay/account-deletion',
   public_endpoint: '', destination_name: 'tcg-tools-prod',
+  alert_email: 'seller@example.com',
   topics: ['ORDER_CONFIRMATION'], retain_days: 30,
 };
 const LIVE = { ...BASE, enabled: true, public_endpoint: 'https://hooks.example/ebay/notifications' };
@@ -125,5 +126,25 @@ describe('the remaining scalars', () => {
   it('destination_name must be a sane non-empty string', () => {
     reject({ ...BASE, destination_name: '' }, /non-empty string/, 'empty');
     reject({ ...BASE, destination_name: 'x'.repeat(101) }, /≤100 chars/, 'too long');
+  });
+});
+
+// eBay refuses its subscription endpoints entirely until an app-level config exists, and reports it
+// as 195003 from getSubscriptions — which reads like a subscription fault rather than a missing
+// prerequisite. A live dry run hit exactly that, so the gate moved here where it is obvious.
+describe('alert_email — a prerequisite, not a nicety', () => {
+  it('is demanded once enabled', () => {
+    reject({ ...LIVE, alert_email: '' }, /195003/, 'empty while enabled');
+    reject({ ...LIVE, alert_email: 'not-an-address' }, /valid address/, 'malformed');
+    reject({ ...LIVE, alert_email: 'missing@tld' }, /valid address/, 'no TLD');
+  });
+  it('is not demanded while disabled, so the config can be filled in over two saves', () => {
+    assert.equal(validate({ ...BASE, enabled: false, alert_email: '' }), null);
+  });
+  it('accepts an ordinary address', () => {
+    assert.equal(validate({ ...LIVE, alert_email: 'seller+ebay@example.co.uk' }), null);
+  });
+  it('rejects a non-string outright', () => {
+    reject({ ...BASE, alert_email: 42 }, /must be a string/, 'number');
   });
 });

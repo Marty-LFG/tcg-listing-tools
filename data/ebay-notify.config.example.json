@@ -6,6 +6,7 @@
   "account_deletion_path": "/ebay/account-deletion",
   "public_endpoint": "",
   "destination_name": "tcg-tools-prod",
+  "alert_email": "",
   "topics": ["ORDER_CONFIRMATION"],
   "retain_days": 30,
   "alerts": true

@@ -16,6 +16,7 @@ import {
 const CFG = {
   public_endpoint: 'https://hooks.example/ebay/notifications',
   destination_name: 'tcg-tools-prod',
+  alert_email: 'seller@example.com',
   topics: ['ORDER_CONFIRMATION'],
 };
 
@@ -40,11 +41,17 @@ const SUB = (over = {}) => ({
 // Stand in for eBay. Injected rather than module-mocked: ES module exports are immutable, so
 // mock.method cannot patch them — and an injected seam is what the rest of this repo already uses
 // (sweepOpenOrders' fetchOrders, verifyNotification's fetchKey).
-function stub({ topics = TOPICS, destinations = [], subscriptions = [] } = {}) {
+function stub({ topics = TOPICS, destinations = [], subscriptions = [], alertEmail = 'seller@example.com', configMissing = false } = {}) {
   const calls = [];
+  const NOT_CONFIGURED = { ok: false, httpStatus: 400, usedToken: 'app',
+    json: { errors: [{ errorId: 195003, message: 'Please provide configurations required for notifications.' }] } };
   const call = async (env, method, path, body) => {
     calls.push({ method, path, body });
     if (method !== 'GET') return { ok: true, httpStatus: 200, json: { destinationId: 'NEW-D', subscriptionId: 'NEW-S' }, usedToken: 'app' };
+    if (path.startsWith('/config')) return configMissing ? NOT_CONFIGURED : { ok: true, httpStatus: 200, json: { alertEmail }, usedToken: 'app' };
+    // Until the app config exists eBay refuses the subscription endpoint outright — the real 195003
+    // that the first live dry run hit.
+    if (path.startsWith('/subscription') && configMissing) return NOT_CONFIGURED;
     const json = path.startsWith('/topic') ? { topics }
       : path.startsWith('/destination') ? { destinations }
         : path.startsWith('/subscription') ? { subscriptions } : {};
@@ -181,6 +188,55 @@ describe('planReconcile — subscriptions', () => {
     const p = await planReconcile({}, { ...CFG, topics: ['ORDER_CONFIRMATION', 'NOT_REAL'] }, { call });
     assert.deepEqual(p.create.map((c) => c.topicId), ['ORDER_CONFIRMATION']);
     assert.match(p.warnings.join(' '), /NOT_REAL is not in eBay's registry/);
+  });
+});
+
+// This one is written from a real failure. The first live dry run against eBay came back
+// "[195003] Please provide configurations required for notifications" from getSubscriptions — which
+// reads like a subscription problem and is actually a missing app-level config (the alert email).
+// Nothing can be read or created until it exists.
+describe('planReconcile — the app config eBay demands first', () => {
+  it('plans to create the config when eBay says 195003, instead of giving up', async () => {
+    const call = stub({ configMissing: true });
+    const p = await planReconcile({}, CFG, { call });
+    assert.equal(p.ok, true, 'a missing prerequisite we can satisfy is not a reason to abandon the plan');
+    assert.deepEqual(p.setConfig, { action: 'create', alertEmail: 'seller@example.com' });
+    assert.match(p.warnings.join(' '), /could not be read until the app config exists/);
+    assert.deepEqual(p.create, [{ topicId: 'ORDER_CONFIRMATION', schemaVersion: '1.1' }],
+      'with no readable subscriptions, planning must assume none exist');
+  });
+
+  it('plans to update the config when the stored address differs', async () => {
+    const call = stub({ alertEmail: 'old@example.com' });
+    const p = await planReconcile({}, CFG, { call });
+    assert.deepEqual(p.setConfig, { action: 'update', from: 'old@example.com', alertEmail: 'seller@example.com' });
+  });
+
+  it('plans nothing when the address already matches', async () => {
+    const p = await planReconcile({}, CFG, { call: stub() });
+    assert.equal(p.setConfig, null);
+  });
+
+  it('refuses when no alert_email is configured and eBay holds none either', async () => {
+    const call = stub({ configMissing: true });
+    const p = await planReconcile({}, { ...CFG, alert_email: '' }, { call });
+    assert.equal(p.ok, false);
+    assert.match(p.errors.join(' '), /alert_email must be set/);
+    assert.match(p.errors.join(' '), /195003/, 'name the error so the message is searchable');
+  });
+
+  it('sets the config BEFORE the destination — nothing else works until it exists', async () => {
+    const ENV = { EBAY_NOTIFY_VERIFICATION_TOKEN: 'v'.repeat(40) };
+    const call = stub({ configMissing: true });
+    const plan = await planReconcile(ENV, CFG, { call });
+    call.calls.length = 0;
+    const done = await applyPlan(ENV, CFG, plan, { call });
+    assert.deepEqual(done.errors, []);
+    const writes = call.calls.filter((c) => c.method !== 'GET');
+    assert.equal(writes[0].path, '/config', 'the config is the prerequisite; it goes first');
+    assert.equal(writes[0].body.alertEmail, 'seller@example.com');
+    assert.equal(writes[1].path, '/destination');
+    assert.deepEqual(done.config, { alertEmail: 'seller@example.com' });
   });
 });
 
