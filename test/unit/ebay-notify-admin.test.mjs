@@ -343,6 +343,39 @@ describe('applyPlan — order of operations, and the refusal that matters most',
     assert.equal(sub.body.payload.deliveryProtocol, 'HTTPS');
   });
 
+  it('finds the destination id by re-reading, when eBay returns none in the body', async () => {
+    // Real behaviour: createDestination answers 201 with a Location header and an EMPTY body, so
+    // there is no destinationId to read. That stranded a destination which had been created AND
+    // passed eBay's challenge, with nothing subscribed to it.
+    let created = false;
+    const call = async (env, method, path, body) => {
+      if (method === 'POST' && path === '/destination') { created = true; return { ok: true, httpStatus: 201, json: {} }; }
+      if (method === 'GET' && path.startsWith('/destination')) {
+        return { ok: true, httpStatus: 200, usedToken: 'app',
+          json: { destinations: created ? [DEST({ destinationId: 'FOUND-BY-ENDPOINT' })] : [] } };
+      }
+      return stub()(env, method, path, body);
+    };
+    const plan = await planReconcile(ENV, CFG, { call });
+    assert.equal(plan.destination.action, 'create');
+    const done = await applyPlan(ENV, CFG, plan, { call });
+    assert.deepEqual(done.errors, []);
+    assert.equal(done.created_destination.id, 'FOUND-BY-ENDPOINT', 'the id must be recovered by matching the endpoint');
+    assert.equal(done.created.length, 1, 'and the subscription must then actually get created');
+  });
+
+  it('says so rather than silently proceeding if the id cannot be recovered at all', async () => {
+    const call = async (env, method, path, body) => {
+      if (method === 'POST' && path === '/destination') return { ok: true, httpStatus: 201, json: {} };
+      if (method === 'GET' && path.startsWith('/destination')) return { ok: true, httpStatus: 200, json: { destinations: [] } };
+      return stub()(env, method, path, body);
+    };
+    const plan = await planReconcile(ENV, CFG, { call });
+    const done = await applyPlan(ENV, CFG, plan, { call });
+    assert.match(done.errors.join(' '), /returned no destinationId/);
+    assert.deepEqual(done.created, []);
+  });
+
   it('stops rather than continuing when the destination cannot be created', async () => {
     const failing = async (env, method, path) => {
       if (method === 'GET') return stub()(env, method, path);
