@@ -153,14 +153,32 @@ describe('the read-only boundary', () => {
 });
 
 describe('observationSummary — the evidence the soak is for', () => {
-  it('counts how often push arrived before the poll had the order', async () => {
-    addEvent('s1', '10-A');
-    addEvent('s2', '10-B');
-    addOrder('10-B');
-    await observeOrderEvents({}, db, { fetchOrders: okFetch([parsedOrder('10-A'), parsedOrder('10-B')]) });
+  it('excludes eBay’s own test notifications from the measurement', async () => {
+    // testSubscription sends literal placeholders — the orderId comes through as the string
+    // "string" — so it never resolves. Counting it as "push beat the poll" would inflate precisely
+    // the number this mode exists to produce. Seen for real on the live account.
+    addEvent('t1', 'string');
+    await observeOrderEvents({}, db, { fetchOrders: okFetch([]) });
     const s = observationSummary(db, { days: 7 });
-    assert.equal(s.notifications, 2);
-    assert.equal(s.ahead_of_poll, 1);
+    assert.equal(s.notifications, 1);
+    assert.equal(s.test_notifications, 1);
+    assert.equal(s.ahead_of_poll, 0, 'a test payload is not evidence of anything');
+    assert.equal(s.matched_to_an_order, 0);
+  });
+
+  it('counts ahead-of-poll from the timestamps, not from when the pass happened to run', async () => {
+    // order_known_at_receipt is evaluated when the observe pass runs. Drain a backlog hours late and
+    // the poll has already caught up, so orders push genuinely announced first read as "already
+    // known". The recorded timestamps do not drift like that, so the summary derives from those.
+    addEvent('late', '10-LATE');
+    db.prepare("UPDATE notify_events SET received_at = datetime('now','-600 seconds') WHERE notification_id='late'").run();
+    addOrder('10-LATE');   // the poll adopted it AFTER the push arrived
+    // Observe only now — long after both, which is what makes the snapshot misleading.
+    await observeOrderEvents({}, db, { fetchOrders: okFetch([parsedOrder('10-LATE')]) });
+    const obs = JSON.parse(db.prepare("SELECT observation o FROM notify_events WHERE notification_id='late'").get().o);
+    assert.equal(obs.order_known_at_receipt, true, 'the snapshot says known, because the poll caught up first');
+    const s = observationSummary(db, { days: 7 });
+    assert.equal(s.ahead_of_poll, 1, 'but the timestamps show push announced it first, which is the truth');
   });
 
   it('is safe on an empty table', () => {
