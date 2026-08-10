@@ -7,7 +7,7 @@
   "public_endpoint": "",
   "destination_name": "tcg-tools-prod",
   "alert_email": "",
-  "topics": ["ORDER_CONFIRMATION"],
+  "topics": ["ORDER_CONFIRMATION", "ITEM_MARKED_SHIPPED"],
   "retain_days": 30,
   "alerts": true
 }

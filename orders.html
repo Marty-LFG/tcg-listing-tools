@@ -200,6 +200,7 @@
         <div class="tab active" data-tab="unshipped">To pack <span class="n" id="n_unshipped"></span></div>
         <div class="tab" data-tab="upgrades" title="Orders where the buyer paid for something better than a plain letter">Upgrades <span class="n" id="n_upgrades"></span></div>
         <div class="tab" data-tab="held" title="Orders that need a decision before they can be packed — a cancellation the buyer has asked for, or a payment that failed after eBay said it was paid">Held <span class="n" id="n_held"></span></div>
+        <div class="tab" data-tab="label_bought" title="eBay marked these dispatched when the postage label was bought. The cards still need pulling and the parcel still needs lodging — nothing else clears them, so they get their own tab rather than sitting unnoticed in the queue.">Label bought <span class="n" id="n_label_bought"></span></div>
         <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
       </div>
       <div class="spacer"></div>
@@ -403,6 +404,7 @@ function renderOrders() {
   if (!rows.length) {
     if (STATE.tab==='upgrades') return `<div class="empty">No postage upgrades in the queue.<br><span class="faint">Every order waiting is going as standard postage, so the usual letter workflow covers all of them.</span></div>`;
     if (STATE.tab==='held') return `<div class="empty">Nothing on hold. 👍<br><span class="faint">Orders land here when a buyer asks to cancel, or when eBay reports the payment failed after the order was marked paid. They stay in the queue but off the pull list until you decide.</span></div>`;
+    if (STATE.tab==='label_bought') return `<div class="empty">No labels waiting on a parcel. ✅<br><span class="faint">Orders land here when a postage label gets bought on eBay before the cards are packed — eBay calls them sent, but the parcel hasn't been lodged. Tick them and hit “Mark shipped” once they've actually gone.</span></div>`;
     if (STATE.orders.length) return `<div class="empty">Everything here is picked and packed. ✅<br><span class="faint">Untick “Hide picked” to see the ${STATE.orders.length} order${STATE.orders.length===1?'':'s'} waiting to be posted.</span></div>`;
     return `<div class="empty">${STATE.tab==='unshipped'?'Nothing to pack — all caught up. 🎉':'No orders ingested yet.'}<br><span class="faint">New paid orders land here every ${(STATE.config&&STATE.config.config&&STATE.config.config.poll_interval_min)||10} min on their own — hit ↻ to ask eBay right now.</span></div>`;
   }
@@ -480,11 +482,13 @@ function renderOrders() {
 function renderPanel() {
   const picked = STATE.orders.filter(o=>o.picked_at).length;
   const heading = STATE.tab==='unshipped' ? 'To pack' : STATE.tab==='upgrades' ? 'Paid a postage upgrade'
-    : STATE.tab==='held' ? 'Held — sort these out on eBay before packing' : 'All orders';
+    : STATE.tab==='held' ? 'Held — sort these out on eBay before packing'
+      : STATE.tab==='label_bought' ? 'Label bought on eBay — still to pack and lodge' : 'All orders';
   $('panel').innerHTML = `<h2>${heading}${picked?` · ${picked} picked`:''}</h2>` + renderOrders();
   $('n_unshipped').textContent = STATE.counts.unshipped!=null ? `(${STATE.counts.unshipped})` : '';
   $('n_upgrades').textContent = STATE.counts.upgrades!=null ? `(${STATE.counts.upgrades})` : '';
   $('n_held').textContent = STATE.counts.held ? `(${STATE.counts.held})` : '';
+  $('n_label_bought').textContent = STATE.counts.label_bought ? `(${STATE.counts.label_bought})` : '';
   $('n_all').textContent = STATE.counts.all!=null ? `(${STATE.counts.all})` : '';
   $('hidePickedLbl').textContent = picked ? `Hide picked (${picked})` : 'Hide picked';
   updateSelAll(); updatePickBtn();
@@ -502,6 +506,7 @@ async function loadAll() {
     else STATE.counts.unshipped = STATE.orders.length;
     STATE.counts.upgrades = STATE.orders.filter(o => o.postage && o.postage.upgrade && o.in_queue).length;
     STATE.counts.held = STATE.orders.filter(o => o.on_hold && o.in_queue).length;
+    STATE.counts.label_bought = STATE.orders.filter(o => o.fulfilment_state === 'label_bought').length;
     renderBanner(); renderPanel(); renderServices();
   } catch (e) {
     $('banner').innerHTML = `<span class="chip"><span class="dot err"></span>${esc(e.message)}</span>`;
@@ -655,6 +660,11 @@ function visibleOrders(){
   // is the point. A cancelled order is not here because it has left the queue entirely; it lives under
   // All with a struck-through pill, because there is nothing left to do about it.
   if (STATE.tab === 'held') rows = rows.filter(o => o.on_hold);
+  // Same shape again: eBay already has these dispatched, but the parcel has not been lodged, so they
+  // are still queue work. Their own tab because a human tap is the ONLY thing that clears them — which
+  // is how eight of them once sat in the queue for days without anyone noticing they were the same
+  // eight every morning.
+  if (STATE.tab === 'label_bought') rows = rows.filter(o => o.fulfilment_state === 'label_bought');
   if (STATE.tab !== 'all') {
     rows = rows.slice().sort((a,b) => {
       const da = dueInfo(a), db = dueInfo(b);
@@ -693,10 +703,20 @@ function isTrackedShipment(g){ return g.some(o => o.postage && o.postage.tracked
 // queue AND already picked — i.e. the cards are in satchels and the only thing left is telling eBay.
 // A held order disqualifies the whole selection rather than being quietly dropped from it: the count
 // on the button has to be the count it acts on, or the button is lying about what it is about to do.
+//
+// A label_bought order counts as ready WITHOUT being picked, and that is not a loosening of the rule —
+// it is the same rule. eBay already has it dispatched, so the button does not write to eBay at all
+// (dispatchOrder short-circuits it); all it does is record that the parcel has gone. Requiring
+// picked_at here is what left those orders with no bulk route and eight individual clicks.
+//
+// The two groups come back separately because the confirm dialog has to be honest about which of the
+// two different things each order is getting — one talks to eBay, one does not.
 function shipReady(){
   const sel = visibleOrders().filter(isSelected).filter(o => o.in_queue);
-  const ready = sel.length > 0 && sel.every(o => o.picked_at && !o.on_hold);
-  return { ready, ids: sel.map(o => o.order_id), orders: sel };
+  const settled = sel.filter(o => o.fulfilment_state === 'label_bought');
+  const ready = sel.length > 0 && sel.every(o => (o.picked_at || o.fulfilment_state === 'label_bought') && !o.on_hold);
+  return { ready, ids: sel.map(o => o.order_id), orders: sel, settled,
+    ebayWrites: sel.filter(o => o.fulfilment_state !== 'label_bought') };
 }
 function updatePickBtn(){
   const n=selectedOrderIds().length, total=visibleOrders().length;
@@ -710,7 +730,9 @@ function updatePickBtn(){
     pb.classList.toggle('danger', sh.ready);
     pb.textContent = sh.ready ? `🚚 Mark shipped (${sh.ids.length})` : (n ? `✓ Mark picked (${n})` : '✓ Mark picked');
     pb.title = sh.ready
-      ? 'Everything ticked is packed. This tells eBay all of them have been dispatched — it asks first, and it cannot be undone from here.'
+      ? (sh.ebayWrites.length
+        ? 'Everything ticked is packed. This tells eBay all of them have been dispatched — it asks first, and it cannot be undone from here.'
+        : 'eBay already has these dispatched. This only records that the parcels have gone, which is what clears them from the queue.')
       : 'Mark the ticked orders as pulled + packed — they drop off the pull list but stay here to dispatch';
     pb.disabled = sh.ready ? false : !n;
   }
@@ -774,20 +796,30 @@ async function markShipped(id, btn){
 // cannot be undone from this page, so it always asks — and the question names the orders rather than
 // just counting them, because "dispatch 8 orders?" is not something anyone can actually check.
 function confirmShip(){
-  const { ready, ids, orders } = shipReady();
+  const { ready, ids, ebayWrites, settled } = shipReady();
   if (!ready || !ids.length) return;
   const dry = !!(STATE.config && STATE.config.config && STATE.config.config.dry_run);
-  $('sh_title').textContent = `Mark ${ids.length} order${ids.length===1?'':'s'} shipped on eBay`;
+  const li = (o) => {
+    const where = [o.ship_city, o.ship_state].filter(Boolean).join(', ');
+    return `<li><span>@${esc(o.buyer_username||'—')}${where?` · ${esc(where)}`:''}</span><span class="faint">${esc(o.order_id)}</span></li>`;
+  };
+  $('sh_title').textContent = `Mark ${ids.length} order${ids.length===1?'':'s'} shipped`;
+  // Two groups, named separately, because they are not the same action. Telling eBay a parcel has gone
+  // is irreversible from here; recording one eBay already knows about is bookkeeping. Rolling them into
+  // a single count would make the warning either false for half of them or missing for the other half.
   $('sh_body').innerHTML =
-    `<div>These are packed and ready to post. eBay will be told each one has been dispatched.</div>`
-    + `<ul class="shlist">` + orders.map(o => {
-        const where = [o.ship_city, o.ship_state].filter(Boolean).join(', ');
-        return `<li><span>@${esc(o.buyer_username||'—')}${where?` · ${esc(where)}`:''}</span><span class="faint">${esc(o.order_id)}</span></li>`;
-      }).join('') + `</ul>`
-    + (dry
-        ? `<div class="shnote"><b>Dry run is on</b>, so nothing will actually be sent to eBay — they will just be recorded as posted here.</div>`
-        : `<div class="shwarn">This cannot be undone from this page. If a parcel has not actually gone, marking it shipped starts the buyer's delivery clock.</div>`);
-  $('sh_go').textContent = dry ? `🚚 Yes, record ${ids.length}` : `🚚 Yes, dispatch ${ids.length}`;
+    (ebayWrites.length
+      ? `<div>These are packed and ready to post. eBay will be told each one has been dispatched.</div>`
+        + `<ul class="shlist">` + ebayWrites.map(li).join('') + `</ul>` : '')
+    + (settled.length
+      ? `<div>${ebayWrites.length?'And eBay ':'eBay '}already has ${settled.length===1?'this one':'these'} dispatched — nothing is sent, ${settled.length===1?'it is':'they are'} just recorded as posted here.</div>`
+        + `<ul class="shlist">` + settled.map(li).join('') + `</ul>` : '')
+    + (!ebayWrites.length
+        ? `<div class="shnote">Nothing goes to eBay for ${settled.length===1?'this order':'these orders'} — the postage label was already bought there.</div>`
+        : dry
+          ? `<div class="shnote"><b>Dry run is on</b>, so nothing will actually be sent to eBay — they will just be recorded as posted here.</div>`
+          : `<div class="shwarn">This cannot be undone from this page. If a parcel has not actually gone, marking it shipped starts the buyer's delivery clock.</div>`);
+  $('sh_go').textContent = (dry || !ebayWrites.length) ? `🚚 Yes, record ${ids.length}` : `🚚 Yes, dispatch ${ids.length}`;
   $('shipOverlay').classList.add('open');
   $('sh_go').onclick = () => { closeShip(); markAllShipped(ids); };
 }

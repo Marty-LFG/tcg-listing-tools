@@ -255,6 +255,25 @@ const SHIP_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
       <BuyerUserID>letterbuyer</BuyerUserID>
       <PaidTime>2026-07-30T01:00:00.000Z</PaidTime>
     </Order>
+    <Order>
+      <OrderID>TICKED-NO-LABEL</OrderID>
+      <OrderStatus>Completed</OrderStatus>
+      <ShippedTime>2026-08-02T00:18:12.000Z</ShippedTime>
+      <ShippingServiceSelected>
+        <ShippingService>AU_Regular</ShippingService>
+        <ShippingServiceCost currencyID="AUD">0.00</ShippingServiceCost>
+      </ShippingServiceSelected>
+      <ShippingDetails><BuyerSelectedShipping>false</BuyerSelectedShipping></ShippingDetails>
+      <Total currencyID="AUD">12.00</Total>
+      <TransactionArray><Transaction>
+        <TransactionID>4</TransactionID>
+        <Item><ItemID>444</ItemID><SKU>AAD-004</SKU><Title>Card D</Title></Item>
+        <QuantityPurchased>1</QuantityPurchased>
+        <TransactionPrice currencyID="AUD">12.00</TransactionPrice>
+      </Transaction></TransactionArray>
+      <BuyerUserID>tickedbuyer</BuyerUserID>
+      <PaidTime>2026-08-01T01:00:00.000Z</PaidTime>
+    </Order>
   </OrderArray>
 </GetOrdersResponse>`;
 
@@ -288,6 +307,18 @@ describe('parseOrders — postage + shipment', () => {
     assert.equal(o.trackingNumber, '36LB1234567890');
     assert.equal(o.carrier, 'Australia Post');
     assert.equal(o.shippedTime, '2026-08-01T05:00:00.000Z');
+  });
+
+  it('a bulk "mark as dispatched" is ShippedTime and nothing else', () => {
+    // The exact input refreshOrder's discriminator keys on: eBay says sent, but no label was ever
+    // bought, so there is no tracking element at all — not an empty one. This is what the seller
+    // ticking a batch of already-posted letters in Seller Hub looks like on the wire.
+    const o = by['TICKED-NO-LABEL'];
+    assert.equal(o.shippedTime, '2026-08-02T00:18:12.000Z');
+    assert.equal(o.trackingNumber, null);
+    assert.equal(o.carrier, null);
+    assert.equal(o.shipService, 'AU_Regular');
+    assert.equal(o.shippingCents, 0);
   });
 
   it('reads the scheduled window and the actual delivery once the parcel has moved', () => {

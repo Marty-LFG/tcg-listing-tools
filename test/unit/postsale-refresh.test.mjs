@@ -14,7 +14,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { openPostsaleDbAt } from '../../lib/postsale-db.mjs';
-import { ingestOrder, refreshOrder, enqueueMessage, attachPostage, observedServices } from '../../lib/postsale.mjs';
+import { ingestOrder, refreshOrder, enqueueMessage, attachPostage, observedServices,
+  inQueue, isLabelBought, attachFulfilment } from '../../lib/postsale.mjs';
 import { DEFAULT_POSTAGE_CONFIG } from '../../lib/postage.mjs';
 
 const CFG = { labels: false, messaging: true, postage: DEFAULT_POSTAGE_CONFIG };
@@ -98,6 +99,76 @@ describe('refreshOrder', () => {
     assert.equal(after.shipped_status, 'shipped');
     assert.equal(after.dispatch_source, 'ebay');
     assert.ok(after.tracking_seen_at, 'tracking_seen_at should stamp when WE first saw it');
+  });
+
+  it('marks the order shipped and stamps nothing else when eBay was merely TICKED dispatched', () => {
+    // The bulk "mark as dispatched" in Seller Hub: ShippedTime, no tracking, untracked letter. The
+    // parcel has already gone, so there is no work left and the order must leave the queue on its own.
+    const db = freshDb();
+    ingestOrder(db, mkOrder('O1'), CFG);
+    const r = refreshOrder(db, mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' }), CFG);
+
+    assert.equal(r.becameShipped, true);
+    assert.equal(r.settledViaEbay, true);
+    assert.equal(r.labelBought, false);
+    const o = row(db, 'O1');
+    assert.equal(o.shipped_status, 'shipped');
+    assert.equal(o.dispatch_source, 'ebay', 'provenance is still recorded — the "via eBay" badge reads it');
+    assert.equal(o.label_bought_at, null, 'no label was bought, so nothing pins it to the queue');
+    assert.equal(o.picked_at, null, 'a poll may not assert that a human packed something');
+    assert.equal(inQueue(o), false);
+    assert.equal(attachFulfilment([o])[0].fulfilment_state, 'posted');
+  });
+
+  it('still holds an order in the queue when a label really was bought', () => {
+    const db = freshDb();
+    ingestOrder(db, mkOrder('O1'), CFG);
+    const r = refreshOrder(db, mkOrder('O1', {
+      trackingNumber: '36LB1234567890', carrier: 'Australia Post', shippedTime: '2026-08-02T05:00:00.000Z',
+    }), CFG);
+
+    assert.equal(r.labelBought, true);
+    assert.equal(r.settledViaEbay, false);
+    const o = row(db, 'O1');
+    assert.ok(o.label_bought_at);
+    assert.equal(inQueue(o), true, 'the cards are still on the shelf');
+    assert.equal(isLabelBought(o), true);
+  });
+
+  it('holds on doubt: a paid-for express service with no tracking number yet stays in the queue', () => {
+    // eBay can flip the order before the tracking number reaches GetOrders. Settling this one would be
+    // the expensive mistake; holding it for a poll or two only means somebody looks at it.
+    const db = freshDb();
+    ingestOrder(db, mkOrder('O1', { shipService: 'AU_Express', shippingCents: 1295, expedited: true }), CFG);
+    const r = refreshOrder(db, mkOrder('O1', {
+      shipService: 'AU_Express', shippingCents: 1295, expedited: true, shippedTime: '2026-08-02T05:00:00.000Z',
+    }), CFG);
+
+    assert.equal(r.labelBought, true);
+    assert.equal(r.settledViaEbay, false);
+    assert.equal(inQueue(row(db, 'O1')), true);
+  });
+
+  it('a settled order is not re-stamped by the next poll', () => {
+    const db = freshDb();
+    ingestOrder(db, mkOrder('O1'), CFG);
+    const shipped = mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' });
+    refreshOrder(db, shipped, CFG);
+    const second = refreshOrder(db, shipped, CFG);
+    assert.equal(second.updated, false);
+    assert.equal(second.settledViaEbay, false);
+    assert.equal(row(db, 'O1').label_bought_at, null);
+  });
+
+  it('a service override that declares the tier tracked flips the verdict on a fresh transition', () => {
+    // The classification is re-derived from config on every refresh, so correcting a service in
+    // settings changes what the NEXT transition decides — no re-poll of eBay needed.
+    const db = freshDb();
+    const cfg = { ...CFG, postage: { ...DEFAULT_POSTAGE_CONFIG, services: { AU_Regular: { tracked: true, tier: 'tracked' } } } };
+    ingestOrder(db, mkOrder('O1'), cfg);
+    const r = refreshOrder(db, mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' }), cfg);
+    assert.equal(r.labelBought, true, 'a tracked service gets a label, so hold it');
+    assert.equal(inQueue(row(db, 'O1')), true);
   });
 
   it('queues exactly one dispatch message, on the transition and never again', () => {

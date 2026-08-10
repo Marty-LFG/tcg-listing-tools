@@ -13,7 +13,8 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
   cancelState, paymentState, isCancelled, isOnHold, holdReason, inQueue, needsPacking, pickable,
-  IN_QUEUE_SQL, NEEDS_PACKING_SQL, PICKABLE_SQL, NOT_CANCELLED_SQL, HOLD_SQL,
+  isLabelBought,
+  IN_QUEUE_SQL, NEEDS_PACKING_SQL, PICKABLE_SQL, NOT_CANCELLED_SQL, HOLD_SQL, LABEL_BOUGHT_SQL,
 } from '../../lib/postsale.mjs';
 
 describe('cancelState — eBay CancelStatus → the word we act on', () => {
@@ -154,6 +155,12 @@ describe('the SQL predicates on an UPGRADED database', () => {
     db.exec(`INSERT INTO orders (order_id, cancel_state) VALUES ('rejected-1','rejected')`);
     db.exec(`INSERT INTO orders (order_id, payment_state) VALUES ('badpay-1','failed')`);
     db.exec(`INSERT INTO orders (order_id, shipped_status) VALUES ('posted-1','shipped')`);
+    // eBay bought a label for this one; the cards are still on the shelf.
+    db.exec(`INSERT INTO orders (order_id, shipped_status, label_bought_at)
+             VALUES ('label-1','shipped','2026-08-02T05:07:00.000Z')`);
+    // Same, but somebody has since packed it — label_bought_at is history now, not work.
+    db.exec(`INSERT INTO orders (order_id, shipped_status, label_bought_at, picked_at)
+             VALUES ('label-picked-1','shipped','2026-08-02T05:07:00.000Z','2026-08-02T06:00:00.000Z')`);
   });
   after(() => { try { db.close(); } catch {} try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
@@ -179,7 +186,9 @@ describe('the SQL predicates on an UPGRADED database', () => {
 
   it('PICKABLE_SQL is what a BULK action acts on, and it excludes every hold', () => {
     const p = idsWhere(PICKABLE_SQL);
-    assert.deepEqual(p, ['legacy-1', 'legacy-2', 'legacy-3', 'rejected-1']);
+    // label-1 belongs here: eBay bought its label, but the cards have not been pulled, so it is
+    // exactly the work a bulk pick is for. label-picked-1 does not — it has been packed already.
+    assert.deepEqual(p, ['label-1', 'legacy-1', 'legacy-2', 'legacy-3', 'rejected-1']);
     // NEEDS_PACKING_SQL is the wider set the per-order buttons use: a human may pack a held order.
     const n = idsWhere(NEEDS_PACKING_SQL);
     assert.ok(n.includes('requested-1') && n.includes('badpay-1'));
@@ -189,7 +198,9 @@ describe('the SQL predicates on an UPGRADED database', () => {
     // Without the extra clause a cancelled order — newly absent from the queue — reads as SHIPPED,
     // which moves the bug rather than fixing it.
     const shipped = idsWhere(`NOT ${IN_QUEUE_SQL} AND ${NOT_CANCELLED_SQL}`);
-    assert.deepEqual(shipped, ['posted-1']);
+    // label-picked-1 reads as shipped and should: the label was bought AND the parcel has been packed,
+    // so there is nothing left to do about it.
+    assert.deepEqual(shipped, ['label-picked-1', 'posted-1']);
     const naive = idsWhere(`NOT ${IN_QUEUE_SQL}`);
     assert.ok(naive.includes('cancelled-1'), 'guarding the regression this test exists for');
   });
@@ -198,14 +209,31 @@ describe('the SQL predicates on an UPGRADED database', () => {
     assert.deepEqual(idsWhere(HOLD_SQL), ['badpay-1', 'requested-1', 'unknown-1']);
   });
 
+  it('LABEL_BOUGHT_SQL finds the orders eBay dispatched that nobody has packed', () => {
+    // A NULL label_bought_at must not match — that is every ordinary order, and the tab would show
+    // the whole queue. `IS NOT NULL` is NULL-safe, so this needs no COALESCE, unlike the <> tests.
+    assert.deepEqual(idsWhere(LABEL_BOUGHT_SQL), ['label-1']);
+  });
+
+  it('the queue predicate did not move — the label-bought lens is additive', () => {
+    // The whole point of adding LABEL_BOUGHT_SQL as its own name is that IN_QUEUE_SQL keeps behaving
+    // exactly as it did. A label-bought order is in the queue; a picked one is not.
+    const q = idsWhere(IN_QUEUE_SQL);
+    assert.ok(q.includes('label-1'), 'the cards still have to be pulled');
+    assert.ok(!q.includes('label-picked-1'), 'label_bought_at must not pin an order forever');
+    assert.ok(!q.includes('posted-1'));
+  });
+
   it('the SQL and the JS agree, row for row', () => {
     // Two implementations of one rule is how the dashboard and the pick sheet end up disagreeing.
     const rows = db.prepare('SELECT * FROM orders').all();
     const sqlQueue = new Set(idsWhere(IN_QUEUE_SQL));
     const sqlPickable = new Set(idsWhere(PICKABLE_SQL));
+    const sqlLabelBought = new Set(idsWhere(LABEL_BOUGHT_SQL));
     for (const r of rows) {
       assert.equal(inQueue(r), sqlQueue.has(r.order_id), `inQueue disagrees on ${r.order_id}`);
       assert.equal(pickable(r), sqlPickable.has(r.order_id), `pickable disagrees on ${r.order_id}`);
+      assert.equal(isLabelBought(r), sqlLabelBought.has(r.order_id), `isLabelBought disagrees on ${r.order_id}`);
     }
   });
 });

@@ -285,12 +285,54 @@ describe('buying an eBay postage label does not delete the order from the day', 
     assert.ok(row(db, '1').picked_at, 'it is recorded as gone, which is what clears the queue');
   });
 
+  it('a double tap of Mark shipped is a no-op, not a second CompleteSale', async () => {
+    // The gate is keyed on shipped_status, not on label_bought_at. Before that, the second tap fired a
+    // real CompleteSale at an order eBay already had shipped, eBay refused, the local flip was skipped
+    // and the route answered 502 to a dashboard that was already showing it dispatched.
+    const db = freshDb();
+    ingestOrder(db, mkOrder('1'), CFG);
+    // dry_run OFF and no eBay consent on this box: a real round trip here would fail loudly.
+    const first = await dispatchOrder({}, db, '1', { ...CFG, dry_run: true });
+    assert.equal(first.ok, true);
+    const second = await dispatchOrder({}, db, '1', { ...CFG, dry_run: false });
+    assert.equal(second.ok, true);
+    assert.equal(second.alreadyShipped, true);
+    assert.equal(second.ebay, null, 'no second round trip');
+  });
+
+  it('an order eBay merely TICKED dispatched still short-circuits the eBay call', async () => {
+    const db = freshDb();
+    ingestOrder(db, mkOrder('1'), CFG);
+    refreshOrder(db, mkOrder('1', { shippedTime: '2026-08-03T00:00:00.000Z' }), CFG);
+    const r = await dispatchOrder({}, db, '1', { ...CFG, dry_run: false });
+    assert.equal(r.ok, true);
+    assert.equal(r.alreadyShipped, true);
+    assert.equal(r.ebay, null);
+    assert.ok(row(db, '1').picked_at, 'a button MAY assert the parcel has gone — a poll may not');
+  });
+
   it('does not stamp label_bought when WE were the ones who dispatched it', () => {
     const db = freshDb();
     ingestOrder(db, mkOrder('1'), CFG);
     db.prepare(`UPDATE orders SET shipped_status='shipped', dispatch_source='manual' WHERE order_id='1'`).run();
     buyLabel(db, '1');
     assert.equal(row(db, '1').label_bought_at, null);
+  });
+
+  it('a bare "mark as dispatched" on eBay settles the order with no tap at all', () => {
+    // No tracking, untracked letter: the seller ticked a parcel that had already gone. This is the
+    // case that used to stamp label_bought and park the order on the digest forever.
+    const db = freshDb();
+    ingestOrder(db, mkOrder('1'), CFG);
+    const id = createDigest(db, TODAY, ['1']);
+    refreshOrder(db, mkOrder('1', { shippedTime: '2026-08-03T00:00:00.000Z' }), CFG);
+
+    const o = row(db, '1');
+    assert.equal(o.shipped_status, 'shipped');
+    assert.equal(o.label_bought_at, null);
+    assert.equal(inQueue(o), false);
+    assert.equal(attachFulfilment([o])[0].fulfilment_state, 'posted');
+    assert.deepEqual(digestOrders(db, id), [], 'and it is off the morning digest');
   });
 
   it('never drags a historical order back into the queue', () => {

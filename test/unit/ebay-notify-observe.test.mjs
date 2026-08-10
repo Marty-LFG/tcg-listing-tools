@@ -114,6 +114,19 @@ describe('observeOrderEvents — reads eBay, records what it saw', () => {
     const r = await observeOrderEvents({}, db, { fetchOrders: okFetch([]) });
     assert.equal(r.considered, 0, 'record_only topics are not this worker’s business');
   });
+
+  it('picks up ITEM_MARKED_SHIPPED, because the filter is the ACTION and not the topic', async () => {
+    // Subscribing to a second order_by_id topic needs no code here — this is the assertion that says
+    // so, and the reason a real ITEM_MARKED_SHIPPED envelope will land in notify_events.payload for
+    // us to read before anyone writes a handler against a guessed payload shape.
+    db.prepare(`INSERT INTO notify_events (notification_id, topic, ref_id, status, action)
+                VALUES ('ms1','ITEM_MARKED_SHIPPED','SHIP-1','received','order_by_id')`).run();
+    const r = await observeOrderEvents({}, db, { fetchOrders: okFetch([]) });
+    assert.equal(r.considered, 1);
+    const row = db.prepare('SELECT status, action FROM notify_events WHERE notification_id=?').get('ms1');
+    assert.equal(row.status, 'handled');
+    assert.equal(row.action, 'observed');
+  });
 });
 
 // The guarantee the owner actually asked for. These assert on the module SOURCE because the point is

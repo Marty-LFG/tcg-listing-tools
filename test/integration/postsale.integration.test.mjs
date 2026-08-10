@@ -186,6 +186,12 @@ describe('postsale — safety', () => {
     assert.ok(r.json && r.json.error);
   });
 
+  it('the label-bought backfill is DIAG_TOKEN-gated — it clears a column on live orders', async () => {
+    const r = await post('/api/postsale/diag/settle-label-bought?apply=1');
+    assert.ok([401, 403, 503].includes(r.status), 'expected the backfill to be gated, got ' + r.status);
+    assert.ok(r.json && r.json.error);
+  });
+
   // The dashboard's ↻ drives this one, so unlike the diagnostics trigger it is deliberately ungated.
   // Its guard is a cooldown, and a request inside that window must read as "nothing to do" rather
   // than an error — the page still reloads on the back of it. postsale is disabled in the test

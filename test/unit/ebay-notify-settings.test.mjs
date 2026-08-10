@@ -101,6 +101,11 @@ describe('topics — the allowlist is derived, so it cannot go stale', () => {
   it('accepts every topic the module knows how to handle', () => {
     assert.equal(validate({ ...BASE, topics: [...KNOWN_TOPICS] }), null);
   });
+  it('accepts the pair the example config ships with', () => {
+    // ITEM_MARKED_SHIPPED rides the same order_by_id action as ORDER_CONFIRMATION, so subscribing to
+    // it needs no code — only that the derived allowlist really does accept it.
+    assert.equal(validate({ ...BASE, topics: ['ORDER_CONFIRMATION', 'ITEM_MARKED_SHIPPED'] }), null);
+  });
   it('names the valid set when rejecting an unknown one', () => {
     const r = validate({ ...BASE, topics: ['ORDER_CONFIRMATION', 'NOT_A_TOPIC'] });
     assert.match(r, /unknown topic 'NOT_A_TOPIC'/);
