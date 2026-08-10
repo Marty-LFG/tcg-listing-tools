@@ -123,7 +123,11 @@ function genTitle(){
   if(!window.TCG)return name;
   var code=((setn||'').match(/\(([^)]+)\)/)||[])[1]||'';
   var tv=(treat||'').trim();if(/normal/i.test(tv))tv='';
-  var foilTok='',foilAbbr='';if(/etched/i.test(fin)){foilTok='Etched Foil';foilAbbr='Etched';}else if(/foil/i.test(fin)){foilTok='Foil';foilAbbr='Foil';}
+  // "Nonfoil" CONTAINS "foil" (it is Scryfall's own finishes value, and the default option in the
+  // Finish select), so the negation is tested first or a plain card titles as Foil. Same ordering
+  // findEbay() below already uses, and the same the server ladders use.
+  var foilTok='',foilAbbr='';
+  if(!/non[-\s]?foil/i.test(fin)){if(/etched/i.test(fin)){foilTok='Etched Foil';foilAbbr='Etched';}else if(/foil/i.test(fin)){foilTok='Foil';foilAbbr='Foil';}}
   var rl=(rar||'').toLowerCase();var rarTok=(/common|uncommon/.test(rl))?'':rar;
   var parts=[
     {text:'MTG',prio:45},

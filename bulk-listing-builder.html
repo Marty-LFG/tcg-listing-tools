@@ -802,7 +802,9 @@ $('batchList').addEventListener('click', async (e) => {
       value_source: it.value_source, market_cents: it.value_currency === 'AUD' ? it.value_cents : null,
       cost_aud: it.cost_cents != null ? it.cost_cents / 100 : null, notes: it.notes,
       title_override: it.title_override, resolved: !!it.identity_key, _inc: it.status === 'in_stock',
-      finish: /reverse/i.test(it.variant || '') ? 'Reverse Holofoil' : /holo/i.test(it.variant || '') ? 'Holofoil' : /enchanted/i.test(it.variant || '') ? 'Enchanted' : /foil/i.test(it.variant || '') ? 'Foil' : 'Normal',
+      // Negations before holo/foil — "Non-holo" contains "holo", "Nonfoil" contains "foil".
+      // Mirrors itemFinish() in lib/bulk.mjs, which re-derives the same value server-side.
+      finish: /reverse/i.test(it.variant || '') ? 'Reverse Holofoil' : /non[-\s]?(holo|foil)/i.test(it.variant || '') ? 'Normal' : /holo/i.test(it.variant || '') ? 'Holofoil' : /enchanted/i.test(it.variant || '') ? 'Enchanted' : /foil/i.test(it.variant || '') ? 'Foil' : 'Normal',
       _status: it.status,
     }));
     batchId = id; saved = true; exported = j.batch && j.batch.status === 'exported';

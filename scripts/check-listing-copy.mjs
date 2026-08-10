@@ -237,6 +237,21 @@ console.log('\n[bulk additions]');
   check('variantToken unlimited', LC.variantToken('Unlimited', 'Holofoil'), 'Holo');
   check('variantToken reverse', LC.variantToken(null, 'Reverse Holofoil'), 'Reverse Holo');
   check('variantToken plain', LC.variantToken(null, 'Normal'), 'Base');
+  // "Non-holo" contains "holo"; "Nonfoil" contains "foil". This token IS the `variant` column in
+  // UNIQUE(game, identity_key, variant), so a mislabelled base card collides with the real foil
+  // printing of the same card and the two stop being distinguishable (GR5). Both spellings are
+  // live: the uploader dropdown offers "Non-holo", Scryfall's own finishes value is "nonfoil".
+  for (const [f, want] of [['Non-holo', 'Base'], ['Non-Holo', 'Base'], ['non holo', 'Base'],
+    ['Nonfoil', 'Base'], ['Non-foil', 'Base'], ['Non foil', 'Base']]) {
+    check('variantToken negation ' + JSON.stringify(f), LC.variantToken(null, f), want);
+  }
+  check('variantToken 1stEd non-holo', LC.variantToken('1st Edition', 'Non-holo'), '1st Edition');
+  // GR5 in the TITLE: doLookup auto-selects "Non-holo" for any non-holo rarity, so an unguarded
+  // ladder shipped an eBay title claiming Holo on a plain card (INAD risk).
+  const nh = { name: 'Bastiodon', num: '91/98', set: 'Abyss Eye', rarity: 'Illustration Rare', lang: 'English', cond: 'Near Mint' };
+  assert('pokemon title: Non-holo claims no finish', !/Holo/.test(LC.buildTitle('pokemon', { ...nh, finish: 'Non-holo' })), LC.buildTitle('pokemon', { ...nh, finish: 'Non-holo' }));
+  assert('pokemon title: Holo still says Holo', /\bHolo\b/.test(LC.buildTitle('pokemon', { ...nh, finish: 'Holo' })));
+  assert('pokemon title: Reverse Holo unchanged', /Reverse Holo/.test(LC.buildTitle('pokemon', { ...nh, finish: 'Reverse Holo' })));
 
   // GR8: descriptions are inline-style only — no <style>/<script>/event handlers/class=.
   const guard = /<(style|script)\b|\son\w+=|\sclass=/i;

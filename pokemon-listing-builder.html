@@ -157,7 +157,10 @@ function genTitle(){
   var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),fin=val('f_finish'),lang=val('f_lang'),cond=val('f_cond');
   if(!window.TCG)return name;
   var rarShort=rarShortOf(rar);
-  var finTok='',finAbbr='';if(/reverse/i.test(fin)){finTok='Reverse Holo';finAbbr='RH';}else if(/holo/i.test(fin)){finTok='Holo';finAbbr='Holo';}
+  // "Non-holo" CONTAINS "holo" — and it is what doLookup auto-selects for any non-holo rarity — so
+  // the negation is tested first or a plain card ships an eBay title claiming Holo (INAD risk).
+  // findEbay() below already splits this way; MIRRORED in lib/listing-copy.mjs titleParts.
+  var finTok='',finAbbr='';if(!/non[-\s]?(holo|foil)/i.test(fin)){if(/reverse/i.test(fin)){finTok='Reverse Holo';finAbbr='RH';}else if(/holo/i.test(fin)){finTok='Holo';finAbbr='Holo';}}
   var parts=[
     {text:'Pokemon',prio:45},
     {text:name,prio:100},
