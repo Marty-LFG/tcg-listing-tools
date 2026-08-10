@@ -28,6 +28,13 @@
       "rare":     { "Base": 0.99, "Foil": 2.49, "default": 1.49 },
       "default":  { "Base": 0.99, "Foil": 3.99, "default": 1.99 }
     },
+    "mtg": {
+      "_comment": "Scryfall rarity → rarityClass: common|uncommon|rare; its bare 'mythic' falls to 'default', so 'default' deliberately sits ABOVE 'rare' — it IS the mythic tier, and HOC is 61% mythic. Magic has no Holo/Reverse Holo: finishClass sees Base, Foil, and Surge Foil (which also classes as Foil). Conservative owner floors, never market claims (GR4). A floor under A$1.00 cannot be listed solo on eBay AU (error 25016).",
+      "common":   { "Base": 0.49, "Foil": 1.49, "default": 0.99 },
+      "uncommon": { "Base": 0.69, "Foil": 1.49, "default": 0.99 },
+      "rare":     { "Base": 0.99, "Foil": 1.99, "default": 1.49 },
+      "default":  { "Base": 1.99, "Foil": 3.99, "default": 2.49 }
+    },
     "default": { "default": { "default": 0.99 } }
   }
 }

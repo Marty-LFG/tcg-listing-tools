@@ -128,11 +128,14 @@ describe('composeMetaFor', () => {
     // so codes collide across games. MTG's 'LTR' (Tales of Middle-earth) is Pokémon's Legendary
     // Treasures (bw11, printedTotal 113): un-guarded, a Magic card came back with a Pokémon symbol,
     // a Pokémon logo and a fabricated '246/113' — a set it is not from and a number not on it.
-    it('an MTG row whose set code collides with a Pokémon set gets NEITHER symbol nor logo', () => {
+    it('an MTG row whose set code collides with a Pokémon set never borrows the Pokémon art', () => {
       const m = composeMetaFor({ game: 'mtg', name: 'The One Ring', set_name: 'The Lord of the Rings: Tales of Middle-earth', set_code: 'LTR', number: '246' });
-      assert.equal(m.setSymbolUrl, '');
-      assert.equal(m.setLogoUrl, '');
+      assert.doesNotMatch(m.setSymbolUrl, /pokemontcg\.io/, 'LTR is Pokémon bw11 as well as Magic LTR');
+      assert.doesNotMatch(m.setLogoUrl || '', /pokemontcg\.io/);
+      assert.equal(m.setLogoUrl, '', 'Magic has no set wordmark');
       assert.equal(m.cardNumber, '246', 'never a Pokémon denominator');
+      // Whatever symbol it does get must be Magic's own (Phase E), or none at all on a cold cache.
+      if (m.setSymbolUrl) assert.match(m.setSymbolUrl, /svgs\.scryfall\.io/);
     });
     it('the SAME code still resolves for an actual Pokémon row — the guard is on game, not on LTR', () => {
       const m = composeMetaFor({ game: 'pokemon', set_name: 'Legendary Treasures', set_code: 'LTR', number: '1' });
