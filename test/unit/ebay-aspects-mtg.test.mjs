@@ -26,17 +26,26 @@ const SMAUG = {
   set_release_date: '2026-08-14', image_url: 'https://cards.scryfall.io/normal/front/a/b/c.jpg',
 };
 
-describe('mtgCardTypeAspect — a type LINE reduced to the one word a buyer filters on', () => {
-  it('drops supertypes and subtypes', () => {
-    assert.equal(mtgCardTypeAspect('Legendary Creature — Dragon'), 'Creature');
-    assert.equal(mtgCardTypeAspect('Basic Land — Mountain'), 'Land');
-    assert.equal(mtgCardTypeAspect('Legendary Planeswalker — Gandalf'), 'Planeswalker');
-    assert.equal(mtgCardTypeAspect('Creature — Dwarf Warrior'), 'Creature');
+describe('mtgCardTypeAspect — a type LINE reduced to an eBay Card Type member', () => {
+  // eBay keeps the supertype-bearing forms as members of their OWN (read live 2026-08-10:
+  // 'Legendary Creature', 'Artifact Creature', 'Basic Land', 'Legendary Artifact', … are all in the
+  // 30 that carry Game='Magic: The Gathering'), so the specific one is the better facet.
+  it('prefers the card\'s own words when eBay has them as a member', () => {
+    assert.equal(mtgCardTypeAspect('Legendary Creature — Dragon'), 'Legendary Creature');
+    assert.equal(mtgCardTypeAspect('Basic Land — Mountain'), 'Basic Land');
+    assert.equal(mtgCardTypeAspect('Legendary Planeswalker — Gandalf'), 'Legendary Planeswalker');
+    assert.equal(mtgCardTypeAspect('Artifact Creature — Golem'), 'Artifact Creature');
+    assert.equal(mtgCardTypeAspect('Legendary Enchantment Creature — God'), 'Legendary Enchantment Creature');
+    assert.equal(mtgCardTypeAspect('Legendary Artifact'), 'Legendary Artifact');
   });
-  it('picks by priority, not word order — an Artifact Creature is a Creature', () => {
-    assert.equal(mtgCardTypeAspect('Artifact Creature — Golem'), 'Creature');
-    assert.equal(mtgCardTypeAspect('Legendary Enchantment Creature — God'), 'Creature');
-    assert.equal(mtgCardTypeAspect('Legendary Artifact'), 'Artifact');
+  it('drops subtypes', () => {
+    assert.equal(mtgCardTypeAspect('Creature — Dwarf Warrior'), 'Creature');
+    assert.equal(mtgCardTypeAspect('Enchantment'), 'Enchantment');
+  });
+  it('falls back to priority, not word order, when the exact form is NOT a member', () => {
+    // 'Snow Creature' has no member; a Snow Creature is still a Creature to anyone shopping.
+    assert.equal(mtgCardTypeAspect('Snow Creature — Bear'), 'Creature');
+    assert.equal(mtgCardTypeAspect('Legendary Snow Artifact'), 'Artifact');
   });
   it('takes the FRONT face only — 39 of HOB’s 321 prints are double-faced', () => {
     assert.equal(mtgCardTypeAspect('Creature — Bear // Sorcery'), 'Creature');
@@ -82,20 +91,43 @@ describe('Language: the ASPECT is narrower than the display name', () => {
   });
 });
 
-describe('Attribute/MTG:Colour ships unset until the live enum mode is known', () => {
-  it('returns null while the flag is false — a SELECTION_ONLY miss is a FAILED PUBLISH', () => {
-    assert.equal(MTG_COLOUR_ASPECT_VERIFIED, false, 'flip only after running scripts/check-ebay-aspects.mjs');
-    assert.equal(mtgColourAspect('Red'), null);
+describe('Attribute/MTG:Colour — enabled, with the spelling eBay actually uses', () => {
+  // Resolved live 2026-08-10: FREE_TEXT + SINGLE, so an unmatched value is dropped rather than
+  // rejected — safe to send. The 27 members include Colourless and, crucially, Multicoloured.
+  it('is on, now that the mode is known', () => {
+    assert.equal(MTG_COLOUR_ASPECT_VERIFIED, true);
+    assert.equal(mtgColourAspect('Red'), 'Red');
+    assert.equal(mtgColourAspect('Colourless'), 'Colourless');
+  });
+  it('⚠ the member is Multicoloured — our DISPLAY word is Multicolour, and they differ', () => {
+    assert.equal(mtgColourAspect('Multicolour'), 'Multicoloured');
+    assert.equal(mtgColourAspect('Multicoloured'), 'Multicoloured');
+  });
+  it('tolerates US spellings from an override, and refuses anything else', () => {
+    assert.equal(mtgColourAspect('Colorless'), 'Colourless');
+    assert.equal(mtgColourAspect('Chartreuse'), null);
+    assert.equal(mtgColourAspect(''), null);
   });
 });
 
-describe('mtgFeatures is driven by the card record, never by promo_types', () => {
-  it('universesbeyond is a BRAND marker — it is on all 479 HOB+HOC prints', () => {
-    assert.deepEqual(mtgFeatures({ promo_types: ['universesbeyond'], full_art: false, promo: false }), []);
-    assert.deepEqual(mtgFeatures({ promo_types: ['headliner', 'universesbeyond'], promo: false }), []);
+describe('mtgFeatures — the treatment IS a buyer-facing facet', () => {
+  // Verified live 2026-08-10: Features carries Borderless / Extended Art / Full Art / Showcase /
+  // Box Topper / Promo among its 39 members, all applying to Magic.
+  it('promotes the treatment and the box-topper note', () => {
+    assert.deepEqual(mtgFeatures(null, 'Borderless', ''), ['Borderless']);
+    assert.deepEqual(mtgFeatures(null, 'Extended Art', 'Box Topper'), ['Extended Art', 'Box Topper']);
   });
-  it('only what the record proves', () => {
-    assert.deepEqual(mtgFeatures({ full_art: true, promo: true }), ['Full Art', 'Promo']);
+  it('drops the values that are NOT members rather than inventing a facet', () => {
+    assert.deepEqual(mtgFeatures(null, 'Normal', ''), [], "'Normal' is the absence of a treatment");
+    assert.deepEqual(mtgFeatures(null, '', 'Headliner'), [], 'Headliner has no Features member');
+  });
+  it('universesbeyond is a BRAND marker — it is on all 479 HOB+HOC prints', () => {
+    assert.deepEqual(mtgFeatures({ promo_types: ['universesbeyond'], full_art: false, promo: false }, 'Normal', ''), []);
+    assert.deepEqual(mtgFeatures({ promo_types: ['headliner', 'universesbeyond'], promo: false }, 'Normal', 'Headliner'), []);
+  });
+  it('only what the record proves, and never a duplicate', () => {
+    assert.deepEqual(mtgFeatures({ full_art: true, promo: true }, '', ''), ['Full Art', 'Promo']);
+    assert.deepEqual(mtgFeatures({ full_art: true }, 'Full Art', ''), ['Full Art'], 'deduped');
     assert.deepEqual(mtgFeatures(null), []);
   });
 });
@@ -122,7 +154,7 @@ describe('a Magic listing carries Magic aspects and NO Pokémon ones', () => {
   });
   it('derives the Magic ones', () => {
     assert.equal(l.aspects.Set, 'The Hobbit', 'the (HOB) belongs in the title, not the facet');
-    assert.equal(l.aspects['Card Type'], 'Creature');
+    assert.equal(l.aspects['Card Type'], 'Legendary Creature');
     assert.equal(l.aspects.Manufacturer, 'Wizards of the Coast');
     assert.equal(l.aspects['Card Size'], 'Standard');
     assert.equal(l.aspects.Material, 'Card Stock');
