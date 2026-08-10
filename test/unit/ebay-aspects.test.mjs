@@ -69,7 +69,9 @@ describe('aspect derivation helpers', () => {
     assert.equal(ebayManufacturer('pokemon', 'EN', '1999/01/09'), 'Wizards of the Coast');
     assert.equal(ebayManufacturer('pokemon', 'EN', '2003/07/01'), 'The Pokémon Company');
     assert.equal(ebayManufacturer('pokemon', 'JP', '1999/01/09'), 'The Pokémon Company', 'WotC never published Japanese');
-    assert.equal(ebayManufacturer('mtg', 'EN', '1999/01/09'), null);
+    // Magic now has its own answer (see ebay-aspects-mtg.test.mjs); a game with no rule still gets
+    // nothing rather than a guess.
+    assert.equal(ebayManufacturer('lorcana', 'EN', '1999/01/09'), null);
   });
 
   it('Year Manufactured is clamped — SELECTION_ONLY rejects an out-of-range value', () => {
