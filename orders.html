@@ -782,7 +782,11 @@ async function markShipped(id, btn){
   btn.disabled = true; const orig = btn.textContent; btn.textContent = '…';
   try {
     const r = await api('/orders/'+encodeURIComponent(id)+'/shipped', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({}) });
-    setStatus('ok', r.dispatched ? ('Marked dispatched on eBay · '+id) : r.dry_run ? ('Marked shipped (dry-run — no eBay write) · '+id) : ('Marked shipped · '+id));
+    // "Recorded" and "dispatched" are different claims and the row's button already says which one it
+    // is about to make — the result line has to agree with it.
+    setStatus('ok', r.alreadyShipped ? ('Recorded as posted — eBay already had it dispatched · '+id)
+      : r.dispatched ? ('Marked dispatched on eBay · '+id)
+        : r.dry_run ? ('Marked shipped (dry-run — no eBay write) · '+id) : ('Marked shipped · '+id));
     loadAll();
   } catch (err) {
     btn.disabled = false; btn.textContent = 'retry';
@@ -834,6 +838,9 @@ async function markAllShipped(ids){
     await loadAll();
     const bits = [];
     if (r.shipped) bits.push(`${r.shipped} dispatched${r.dry_run?' (dry run — nothing sent to eBay)':''}`);
+    // Never folded into the count above: eBay was told nothing about these, and the dialog that just
+    // ran said so. A single "N dispatched" would contradict the promise the user agreed to.
+    if (r.recorded) bits.push(`${r.recorded} recorded (eBay already had ${r.recorded===1?'it':'them'} dispatched)`);
     // A failed eBay write leaves that order unshipped ON PURPOSE, so it stays in the queue to retry.
     // Naming the ids is the difference between a retry and a hunt — same rule as the digest.
     if (r.failed && r.failed.length) bits.push(`${r.failed.length} failed: ${r.failed.map(f=>f.order_id).join(', ')}`);

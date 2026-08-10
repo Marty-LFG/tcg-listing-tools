@@ -175,6 +175,21 @@ describe('dispatchAllInDigest', () => {
     assert.equal(row(db, '1').dispatch_source, 'manual', 'a human closed this one out, not eBay');
   });
 
+  it('counts what it TOLD eBay apart from what it only wrote down', async () => {
+    // The bulk button's card says "All N dispatched". For an order eBay had already dispatched, no
+    // message was sent at all — calling that dispatched claims something that never happened.
+    const db = seed(freshDb(), ['1', '2']);
+    refreshOrder(db, mkOrder('2', {
+      trackingNumber: '36LB1234567890', carrier: 'Australia Post', shippedTime: '2026-08-03T00:00:00.000Z',
+    }), CFG);
+    const r = await dispatchAllInDigest({}, db, lastDigest, CFG, 'tester');
+    assert.equal(r.ok, 2, 'ok stays "closed out either way" — the claim stamp depends on it');
+    assert.equal(r.dispatched, 1);
+    assert.equal(r.recorded, 1);
+    assert.ok(db.prepare('SELECT dispatched_at FROM pack_digests WHERE id=?').get(lastDigest).dispatched_at,
+      'a digest of nothing but already-dispatched orders is still finished');
+  });
+
   it('releases its claim, so a later run is not wedged', async () => {
     const db = seed(freshDb(), ['1']);
     const id = lastDigest;
@@ -309,6 +324,24 @@ describe('buying an eBay postage label does not delete the order from the day', 
     assert.equal(r.alreadyShipped, true);
     assert.equal(r.ebay, null);
     assert.ok(row(db, '1').picked_at, 'a button MAY assert the parcel has gone — a poll may not');
+  });
+
+  it('refuses a tracking number with no carrier rather than sending a half-true dispatch', async () => {
+    // eBay needs both, and buildCompleteSaleInner drops the whole Shipment block when either is
+    // missing — so this would have dispatched the order with NO tracking, stored the number here
+    // anyway, and quoted it to the buyer. Nothing in the UI sends this shape; the API accepts it.
+    const db = freshDb();
+    // messaging ON, so the "no buyer is told" assertion below actually has teeth.
+    const cfg = { ...CFG, dry_run: false, messaging: true };
+    ingestOrder(db, mkOrder('1'), cfg);
+    const r = await dispatchOrder({}, db, '1', cfg, { tracking: '36LB1234567890' });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'carrier_required');
+    const o = row(db, '1');
+    assert.equal(o.shipped_status, 'unshipped', 'refused means refused — it stays in the queue');
+    assert.equal(o.tracking_number, null, 'and no number is stored that eBay never received');
+    const dispatchMsgs = db.prepare(`SELECT COUNT(*) c FROM postsale_messages WHERE order_id='1' AND kind='dispatch'`).get().c;
+    assert.equal(dispatchMsgs, 0, 'so no buyer is told about a number eBay never got');
   });
 
   it('does not stamp label_bought when WE were the ones who dispatched it', () => {

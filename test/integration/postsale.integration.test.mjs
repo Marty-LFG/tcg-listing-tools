@@ -502,26 +502,35 @@ describe('postsale — a cancellation REQUEST holds rather than hides', () => {
 // to make a decision about -- same rule as the digest's bulk dispatch button.
 describe('postsale — bulk dispatch refuses what a human has not decided on', () => {
   before(() => {
-    for (const id of ['B-OK1', 'B-HELD', 'B-DEAD', 'B-OK2']) {
+    for (const id of ['B-OK1', 'B-HELD', 'B-DEAD', 'B-OK2', 'B-LABEL']) {
       ingestOrder(db, mkOrder(id, {
         items: [{ orderLineItemId: id + '-1', transactionId: 'tx-' + id, itemId: '99' + id, sku: 'BULK-' + id, title: 'Card', quantity: 1, unitPriceCents: 1000 }],
       }), cfg);
     }
     db.prepare(`UPDATE orders SET cancel_state='requested' WHERE order_id='B-HELD'`).run();
     db.prepare(`UPDATE orders SET cancel_state='cancelled' WHERE order_id='B-DEAD'`).run();
+    // eBay bought a label for this one and already has it dispatched, so the bulk button has nothing
+    // to tell eBay about it — only the parcel to write down.
+    db.prepare(`UPDATE orders SET shipped_status='shipped', dispatch_source='ebay',
+                label_bought_at='2026-08-02T05:07:00.000Z', tracking_number='36LB1234567890'
+                WHERE order_id='B-LABEL'`).run();
   });
 
   it('dispatches the ordinary orders and holds the rest back BY NAME', async () => {
     const r = await postJson('/api/postsale/orders/shipped',
-      { ids: ['B-OK1', 'B-HELD', 'B-DEAD', 'B-OK2', 'B-GHOST'] });
+      { ids: ['B-OK1', 'B-HELD', 'B-DEAD', 'B-OK2', 'B-LABEL', 'B-GHOST'] });
     assert.equal(r.status, 200);
-    assert.equal(r.json.shipped, 2, 'only the two ordinary orders');
+    assert.equal(r.json.shipped, 2, 'only the two ordinary orders were told to eBay');
+    // Counted apart, never folded in: the confirm dialog promises nothing is sent for these, and a
+    // single "3 dispatched" would contradict the promise the user just agreed to.
+    assert.equal(r.json.recorded, 1, 'the label-bought one was written down, not dispatched');
     assert.deepEqual(r.json.held.map((h) => h.order_id), ['B-HELD']);
     assert.deepEqual(r.json.cancelled, ['B-DEAD']);
     assert.deepEqual(r.json.missing, ['B-GHOST']);
     // Every id that went in is accounted for by exactly one bucket, so the count on screen can never
     // claim more than it did.
-    assert.equal(r.json.shipped + r.json.held.length + r.json.cancelled.length + r.json.missing.length, r.json.requested);
+    assert.equal(r.json.shipped + r.json.recorded + r.json.held.length + r.json.cancelled.length + r.json.missing.length,
+      r.json.requested);
   });
 
   it('leaves the held and cancelled orders exactly as they were', async () => {
