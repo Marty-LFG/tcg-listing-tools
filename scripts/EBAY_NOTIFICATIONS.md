@@ -154,8 +154,46 @@ in the next phase; the endpoint being live and provably correct is what this run
 
 ---
 
-## Rollback — four levels, none needing a code change
+## 6. Decide what a notification is allowed to DO
 
+Receiving a notification and acting on one are separate settings on purpose. Settings → **eBay push
+notifications** → *What a notification does*:
+
+| Mode | What happens on a sale |
+|---|---|
+| `poll` | Runs the order poll straight away. The 🟢 SOLD alert, the stock decrement and the draft all happen seconds after checkout instead of up to ten minutes later. |
+| `observe` | Reads the order back from eBay and writes down what was true. Ingests nothing, sends nothing, moves nothing. |
+| `off` | Records the notification and looks at nothing. |
+
+**`poll` is not a second pipeline, and that is the whole reason it is safe.** It calls the same
+`runOrderPoll` the ten-minute timer calls, so every alert, dedupe, stock move and draft is the code
+that has been carrying the store all along. Push changes only *when* it runs. If a bug ever appears
+in poll mode, it is a bug the scheduled poll has too.
+
+Two things are worth knowing before you turn it on.
+
+**The cursor is held for an order eBay has not returned yet.** eBay's order service can announce a
+sale a moment before `GetOrders` will serve it, and reacting two seconds later is exactly when that
+gap is open. A push-triggered poll therefore names the order it was told about, and if that order
+does not come back, `orders_cursor` does not move — otherwise the sale would fall outside every
+future window and be lost rather than late. The next scheduled poll always drains and releases it, so
+a hold cannot stick. You will see this in the log as *"cursor HELD so the next poll's window still
+covers them"*, and it is routine rather than alarming.
+
+**`observe` remains the way to measure before trusting.** It is what produced the case for poll mode
+in the first place: six of six real notifications arrived ahead of the poll, a median of 364 seconds.
+`GET /api/ebay-notify/observations?days=14` is that measurement, and it keeps working in poll mode —
+`median_lead_over_poll_s` simply stops meaning "how far ahead of the schedule push was" and starts
+meaning "how long from notification to order in hand", which should now read in seconds.
+
+---
+
+## Rollback — five levels, none needing a code change
+
+0. **Settings → What a notification does: `observe`** (or `off`). Push keeps arriving and keeps being
+   recorded; it just stops driving anything. The scheduled poll goes back to being the only thing
+   that adopts an order, exactly as before. This is the first thing to reach for, because it changes
+   behaviour without changing what you can see.
 1. **Settings → Receive push notifications: off.** The listener unbinds, every timer stays armed,
    polling carries everything. Seconds, and reversible.
 2. **Disable the eBay subscriptions** (disable, never delete — deleting loses the history and eBay
@@ -177,3 +215,6 @@ Nothing in any of these touches `orders_cursor`, the activation watermark, or a 
 | Listener will not start | `jobs.ebay_notify.bind_error` in `/api/status`. Usually a malformed verification token, or a second instance already holding the port. |
 | `sig_failures` climbing | Someone is POSTing at the endpoint, or the destination was registered against a different token. Signature failures never reach the database. |
 | Notifications stop arriving | eBay disables a destination after repeated failures. Check the destination status; the poll will have been carrying orders the whole time. |
+| Notifications arrive but Telegram still waits for the poll | `jobs.ebay_notify.react.mode` in `/api/status`. `observe` and `off` both record the sale and deliberately do nothing with it. |
+| `cursor HELD` in the log after every sale | Normal if occasional: eBay announced an order it would not yet return. Constant means `GetOrders` is not returning orders it is notifying about — check `jobs.postsale.order_poll.last_run.awaiting`. |
+| A sale alert fires twice | It cannot: `fireSaleAlert` dedupes on `orders.sale_alert_sent_at`, and the push poll and the scheduled poll share that row. If you genuinely see two, that is a bug in the poll, not in push. |

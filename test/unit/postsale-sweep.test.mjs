@@ -200,6 +200,17 @@ describe('sweepDue — when a poll also sweeps by id', () => {
     assert.equal(sweepDue('schedule', { sweep_interval_min: 0 }, null), false);
     assert.equal(sweepDue('schedule', {}, null), false, 'a missing key reads as off, not as every tick');
   });
+
+  it('a push notification follows the clock, because it is not a person', () => {
+    // The distinction the check turns on. A notification fires on EVERY sale, so treating it like the
+    // ↻ would spend a by-id sweep — up to three GetOrders over sixty open orders — on each one, to
+    // answer a question nobody asked. It already knows which order it came about; the windowed query
+    // is the right tool for that.
+    assert.equal(sweepDue('notification', cfg, justNow), false, 'a sale is not somebody pressing refresh');
+    assert.equal(sweepDue('notification', { sweep_interval_min: 0 }, justNow), false);
+    assert.equal(sweepDue('notification', cfg, new Date(Date.now() - 61 * 60_000).toISOString()), true,
+      'it still carries the background sweep when one is genuinely due');
+  });
 });
 
 // The sweep set is wider than the pack queue on purpose (parcels in transit need delivery dates too),

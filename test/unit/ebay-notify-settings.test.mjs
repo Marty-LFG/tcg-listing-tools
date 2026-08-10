@@ -9,7 +9,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SETTINGS } from '../../lib/status.mjs';
-import { KNOWN_TOPICS } from '../../lib/ebay-notify.mjs';
+import { KNOWN_TOPICS, REACT_MODES } from '../../lib/ebay-notify.mjs';
 
 const validate = SETTINGS['ebay-notify'].validate;
 const BASE = {
@@ -151,5 +151,37 @@ describe('alert_email — a prerequisite, not a nicety', () => {
   });
   it('rejects a non-string outright', () => {
     reject({ ...BASE, alert_email: 42 }, /must be a string/, 'number');
+  });
+});
+
+// What a verified notification is allowed to DO. This is a safety boundary rather than a preference:
+// 'poll' means a stranger's checkout can start the pipeline that messages buyers and moves stock, so
+// the one thing validate() must never do is wave through a value it does not recognise.
+describe('react.mode — the safety boundary', () => {
+  it('accepts every mode the module actually implements, and no others', () => {
+    for (const mode of REACT_MODES) assert.equal(validate({ ...BASE, react: { mode } }), null, mode + ' should be valid');
+    assert.deepEqual([...REACT_MODES].sort(), ['observe', 'off', 'poll'],
+      'a new mode needs a settings label and a runbook entry, so this list changing should be deliberate');
+  });
+
+  it('refuses an unrecognised mode instead of reading it as "not off"', () => {
+    // The failure mode being guarded: a typo that falls through to a default which does MORE than the
+    // person saving it believed. Silence here would be the worst possible answer.
+    reject({ ...BASE, react: { mode: 'pol' } }, /must be one of/, 'typo');
+    reject({ ...BASE, react: { mode: 'on' } }, /must be one of/, 'plausible-but-wrong');
+    reject({ ...BASE, react: { mode: '' } }, /must be one of/, 'empty string');
+    reject({ ...BASE, react: [] }, /must be an object/, 'array');
+  });
+
+  it('leaves the mode alone when react is absent, so an old config keeps its default', () => {
+    assert.equal(validate({ ...BASE }), null);
+    assert.equal(validate({ ...BASE, react: {} }), null);
+  });
+
+  it('keeps the debounce knobs inside sane bounds', () => {
+    assert.equal(validate({ ...BASE, react: { mode: 'poll', quiet_ms: 5000, max_wait_ms: 60000, min_gap_ms: 5000 } }), null);
+    reject({ ...BASE, react: { quiet_ms: 100 } }, /quiet_ms/, 'below the floor');
+    reject({ ...BASE, react: { quiet_ms: 5000, max_wait_ms: 1000 } }, /max_wait_ms/, 'ceiling under the floor');
+    reject({ ...BASE, react: { min_gap_ms: -1 } }, /min_gap_ms/, 'negative gap');
   });
 });

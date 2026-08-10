@@ -631,6 +631,12 @@
         {p:'alerts',l:'Telegram alerts',t:'toggle',tip:'Alert when eBay marks the destination down, or when signatures start failing.'},
         {p:'retain_days',l:'Keep events (days)',t:'number',min:1,max:365,tip:'How long a settled notification row is kept before pruning. The stored payload is only ever an audit trail — the order is always re-read from eBay.'},
       ]},
+      {name:'What a notification does',fields:[
+        {p:'react.mode',l:'On a sale',t:'select',opts:['poll','observe','off'],wide:true,tip:'<b>poll:</b> run the order poll straight away, so the 🟢 SOLD alert, the stock decrement and the draft all happen seconds after checkout instead of up to ten minutes later. It is not a second pipeline — it calls the same poll the timer calls, so nothing new can happen, only sooner. <b>observe:</b> read the order back from eBay and write down what was true, changing nothing; this is how you measure whether push is worth trusting before you trust it. <b>off:</b> record the notification and look at nothing. The scheduled poll keeps running in every mode — it is what makes this correct, push only makes it fast.'},
+        {p:'react.quiet_ms',l:'Settle (ms)',t:'number',min:250,max:60000,def:5000,tip:'Wait this long after a notification before reacting, so five buyers checking out at once cost one poll rather than five. Each new notification restarts the wait.'},
+        {p:'react.max_wait_ms',l:'Max wait (ms)',t:'number',min:250,max:600000,def:60000,tip:'The ceiling on that settling. Without it a steady stream of sales would keep restarting the timer and the poll would never actually run.'},
+        {p:'react.min_gap_ms',l:'Min gap (ms)',t:'number',min:0,max:60000,def:5000,tip:'Floor between two reactions, so a burst of notifications cannot spend the day\'s eBay call budget. Also the spacing when an order eBay announced has not shown up in GetOrders yet and gets another look.'},
+      ]},
       {name:'Listener',fields:[
         {p:'listen_host',l:'Bind host',t:'text',tip:'Must stay <b>127.0.0.1</b>. The tunnel is the only way in; binding this to the LAN would put an unauthenticated POST endpoint on the network. The save is refused if you change it.'},
         {p:'listen_port',l:'Bind port',t:'number',min:1024,max:65535,tip:'Its own port, deliberately not the dev server\'s 5273 — that separation is what stops a misconfigured tunnel reaching /api/*. Give a second instance on the same box a different port.'},
@@ -718,7 +724,10 @@
       inputs[f.p]=()=>input.value;
     }
     else if(f.t==='textarea'){ input=document.createElement('textarea'); input.value=cur??''; inputs[f.p]=()=>input.value; }
-    else if(f.t==='number'){ input=document.createElement('input'); input.type='number'; input.step='any'; if(f.min!=null)input.min=f.min; if(f.max!=null)input.max=f.max; input.value=cur??''; inputs[f.p]=()=>input.value===''?null:+input.value; }
+    // f.def is what the CODE falls back to when the key is absent. Showing it beats showing blank: a
+    // config file written before a setting existed would otherwise render an empty box for a knob
+    // that is very much doing something, and the honest reading of an empty box is "no value".
+    else if(f.t==='number'){ input=document.createElement('input'); input.type='number'; input.step='any'; if(f.min!=null)input.min=f.min; if(f.max!=null)input.max=f.max; input.value=cur??f.def??''; inputs[f.p]=()=>input.value===''?null:+input.value; }
     else { input=document.createElement('input'); input.type='text'; input.value=cur??''; inputs[f.p]=()=>input.value; }
     cell.appendChild(input);
     return {node:cell,wide:f.wide};

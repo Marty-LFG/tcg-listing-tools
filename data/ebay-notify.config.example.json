@@ -9,5 +9,11 @@
   "alert_email": "",
   "topics": ["ORDER_CONFIRMATION", "ITEM_MARKED_SHIPPED"],
   "retain_days": 30,
-  "alerts": true
+  "alerts": true,
+  "react": {
+    "mode": "poll",
+    "quiet_ms": 5000,
+    "max_wait_ms": 60000,
+    "min_gap_ms": 5000
+  }
 }
