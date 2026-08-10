@@ -83,9 +83,13 @@
         <div><label>Colour</label><input id="f_colour"></div>
         <div><label>Card type</label><input id="f_type"></div>
         <div><label>Treatment</label><input id="f_treat"></div>
-        <div><label>Finish</label><select id="f_finish"><option>Nonfoil</option><option>Foil</option><option>Etched Foil</option></select></div>
+        <div><label>Finish</label><select id="f_finish"><option>Nonfoil</option><option>Foil</option><option>Etched Foil</option><option>Surge Foil</option></select></div>
+        <div><label>Special print</label><input id="f_promo" placeholder="Box Topper / Headliner"></div>
+        <div><label>Illustrator</label><input id="f_illustrator"></div>
         <div><label>Language</label><input id="f_lang" value="English"></div>
+        <div><label>Released</label><input id="f_releaseYear"></div>
         <div class="f-full"><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
+        <div class="f-full"><label>Image URL <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">&mdash; auto-filled from lookup, paste to override</span></label><input id="f_img" autocomplete="off" placeholder="https://… card image (fills on lookup; override here if needed)"></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
       <div class="hint">Set list loads from Scryfall on start (paper sets, newest first). A printing can exist in multiple finishes — set the Finish to match the card in hand. No proxy? Type fields manually.</div>
@@ -119,15 +123,18 @@ function syncTitle(){var el=document.getElementById('f_title');if(!el||!window.T
 function copyTitle(){var el=document.getElementById('f_title');if(el)copy(el.value,'Title copied!');}
 
 function genTitle(){
-  var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),treat=val('f_treat'),fin=val('f_finish'),lang=val('f_lang'),cond=val('f_cond');
+  var name=val('f_name'),num=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),treat=val('f_treat'),fin=val('f_finish'),lang=val('f_lang'),cond=val('f_cond'),promo=val('f_promo');
   if(!window.TCG)return name;
   var code=((setn||'').match(/\(([^)]+)\)/)||[])[1]||'';
   var tv=(treat||'').trim();if(/normal/i.test(tv))tv='';
   // "Nonfoil" CONTAINS "foil" (it is Scryfall's own finishes value, and the default option in the
   // Finish select), so the negation is tested first or a plain card titles as Foil. Same ordering
-  // findEbay() below already uses, and the same the server ladders use.
+  // findEbay() below already uses, and the same the server ladders use. "Surge Foil" contains
+  // "foil" too and must beat the generic branch: it is a different product at a different price
+  // (HOC #25 Delighted Halfling US$29.93 vs #65 the surge foil US$125), so collapsing it to "Foil"
+  // loses the whole differentiator (GR5).
   var foilTok='',foilAbbr='';
-  if(!/non[-\s]?foil/i.test(fin)){if(/etched/i.test(fin)){foilTok='Etched Foil';foilAbbr='Etched';}else if(/foil/i.test(fin)){foilTok='Foil';foilAbbr='Foil';}}
+  if(!/non[-\s]?foil/i.test(fin)){if(/surge/i.test(fin)){foilTok='Surge Foil';foilAbbr='Surge';}else if(/etched/i.test(fin)){foilTok='Etched Foil';foilAbbr='Etched';}else if(/foil/i.test(fin)){foilTok='Foil';foilAbbr='Foil';}}
   var rl=(rar||'').toLowerCase();var rarTok=(/common|uncommon/.test(rl))?'':rar;
   var parts=[
     {text:'MTG',prio:45},
@@ -137,7 +144,11 @@ function genTitle(){
     {text:num,prio:80},
     {text:rarTok,prio:60},
     {text:foilTok,abbr:foilAbbr,prio:60},
-    {text:TCG.langCode(lang),prio:30},
+    {text:promo,prio:64},
+    // A non-English printing is a different product, not a translation — and Magic's are the chase
+    // cards (the five Dwarvish HOC prints run to US$642), so the code outranks the rarity token
+    // rather than being shed first. Same rule the Pokemon builder applies for JP/ZH/KO.
+    {text:TCG.langCode(lang),prio:/^\s*english\s*$/i.test(lang)?30:66},
     {text:TCG.condCode(cond),prio:62}
   ];
   return TCG.fitTitle(parts,80);
@@ -154,16 +165,36 @@ function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s;}
 
 const COLOURS={W:'White',U:'Blue',B:'Black',R:'Red',G:'Green'};
 function colourName(arr){if(!arr||!arr.length)return 'Colourless';if(arr.length>1)return 'Multicolour';return COLOURS[arr[0]]||arr[0];}
+// Scryfall's `inverted` frame effect is what TCGplayer sells as "(Borderless)" — verified against
+// their live listings: HOB #15 "Gleaming Splendor" US$37.84 vs #239 (enchantment+inverted)
+// "Gleaming Splendor (Borderless)" US$83.15. It is a FRAME axis, not a foil one (#239 has a nonfoil
+// printing), and it is orthogonal to surgefoil. Every genuinely borderless print in HOB and HOC also
+// carries `inverted`, so the two rules agree and this needs no new vocabulary — matching TCGplayer's
+// product name is also what lets the comps query find the right cluster (GR5).
 function treatmentOf(c){
-  if(c.border_color==='borderless')return 'Borderless';
   const fe=c.frame_effects||[];
+  if(c.border_color==='borderless'||fe.includes('inverted'))return 'Borderless';
   if(fe.includes('showcase'))return 'Showcase';
   if(fe.includes('extendedart'))return 'Extended Art';
   if(c.full_art)return 'Full Art';
   return 'Normal';
 }
+// Scryfall reports a printing's language as a 2-3 letter code. Only `dw` (Dwarvish) is non-obvious,
+// and it is not cosmetic: HOC #93-97 are the set's chase cards (US$83-255 nonfoil, up to US$642
+// foil), so listing one as English is a straight INAD exposure.
+const MTG_LANG={en:'English',es:'Spanish',fr:'French',de:'German',it:'Italian',pt:'Portuguese',ja:'Japanese',ko:'Korean',ru:'Russian',zhs:'Chinese (Simp.)',zht:'Chinese (Trad.)',he:'Hebrew',la:'Latin',grc:'Ancient Greek',ar:'Arabic',sa:'Sanskrit',ph:'Phyrexian',qya:'Quenya',dw:'Dwarvish'};
+// promo_types carries `universesbeyond` on EVERY print of a Universes Beyond set, so it is a brand
+// marker, not a promo flag — only the genuinely scarce print runs are surfaced. HOB #249 Smaug is
+// the headliner, foil-only at ~US$200, and is otherwise indistinguishable from the #229 printing.
+function promoNoteOf(c){
+  const pt=c.promo_types||[];
+  if(pt.includes('boxtopper'))return 'Box Topper';
+  if(pt.includes('headliner'))return 'Headliner';
+  return '';
+}
 function readFields(){return {name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
   colour:val('f_colour'),type:val('f_type'),treat:val('f_treat'),finish:val('f_finish'),lang:val('f_lang'),
+  promo:val('f_promo'),illustrator:val('f_illustrator'),releaseYear:val('f_releaseYear'),img:val('f_img'),
   cond:val('f_cond'),pitch:val('f_pitch')};}
 function findEbay(){
   const f=readFields(), st=document.getElementById('status');
@@ -192,32 +223,94 @@ function genPitch(f){
   return `${f.name} — a ${f.colour||''} ${f.type||'card'} from ${f.set}. ${f.rarity||''}${f.finish&&f.finish!=='Nonfoil'?', '+f.finish.toLowerCase():''}.`;
 }
 function buildHTML(f){
-  const rows=[['Set',f.set],['Collector number',f.num],['Rarity',f.rarity],['Colour',f.colour],['Card type',f.type],['Treatment',f.treat]];
+  // Card-details rows — conditional rows self-skip when empty. MIRROR: lib/listing-copy.mjs
+  // buildDescription() game==='mtg' branch; keep both sides byte-identical (GR9).
+  const rows=[['Card Name',f.name]];
+  rows.push(['Set',f.set]);
+  rows.push(['Collector number',f.num]);
+  rows.push(['Rarity',f.rarity]);
+  if(f.colour) rows.push(['Colour',f.colour]);
+  if(f.type) rows.push(['Card type',f.type]);
+  // 'Normal' is the absence of a treatment, not a treatment — printing it reads like a claim.
+  if(f.treat&&f.treat!=='Normal') rows.push(['Treatment',f.treat]);
+  if(f.promo) rows.push(['Special print',f.promo]);
+  if(f.illustrator) rows.push(['Illustrator',f.illustrator]);
   rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
-  let tr=''; rows.forEach((r,i)=>{const bg=i%2===0?'background:#f8f6f2;':'';
-    tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
-  return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
-  <div style="background:#1a1510;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #c9923f;">
-    <div style="color:#c9923f;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Magic: The Gathering</div>
-    <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${f.treat&&f.treat!=='Normal'?' <span style="color:#cbbfa9;font-weight:600;">('+esc(f.treat)+')</span>':''}</div>
-    <div style="color:#a99878;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
-  </div>
-  <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
-  <div style="padding:0 24px;">
-    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1510;font-weight:700;border-bottom:2px solid #ece7df;padding-bottom:6px;margin-bottom:4px;">Card details</div>
-    <table style="width:100%;border-collapse:collapse;font-size:14px;"><tbody>${tr}</tbody></table>
-  </div>
-  <div style="padding:18px 24px 4px;">
-    <div style="background:#f8f6f2;border-left:4px solid #c9923f;border-radius:0 8px 8px 0;padding:14px 16px;">
-      <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1510;font-weight:700;margin-bottom:4px;">Condition</div>
-      <p style="margin:0;">${esc(f.cond)}. Pulled straight to sleeve and stored in a toploader.</p>
+  if(f.releaseYear) rows.push(['Released',f.releaseYear]);
+  if(f.cert) rows.push(['Cert number',f.cert]);
+  if(f.subgrades) rows.push(['Subgrades',f.subgrades]);
+  // A specimen list, not a zebra table. MIRROR: lib/listing-copy.mjs buildDescription().
+  let tr=''; rows.forEach((r)=>{
+    tr+=`<tr><td style="padding:11px 14px 11px 0;border-bottom:1px solid #ece7df;color:#7c6f5c;font-size:11px;letter-spacing:.13em;text-transform:uppercase;vertical-align:top;width:42%;">${esc(r[0])}</td><td style="padding:11px 0;border-bottom:1px solid #ece7df;color:#1f1a13;font-size:15px;font-weight:600;">${esc(r[1])}</td></tr>`;});
+
+  // SYSTEM FONTS ONLY — eBay strips STYLE and LINK elements (GR8), so a webfont cannot be loaded and
+  // naming one only produces a silent fallback. MIRROR: SERIF_BODY / SANS_UI / MONO_DATA in
+  // lib/listing-copy.mjs. (Spelled out rather than written as markup: the GR8 invariant is a static
+  // source scan, so a literal style tag in a COMMENT fails it just as a real one would.)
+  const SERIF_BODY="Georgia,'Iowan Old Style','Times New Roman',serif";
+  const SANS_UI="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  const MONO_DATA="ui-monospace,'Cascadia Mono',Menlo,Consolas,'Courier New',monospace";
+
+  // Magic has no set WORDMARK (Scryfall publishes only the symbol), so the masthead falls back to
+  // the set name — the conditional is kept so a logo drops in the day one exists.
+  const logoHtml=f.setLogoUrl
+    ?`<img src="${esc(f.setLogoUrl)}" alt="${esc(f.set)} set logo" style="height:34px;width:auto;max-width:58%;vertical-align:middle;" />`
+    :`<span style="color:#e8ddc9;font-size:17px;vertical-align:middle;line-height:34px;">${esc(f.set)}</span>`;
+  // Scryfall's set icons are MONOCHROME BLACK SVGs with no fill attribute, and this masthead is
+  // #1a1510 — black on near-black is an invisible symbol. The white chip is what makes it read.
+  const symHtml=f.setSymbolUrl?`<img src="${esc(f.setSymbolUrl)}" alt="" style="height:15px;width:auto;vertical-align:-3px;margin-right:7px;background:#ffffff;border-radius:4px;padding:2px;" />`:'';
+
+  // Card art beside the pitch, vertically centred — and STACKED on a phone. Two inline-blocks rather
+  // than table cells: with no stylesheet there are no media queries, and a table row cannot stack,
+  // it only narrows (~23 chars a line at 360px). These share a line while both fit and the
+  // copy wraps onto its own line once it cannot hold min-width. calc(100% - 216px) is deliberate —
+  // an inline-block sizes against its CONTAINER, not the space left on the line, so without it the
+  // copy claims full width and always wraps. MIRROR: lib/listing-copy.mjs.
+  const artHtml=f.img
+    ?`<div style="padding:26px 26px 0;font-size:0;">
+    <div style="display:inline-block;vertical-align:middle;width:210px;max-width:100%;padding:0 22px 0 0;box-sizing:border-box;">
+      <img src="${esc(f.img)}" alt="${esc(f.name)} ${esc(f.num)} ${esc(f.set)} Magic: The Gathering ${esc(f.lang)} card" style="width:100%;height:auto;display:block;border-radius:5px;" />
+    </div><div style="display:inline-block;vertical-align:middle;width:calc(100% - 216px);min-width:280px;font-size:16px;box-sizing:border-box;">
+      <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7c6f5c;font-weight:700;margin:14px 0 9px;">${esc(f.rarity)}</div>
+      <p style="margin:0;font-size:17px;line-height:1.6;color:#3d3529;">${esc(f.pitch)}</p>
+    </div>
+  </div>`
+    :`<div style="padding:26px 26px 0;"><p style="margin:0;font-size:17px;line-height:1.65;color:#3d3529;">${esc(f.pitch)}</p></div>`;
+  // Graded slab? The penny-sleeve/toploader lines are physically wrong for an encapsulated slab, so
+  // a graded condition (PSA 10 / BGS 9.5 / …) swaps to slab-specific wording. MIRROR: isSlabCondition
+  // + SLAB_/CARD_ wording in lib/listing-copy.mjs (buildDescription) — keep both sides identical.
+  const slab=/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||'');
+  const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated — see photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
+  const postageLine=esc(slab?'Ships securely inside a rigid mailer, with FREE postage within Australia.':'Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.');
+  return `<div style="max-width:760px;margin:0 auto;font-family:${SERIF_BODY};color:#1f1a13;line-height:1.6;font-size:16px;background:#ffffff;">
+  <div style="background:#1a1510;padding:26px 26px 22px;">
+    <div style="font-family:${SANS_UI};color:#c9923f;font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;">Binders Keepers &middot; Magic: The Gathering</div>
+    <div style="color:#ffffff;font-size:30px;font-weight:400;line-height:1.15;margin-top:12px;letter-spacing:-.01em;">${esc(f.name)}</div>
+    <div style="margin-top:16px;padding-top:15px;border-top:1px solid rgba(201,146,63,.28);">
+      ${logoHtml}
+      <span style="float:right;color:#e8ddc9;font-family:${MONO_DATA};font-size:22px;font-variant-numeric:tabular-nums;line-height:34px;">${symHtml}${esc(f.num)}</span>
+      <span style="display:block;clear:both;"></span>
     </div>
   </div>
-  <div style="padding:18px 24px 4px;">
-    <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1510;font-weight:700;border-bottom:2px solid #ece7df;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
-    <p style="margin:0;">Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.</p>
+  <div style="height:3px;background:#c9923f;"></div>
+  ${artHtml}
+  <div style="padding:24px 26px 0;">
+    <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7c6f5c;font-weight:700;padding-bottom:9px;border-bottom:2px solid #1a1510;">The card</div>
+    <table style="width:100%;border-collapse:collapse;font-family:${SANS_UI};"><tbody>${tr}</tbody></table>
   </div>
-  <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
+  <div style="padding:24px 26px 0;">
+    <div style="border:1px solid #e4dbc9;border-left:4px solid #1a1510;padding:16px 18px;background:#faf8f4;">
+      <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7c6f5c;font-weight:700;margin-bottom:7px;">Condition</div>
+      <p style="margin:0;font-size:16px;">${condLine}</p>
+    </div>
+  </div>
+  <div style="padding:22px 26px 0;">
+    <div style="font-family:${SANS_UI};font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7c6f5c;font-weight:700;margin-bottom:7px;">Postage &amp; protection</div>
+    <p style="margin:0;font-size:16px;">${postageLine}</p>
+  </div>
+  <div style="padding:22px 26px 26px;margin-top:20px;border-top:1px solid #ece7df;">
+    <p style="margin:0;color:#7c6f5c;font-size:14px;font-style:italic;">From a smoke-free home. Fast dispatch. Thanks for looking.</p>
+  </div>
 </div>`;
 }
 function render(){const f=readFields();lastHTML=buildHTML(f);
@@ -257,7 +350,18 @@ async function doLookup(opts){
     set('f_type',c.type_line||'');
     set('f_treat',treat);
     const fin=c.finishes||[];
-    set('f_finish',fin.length&&!fin.includes('nonfoil')?(fin.includes('foil')?'Foil':'Etched Foil'):'Nonfoil');
+    // A surge-foil print is a SEPARATE TCGplayer product from its plain sibling, several times the
+    // price, and Scryfall marks it only in promo_types — `finishes` just says ["foil"].
+    const surge=(c.promo_types||[]).includes('surgefoil');
+    set('f_finish',surge?'Surge Foil':(fin.length&&!fin.includes('nonfoil')?(fin.includes('foil')?'Foil':'Etched Foil'):'Nonfoil'));
+    set('f_promo',promoNoteOf(c));
+    set('f_illustrator',c.artist||'');
+    set('f_releaseYear',String(c.released_at||'').slice(0,4));
+    set('f_lang',MTG_LANG[c.lang]||c.lang||'English');
+    // Pre-fill the image before the pitch/description render so the first preview already has art;
+    // the field stays editable and is the source of truth from then on.
+    const _f0=c.image_uris||(c.card_faces&&c.card_faces[0]&&c.card_faces[0].image_uris)||null;
+    set('f_img',(_f0&&(_f0.normal||_f0.large||_f0.small))||'');
     set('f_pitch',genPitch(readFields()));
     const pr=c.prices||{}; const price=pr.usd||pr.usd_foil||pr.usd_etched||null;
     _trk={game:'mtg',identity_key:c.set+'-'+c.collector_number,name:c.name,variant:val('f_finish'),price:price!=null?{market:+price,currency:'USD'}:null};
@@ -280,7 +384,10 @@ let _trk=null;
 async function addInv(){
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   if(!(window.TCG&&TCG.addToInventory)){showToast('Inventory unavailable');return;}
-  const body=Object.assign({},_trk,{set_name:val('f_set')||null,number:val('f_num')||null,status:'in_stock'});
+  // langCode so a Dwarvish print reaches inventory as DW, not as the display word — the stored code
+  // is what the title, the eBay Language aspect and the comps language filter all read.
+  const body=Object.assign({},_trk,{set_name:val('f_set')||null,number:val('f_num')||null,
+    language:(window.TCG&&TCG.langCode)?TCG.langCode(val('f_lang')):'EN',status:'in_stock'});
   delete body.price;
   const r=await TCG.addToInventory(body);
   showToast(r?('Added to inventory ✓ '+(r.sku||'')):'Add failed');
@@ -302,7 +409,7 @@ async function addTrack(){
     });
   }
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
-  ['f_name','f_set','f_num','f_rarity','f_colour','f_type','f_treat','f_finish','f_lang','f_cond','f_pitch']
+  ['f_name','f_set','f_num','f_rarity','f_colour','f_type','f_treat','f_finish','f_promo','f_illustrator','f_lang','f_releaseYear','f_cond','f_img','f_pitch']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));
   loadSets(); render();
 })();

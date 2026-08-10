@@ -214,6 +214,78 @@ console.log('\n[riftbound builder parity]');
 }
 
 // ---------------------------------------------------------------------------
+// 3c. MTG genTitle/genPitch/buildHTML  ⇄  buildTitle/mtgPitch/buildDescription
+// ---------------------------------------------------------------------------
+console.log('\n[mtg builder parity]');
+{
+  const HOB = 'The Hobbit (HOB)';
+  const fixtures = [
+    // Plain rare, non-foil. "Nonfoil" contains "foil": the title must claim NO finish.
+    { f_name: 'Troop of Ponies', f_num: '84', f_set: HOB, f_rarity: 'Rare', f_colour: 'Green', f_type: 'Creature — Horse', f_treat: 'Normal', f_finish: 'Nonfoil', f_lang: 'English', f_cond: 'Ungraded, Near Mint' },
+    // Mythic Borderless Foil, with the server-enriched shape (symbol + art + illustrator + year).
+    { f_name: 'The One Ring', f_num: '84', f_set: 'The Hobbit Eternal (HOC)', f_rarity: 'Mythic', f_colour: 'Colourless', f_type: 'Legendary Artifact', f_treat: 'Borderless', f_finish: 'Foil', f_lang: 'English', f_cond: 'Near Mint', f_illustrator: 'Veli Nyström', f_releaseYear: '2026', f_img: 'https://cards.scryfall.io/normal/front/a/b/c.jpg', f_setSymbolUrl: 'https://svgs.scryfall.io/sets/hoc.svg' },
+    // GR5 REGRESSION GUARDS — HOB #239 and #275 are the same card as the US$38 #15 base printing.
+    // `inverted` used to read as "Normal", making all three indistinguishable in the title.
+    { f_name: 'Gleaming Splendor', f_num: '239', f_set: HOB, f_rarity: 'Mythic', f_colour: 'White', f_type: 'Enchantment', f_treat: 'Borderless', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint' },
+    { f_name: 'Gleaming Splendor', f_num: '275', f_set: HOB, f_rarity: 'Mythic', f_colour: 'White', f_type: 'Enchantment', f_treat: 'Borderless', f_finish: 'Surge Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint' },
+    // The headliner: same name, same frame, same rarity as #229 — the token is the only difference.
+    { f_name: 'Smaug the Magnificent', f_num: '249', f_set: HOB, f_rarity: 'Mythic', f_colour: 'Red', f_type: 'Legendary Creature — Dragon', f_treat: 'Normal', f_finish: 'Foil', f_promo: 'Headliner', f_lang: 'English', f_cond: 'Ungraded, Near Mint' },
+    // Long enough to force fitTitle to shed parts.
+    { f_name: 'Thorin Oakenshield, Rightful Heir Under the Mountain', f_num: '202', f_set: 'The Hobbit Eternal (HOC)', f_rarity: 'Mythic', f_colour: 'Multicolour', f_type: 'Legendary Creature — Dwarf Noble', f_treat: 'Borderless', f_finish: 'Surge Foil', f_promo: 'Box Topper', f_lang: 'English', f_cond: 'Lightly Played' },
+    // The Dwarvish chase (HOC #96 Mox Amber, US$642 foil) — proves langCode reaches DW.
+    { f_name: 'Mox Amber', f_num: '96', f_set: 'The Hobbit Eternal (HOC)', f_rarity: 'Mythic', f_colour: 'Colourless', f_type: 'Legendary Artifact', f_treat: 'Borderless', f_finish: 'Nonfoil', f_lang: 'Dwarvish', f_cond: 'Near Mint' },
+    // Etched foil, and a graded slab (the builder infers it from the condition string, as does the lib).
+    { f_name: 'Arcane Signet', f_num: '95', f_set: 'The Hobbit Eternal (HOC)', f_rarity: 'Mythic', f_colour: 'Colourless', f_type: 'Artifact', f_treat: 'Borderless', f_finish: 'Etched Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint' },
+    { f_name: 'Smaug the Magnificent', f_num: '229', f_set: HOB, f_rarity: 'Mythic', f_colour: 'Red', f_type: 'Legendary Creature — Dragon', f_treat: 'Normal', f_finish: 'Foil', f_lang: 'English', f_cond: 'PSA 10' },
+  ];
+  for (const fx of fixtures) {
+    const ctx = builderContext('mtg-listing-builder.html',
+      ['const COLOURS=', 'function colourName(', 'function treatmentOf(', 'function promoNoteOf(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
+    const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, colour: fx.f_colour, type: fx.f_type,
+      treat: fx.f_treat, finish: fx.f_finish, promo: fx.f_promo, lang: fx.f_lang, cond: fx.f_cond,
+      illustrator: fx.f_illustrator, releaseYear: fx.f_releaseYear, img: fx.f_img, setSymbolUrl: fx.f_setSymbolUrl };
+    const title = vm.runInContext('genTitle()', ctx);
+    check('genTitle ' + fx.f_name.slice(0, 20) + ' #' + fx.f_num, LC.buildTitle('mtg', f), title);
+    const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);
+    check('genPitch ' + fx.f_name.slice(0, 20) + ' #' + fx.f_num, LC.mtgPitch(f), pitch);
+    const ff = Object.assign({}, f, { pitch });
+    check('buildHTML ' + fx.f_name.slice(0, 20) + ' #' + fx.f_num, LC.buildDescription('mtg', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
+  }
+  // GR5: a non-foil card must not claim a finish, and Surge Foil must not collapse to Foil.
+  const g = (fx) => LC.buildTitle('mtg', { name: 'Gleaming Splendor', num: '275', set: 'The Hobbit (HOB)', rarity: 'Mythic', treat: 'Borderless', lang: 'English', cond: 'Near Mint', ...fx });
+  assert('mtg title: Nonfoil claims no finish', !/Foil/.test(g({ finish: 'Nonfoil' })), g({ finish: 'Nonfoil' }));
+  assert('mtg title: Surge Foil stays Surge', /Surge/.test(g({ finish: 'Surge Foil' })), g({ finish: 'Surge Foil' }));
+  assert('mtg title: Etched stays Etched', /Etched/.test(g({ finish: 'Etched Foil' })), g({ finish: 'Etched Foil' }));
+  assert('mtg title: Dwarvish carries DW', / DW /.test(g({ finish: 'Nonfoil', lang: 'Dwarvish' }) + ' '), g({ finish: 'Nonfoil', lang: 'Dwarvish' }));
+  // The vocabulary itself, against the shapes Scryfall actually returns for HOB/HOC.
+  check('mtgTreatmentOf inverted+black border → Borderless', LC.mtgTreatmentOf({ border_color: 'black', frame_effects: ['enchantment', 'inverted'] }), 'Borderless');
+  check('mtgTreatmentOf borderless+inverted → Borderless', LC.mtgTreatmentOf({ border_color: 'borderless', frame_effects: ['inverted'] }), 'Borderless');
+  check('mtgTreatmentOf plain enchantment → Normal', LC.mtgTreatmentOf({ border_color: 'black', frame_effects: ['enchantment'] }), 'Normal');
+  check('mtgTreatmentOf legendary only → Normal', LC.mtgTreatmentOf({ border_color: 'black', frame_effects: ['legendary'] }), 'Normal');
+  check('mtgTreatmentOf extendedart', LC.mtgTreatmentOf({ border_color: 'black', frame_effects: ['extendedart'] }), 'Extended Art');
+  check('mtgColourName mono', LC.mtgColourName(['R']), 'Red');
+  check('mtgColourName multi', LC.mtgColourName(['R', 'G']), 'Multicolour');
+  check('mtgColourName none (AU spelling)', LC.mtgColourName([]), 'Colourless');
+  // universesbeyond is on EVERY HOB/HOC print — a brand marker, never a promo note.
+  check('mtgPromoNote universesbeyond only', LC.mtgPromoNote({ promo_types: ['universesbeyond'] }), '');
+  check('mtgPromoNote headliner', LC.mtgPromoNote({ promo_types: ['headliner', 'universesbeyond'] }), 'Headliner');
+  check('mtgPromoNote boxtopper', LC.mtgPromoNote({ promo_types: ['universesbeyond', 'boxtopper'] }), 'Box Topper');
+  check('mtgLanguageName dw', LC.mtgLanguageName('dw'), 'Dwarvish');
+  check('langCode(Dwarvish) → DW', LC.langCode('Dwarvish'), 'DW');
+  // A graded MTG row must still reach the slab wording — it did before this branch existed, via the
+  // shared frame, and an mtg branch that forgot it would silently regress to penny-sleeve copy.
+  const slabbed = LC.rowToFields({ game: 'mtg', name: 'Smaug the Magnificent', number: '249', set_name: 'The Hobbit (HOB)', rarity: 'Mythic', finish: 'Foil', language: 'EN', graded: true, grading_company: 'PSA', grade: 10, grade_label: 'PSA 10 GEM MT' });
+  const slabHtml = LC.buildDescription('mtg', slabbed, { slab: true });
+  assert('graded mtg reaches SLAB wording', slabHtml.includes(LC.SLAB_POSTAGE) && !slabHtml.includes(LC.CARD_POSTAGE));
+  assert('graded mtg title carries the grade', LC.buildTitle('mtg', slabbed).includes('PSA 10 GEM MINT'), LC.buildTitle('mtg', slabbed));
+  // rowToFields must stop handing MTG the Pokémon pitch.
+  const mrow = LC.rowToFields({ game: 'mtg', name: 'Smaug the Magnificent', number: '249', set_name: 'The Hobbit (HOB)', rarity: 'Mythic', finish: 'Foil', language: 'EN', colour: 'Red', type: 'Legendary Creature — Dragon', treat: 'Normal' });
+  assert('rowToFields mtg pitch is not the Pokémon one', !/Pok[eé]mon/.test(mrow.pitch), mrow.pitch);
+  assert('rowToFields mtg description is not the Pokémon frame', !/Pok[eé]mon/.test(LC.buildDescription('mtg', mrow)));
+  check('rowToFields mtg DW → Dwarvish for the Language row', LC.rowToFields({ game: 'mtg', name: 'Mox Amber', number: '96', set_name: 'HOC', language: 'DW' }).lang, 'Dwarvish');
+}
+
+// ---------------------------------------------------------------------------
 // 4. Bulk-only additions — edition + graded tokens, and the GR8 inline-style guard.
 // ---------------------------------------------------------------------------
 console.log('\n[bulk additions]');
@@ -255,7 +327,7 @@ console.log('\n[bulk additions]');
 
   // GR8: descriptions are inline-style only — no <style>/<script>/event handlers/class=.
   const guard = /<(style|script)\b|\son\w+=|\sclass=/i;
-  for (const game of ['pokemon', 'lorcana', 'riftbound']) {
+  for (const game of ['pokemon', 'lorcana', 'riftbound', 'mtg']) {
     const ff = LC.rowToFields({ game, name: 'X', number: '1/1', set_name: 'S', rarity: 'Common', finish: 'Normal', language: 'EN' });
     assert('GR8 inline-only (' + game + ')', !guard.test(LC.buildDescription(game, ff)));
     assert('GR8 inline-only slab (' + game + ')', !guard.test(LC.buildDescription(game, ff, { slab: true })));
