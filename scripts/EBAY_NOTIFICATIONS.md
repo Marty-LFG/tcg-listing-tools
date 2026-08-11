@@ -139,6 +139,20 @@ your logs at all*, because the request never arrives.
 `/api/status` also carries the listener under `jobs.ebay_notify`, and there is a probe
 (`ebay-notify`) that does the loopback round-trip for you.
 
+Two read-only reads answer "does eBay agree we exist", and neither causes anything to happen:
+
+```bash
+curl -H "Authorization: Bearer $DIAG_TOKEN" "http://192.168.4.200:5273/api/ebay-notify/subscriptions"
+```
+
+```bash
+curl -H "Authorization: Bearer $DIAG_TOKEN" "http://192.168.4.200:5273/api/ebay-notify/destination"
+```
+
+Read `used_token` first in the subscriptions reply. Subscriptions are **user-token only**, and a read
+on the application token comes back `200` with an empty list rather than an error — so "no
+subscriptions" and "asked wrongly" look identical unless you check which token answered.
+
 ---
 
 ## 5. Register with eBay
@@ -215,6 +229,8 @@ Nothing in any of these touches `orders_cursor`, the activation watermark, or a 
 | Listener will not start | `jobs.ebay_notify.bind_error` in `/api/status`. Usually a malformed verification token, or a second instance already holding the port. |
 | `sig_failures` climbing | Someone is POSTing at the endpoint, or the destination was registered against a different token. Signature failures never reach the database. |
 | Notifications stop arriving | eBay disables a destination after repeated failures. Check the destination status; the poll will have been carrying orders the whole time. |
+| `POST /test` says `no_subscriptions_returned` | eBay returned an empty list. That is what an unsubscribed account looks like **and** what a read on the wrong token looks like — they are identical from here. Check `used_token` in the reply, then `GET /subscriptions`, before creating anything. Do **not** reach for `reconcile?apply=1` on this alone. |
+| `POST /test` says `topic_not_subscribed` | eBay returned subscriptions, just none for the topics in your config. The reply lists what it did return. This one is a real finding, unlike the above. |
 | Notifications arrive but Telegram still waits for the poll | `jobs.ebay_notify.react.mode` in `/api/status`. `observe` and `off` both record the sale and deliberately do nothing with it. |
 | `cursor HELD` in the log after every sale | Normal if occasional: eBay announced an order it would not yet return. Constant means `GetOrders` is not returning orders it is notifying about — check `jobs.postsale.order_poll.last_run.awaiting`. |
 | A sale alert fires twice | It cannot: `fireSaleAlert` dedupes on `orders.sale_alert_sent_at`, and the push poll and the scheduled poll share that row. If you genuinely see two, that is a bug in the poll, not in push. |
