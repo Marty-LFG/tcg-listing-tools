@@ -220,12 +220,19 @@ describe('sweepDue — when a poll also sweeps by id', () => {
 describe('the pack queue is never crowded out by the in-transit tail', () => {
   it('asks about every queue order first, even when the cap is far smaller than the tail', async () => {
     // 80 parcels in transit, all OLDER than the two orders still waiting to be packed.
+    //
+    // THESE DATES MUST STAY RELATIVE. The sweep's in-transit branch is bounded by
+    // `datetime('now','-21 days')`, so a fixture pinned to an absolute date quietly ages out of
+    // scope. This test was written with 2026-07-20 and passed until the rolling window moved past
+    // it, at which point all 80 parcels stopped matching and the assertion failed for a reason with
+    // nothing to do with the behaviour under test — a red suite pointing at the wrong thing.
+    const daysAgo = (n) => new Date(Date.now() - n * 24 * 3600_000).toISOString();
     for (let i = 0; i < 80; i++) {
       seedOrder('transit-' + String(i).padStart(2, '0'), {
-        shipped_status: 'shipped', shipped_time: '2026-07-20T00:00:00.000Z', paid_time: '2026-07-20T00:00:00.000Z' });
+        shipped_status: 'shipped', shipped_time: daysAgo(14), paid_time: daysAgo(14) });
     }
-    seedOrder('queue-new', { paid_time: '2026-08-05T00:00:00.000Z' });
-    seedOrder('held-new', { paid_time: '2026-08-05T01:00:00.000Z', cancel_state: 'requested' });
+    seedOrder('queue-new', { paid_time: daysAgo(2) });
+    seedOrder('held-new', { paid_time: daysAgo(1), cancel_state: 'requested' });
 
     const asked = [];
     await sweepOpenOrders({}, db, { limit: 60, fetchOrders: async (env, opts) => { asked.push(...opts.orderIds); return { ok: true, orders: [] }; } });

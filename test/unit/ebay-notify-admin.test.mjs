@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  planReconcile, reconcile, applyPlan, bestSchemaVersion, destinationHealth,
+  planReconcile, reconcile, applyPlan, bestSchemaVersion, destinationHealth, getSubscriptions,
 } from '../../lib/ebay-notify-admin.mjs';
 
 const CFG = {
@@ -461,5 +461,54 @@ describe('destinationHealth', () => {
     const h = await destinationHealth({}, CFG, stub());
     assert.equal(h.ok, true);
     assert.equal(h.found, false);
+  });
+});
+
+// An empty subscription list is the most dangerous answer this module can give, because it is
+// indistinguishable from a mis-tokened read (eBay answers GET /subscription on the application token
+// with 200 {"total":0} rather than 403). Observed live: POST /test reported "nothing subscribed yet
+// — run reconcile" while an ENABLED ORDER_CONFIRMATION subscription existed, and the reconcile it
+// recommended then found zero changes. So the rule is that paged() may only report an empty list
+// when eBay actually SAID the list was empty — never as the residue of a read that did not work.
+describe('paged — an empty list must be a fact, not a fallback', () => {
+  const listing = (res) => async () => res;
+
+  it('reports a genuinely empty list as empty', async () => {
+    const r = await getSubscriptions({}, listing({ ok: true, httpStatus: 200, usedToken: 'user', json: { total: 0, subscriptions: [] } }));
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.items, []);
+    assert.equal(r.total, 0, 'eBay said zero, so zero is the answer');
+  });
+
+  it('refuses to call a bodyless 200 an empty list', async () => {
+    // The shape that manufactures "you have no subscriptions" out of a read that never happened:
+    // a 2xx whose body was empty or unparseable. `r.json || {}` used to swallow this whole.
+    const r = await getSubscriptions({}, listing({ ok: true, httpStatus: 200, usedToken: 'user', json: null }));
+    assert.equal(r.ok, false, 'a 200 with nothing in it is a failed read, not an empty account');
+    assert.match(r.error, /no JSON body/);
+    assert.deepEqual(r.items, []);
+  });
+
+  it('catches eBay contradicting itself — a total it then does not return', async () => {
+    const r = await getSubscriptions({}, listing({ ok: true, httpStatus: 200, usedToken: 'user', json: { total: 3, subscriptions: [] } }));
+    assert.equal(r.ok, false, 'three rows promised and none delivered is a broken read');
+    assert.match(r.error, /total=3/);
+  });
+
+  it('carries usedToken out on failure, because it is the first thing to check', async () => {
+    // Subscriptions are user-token-only; a read that used 'app' explains an empty list entirely.
+    const r = await getSubscriptions({}, listing({ ok: false, httpStatus: 403, usedToken: 'app', json: null, error: 'forbidden' }));
+    assert.equal(r.ok, false);
+    assert.equal(r.usedToken, 'app', 'the token the read used must survive the error path');
+  });
+
+  it('still returns the rows when eBay returns them', async () => {
+    const r = await getSubscriptions({}, listing({
+      ok: true, httpStatus: 200, usedToken: 'user',
+      json: { total: 1, subscriptions: [SUB()] },
+    }));
+    assert.equal(r.ok, true);
+    assert.equal(r.items.length, 1);
+    assert.equal(r.items[0].topicId, 'ORDER_CONFIRMATION');
   });
 });
