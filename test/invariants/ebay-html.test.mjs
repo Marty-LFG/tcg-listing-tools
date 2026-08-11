@@ -24,8 +24,9 @@ function assertInlineOnly(html, label) {
 }
 
 describe('buildDescription output (shared port — GR8)', () => {
-  for (const game of ['pokemon', 'lorcana', 'riftbound']) {
+  for (const game of ['pokemon', 'lorcana', 'riftbound', 'mtg']) {
     it(game, () => assertInlineOnly(buildDescription(game, F), game));
+    it(game + ' (slab)', () => assertInlineOnly(buildDescription(game, F, { slab: true }), game));
   }
 });
 
@@ -40,27 +41,31 @@ describe('buildDescription output (shared port — GR8)', () => {
 //     the space left on the line. Omit it and the copy claims 100% and always wraps.
 describe('description art/pitch pair (no media queries available — GR8)', () => {
   const F_ART = { ...F, img: 'https://example.test/art.png' };
+  // Only the frames that HAVE the pair. lorcana and riftbound take their own early-return branches
+  // in buildDescription and never reach it, so asserting on them would fail on a rule they do not
+  // implement. mtg gained the pair with its own frame and must hold the same two properties.
+  for (const game of ['pokemon', 'mtg']) {
+    it(`${game}: keeps the two inline-blocks adjacent with no text node between them`, () => {
+      const html = buildDescription(game, F_ART);
+      const blocks = (html.match(/display:inline-block/g) || []).length;
+      assert.equal(blocks, 2, 'expected exactly the art + pitch pair');
+      assert.match(html, /<\/div><div style="display:inline-block/,
+        'whitespace between the inline-blocks would push the pair apart');
+    });
 
-  it('keeps the two inline-blocks adjacent with no text node between them', () => {
-    const html = buildDescription('pokemon', F_ART);
-    const blocks = (html.match(/display:inline-block/g) || []).length;
-    assert.equal(blocks, 2, 'expected exactly the art + pitch pair');
-    assert.match(html, /<\/div><div style="display:inline-block/,
-      'whitespace between the inline-blocks would push the pair apart');
-  });
+    it(`${game}: sizes the copy against the container, leaving room for the art`, () => {
+      const html = buildDescription(game, F_ART);
+      assert.match(html, /width:calc\(100% - \d+px\)/,
+        'inline-block sizes against its container — without calc() the copy always wraps');
+      assert.match(html, /min-width:\d+px/, 'min-width is what triggers the stack');
+    });
 
-  it('sizes the copy against the container, leaving room for the art', () => {
-    const html = buildDescription('pokemon', F_ART);
-    assert.match(html, /width:calc\(100% - \d+px\)/,
-      'inline-block sizes against its container — without calc() the copy always wraps');
-    assert.match(html, /min-width:\d+px/, 'min-width is what triggers the stack');
-  });
-
-  it('drops the split entirely when there is no art', () => {
-    const html = buildDescription('pokemon', { ...F_ART, img: '' });
-    assert.ok(!/display:inline-block/.test(html),
-      'no art means the pitch should run full width, not sit in half a split');
-  });
+    it(`${game}: drops the split entirely when there is no art`, () => {
+      const html = buildDescription(game, { ...F_ART, img: '' });
+      assert.ok(!/display:inline-block/.test(html),
+        'no art means the pitch should run full width, not sit in half a split');
+    });
+  }
 });
 
 describe('builder buildHTML() source (static scan)', () => {

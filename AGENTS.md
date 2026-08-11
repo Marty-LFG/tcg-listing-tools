@@ -82,6 +82,21 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    value and must stay distinguishable — the `a` collector-number suffix
    (`039a`), Scryfall `frame_effects`/`border_color`, SWU `VariantType`, Scrydex
    variant/rarity. Don't collapse them into one "version".
+   **Magic's vocabulary**, checked against TCGplayer's live product names: Scryfall
+   `inverted` is what they sell as **"(Borderless)"** (HOB #15 US$37.84 vs #239
+   `enchantment,inverted` US$83.15) — a FRAME axis, so it folds into the existing
+   borderless branch; `surgefoil` is a separate **finish** and a separate TCGplayer
+   product ("(Borderless) (Surge Foil)", HOC #25 US$29.93 vs #65 US$125), so it gets
+   its own title token and its own identity variant; `boxtopper`/`headliner` are
+   print runs. `universesbeyond` is **not** any of these — it rides on all 479
+   HOB+HOC prints, so it marks the brand.
+   ⚠ **Ordering:** "Nonfoil" contains "foil" and "Non-holo" contains "holo", and
+   "Surge Foil" contains "foil". Every finish ladder tests the negations first and
+   surge before the generic foil branch, or a base card is titled, tiered, identified
+   and priced as a foil. The ladders are `finishClass` (pricing), `variantToken`
+   (which IS the `variant` column in `UNIQUE(game, identity_key, variant)`),
+   `itemFinish` (bulk), `parseVariance` (collectr), `ebayFinish`, `MAPPERS.mtg`
+   (normalize), and each builder's `genTitle`.
 
 6. **Condition / postage / footer blocks are per-product-type.** For the **five
    card builders** they are identical, owner-verified wording — if you edit one
@@ -128,6 +143,12 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
     search eBay for the exact printed string, so a number that isn't on the card is a
     lost sale. Enforced by `test/invariants/card-number.test.mjs` plus the
     `formatCardNumber` vectors in `scripts/check-listing-copy.mjs` (`pnpm test`).
+    **This rule is Pokémon-only, and `printedCardNumber` early-returns for every other
+    game.** No other source supplies its inputs: Scryfall exposes no printed total —
+    `set.card_count` counts *printings* (HOB is 321, with alt treatments numbered past
+    250) — so there is no denominator to render and inventing one is GR4. Magic prints
+    `249`, so `249` is what ships. Run through the Pokémon formatter, HOB #1 came out
+    `001`, a number that is not on the card.
 
 ---
 
@@ -639,16 +660,32 @@ cache] + baked as defaults in `lib/channels/ebay-map.mjs`):** all card games →
 EXPERIMENTAL** — per-card is the primary shape. 1st Edition maps to the `Features` aspect + a
 high-prio title token.
 
+**Tier floors** live in `data/bulk-pricing.config.json` under `tiers[game][rarityClass][finishClass]`,
+live-read per request. `tiers.mtg` exists; note that `rarityClass` has no `mythic`, so Scryfall's bare
+`'mythic'` falls to `default` — which is why the `mtg` block's `default` row sits *above* its `rare`
+row. It **is** the mythic tier, and HOC is 61% mythic. A floor under A$1.00 cannot be listed solo on
+eBay AU (error 25016). `finishClass` tests the negations before holo/foil (GR5) — before that fix a
+`Non-holo` Pokémon common was floored at the A$1.99 Holo tier instead of A$0.49.
+
 **Mirror rules (extends Golden Rules 6/9/10):** `lib/listing-copy.mjs` holds verbatim ports of
-`extras.js` `fitTitle`/`condCode`/`langCode`/`formatCardNumber`/`cardNumberKey` and both builders' `genTitle`/`genPitch`/`buildHTML`
+`extras.js` `fitTitle`/`condCode`/`langCode`/`formatCardNumber`/`cardNumberKey` and each builder's `genTitle`/`genPitch`/`buildHTML`
 (classic scripts can't import ESM), plus the single printing→finish→variant vocabulary and the
 GR6 wording constants (slab wording ⚠ pending owner sign-off). `lib/fees.mjs` is the one home
 for the AU fee bands (`index.html` imports it as a `<script type="module">`). **If you touch
 either side of any mirror, run `node scripts/check-listing-copy.mjs`** — byte-identical parity
 is the gate.
 
-**Validation (§8 style):** `scripts/check-{listing-copy,pricing,collectr,collectr-graded,collectr-ebay,enumerate}.mjs`
-— run all six after touching bulk code. All six are wrapped by
+The pairs, each with a fixture block in that harness:
+
+| lib/listing-copy.mjs | builder |
+|---|---|
+| `pokemon` `titleParts`/`pokemonPitch`/`buildDescription` | `pokemon-listing-builder.html` |
+| `lorcana` … / `lorcanaPitch` | `lorcana-listing-builder.html` |
+| `riftbound` … / `riftboundPitch` | `riftbound-listing-builder.html` |
+| `mtg` … / `mtgPitch`, `MTG_COLOURS`/`mtgColourName`/`mtgTreatmentOf`/`mtgPromoNote`/`MTG_LANG` | `mtg-listing-builder.html` |
+
+**Validation (§8 style):** `scripts/check-{listing-copy,pricing,collectr,collectr-graded,collectr-ebay,enumerate,comps}.mjs`
+— run them all after touching bulk code. They are wrapped by
 `test/invariants/check-harnesses.test.mjs`, so `pnpm test` (and therefore `pnpm verify`)
 enforces them — they can no longer be forgotten. Before uploading any REAL batch: eBay Seller Hub →
 Reports → Upload with a **3-row sample first** (the File Exchange multi-variation idiom is
@@ -1229,6 +1266,25 @@ and number; it just does not get a set name we cannot render.
 |---|---|---|
 | **English** | pokemontcg.io cache (`images.symbol`), then the Bulbapedia bake | pokemontcg.io cache (`images.logo`), then the bake |
 | **Japanese / other** | the **Bulbapedia bake** (`data/pokemon-set-symbols.json`) | the bake — 109 JP logos indexed |
+| **Magic** | `lib/mtg-sets-cache.mjs` `findMtgSet().icon_svg_uri` — an **SVG**, off the resolved record | **none exists.** Scryfall publishes no set wordmark, so the masthead falls back to the set name |
+
+⚠ **Set identity is resolved PER GAME.** `findSet`/`findSetSymbol`/`findSetLogo`/`findIntlSet` all index
+the *Pokémon* set universe and none of them is game-scoped — they match a bare code or name. Codes
+collide across games: Magic's `LTR` is Pokémon's Legendary Treasures (`bw11`), and un-guarded it
+stamped a Pokémon symbol, a Pokémon logo **and** a fabricated `246/113` onto a Magic card.
+`composeMetaFor` gates on `item.game` before any of them, and a game with no branch gets no set art
+rather than someone else's. Never construct an icon URL from a code either — `svgs.scryfall.io`
+answering 200 for a code we invented is the `images.scrydex.com` placeholder trap over again.
+
+⚠ **A monochrome SVG icon rasterises BLACK.** Scryfall's icons are `<path>` elements with **no fill
+attribute**, so librsvg draws them pure black (26190 of 26190 opaque pixels on `hob.svg`) — and the
+rails run `#2e1640` → `#150a1d`. `.tint()` **cannot** fix this: tint multiplies, and black times
+anything is black. `recolourGlyph` keeps the glyph's **alpha** (which carries the shape and its
+antialiasing) and replaces the colour channels with `badge.color`. It is gated on the SOURCE FORMAT,
+not the game, so PNG sources are untouched and no `ASSET_VERSION` bump is needed — but the fill IS
+folded into the returned digest, because a recolour is a pixel change the source digest cannot see.
+No density handling is needed: Scryfall icons are viewBox-only at 400–800px natural and downscale
+into the 126px badge box.
 
 `scripts/build-pokemon-set-symbols.mjs` indexes both Bulbapedia expansion lists and is registered as
 the **`pokemon-set-symbols`** refresh bake. It resolves URLs only — a few batched API calls, no image
@@ -1338,7 +1394,7 @@ node scripts/build-pokemon-set-symbols.mjs
 printed and passed through untouched, while a bare `"6"` from a bulk import is still rebuilt from the
 set's era (`006/084` for a modern set, `58/102` for a pre-Sword-&-Shield one).
 
-### The three silent failures
+### The four silent failures
 
 Everything that can go wrong here goes wrong **without an error**, which is why the readiness
 plumbing exists (`describeCompositor()`, surfaced in `/api/status` and on the lab page).
@@ -1360,6 +1416,11 @@ plumbing exists (`describeCompositor()`, surfaced in `/api/status` and on the la
    every call site falls through to the un-composed image with a warning. GR7, applied to a
    dependency. `pnpm-workspace.yaml` needs it in `onlyBuiltDependencies` (**not** the older
    `allowBuilds:` map — pnpm 10 does not read that one).
+4. **No SVG support.** Scryfall serves Magic's set icons as SVG, and a sharp built *without* librsvg
+   throws on one — `loadSetArt` catches it, returns `null`, and the badge quietly comes out
+   number-only with nothing logged anywhere. `svgProbe()` rasterises a 2px SVG once and reports it
+   through `describeCompositor()`, so the cause shows up in `/api/status` rather than on a composed
+   image weeks later.
 
 ### The content hash IS the cache key
 

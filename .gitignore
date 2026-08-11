@@ -30,6 +30,8 @@ data/exports/
 data/pc-cache/
 data/img-cache/
 data/pkm-cache/
+# Scryfall's set list, same deal as data/pkm-cache/ (lib/mtg-sets-cache.mjs).
+data/mtg-cache/
 # One file per set, written once and kept — lib/*-cards-cache.mjs over lib/set-cache.mjs.
 # Refetchable, so not source.
 data/pkm-cards/

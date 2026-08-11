@@ -122,6 +122,35 @@ describe('composeMetaFor', () => {
     const m = composeMetaFor({});
     for (const [k, v] of Object.entries(m)) assert.equal(typeof v, 'string', `${k} is ${typeof v}`);
   });
+
+  describe('set identity is POKÉMON-only — no other game borrows its art', () => {
+    // findSet/findSetSymbol/findSetLogo match on a bare set code or name and are NOT game-scoped,
+    // so codes collide across games. MTG's 'LTR' (Tales of Middle-earth) is Pokémon's Legendary
+    // Treasures (bw11, printedTotal 113): un-guarded, a Magic card came back with a Pokémon symbol,
+    // a Pokémon logo and a fabricated '246/113' — a set it is not from and a number not on it.
+    it('an MTG row whose set code collides with a Pokémon set never borrows the Pokémon art', () => {
+      const m = composeMetaFor({ game: 'mtg', name: 'The One Ring', set_name: 'The Lord of the Rings: Tales of Middle-earth', set_code: 'LTR', number: '246' });
+      assert.doesNotMatch(m.setSymbolUrl, /pokemontcg\.io/, 'LTR is Pokémon bw11 as well as Magic LTR');
+      assert.doesNotMatch(m.setLogoUrl || '', /pokemontcg\.io/);
+      assert.equal(m.setLogoUrl, '', 'Magic has no set wordmark');
+      assert.equal(m.cardNumber, '246', 'never a Pokémon denominator');
+      // Whatever symbol it does get must be Magic's own (Phase E), or none at all on a cold cache.
+      if (m.setSymbolUrl) assert.match(m.setSymbolUrl, /svgs\.scryfall\.io/);
+    });
+    it('the SAME code still resolves for an actual Pokémon row — the guard is on game, not on LTR', () => {
+      const m = composeMetaFor({ game: 'pokemon', set_name: 'Legendary Treasures', set_code: 'LTR', number: '1' });
+      assert.equal(m.setSymbolUrl, 'https://images.pokemontcg.io/bw11/symbol.png');
+    });
+    it('Magic has no set wordmark, and Scryfall exposes no printed total', () => {
+      const m = composeMetaFor({ game: 'mtg', set_name: 'The Hobbit', set_code: 'HOB', number: '1' });
+      assert.equal(m.setLogoUrl, '');
+      assert.equal(m.cardNumber, '1', "GR10 pads Pokémon '1' to '001'; Magic prints '1'");
+    });
+    it('a game-less fixture is still treated as Pokémon (game is NOT NULL on real rows)', () => {
+      assert.equal(composeMetaFor({ set_name: 'Legendary Treasures', number: '1' }).setSymbolUrl,
+        composeMetaFor({ game: 'pokemon', set_name: 'Legendary Treasures', number: '1' }).setSymbolUrl);
+    });
+  });
 });
 
 describe('printedCardNumber (Golden Rule 10 on the rail)', () => {
@@ -147,6 +176,14 @@ describe('printedCardNumber (Golden Rule 10 on the rail)', () => {
   });
   it('never throws on a malformed row — the rail badge is not worth a failed listing', () => {
     assert.doesNotThrow(() => printedCardNumber({ number: '4', printed_total: 'wat', set_release_date: 'nonsense' }));
+  });
+  it('is a POKÉMON rule — other games keep the number verbatim', () => {
+    // GR10 rebuilds the padding pokemontcg.io strips, from that set's era and printed total. No
+    // other game supplies those: Scryfall's set.card_count counts PRINTINGS (HOB is 321, with alt
+    // treatments numbered past 250), so there is no denominator and inventing one is GR4.
+    assert.equal(printedCardNumber({ game: 'mtg', number: '1', set_name: 'The Hobbit' }), '1');
+    assert.equal(printedCardNumber({ game: 'lorcana', number: '12', set_name: 'The First Chapter' }), '12');
+    assert.equal(printedCardNumber({ game: 'pokemon', number: '58', set_name: 'Base Set', printed_total: 102, set_release_date: '1999/01/09' }), '58/102');
   });
 });
 

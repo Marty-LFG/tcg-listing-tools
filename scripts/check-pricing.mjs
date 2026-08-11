@@ -1,6 +1,6 @@
 // scripts/check-pricing.mjs — hybrid pricing engine + fee math harness (AGENTS.md §8).
 // Run: node --disable-warning=ExperimentalWarning scripts/check-pricing.mjs
-import { resolvePrice, roundAU, tierFloor, rarityClass, loadBulkConfig } from '../lib/pricing.mjs';
+import { resolvePrice, roundAU, tierFloor, rarityClass, finishClass, loadBulkConfig } from '../lib/pricing.mjs';
 import { feeAU, totalFromList, listForTarget, pcSolve } from '../lib/fees.mjs';
 
 let failures = 0;
@@ -27,7 +27,25 @@ eq('null → null', roundAU(null, cfg), null);
 console.log('\n[rarity/tier]');
 eq('uncommon before common', rarityClass('Uncommon'), 'uncommon');
 eq('common', rarityClass('Common'), 'common');
+eq("Scryfall's bare 'mythic' has no class of its own", rarityClass('Mythic'), 'default');
 assert('pokemon common base floor < RH floor', tierFloor(cfg, 'pokemon', 'Common', 'Normal') < tierFloor(cfg, 'pokemon', 'Common', 'Reverse Holofoil'));
+
+// finishClass ordering. "Non-holo" contains "holo" and "Nonfoil" contains "foil", so an unguarded
+// ladder floors a plain card at the holo/foil tier — a 3-4x over-floor on a common. Both spellings
+// are live (the uploader dropdown says "Non-holo"; Scryfall's finishes say "nonfoil").
+console.log('\n[finishClass — negations before holo/foil]');
+for (const [f, want] of [
+  ['Non-holo', 'Base'], ['Non-Holo', 'Base'], ['non holo', 'Base'], ['Nonholo', 'Base'],
+  ['Nonfoil', 'Base'], ['Non-foil', 'Base'], ['non foil', 'Base'],
+  ['Normal', 'Base'], ['', 'Base'], [null, 'Base'],
+  ['Holo', 'Holo'], ['Holofoil', 'Holo'],
+  ['Reverse Holo', 'Reverse Holo'], ['Reverse Holofoil', 'Reverse Holo'],
+  ['Foil', 'Foil'], ['Etched Foil', 'Foil'], ['Surge Foil', 'Foil'],   // MTG treatments all tier as Foil
+  ['Enchanted', 'Enchanted'],
+]) eq('finishClass(' + JSON.stringify(f) + ')', finishClass(f), want);
+assert('a Non-holo pokemon common takes the BASE floor, not the Holo one',
+  tierFloor(cfg, 'pokemon', 'Common', 'Non-holo') === tierFloor(cfg, 'pokemon', 'Common', 'Normal'),
+  'Non-holo=' + tierFloor(cfg, 'pokemon', 'Common', 'Non-holo') + ' Normal=' + tierFloor(cfg, 'pokemon', 'Common', 'Normal'));
 
 console.log('\n[precedence — raw]');
 {
