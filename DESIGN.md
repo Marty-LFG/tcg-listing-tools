@@ -60,10 +60,30 @@ govern presentation only.
 | `--gold` | `#d4b072` *(inventory / tracker / hub / tools)* | The single accent — **each page overrides this** |
 | `--gold-soft` | `rgba(212,176,114,.14)` | Focus-ring glow, accent tints |
 
-Per-page `--gold` overrides in the wild: grader `#d9a4ff` (purple), shipping `#5ab0ff` (blue),
-SWU/LEGO `#ffe81f`, Pokémon `#f0c04a`, MTG `#d59a4a`, Funko `#3fdccb`, Riftbound `#d4b072`. On
-the hub the per-game eyebrow colours live in `index.html` (`.pkm .eyebrow` etc.); the inventory
-"in-stock" green eyebrow is `#5fd39c`.
+Per-page `--gold` overrides in the wild — **this table is the source of truth**, and
+`index.html` copies from it so a hub tile is always the colour of the page it opens:
+
+| Accent | Pages |
+|---|---|
+| `#d4b072` house gold | `index` · `inventory` · `tracker` · `catalog` · `sealed` · `locations` · `listings` · `listing-match` · `orders` · `postsale` · `settings` |
+| `#f0c020` | `pokemon-listing-builder` · `stock-uploader` · `stock-runner` · `bulk-listing-builder` |
+| `#5ab0ff` | `shipping-label` · `pdf-print` |
+| `#d9a4ff` | `card-grader` |
+| `#c9a227` | `listing-image-lab` |
+| `#c9923f` | `mtg-listing-builder` |
+| `#ffe81f` | `swu-listing-builder` |
+| `#ffcf00` | `lego-listing-builder` |
+| `#c9a24b` | `lorcana-listing-builder` |
+| `#e23b3b` | `onepiece-listing-builder` |
+| `#27d3c4` | `funko-listing-builder` |
+| `#c8aa6e` | `riftbound-listing-builder` |
+
+Most pages are the house gold, and that is the point: a deviation *means* something. The hub
+carries these as `a.tool.t-*{--accent:…}` overrides — note they must out-specify the `a.tool`
+base rule that sets `--accent:var(--gold)`, so the `a.tool` prefix is load-bearing.
+
+Two accents are too dark for small text on `--panel`: `#e23b3b` lands at 4.25:1 and `#c9923f`
+at 6.6:1. Only use `#e23b3b` for rules, icons and focus states, never a 9.5px eyebrow.
 
 ### Semantic
 | Token | Value | Role |
@@ -115,10 +135,12 @@ dependency beyond the data APIs.
 
 Two delivery modes, one look:
 
-- **Flagship inline pages** — `index.html`, `tracker.html`, `inventory.html` carry the full
-  token block + component CSS **inline** in their own `<style>`. They are the richest surfaces
-  (masthead, tiles, slab badges, modal) and own their styling end-to-end.
-- **Shared layer (`vault.css`)** — the nine builder / grader / shipping pages keep their
+- **Flagship inline pages** (11) — `index`, `inventory`, `tracker`, `catalog`, `sealed`,
+  `locations`, `orders`, `postsale`, `listings`, `listing-match`, `listing-image-lab` carry the
+  full token block + component CSS **inline** in their own `<style>` and link **no** `vault.css`.
+  They are the richest surfaces (masthead, section rules, tiles, slabs, modals) and own their
+  styling end-to-end.
+- **Shared layer (`vault.css`)** (15) — the builder / grader / shipping / settings pages keep their
   original bespoke inline `<style>` and **link `vault.css` + the font tags right before
   `</head>`**, i.e. *after* their inline styles. Because `vault.css` comes later in the cascade,
   its `:root` re-declares the shared **neutral** vars (`--ink`/`--panel`/`--panel2`/`--line`/
@@ -156,7 +178,22 @@ Depth comes from layering, not decoration:
 
 - **Masthead + monogram** — a 48 px rounded, gold-bordered tile holding a Fraunces glyph
   (`BK` on hub/inventory, the tool emoji on tracker), a Fraunces `h1` (with an italic muted
-  qualifier), and a mono sub-line separated by `·` dots.
+  qualifier), and a mono sub-line separated by `·` dots. The same recipe —
+  `linear-gradient(160deg,#1e2432,#111420)`, 1 px `--line2`, `inset 0 1px 0 rgba(255,255,255,.07)`
+  — scales down to 34 px as the hub's **icon well** and out to 64 px as `favicon.svg`.
+- **Section rule** (`index.html`) — the hub's organising component and the ledger metaphor made
+  literal: a Fraunces `h2`, a `flex:1` hairline, and a zero-padded **mono** count in `--faint`.
+  It is what carries grouping, so tiles never need colour to say which section they belong to.
+- **Icon well + hairline icons** (`index.html`) — a 34 px monogram-recipe tile whose `color` is
+  the tool's accent, holding an inline SVG that inherits it via `currentColor`. One geometry
+  across the whole set: `viewBox="0 0 24 24"`, `fill:none`, `stroke-width:1.5`, round caps and
+  joins. **No emoji in tiles** — they render per-platform and fight the refined tone.
+- **The counter** (`index.html`) — the eBay fee solver as a ledger receipt: label, a dotted
+  leader (`border-bottom:1px dotted` on a zero-height flex filler), then the figure. Keeps a
+  green top-rule rather than the accent so it reads as a utility, not another tile.
+- **Finder** (`index.html`) — a mono filter field with a `/` `kbd` hint that fades on focus, a
+  live `n of m` tally, and section bands that hide themselves when empty. Filters on a
+  `data-find` attribute holding the words nobody puts in a title (`psa`, `mtg`, `to pack`).
 - **Summary tiles** (`inventory.html`) — gradient panel, a gold top-rule (`::before`), tiny
   tracked-uppercase label, a big **mono** metric, hover lift, staggered `rise` entrance.
 - **List / item cards** — gradient panel + hairline + shadow, hover lift, `rise` animation, and
@@ -165,12 +202,12 @@ Depth comes from layering, not decoration:
 - **Pills & badges** — status **pills** (`.pill.in_stock` etc.) are tinted, tracked-uppercase,
   and always carry text (not colour alone). P/L **badges** are mono with a tinted up/down
   background.
-- **Slab badge** (`slabBadge()` in `inventory.html`) — a Collectr-style mini graded slab per
-  card. It reads the company's `theme{bg,fg,accent}` from `data/grading-companies.json` and
-  renders an SVG "case" with a coloured label band (company code + grade) over a card window.
-  When the item has an `image_url` it renders the **real card image inside the slab** (HTML
-  variant) instead of the placeholder. Used in the stock list and as a live preview beside the
-  Add/Edit company + grade fields.
+- **Slab** (`.slab` in `inventory.html`) — a Collectr-style mini graded slab per card, built in
+  CSS: percentage radii (`9% / 6%`), a 158° glass body, an `::after` specular sheen, and the
+  company's `theme{bg,fg,accent}` from `data/grading-companies.json` injected as `--slab-accent`
+  to colour the label band (company code + grade). When the item has an `image_url` the **real
+  card image** renders inside the slab instead of the placeholder. Used in the stock list and as
+  a live preview beside the Add/Edit company + grade fields.
 - **Modal** — blurred backdrop, gradient panel, 20 px radius, Fraunces title, a sectioned grid
   of labelled fields, a bordered action footer, and `rise` entrance.
 - **Buttons** — `.btn` base plus `.go` (green), `.ghost` (muted), `.danger` (red), `.blue`
@@ -184,6 +221,9 @@ Depth comes from layering, not decoration:
 - `@keyframes rise` (fade + 9px translateY) on tiles, cards, signals, and modals; `@keyframes
   fade` on overlays.
 - Summary tiles stagger via `nth-child` `animation-delay` (~.06/.12/.18s).
+- **Stagger the group, not the item, once there are more than a dozen.** The hub carries 25
+  tiles: they animate six bands at `--d:.05s` increments, set inline per `<section>`, so the
+  page lands as one orchestrated move instead of 25 separate ones.
 - Hover transitions are ~.16–.2s ease; buttons/cards lift 1–2px.
 - **`@media (prefers-reduced-motion:reduce)` disables all animation/transition** on every page.
 
@@ -216,9 +256,16 @@ Keep the page's own `:root{--gold: <its accent>}` (and any bespoke classes). Ref
 shared vars for surfaces/lines/text; put every number in `var(--mono)`.
 
 **A flagship surface** (owns its styling): copy the full `:root` token block from
-`inventory.html`, use the component patterns above (masthead, tiles, cards with status rails,
-modal), and keep `--gold` as the tool's accent. Do **not** also link `vault.css` — the tokens
-are already inline.
+`inventory.html`, use the component patterns above (masthead, section rules, tiles, cards with
+status rails, modal), and keep `--gold` as the tool's accent. Do **not** also link `vault.css` —
+the tokens are already inline.
+
+**Either way**, carry the tab icon right after `<title>`, and add the page to the hub with a
+matching `a.tool.t-*{--accent:…}` so its tile is the same colour as the page:
+
+```html
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+```
 
 ---
 
@@ -226,8 +273,9 @@ are already inline.
 
 | File | Role |
 |---|---|
-| `vault.css` | Shared design layer linked into the 9 builder/tool pages. Neutral-var re-theme + fonts + background + primitive restyles. |
-| `index.html` / `tracker.html` / `inventory.html` | Flagship pages — full tokens + components inline. |
-| `data/grading-companies.json` | Per-company `theme{bg,fg,accent}` that drives the slab badge. |
-| `inventory.html` → `slabBadge()` | The mini-slab SVG/HTML renderer. |
+| `vault.css` | Shared design layer linked into the 15 builder/tool pages. Neutral-var re-theme + fonts + background + primitive restyles. |
+| `index.html` | The hub, and the reference for the index components: section rule, icon well + hairline icon set, counter, finder. |
+| `inventory.html` | The reference for the token block, button family, status rails and the `.slab`. Copy its `:root` when starting a flagship page. |
+| `favicon.svg` | The monogram as a tab icon. Every page links it (`<link rel="icon" href="/favicon.svg" type="image/svg+xml">` right after `<title>`). |
+| `data/grading-companies.json` | Per-company `theme{bg,fg,accent}` that drives the slab. |
 | `AGENTS.md` §7 | Short pointer to this system for agents. |

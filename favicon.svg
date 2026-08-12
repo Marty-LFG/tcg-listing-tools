@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Binders Keepers">
+  <!-- The masthead monogram, shrunk to a tab. Same recipe as .monogram in index.html:
+       a rounded near-black tile, a hairline edge, the top inner highlight, gold Fraunces-ish
+       serif glyphs. Web fonts never load in a favicon, so the stack falls to Georgia/serif. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e2432"/>
+      <stop offset="1" stop-color="#0f1219"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="15" fill="url(#tile)" stroke="rgba(255,255,255,.16)" stroke-width="3"/>
+  <path d="M6 17a11 11 0 0 1 11-11h30a11 11 0 0 1 11 11" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="2.5"/>
+  <text x="32" y="33" fill="#d4b072" font-family="Georgia,'Times New Roman',serif" font-size="30" font-weight="700"
+        letter-spacing="-0.5" text-anchor="middle" dominant-baseline="central">BK</text>
+</svg>

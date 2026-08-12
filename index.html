@@ -4,271 +4,544 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TCG Listing Tools · Binders Keepers</title>
+<meta name="description" content="The Binders Keepers workbench: eBay listing builders, stock, grading, pricing and fulfilment for Pokémon, Magic, Lorcana, One Piece, SWU, Riftbound, LEGO and Funko.">
+<meta name="theme-color" content="#0a0b0f">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--ink:#0b0d12;
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
     --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
     --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
-    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--green:#43d6a0;--amber:#f0c04a;--red:#f0666e;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--green:#43d6a0;--amber:#f0c04a;--red:#f0666e;--blue:#6ab0ff;--purple:#d9a4ff;
     --shadow:0 12px 34px -14px rgba(0,0,0,.72);
-    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;}
+  [hidden]{display:none !important;}
   html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
-  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:34px 24px 72px;
+  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:34px 24px 76px;
     background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
   body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:46px 46px;-webkit-mask-image:radial-gradient(circle at 50% 10%,#000,transparent 80%);mask-image:radial-gradient(circle at 50% 10%,#000,transparent 80%);}
-  .wrap{max-width:600px;width:100%;margin:0 auto;position:relative;z-index:1;}
+  .wrap{max-width:1180px;width:100%;margin:0 auto;position:relative;z-index:1;display:block;}
   a{color:var(--gold);text-decoration:none;}
-  .mast{display:flex;align-items:center;gap:15px;margin-bottom:26px;}
-  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);letter-spacing:.02em;}
-  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin:0;line-height:1.05;}
-  p.sub{color:var(--muted);font-size:12.5px;margin:5px 0 0;font-family:var(--mono);}
-  .cards{display:grid;gap:14px;}
-  .cols{display:grid;gap:16px;}
-  .col{display:grid;gap:16px;align-content:start;}
-  .col .pricecard{margin-bottom:0;}
-  @media(min-width:920px){
-    .wrap{max-width:1080px;}
-    .cols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start;}
-  }
-  a.tool{display:block;text-decoration:none;border:1px solid var(--line);border-radius:16px;padding:18px 20px;background:linear-gradient(180deg,var(--panel),var(--bg2));transition:.18s ease;box-shadow:var(--shadow);position:relative;overflow:hidden;}
-  a.tool::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--gold),transparent 70%);opacity:0;transition:.18s;}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+
+  /* ---- entrance: one orchestrated load, staggered per band (not per tile) ---- */
+  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  .mast,.finder,.band,.note{animation:rise .45s ease both;animation-delay:var(--d,0s);}
+
+  /* ---- masthead: identity left, the counter right ---- */
+  /* Top-aligned on both axes: the identity block grew to three lines, so centring pushed the
+     monogram down past the h1 and floated the counter above the title. */
+  .mast{display:grid;gap:22px;align-items:start;margin-bottom:4px;}
+  @media(min-width:1040px){.mast{grid-template-columns:minmax(0,1fr) 384px;gap:34px;}}
+  .ident{display:flex;align-items:flex-start;gap:15px;min-width:0;}
+  .monogram{width:48px;height:48px;flex:none;margin-top:1px;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);letter-spacing:.02em;}
+  h1{font-family:var(--serif);font-weight:600;font-size:27px;letter-spacing:-.015em;margin:0;line-height:1.05;}
+  /* 62ch keeps the sub-line to two balanced lines instead of running the full column width and
+     orphaning its last word. */
+  p.sub{color:var(--muted);font-size:12.5px;margin:6px 0 0;font-family:var(--mono);max-width:62ch;}
+  p.status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;margin:7px 0 0;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block;background:var(--faint);}
+  .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.55);}
+  .dot.warn{background:var(--amber);box-shadow:0 0 8px rgba(240,192,74,.45);}
+  .dot.err{background:var(--red);}
+
+  /* ---- the counter: a ledger receipt for the eBay fee maths ---- */
+  .counter{position:relative;border:1px solid var(--line);border-radius:16px;padding:16px 18px 15px;background:linear-gradient(180deg,var(--panel),var(--bg2));overflow:hidden;box-shadow:var(--shadow);}
+  .counter::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--green),transparent 70%);opacity:.55;}
+  .ctr-head{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;font-weight:600;color:var(--green);margin:0 0 15px;}
+  .ctr-row{display:flex;align-items:center;gap:11px;}
+  .ctr-row+.ctr-row{margin-top:12px;}
+  .ctr-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.11em;font-weight:600;white-space:nowrap;}
+  .leader{flex:1;min-width:16px;height:0;border-bottom:1px dotted rgba(255,255,255,.17);align-self:center;}
+  .ctr-in{display:flex;align-items:center;gap:5px;background:var(--ink);border:1px solid var(--line2);border-radius:9px;padding:0 11px;transition:.15s;width:132px;}
+  .ctr-in:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .ctr-in span{color:var(--muted);font-size:13px;font-family:var(--mono);}
+  .ctr-in input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:17px;font-weight:600;padding:8px 0;font-family:var(--mono);letter-spacing:-.01em;text-align:right;}
+  .ctr-in input::-webkit-outer-spin-button,.ctr-in input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .ctr-in input{-moz-appearance:textfield;}
+  .ctr-val{font-family:var(--mono);font-size:26px;font-weight:600;color:#fff;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .ctr-status{display:flex;align-items:center;gap:7px;font-size:12px;margin:12px 0 0;color:var(--muted);font-family:var(--mono);}
+  .ctr-note{font-size:11.5px;color:var(--muted);margin:9px 0 0;line-height:1.5;}
+
+  /* ---- the finder ---- */
+  .finder{display:flex;align-items:center;gap:10px;margin:24px 0 4px;padding:0 13px;background:var(--ink);border:1px solid var(--line);border-radius:11px;transition:.15s;}
+  .finder:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .finder>svg{width:16px;height:16px;flex:none;color:var(--faint);}
+  .finder input{flex:1;min-width:0;background:none;border:0;outline:none;color:var(--text);font-family:var(--mono);font-size:13px;padding:12px 0;}
+  .finder input::placeholder{color:var(--faint);}
+  .finder input::-webkit-search-cancel-button{-webkit-appearance:none;}
+  .tally{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:.04em;}
+  kbd{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;background:rgba(255,255,255,.03);transition:opacity .15s;}
+  .finder:focus-within kbd{opacity:0;}
+  .empty{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin:30px 0 0;}
+
+  /* ---- section rule: the ledger's contents line ---- */
+  .band{margin-top:30px;}
+  .rule{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+  .rule h2{font-family:var(--serif);font-weight:600;font-size:17px;letter-spacing:-.01em;margin:0;line-height:1;white-space:nowrap;}
+  .hair{flex:1;height:1px;background:linear-gradient(90deg,var(--line2),var(--line) 26%,var(--line));}
+  .cnt{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--faint);font-variant-numeric:tabular-nums;}
+
+  /* ---- tool tiles ---- */
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));}
+  .band.builders .grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));}
+  a.tool{--accent:var(--gold);display:flex;align-items:flex-start;gap:13px;text-decoration:none;color:inherit;
+    border:1px solid var(--line);border-radius:14px;padding:14px 15px;background:linear-gradient(180deg,var(--panel),var(--bg2));
+    box-shadow:var(--shadow);position:relative;overflow:hidden;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;}
+  a.tool::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--accent),transparent 72%);opacity:0;transition:opacity .18s;}
   a.tool:hover{border-color:var(--line2);transform:translateY(-2px);}
-  a.tool:hover::before{opacity:.5;}
-  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;}
-  .rb .eyebrow{color:#d4b072;} .swu .eyebrow{color:#ffe81f;} .pkm .eyebrow{color:#f0c04a;} .mtg .eyebrow{color:#d59a4a;}
-  .lego .eyebrow{color:#ffcf00;} .funko .eyebrow{color:#3fdccb;} .trk .eyebrow{color:#43d6a0;} .ship .eyebrow{color:#6ab0ff;}
-  .grade .eyebrow{color:#d9a4ff;} .lorcana .eyebrow{color:#cbb06a;} .inv .eyebrow{color:#5fd39c;} .sys .eyebrow{color:#a8b6cf;} .cat .eyebrow{color:#e0c489;} .ps .eyebrow{color:#e08a9b;}
-  .name{font-family:var(--sans);font-size:17px;font-weight:600;color:#fff;margin-top:5px;letter-spacing:-.01em;}
-  .desc{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.5;}
-  a.tool.game{display:flex;align-items:center;gap:16px;}
-  .logo{flex:none;width:96px;height:62px;border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;padding:8px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);}
+  a.tool:hover::before,a.tool:focus-visible::before{opacity:.55;}
+  a.tool:focus-visible{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft),var(--shadow);}
+  .well{flex:none;width:34px;height:34px;border-radius:10px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;color:var(--accent);transition:border-color .18s ease;}
+  .well svg{width:18px;height:18px;display:block;}
+  a.tool:hover .well{border-color:color-mix(in srgb,var(--accent) 42%,transparent);}
+  .tt{min-width:0;}
+  .eyebrow{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;font-weight:600;color:var(--accent);}
+  .name{display:block;font-family:var(--sans);font-size:14.5px;font-weight:600;color:#fff;margin:4px 0 0;letter-spacing:-.005em;line-height:1.25;}
+  .desc{display:block;font-size:12px;color:var(--muted);margin-top:5px;line-height:1.45;}
+
+  /* One accent per tool, copied from the --gold of the page it opens (DESIGN.md §2), so the
+     tile and its page agree. These must out-specify `a.tool` above, hence the a.tool prefix.
+     Everything without a t-* class is the house gold. */
+  a.tool.t-pkm,a.tool.t-upload,a.tool.t-runner,a.tool.t-bulk{--accent:#f0c020;}
+  a.tool.t-grade{--accent:#d9a4ff;}
+  a.tool.t-ship{--accent:#5ab0ff;}
+  a.tool.t-lab{--accent:#c9a227;}
+  a.tool.t-mtg{--accent:#c9923f;}
+  a.tool.t-swu{--accent:#ffe81f;}
+  a.tool.t-lego{--accent:#ffcf00;}
+  a.tool.t-lorcana{--accent:#c9a24b;}
+  a.tool.t-funko{--accent:#27d3c4;}
+  a.tool.t-rb{--accent:#c8aa6e;}
+  /* One Piece red is only ever a rule/focus colour here — builder tiles carry no eyebrow, so it
+     never has to clear the 4.5:1 bar that small text does. */
+  a.tool.t-op{--accent:#e23b3b;}
+
+  /* ---- builder tiles: the logo is the identity, so no eyebrow ---- */
+  .band.builders a.tool{flex-direction:column;align-items:stretch;gap:11px;}
+  .logo{height:52px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;padding:9px 12px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.07);}
   .logo img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;}
-  .tooltext{flex:1;min-width:0;}
-  .note{font-size:12px;color:var(--faint);margin-top:26px;line-height:1.6;}
+  .logo svg{width:26px;height:26px;color:#14171f;display:block;}
+  .band.builders .name{margin:0;}
+
+  .note{font-size:12px;color:var(--muted);margin-top:36px;line-height:1.65;max-width:74ch;}
   code{font-family:var(--mono);background:rgba(212,176,114,.1);border:1px solid rgba(212,176,114,.25);padding:1px 6px;border-radius:6px;color:var(--gold);font-size:.9em;}
-  .pricecard{position:relative;border:1px solid var(--line);border-radius:16px;padding:18px 20px;background:linear-gradient(180deg,var(--panel),var(--bg2));margin-bottom:0;overflow:hidden;box-shadow:var(--shadow);}
-  .pricecard::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--green),transparent 70%);opacity:.55;}
-  .pc-head{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:var(--green);margin-bottom:14px;}
-  .pc-grid{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;}
-  .pc-field{flex:1;min-width:150px;}
-  .pc-field label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.11em;margin-bottom:6px;font-weight:600;}
-  .pc-inwrap{display:flex;align-items:center;gap:6px;background:var(--ink);border:1px solid var(--line2);border-radius:10px;padding:0 12px;transition:.15s;}
-  .pc-inwrap:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
-  .pc-inwrap span{color:var(--muted);font-size:15px;font-family:var(--mono);}
-  .pc-inwrap input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:20px;font-weight:600;padding:11px 0;width:100%;font-family:var(--mono);letter-spacing:-.01em;}
-  .pc-result{flex:1;min-width:150px;}
-  .pc-result .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.11em;margin-bottom:6px;font-weight:600;}
-  .pc-result .val{font-family:var(--mono);font-size:27px;font-weight:600;color:#fff;line-height:1;letter-spacing:-.02em;}
-  .pc-status{display:flex;align-items:center;gap:7px;font-size:12.5px;margin-top:10px;color:var(--muted);font-family:var(--mono);}
-  .pc-status .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
-  .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.6);} .dot.warn{background:var(--amber);} .dot.err{background:var(--red);}
-  .pc-note{font-size:12px;color:var(--faint);margin-top:12px;line-height:1.5;}
+
+  @media(max-width:640px){
+    body{padding:26px 16px 60px;}
+    /* Tool tiles go single-file, but the builders stay 2-up: they are logo-led and short, and
+       nine full-width cards is a lot of thumb for no extra clarity. */
+    .grid{grid-template-columns:1fr;}
+    .band.builders .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+    h1{font-size:23px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;}}
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="mast">
+<main class="wrap">
+
+  <header class="mast">
+    <div class="ident">
       <div class="monogram">BK</div>
       <div>
         <h1>TCG Listing Tools</h1>
-        <p class="sub">Pick a builder — card data is proxied through this dev server, so lookups just work.</p>
+        <p class="sub">Everything for the shop in one place. Card data comes through this server, so lookups just work.</p>
+        <p class="status" id="status" hidden></p>
       </div>
     </div>
-    <div class="cols">
-     <div class="col">
-    <div class="pricecard">
-      <div class="pc-head">eBay AU pricing &middot; back out your list price</div>
-      <div class="pc-grid">
-        <div class="pc-field">
-          <label>Buyer pays (target total)</label>
-          <div class="pc-inwrap"><span>A$</span><input id="pc_target" type="number" step="0.01" min="0" value="25.00"></div>
-        </div>
-        <div class="pc-result">
-          <div class="lbl">List item for</div>
-          <div class="val" id="pc_list">A$22.92</div>
-          <div class="pc-status"><span class="dot ok" id="pc_dot"></span><span id="pc_statustext">Exact</span></div>
-        </div>
+    <section class="counter" aria-labelledby="ctr-h">
+      <h2 class="ctr-head" id="ctr-h">eBay AU &middot; back out your list price</h2>
+      <div class="ctr-row">
+        <label class="ctr-lbl" for="pc_target">Buyer pays</label>
+        <span class="leader" aria-hidden="true"></span>
+        <span class="ctr-in"><span aria-hidden="true">A$</span><input id="pc_target" type="number" step="0.01" min="0" value="25.00" inputmode="decimal" aria-label="Target total the buyer pays, in Australian dollars"></span>
       </div>
-      <div class="pc-note" id="pc_note">Buyer’s total includes eBay’s buyer protection fee (A$0.30 + tiered %). Some round totals aren’t reachable — you’ll get the closest.</div>
+      <div class="ctr-row">
+        <span class="ctr-lbl">List item for</span>
+        <span class="leader" aria-hidden="true"></span>
+        <output class="ctr-val" id="pc_list" for="pc_target">A$22.92</output>
+      </div>
+      <p class="ctr-status"><span class="dot ok" id="pc_dot"></span><span id="pc_statustext">Exact</span></p>
+      <p class="ctr-note" id="pc_note">Buyer&rsquo;s total includes eBay&rsquo;s buyer protection fee (A$0.30 + tiered %). Some round totals aren&rsquo;t reachable, so you&rsquo;ll get the closest.</p>
+    </section>
+  </header>
+
+  <form class="finder" role="search" style="--d:.05s" onsubmit="return false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10.6" cy="10.6" r="6.4"/><path d="m15.4 15.4 4.4 4.4"/></svg>
+    <input id="find" type="search" placeholder="Filter tools" aria-label="Filter tools" autocomplete="off" spellcheck="false">
+    <span class="tally" id="tally" role="status" aria-live="polite">25 tools</span>
+    <kbd aria-hidden="true">/</kbd>
+  </form>
+
+  <p class="empty" id="empty" hidden></p>
+
+  <!-- ============================ LISTING ============================ -->
+  <section class="band" aria-labelledby="b-list" style="--d:.10s">
+    <div class="rule"><h2 id="b-list">Listing</h2><span class="hair"></span><span class="cnt">05</span></div>
+    <div class="grid">
+
+      <a class="tool t-upload" href="/stock-uploader.html" data-find="publish live ebay one card pokemon magic sell inventory api">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4v10.2M12 3.4 8.8 6.6M12 3.4l3.2 3.2"/><path d="M3.6 13.6v4.1a2.3 2.3 0 0 0 2.3 2.3h12.2a2.3 2.3 0 0 0 2.3-2.3v-4.1"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">One card &middot; live</span>
+          <h3 class="name">eBay Stock Uploader</h3>
+          <span class="desc">Pick a card, check the price, one button puts it live on eBay and into stock.</span>
+        </span>
+      </a>
+
+      <a class="tool t-runner" href="/stock-runner.html" data-find="batch pile bulk run box break quantity pokemon magic publish">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="11.4" height="13.4" rx="2"/><path d="M7.2 3.6h8.6A2.2 2.2 0 0 1 18 5.8v8.6"/><path d="m14.6 17.2 2 2 3.8-4.3"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Many cards &middot; one run</span>
+          <h3 class="name">Batch Runner</h3>
+          <span class="desc">Lock a set, type numbers down the stack, prices fill in behind you. Publish the lot.</span>
+        </span>
+      </a>
+
+      <a class="tool" href="/listings.html" data-find="active ended sold table shelf value filter search seller hub">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.9 6.6h1.7M3.9 12h1.7M3.9 17.4h1.7"/><path d="M9.2 6.6h10.9M9.2 12h10.9M9.2 17.4h7.2"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Live on eBay</span>
+          <h3 class="name">eBay Listings</h3>
+          <span class="desc">Every listing you have, active, ended or sold, in one filterable table.</span>
+        </span>
+      </a>
+
+      <a class="tool" href="/listing-match.html" data-find="hand made seller hub titles link stock proposals apply">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.2 13.8a4 4 0 0 1 0-5.6l2.1-2.1a4 4 0 0 1 5.6 5.6l-1 1"/><path d="M13.8 10.2a4 4 0 0 1 0 5.6l-2.1 2.1a4 4 0 0 1-5.6-5.6l1-1"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Hand made listings</span>
+          <h3 class="name">Match eBay Listings</h3>
+          <span class="desc">Ties your hand made Seller Hub listings back to real cards. Proposals only until you apply.</span>
+        </span>
+      </a>
+
+      <a class="tool t-lab" href="/listing-image-lab.html" data-find="photo gallery thumbnail square crop rails branded 1600 compositor">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="2.4"/><rect x="9.4" y="6.6" width="5.2" height="10.8" rx="1.1"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Gallery images</span>
+          <h3 class="name">Listing Image Lab</h3>
+          <span class="desc">Tune the branded 1600px image so eBay&rsquo;s square crop stops eating your card.</span>
+        </span>
+      </a>
+
     </div>
-    <div class="cards">
-      <a class="tool inv" href="/stock-uploader.html">
-        <div class="eyebrow">List &middot; Stock Uploader</div>
-        <div class="name">🚀 eBay Stock Uploader</div>
-        <div class="desc">Pick a Pok&eacute;mon or Magic card, verify the eBay-AU price &amp; Best-Offer terms, hit one button — it publishes live to your eBay store and into inventory. Sales auto-decrement stock. Run the one-time setup in Settings first.</div>
+  </section>
+
+  <!-- ============================ BUILDERS ============================ -->
+  <section class="band builders" aria-labelledby="b-build" style="--d:.15s">
+    <div class="rule"><h2 id="b-build">Builders</h2><span class="hair"></span><span class="cnt">09</span></div>
+    <div class="grid">
+
+      <a class="tool t-rb" href="/riftbound-listing-builder.html" data-find="riftbound league of legends lol scrydex riftscribe builder">
+        <span class="logo"><img src="/logos/riftbound.svg" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">Riftbound</h3>
+          <span class="desc">Every released set offline with market price. Riftscribe and Scrydex optional.</span>
+        </span>
       </a>
-      <a class="tool inv" href="/stock-runner.html">
-        <div class="eyebrow">List &middot; Batch</div>
-        <div class="name">⚡ Batch Runner</div>
-        <div class="desc">List a whole pile in one sitting, Pok&eacute;mon or Magic. Lock a set, type card numbers straight down the stack (or tick off a box break), and eBay-AU prices fill in behind you. Scan one column, fix the flagged rows, publish the lot. Several copies of a card become one listing with quantity N.</div>
+
+      <a class="tool t-swu" href="/swu-listing-builder.html" data-find="star wars unlimited swu swudb builder">
+        <span class="logo"><img src="/logos/swu.png" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">Star Wars: Unlimited</h3>
+          <span class="desc">Live card data from swu-db across all seven sets.</span>
+        </span>
       </a>
-      <a class="tool inv" href="/listings.html">
-        <div class="eyebrow">List &middot; Live</div>
-        <div class="name">📋 eBay Listings</div>
-        <div class="desc">Everything on your eBay account in one table — active, ended and sold, listed here or made by hand. Filter, search, see shelf value, re-check a listing against eBay, and spot which ones aren&rsquo;t linked to stock yet.</div>
+
+      <a class="tool t-lorcana" href="/lorcana-listing-builder.html" data-find="disney lorcana lorcast pricecharting builder">
+        <span class="logo"><img src="/logos/lorcana.png" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">Disney Lorcana</h3>
+          <span class="desc">Live cards, art and daily prices from Lorcast.</span>
+        </span>
       </a>
-      <a class="tool inv" href="/listing-match.html">
-        <div class="eyebrow">List &middot; Match</div>
-        <div class="name">🔗 Match eBay Listings</div>
-        <div class="desc">Your hand-made Seller Hub listings are invisible to the Inventory API, so the tool never knew about them. Import them in Settings, then match each title to a real card here — proposals only, nothing is written until you apply.</div>
+
+      <a class="tool t-op" href="/onepiece-listing-builder.html" data-find="one piece optcg tcgplayer parallel art variant builder">
+        <span class="logo"><img src="/logos/onepiece.svg" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">One Piece</h3>
+          <span class="desc">Live cards, art variants and TCGplayer market price.</span>
+        </span>
       </a>
-      <a class="tool inv" href="/listing-image-lab.html">
-        <div class="eyebrow">List &middot; Images</div>
-        <div class="name">🖼️ Listing Image Lab</div>
-        <div class="desc">eBay crops every gallery thumbnail to a square, so a portrait card gets letterboxed and eBay decides what fills the gaps. Fill them yourself: card centred, branded rails either side. Drop a real scan in, drag the sliders, and check it at the size that actually sells.</div>
+
+      <a class="tool t-pkm" href="/pokemon-listing-builder.html" data-find="pokemon pokemontcg.io japanese jp english builder">
+        <span class="logo"><img src="/logos/pokemon.svg" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">Pok&eacute;mon</h3>
+          <span class="desc">Live card data from pokemontcg.io, every set.</span>
+        </span>
       </a>
-      <a class="tool cat" href="/catalog.html">
-        <div class="eyebrow">Catalog &middot; Explore</div>
-        <div class="name">🗂️ Set &amp; Card Catalog</div>
-        <div class="desc">Browse every indexed Pok&eacute;mon set (EN live + JP/CN/KO baked), drill into cards with prices, see coverage &amp; freshness per source, and spot what you already own. More games to come.</div>
+
+      <a class="tool t-mtg" href="/mtg-listing-builder.html" data-find="magic the gathering mtg scryfall borderless printing builder">
+        <span class="logo"><img src="/logos/mtg.svg" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">Magic: The Gathering</h3>
+          <span class="desc">Live from Scryfall, every set and every printing.</span>
+        </span>
       </a>
-      <a class="tool inv" href="/inventory.html">
-        <div class="eyebrow">Inventory &middot; Binders Keepers</div>
-        <div class="name">📇 Graded Card Inventory</div>
-        <div class="desc">Track graded-card stock, cost basis &amp; live P/L, on-demand graded valuation (PriceCharting + eBay sold), and the grading-submission pipeline. Groundwork for an eBay/Shopify source of truth.</div>
+
+      <a class="tool t-lego" href="/lego-listing-builder.html" data-find="lego sets rebrickable brickset bricklink builder">
+        <span class="logo"><img src="/logos/lego.svg" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">LEGO</h3>
+          <span class="desc">Rebrickable and Brickset lookup with real BrickLink pricing.</span>
+        </span>
       </a>
-      <a class="tool inv" href="/sealed.html">
-        <div class="eyebrow">Inventory &middot; Sealed Product</div>
-        <div class="name">📦 Sealed Product Inventory</div>
-        <div class="desc">Track sealed Pok&eacute;mon / MTG / Riftbound stock (booster boxes, ETBs, bundles, tins, cases&hellip;), cost basis &amp; live value (PriceCharting + eBay), with a barcode-scanner bulk import that resolves UPCs to product + price.</div>
+
+      <a class="tool t-funko" href="/funko-listing-builder.html" data-find="funko pop vinyl figure ebay comps builder">
+        <span class="logo"><img src="/logos/funko.svg" alt="" aria-hidden="true"></span>
+        <span class="tt">
+          <h3 class="name">Funko Pop!</h3>
+          <span class="desc">Offline name and series catalog with live eBay AU comps.</span>
+        </span>
       </a>
-      <a class="tool grade" href="/card-grader.html">
-        <div class="eyebrow">Pre-grading &middot; PSA / BGS / CGC / SGC / TAG</div>
-        <div class="name">🔬 Card Pre-Grader</div>
-        <div class="desc">Upload photos or capture from a USB microscope → measured centering + AI condition pass → predicted grade per company, value-at-grade, and a "worth grading?" verdict. Estimate only, not a guarantee.</div>
+
+      <a class="tool t-bulk" href="/bulk-listing-builder.html" data-find="bulk multi game whole set commons collectr csv file exchange export">
+        <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="3.4" y="3.4" width="7.4" height="7.4" rx="1.6"/><rect x="13.2" y="3.4" width="7.4" height="7.4" rx="1.6"/><rect x="3.4" y="13.2" width="7.4" height="7.4" rx="1.6"/><rect x="13.2" y="13.2" width="7.4" height="7.4" rx="1.6"/></svg></span>
+        <span class="tt">
+          <h3 class="name">Bulk &middot; multi-game</h3>
+          <span class="desc">Enumerate a whole set or import a Collectr CSV, then export eBay File Exchange.</span>
+        </span>
       </a>
-      <a class="tool trk" href="/tracker.html">
-        <div class="eyebrow">Price Tracker &middot; All games</div>
-        <div class="name">💹 Price Tracker</div>
-        <div class="desc">Cached prices, historical trends, and buy/downtrend signals across your watchlist. Add cards from any builder.</div>
-      </a>
-      <a class="tool ship" href="/shipping-label.html">
-        <div class="eyebrow">Shipping &middot; Thermal labels</div>
-        <div class="name">🏷️ Shipping Label Maker</div>
-        <div class="desc">Paste an eBay address → print-ready 50×30 mm PDF for AUSPRINT. Strips the junk lines, auto-fits the font, batches multiple orders into one file.</div>
-      </a>
-      <a class="tool ship" href="/pdf-print.html">
-        <div class="eyebrow">Print &middot; Thermal labels</div>
-        <div class="name">📄 PDF Label Printer</div>
-        <div class="desc">Drop any PDF → rasterises each page and prints straight to the AUSPRINT over the network, no vendor app. Uses the PDF's page size as the label size, or force-fits to a stock.</div>
-      </a>
-      <a class="tool ship" href="/orders.html">
-        <div class="eyebrow">Fulfilment &middot; Orders &amp; dispatch</div>
-        <div class="name">📬 Order Fulfilment</div>
-        <div class="desc">Every eBay order to pack in one place — one-tap packing slips &amp; address labels to the AUSPRINT, a location-sorted pick sheet for the whole run, and Mark shipped that dispatches on eBay.</div>
-      </a>
-      <a class="tool ps" href="/postsale.html">
-        <div class="eyebrow">Post-Sale &middot; Buyer CRM</div>
-        <div class="name">💌 Post-Sale Messenger</div>
-        <div class="desc">Every eBay sale in one place — buyers, orders &amp; a personalized thank-you the AI drafts for you. Sale + &ldquo;to pack today&rdquo; alerts, repeat-buyer history, and (soon) auto-messaging with a human handoff on reply.</div>
-      </a>
-      <a class="tool sys" href="/settings.html">
-        <div class="eyebrow">System &middot; Settings &amp; Status</div>
-        <div class="name">⚙️ Settings &amp; Status</div>
-        <div class="desc">One page for the whole suite: API-key presence &amp; source health (with on-demand probes), baked-data freshness, DB &amp; subsystem state, and editable tracker / repricer / pricing / refresh settings.</div>
-      </a>
-     </div>
-     </div>
-     <div class="col">
-     <div class="cards">
-      <a class="tool game rb" href="/riftbound-listing-builder.html">
-        <div class="logo"><img src="/logos/riftbound.svg" alt="Riftbound / League of Legends"></div>
-        <div class="tooltext">
-          <div class="eyebrow">Riftbound &middot; League of Legends</div>
-          <div class="name">Riftbound Listing Builder</div>
-          <div class="desc">Keyless offline data for every released set, with market price. Live Riftscribe and Scrydex optional.</div>
-        </div>
-      </a>
-      <a class="tool game swu" href="/swu-listing-builder.html">
-        <div class="logo"><img src="/logos/swu.png" alt="Star Wars: Unlimited"></div>
-        <div class="tooltext">
-          <div class="eyebrow">Star Wars: Unlimited</div>
-          <div class="name">SWU Listing Builder</div>
-          <div class="desc">Live card data via swu-db across all seven released sets.</div>
-        </div>
-      </a>
-      <a class="tool game lorcana" href="/lorcana-listing-builder.html">
-        <div class="logo"><img src="/logos/lorcana.png" alt="Disney Lorcana"></div>
-        <div class="tooltext">
-          <div class="eyebrow">Disney Lorcana</div>
-          <div class="name">Lorcana Listing Builder</div>
-          <div class="desc">Live card data, images &amp; daily prices via Lorcast across all sets.</div>
-        </div>
-      </a>
-      <a class="tool game onepiece" href="/onepiece-listing-builder.html">
-        <div class="logo"><img src="/logos/onepiece.svg" alt="One Piece Card Game"></div>
-        <div class="tooltext">
-          <div class="eyebrow">One Piece Card Game</div>
-          <div class="name">One Piece Listing Builder</div>
-          <div class="desc">Live card data, art variants &amp; TCGplayer market price via the OPTCG API.</div>
-        </div>
-      </a>
-      <a class="tool game pkm" href="/pokemon-listing-builder.html">
-        <div class="logo"><img src="/logos/pokemon.svg" alt="Pok&eacute;mon TCG"></div>
-        <div class="tooltext">
-          <div class="eyebrow">Pok&eacute;mon TCG</div>
-          <div class="name">Pok&eacute;mon Listing Builder</div>
-          <div class="desc">Live card data via pokemontcg.io across every set.</div>
-        </div>
-      </a>
-      <a class="tool game mtg" href="/mtg-listing-builder.html">
-        <div class="logo"><img src="/logos/mtg.svg" alt="Magic: The Gathering"></div>
-        <div class="tooltext">
-          <div class="eyebrow">Magic: The Gathering</div>
-          <div class="name">Magic Listing Builder</div>
-          <div class="desc">Live card data via Scryfall across every set and printing.</div>
-        </div>
-      </a>
-      <a class="tool game lego" href="/lego-listing-builder.html">
-        <div class="logo"><img src="/logos/lego.svg" alt="LEGO"></div>
-        <div class="tooltext">
-          <div class="eyebrow">LEGO &middot; Sets</div>
-          <div class="name">LEGO Listing Builder</div>
-          <div class="desc">Set lookup via Rebrickable + Brickset, with real new/used pricing from BrickLink.</div>
-        </div>
-      </a>
-      <a class="tool game funko" href="/funko-listing-builder.html">
-        <div class="logo"><img src="/logos/funko.svg" alt="Funko Pop!"></div>
-        <div class="tooltext">
-          <div class="eyebrow">Funko Pop! &middot; Vinyl</div>
-          <div class="name">Funko Pop! Listing Builder</div>
-          <div class="desc">Offline name/series catalog + manual flags, with live eBay AU price comps.</div>
-        </div>
-      </a>
-      <a class="tool game" href="/bulk-listing-builder.html">
-        <div class="logo" style="font-size:26px;display:flex;align-items:center;justify-content:center;">&#128230;</div>
-        <div class="tooltext">
-          <div class="eyebrow">Bulk &middot; Multi-game</div>
-          <div class="name">Bulk Listing Builder</div>
-          <div class="desc">Enumerate a whole set (commons/uncommons + holo variants) or import a Collectr portfolio CSV &rarr; price &rarr; eBay File Exchange CSV.</div>
-        </div>
-      </a>
-     </div>
-     </div>
+
     </div>
-    <div class="note">Riftbound's Scrydex lookups need <code>SCRYDEX_API_KEY</code> and <code>SCRYDEX_TEAM_ID</code> in your <code>.env</code>. SWU needs nothing. LEGO uses <code>REBRICKABLE_API_KEY</code> / <code>BRICKSET_API_KEY</code> / BrickLink keys; Funko pricing uses <code>EBAY_APP_ID</code> / <code>EBAY_CERT_ID</code>. Every builder works for manual entry with no setup.<br><br>Heads-up: the price calculator above backs out the eBay <b>buyer-protection fee assuming free postage</b> — for large LEGO sets sold with <b>calculated postage</b> it won't include the postage component.</div>
-  </div>
+  </section>
+
+  <!-- ============================ STOCK ============================ -->
+  <section class="band" aria-labelledby="b-stock" style="--d:.20s">
+    <div class="rule"><h2 id="b-stock">Stock</h2><span class="hair"></span><span class="cnt">04</span></div>
+    <div class="grid">
+
+      <a class="tool" href="/catalog.html" data-find="catalog browse sets cards coverage freshness indexed owned explore">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.8a2 2 0 0 1 2-2h3.9l1.6 2.1H18a2 2 0 0 1 2 2v8.3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8.2 12.4h7.6M8.2 15.6h4.8"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Sets &amp; cards</span>
+          <h3 class="name">Set &amp; Card Catalog</h3>
+          <span class="desc">Browse every indexed set and card, with prices, source coverage and what you own.</span>
+        </span>
+      </a>
+
+      <a class="tool" href="/inventory.html" data-find="graded slab psa bgs cgc cost basis profit loss submission binders keepers stock">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.6" y="2.7" width="12.8" height="18.6" rx="2.4"/><path d="M5.6 8.6h12.8"/><path d="M8.6 5.6h6.8"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Binders Keepers</span>
+          <h3 class="name">Graded Card Inventory</h3>
+          <span class="desc">Graded stock, cost basis and live P/L, plus the grading submission pipeline.</span>
+        </span>
+      </a>
+
+      <a class="tool" href="/sealed.html" data-find="sealed booster box etb bundle tin case barcode scanner upc pricecharting">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 7.7 12 3.5l8.4 4.2v8.6L12 20.5l-8.4-4.2z"/><path d="M12 12.1v8.4M3.6 7.7 12 12.1l8.4-4.4"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Boxes &amp; ETBs</span>
+          <h3 class="name">Sealed Product Inventory</h3>
+          <span class="desc">Boxes, ETBs, bundles and tins, with a barcode scanner for bulk intake.</span>
+        </span>
+      </a>
+
+      <a class="tool" href="/locations.html" data-find="storage locations spots shelves boxes where photos contents">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2a4.3 4.3 0 0 1 4.3 4.3c0 3.2-4.3 7.2-4.3 7.2s-4.3-4-4.3-7.2A4.3 4.3 0 0 1 12 3.2z"/><circle cx="12" cy="7.5" r="1.4"/><path d="M3.8 18.2h16.4M3.8 21h16.4"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Where it lives</span>
+          <h3 class="name">Storage Locations</h3>
+          <span class="desc">Spots, notes, photos and contents, so you can actually find the thing you sold.</span>
+        </span>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- ====================== PRICING & GRADING ====================== -->
+  <section class="band" aria-labelledby="b-price" style="--d:.25s">
+    <div class="rule"><h2 id="b-price">Pricing &amp; grading</h2><span class="hair"></span><span class="cnt">02</span></div>
+    <div class="grid">
+
+      <a class="tool t-grade" href="/card-grader.html" data-find="pre grading psa bgs cgc sgc tag centering microscope scope predicted grade worth grading">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.7 8.4V5.6a1.9 1.9 0 0 1 1.9-1.9h2.8"/><path d="M20.3 8.4V5.6a1.9 1.9 0 0 0-1.9-1.9h-2.8"/><circle cx="12" cy="12.9" r="4"/><path d="m14.9 15.8 3 3"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">PSA &middot; BGS &middot; CGC &middot; SGC &middot; TAG</span>
+          <h3 class="name">Card Pre-Grader</h3>
+          <span class="desc">Photos or a USB scope in, predicted grade per company and value at grade out.</span>
+        </span>
+      </a>
+
+      <a class="tool" href="/tracker.html" data-find="price tracker watchlist trends history buy signal downtrend momentum opportunity">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.7 3.7v16.6h16.6"/><path d="m7.2 15.6 3.6-4.3 3 2.6 4.9-6"/><path d="M18.7 7.9h1.9V9.8"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">All games</span>
+          <h3 class="name">Price Tracker</h3>
+          <span class="desc">Cached prices, historical trends and buy signals across your watchlist.</span>
+        </span>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- ============================ FULFILMENT ============================ -->
+  <section class="band" aria-labelledby="b-ful" style="--d:.30s">
+    <div class="rule"><h2 id="b-ful">Fulfilment</h2><span class="hair"></span><span class="cnt">04</span></div>
+    <div class="grid">
+
+      <a class="tool" href="/orders.html" data-find="orders to pack packing slip pick sheet dispatch mark shipped fulfilment queue">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="4.4" width="14.8" height="16.2" rx="2.1"/><path d="M9.1 4.4V3.3a1 1 0 0 1 1-1h3.8a1 1 0 0 1 1 1v1.1"/><path d="m8.5 12.1 2 2 4.4-4.6"/><path d="M8.5 17.5h6.9"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Pack &amp; dispatch</span>
+          <h3 class="name">Order Fulfilment</h3>
+          <span class="desc">Today&rsquo;s pack queue, packing slips, address labels and Mark shipped.</span>
+        </span>
+      </a>
+
+      <a class="tool t-ship" href="/shipping-label.html" data-find="shipping address label thermal ausprint 50x30 100x50 pdf print post">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.7 3.5H19a1.6 1.6 0 0 1 1.6 1.6v6.3a1.6 1.6 0 0 1-.47 1.13l-7.3 7.3a1.6 1.6 0 0 1-2.26 0l-6.3-6.3a1.6 1.6 0 0 1 0-2.26l7.3-7.3a1.6 1.6 0 0 1 1.13-.47z"/><circle cx="16.3" cy="7.7" r="1.3"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Thermal &middot; 50&times;30</span>
+          <h3 class="name">Shipping Label Maker</h3>
+          <span class="desc">Paste an eBay address, get a print ready label for the AUSPRINT.</span>
+        </span>
+      </a>
+
+      <a class="tool t-ship" href="/pdf-print.html" data-find="pdf print rasterise thermal ausprint australia post 100x150 label network">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.9 9.1V4.3a.9.9 0 0 1 .9-.9h8.4a.9.9 0 0 1 .9.9v4.8"/><path d="M17.1 16.9h2.5a1.6 1.6 0 0 0 1.6-1.6v-4.6a1.6 1.6 0 0 0-1.6-1.6H4.4a1.6 1.6 0 0 0-1.6 1.6v4.6a1.6 1.6 0 0 0 1.6 1.6h2.5"/><rect x="6.9" y="13.7" width="10.2" height="6.9" rx="1.2"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Thermal &middot; any PDF</span>
+          <h3 class="name">PDF Label Printer</h3>
+          <span class="desc">Drop any PDF and it prints straight to the AUSPRINT, no vendor app.</span>
+        </span>
+      </a>
+
+      <a class="tool" href="/postsale.html" data-find="post sale buyer crm thank you message ai draft repeat feedback">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="5.6" width="14.4" height="11.8" rx="2"/><path d="m2.8 7.5 6.4 4.3a2 2 0 0 0 2.2 0l6.4-4.3"/><path d="M19.9 2.7v3.4M18.2 4.4h3.4"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Buyer CRM</span>
+          <h3 class="name">Post-Sale Messenger</h3>
+          <span class="desc">Buyers, orders and a thank you the AI drafts for you to approve.</span>
+        </span>
+      </a>
+
+    </div>
+  </section>
+
+  <!-- ============================ SYSTEM ============================ -->
+  <section class="band" aria-labelledby="b-sys" style="--d:.35s">
+    <div class="rule"><h2 id="b-sys">System</h2><span class="hair"></span><span class="cnt">01</span></div>
+    <div class="grid">
+
+      <a class="tool" href="/settings.html" data-find="settings status system console api keys health probes baked data refresh config database">
+        <span class="well" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.8 7.6h6M14.2 7.6h6M3.8 16.4h10.4M18.4 16.4h1.8"/><circle cx="12" cy="7.6" r="2.2"/><circle cx="16.2" cy="16.4" r="2.2"/></svg></span>
+        <span class="tt">
+          <span class="eyebrow">Keys &middot; health &middot; config</span>
+          <h3 class="name">Settings &amp; Status</h3>
+          <span class="desc">Keys, source health, baked data freshness and every subsystem in one place.</span>
+        </span>
+      </a>
+
+    </div>
+  </section>
+
+  <p class="note" style="--d:.40s">
+    Riftbound&rsquo;s Scrydex lookups need <code>SCRYDEX_API_KEY</code> and <code>SCRYDEX_TEAM_ID</code> in your <code>.env</code>. SWU needs nothing. LEGO uses <code>REBRICKABLE_API_KEY</code> / <code>BRICKSET_API_KEY</code> / BrickLink keys, and Funko pricing uses <code>EBAY_APP_ID</code> / <code>EBAY_CERT_ID</code>. Every builder still works for manual entry with no setup.<br><br>
+    Heads-up: the counter above backs out the eBay <b>buyer protection fee assuming free postage</b>, so for large LEGO sets sold with <b>calculated postage</b> it won&rsquo;t include the postage component.
+  </p>
+
+</main>
+
 <script type="module">
 // Fee math lives in lib/fees.mjs (single source — also used by lib/pricing.mjs).
 // Module script = deferred, so the elements below exist when this runs.
-import { totalFromList, pcSolve } from '/lib/fees.mjs';
-function pcFmt(n){return 'A$'+(Math.round(n*100)/100).toFixed(2);}
-function pcRender(){
-  var T=parseFloat(document.getElementById('pc_target').value);
-  var list=document.getElementById('pc_list'),dot=document.getElementById('pc_dot'),stat=document.getElementById('pc_statustext'),note=document.getElementById('pc_note');
-  if(!(T>0)){list.textContent='—';dot.className='dot err';stat.textContent='Enter an amount';note.textContent='';return;}
-  var r=pcSolve(T);
-  list.textContent=pcFmt(r.L);
-  if(r.diff===0){dot.className='dot ok';stat.textContent='Exact';note.textContent='Buyer pays '+pcFmt(r.tot)+' including the fee.';}
-  else{dot.className='dot warn';stat.textContent='Closest';note.textContent='Exact '+pcFmt(T)+' isn’t reachable — buyer pays '+pcFmt(r.tot)+' ('+(r.diff>0?'+':'')+(r.diff/100).toFixed(2)+').';}
+import { pcSolve } from '/lib/fees.mjs';
+
+// ---- the counter ----------------------------------------------------------
+const pcFmt = (n) => 'A$' + (Math.round(n * 100) / 100).toFixed(2);
+const target = document.getElementById('pc_target');
+const out = document.getElementById('pc_list'), dot = document.getElementById('pc_dot');
+const stat = document.getElementById('pc_statustext'), note = document.getElementById('pc_note');
+function pcRender() {
+  const T = parseFloat(target.value);
+  if (!(T > 0)) { out.textContent = '—'; dot.className = 'dot err'; stat.textContent = 'Enter an amount'; note.textContent = ''; return; }
+  const r = pcSolve(T);
+  out.textContent = pcFmt(r.L);
+  if (r.diff === 0) { dot.className = 'dot ok'; stat.textContent = 'Exact'; note.textContent = 'Buyer pays ' + pcFmt(r.tot) + ' including the fee.'; }
+  else { dot.className = 'dot warn'; stat.textContent = 'Closest'; note.textContent = 'Exact ' + pcFmt(T) + ' isn’t reachable, so the buyer pays ' + pcFmt(r.tot) + ' (' + (r.diff > 0 ? '+' : '') + (r.diff / 100).toFixed(2) + ').'; }
 }
-document.getElementById('pc_target').addEventListener('input',pcRender);
+target.addEventListener('input', pcRender);
 pcRender();
+
+// ---- the finder -----------------------------------------------------------
+// Every tile carries data-find with the words nobody puts in a title (game codes, "psa",
+// "to pack"), and the visible text is folded in too, so one haystack covers both.
+const tiles = [...document.querySelectorAll('a.tool')];
+const bands = [...document.querySelectorAll('section.band')];
+const find = document.getElementById('find'), tally = document.getElementById('tally'), empty = document.getElementById('empty');
+const hay = new WeakMap();
+for (const t of tiles) hay.set(t, ((t.dataset.find || '') + ' ' + t.textContent + ' ' + t.getAttribute('href')).toLowerCase().replace(/[\s/._-]+/g, ' '));
+const pad = (n) => String(n).padStart(2, '0');
+
+function apply() {
+  const q = find.value.trim().toLowerCase();
+  const terms = q ? q.split(/\s+/) : [];
+  let shown = 0;
+  for (const t of tiles) {
+    const hit = terms.every((w) => hay.get(t).includes(w));
+    t.hidden = !hit;
+    if (hit) shown++;
+  }
+  for (const b of bands) {
+    const n = b.querySelectorAll('a.tool:not([hidden])').length;
+    b.hidden = n === 0;
+    b.querySelector('.cnt').textContent = pad(n);
+  }
+  tally.textContent = q ? shown + ' of ' + tiles.length : tiles.length + ' tools';
+  empty.hidden = !(q && shown === 0);
+  if (!empty.hidden) empty.textContent = 'Nothing matches “' + find.value.trim() + '”.';
+}
+find.addEventListener('input', apply);
+find.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); const first = tiles.find((t) => !t.hidden); if (first) location.href = first.getAttribute('href'); }
+  if (e.key === 'Escape') { find.value = ''; apply(); find.blur(); }
+});
+addEventListener('keydown', (e) => {
+  if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/^(input|textarea|select)$/i.test(e.target.tagName) || e.target.isContentEditable) return;
+  e.preventDefault(); find.focus(); find.select();
+});
+apply();
+
+// ---- the status line ------------------------------------------------------
+// /api/status is a heavy aggregate (every DB + every baked file), so it is fired after the
+// page is up and never blocks it. It is passive — billed probes are a separate explicit POST.
+// Anything missing or broken just leaves the line hidden.
+const statusEl = document.getElementById('status');
+function paintStatus(j) {
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const states = Object.values(j.sources || {}).map((s) => s && s.state).filter(Boolean);
+  const bad = states.filter((s) => s !== 'ok' && s !== 'unknown').length;
+  const facts = [];
+  let tone = 'ok';
+  // "sources ok" not "all sources up": most sources sit at 'unknown' until something exercises
+  // them, so the only honest claim is that nothing has reported an error.
+  if (bad) { tone = 'warn'; facts.push(bad === 1 ? '1 source needs a look' : bad + ' sources need a look'); }
+  else if (states.includes('ok')) facts.push('sources ok');
+  const toPack = num(j.dbs?.postsale?.to_pack), listed = num(j.dbs?.inventory?.ebay_listings_active), held = num(j.dbs?.inventory?.items);
+  if (toPack != null) facts.push(toPack + ' to pack');
+  if (listed != null) facts.push(listed + ' listed');
+  if (held != null) facts.push(held + ' in stock');
+  if (!facts.length) return;
+  statusEl.replaceChildren(Object.assign(document.createElement('span'), { className: 'dot ' + tone }), document.createTextNode(facts.join(' · ')));
+  statusEl.hidden = false;
+}
+// The timeout matters: a hidden or background tab never reports an idle period, so a bare
+// requestIdleCallback would leave the line blank until you looked at the tab.
+const later = window.requestIdleCallback
+  ? (f) => window.requestIdleCallback(f, { timeout: 1500 })
+  : (f) => setTimeout(f, 500);
+later(() => { fetch('/api/status').then((r) => (r.ok ? r.json() : null)).then((j) => { if (j) paintStatus(j); }).catch(() => {}); });
 </script>
 </body>
 </html>
