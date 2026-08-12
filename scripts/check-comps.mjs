@@ -75,6 +75,19 @@ console.log('\n[singlesFilter — number + junk + language + finish]');
   // finish split
   const foilRows = [{ title: 'Moonbreon 215/203 alt art foil' }, { title: 'Moonbreon 215/203 non-foil' }];
   assert('finish=foil drops the non-foil', singlesFilter(foilRows, { numberMatch: '215/203', lang: 'en', finish: 'foil' }).length === 1);
+
+  // Magic. Real eBay AU titles for a Magic single almost never carry the collector number, so a
+  // numberMatch throws the entire cluster away and the row comes back "no confident comps".
+  // compsNumberMatch('mtg', …) returns null for exactly this; these two lines are the before/after.
+  const mtgRows = [
+    { title: 'Smaug, the Golden - The Hobbit - MTG - NM Foil' },
+    { title: 'MTG Smaug the Golden Lord of the Rings Tales of Middle-earth Mythic' },
+    { title: 'Smaug the Golden PROXY custom card' },              // junk
+  ];
+  assert('numberMatch:"249" throws away every real Magic comp',
+    singlesFilter(mtgRows, { numberMatch: '249', lang: 'en', finish: null }).length === 0);
+  assert('numberMatch:null keeps the real ones and still drops the proxy',
+    singlesFilter(mtgRows, { numberMatch: null, lang: 'en', finish: null }).length === 2);
 }
 
 console.log('\n[isGraded — conditionId first]');
