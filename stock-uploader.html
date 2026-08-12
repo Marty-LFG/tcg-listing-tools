@@ -92,7 +92,7 @@
 <body>
 <div class="wrap">
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
-  <div class="tag">Pokémon TCG</div>
+  <div class="tag" id="gameTag">Pokémon TCG</div>
   <h1>eBay Stock Uploader</h1>
   <p class="sub">Pick a card, verify the price and offer terms, hit one button — it goes live on your eBay store and into inventory.</p>
 
@@ -103,6 +103,8 @@
     <div>
       <div class="card">
         <h3>1 · Pick the card</h3>
+        <label for="gameSel">Game</label>
+        <select id="gameSel" style="margin-bottom:12px;"></select>
         <div class="setrow"><label>Set <span id="setStatus" class="muted">loading…</span></label>
           <input id="setCode" autocomplete="off" placeholder="set name or code, e.g. PAR or Paradox Rift">
           <div id="setMenu" class="setmenu"></div>
@@ -118,7 +120,7 @@
         <h3>2 · Details</h3>
         <div class="row3">
           <div><label>Quantity</label><input id="qty" type="number" min="1" value="1"></div>
-          <div><label>Finish</label><select id="finish"><option>Holo</option><option>Reverse Holo</option><option>Non-holo</option><option>Foil</option></select></div>
+          <div><label>Finish</label><select id="finish"></select></div>
           <div><label>Condition</label><select id="condSel"><option value="raw">Ungraded</option><option value="graded">Graded</option></select></div>
         </div>
         <div class="row2" style="margin-top:10px;">
@@ -239,7 +241,12 @@
 <script src="/extras.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-const base='/api/pkm';
+// The active game. GA is its adapter (lib/stock-games.mjs) — every catalogue URL, the row shape and
+// the comps query come from there. Installed by the module shim at the bottom of this file, which
+// then calls boot(): this script is CLASSIC on purpose (its buttons use inline onclick= handlers,
+// which need global scope), so it cannot import, and a module runs after the document is parsed.
+let GAME='pokemon', GA=null;
+const GAME_KEY='tcg_stock_game';       // shared with stock-runner.html, so the two pages agree
 let SETS=[], setObj=null, card=null, priceInfo=null, savedItemId=null, savedKey='', photos=[], acctReady=false, connected=false;
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
 function stat(el,cls,msg){el.className='status '+cls;el.textContent=msg;}
@@ -257,8 +264,35 @@ async function checkAccount(){
 }
 function banner(html){ const b=$('setupBanner'); b.innerHTML=html; b.style.display='block'; }
 
+// ---- the game switcher ----
+// Switching drops the card on screen along with the set list: they belong to the other catalogue,
+// and a half-swapped page is how a Magic number gets looked up against a Pokémon set.
+function applyGameChrome(){
+  document.title='eBay Stock Uploader — '+GA.label;
+  $('gameTag').textContent=GA.tag;
+  $('setCode').placeholder=GAME==='mtg'?'set name or code, e.g. NEO or Kamigawa':'set name or code, e.g. PAR or Paradox Rift';
+  $('num').placeholder=GAME==='mtg'?'e.g. 249':'e.g. 25  or  199/165';
+  $('finish').innerHTML=GA.finishOptions.map(o=>'<option>'+esc(o)+'</option>').join('');
+}
+async function selectGame(g,opts){
+  opts=opts||{};
+  if(!opts.boot && g===GAME) return;
+  GAME=(window.TCG&&TCG.stockGames&&TCG.stockGames.ids.includes(g))?g:'pokemon';
+  GA=TCG.stockGames.adapterFor(GAME);
+  try{ localStorage.setItem(GAME_KEY,GAME); }catch(e){}
+  $('gameSel').value=GAME;
+  applyGameChrome();
+  card=null; setObj=null; SETS=[]; savedItemId=null; photos=[];
+  $('setCode').value=''; $('num').value='';
+  $('cardview').style.display='none'; $('stockBox').style.display='none';
+  for(const id of ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard']) $(id).style.display='none';
+  $('previewCard').style.display='none';
+  stat($('status'),'load','Pick a set, type a number, hit Look up.');
+  await loadSets();
+  if(!opts.boot) loadStoreCats();
+}
+
 // ---- set picker ----
-const SETS_CACHE='tcg_uploader_pkm_sets';
 function wireSetCombobox(){ TCG.setCombobox({input:$('setCode'),menu:$('setMenu'),items:()=>SETS,onPick:it=>{setObj=SETS.find(s=>s.value===it.value)||it;$('num').focus();}}); }
 // ── Mega Evolution Promo (mep) ──────────────────────────────────────────────────────────────────
 // A BAKED English set absent from pokemontcg.io AND PriceCharting: roster from TCGplayer, images
@@ -287,8 +321,10 @@ async function loadMep(){
   return MEP;
 }
 // Overlay the baked set on top of the live list — unless pokemontcg.io has since catalogued it, in
-// which case the live row wins and the overlay disappears on its own.
+// which case the live row wins and the overlay disappears on its own. POKÉMON ONLY: it is a baked
+// Pokémon roster and has no analogue in any other game's catalogue.
 function withOverlay(list){
+  if(GAME!=='pokemon') return list;
   const mep=mepSetRow();
   if(!mep) return list;
   const live=list.some(s=>String(s.value).toLowerCase()===String(mep.value).toLowerCase()
@@ -297,26 +333,26 @@ function withOverlay(list){
 }
 
 async function loadSets(){
-  loadMep();   // fire-and-forget: the cached copy lands immediately, the fetch refreshes behind it
-  // Cache sets in localStorage (like the builder) so a flaky pokemontcg.io moment doesn't leave the
+  const cacheKey=GA.setsCacheKey;
+  if(GAME==='pokemon') loadMep();   // fire-and-forget: the cached copy lands immediately, the fetch refreshes behind it
+  // Cache sets in localStorage (like the builder) so a flaky source moment doesn't leave the
   // picker empty — show the cache immediately, then refresh in the background.
-  try{ const cached=JSON.parse(localStorage.getItem(SETS_CACHE)||'null'); if(cached&&cached.length){ SETS=withOverlay(cached); $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); } }catch(e){}
+  try{ const cached=JSON.parse(localStorage.getItem(cacheKey)||'null'); if(cached&&cached.length){ SETS=withOverlay(cached); $('setStatus').textContent=SETS.length+' sets'; wireSetCombobox(); } }catch(e){}
   try{
-    const r=await TCG.fetchJson(base+'/sets?pageSize=500',{onRetry:n=>{ if(!SETS.length) $('setStatus').textContent='loading sets… (retry '+n+')'; }});
+    const r=await TCG.fetchJson(GA.setsUrl(),{onRetry:n=>{ if(!SETS.length) $('setStatus').textContent='loading sets… (retry '+n+')'; }});
     if(!r.ok) throw new Error('http '+r.status);
     const j=await r.json();
-    const list=(j.data||[]).map(s=>({value:s.id,label:s.name,code:(s.ptcgoCode||s.id||'').toUpperCase(),icon:(s.images&&s.images.symbol)||'',releaseDate:s.releaseDate}))
-      .sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||''));
-    // j.stale: the server served its cached copy because pokemontcg.io was down. Say so — a silently
+    const list=GA.setsFrom(j);
+    // j.stale: the server served its cached copy because the source was down. Say so — a silently
     // stale picker is how a brand-new set looks like a missing card.
     // Cache the LIVE list only — the overlay is re-applied on read, so a set that graduates to
     // pokemontcg.io stops being overlaid without anyone clearing localStorage.
-    if(list.length){ try{ localStorage.setItem(SETS_CACHE,JSON.stringify(list)); }catch(e){} SETS=withOverlay(list); $('setStatus').textContent=SETS.length+' sets'+(j.stale?' (cached — source down)':''); wireSetCombobox(); }
+    if(list.length){ try{ localStorage.setItem(cacheKey,JSON.stringify(list)); }catch(e){} SETS=withOverlay(list); $('setStatus').textContent=SETS.length+' sets'+(j.stale?' (cached — source down)':''); wireSetCombobox(); }
     else if(!SETS.length){ $('setStatus').textContent='no sets (source flaky) — retry'; }
   }catch(e){ if(!SETS.length) $('setStatus').textContent='sets failed (source down) — retry'; }
 }
 
-// ---- card lookup (EN, pokemontcg.io) ----
+// ---- card lookup ----
 async function doLookup(opts){
   // opts.refresh comes from the ↻ button beside Look up: re-fetch the set behind this lookup.
   opts=opts||{};
@@ -325,6 +361,7 @@ async function doLookup(opts){
     setObj=SETS.find(s=>s.code===code.toUpperCase()||s.label.toLowerCase()===code.toLowerCase());
   }
   if(!setObj||!num){ stat($('status'),'warn','Pick a set and enter a card number.'); return; }
+  if(GAME!=='pokemon') return doLookupGeneric(setObj,num,opts);
   if(setObj.mep) return doLookupMep(setObj,num);
   const act=TCG.activity?TCG.activity('Looking up '+setObj.value+'-'+num):null;
   stat($('status'),'load','Looking up…');
@@ -335,18 +372,15 @@ async function doLookup(opts){
     if(res.error==='source-down'){ act&&act.fail('source down'); stat($('status'),'warn','pokemontcg.io is flaky right now — hit Look up again.'); return; }
     if(res.error==='no-match'){ act&&act.fail('no match'); stat($('status'),'warn','No card found in '+setObj.label+(res.hint?' — '+res.hint:'')+'. Check the number.'); return; }
     const c=res.card;
-    card={
-      id:c.id, name:c.name, set_name:(c.set&&c.set.name)||setObj.label,
-      number:TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity}),
-      rawNumber:c.number||num, rarity:c.rarity||'', image:(c.images&&(c.images.large||c.images.small))||'',
-      supertype:c.supertype||'', subtypes:(c.subtypes||[]).join(', '), artist:c.artist||'',
-      // SEO payload the uploader used to throw away. Each of these feeds a real eBay AU 183454 item
-      // specific or a CARD DETAILS row that already exists in listing-copy (both verified live).
-      subtypeList:c.subtypes||[], types:c.types||[], hp:(c.hp!=null?String(c.hp):''),
-      pokedex:(c.nationalPokedexNumbers||[]), regMark:c.regulationMark||'', evolvesFrom:c.evolvesFrom||'',
-      setSeries:(c.set&&c.set.series)||'', setCode:((c.set&&c.set.ptcgoCode)||setObj.code||''),
-      setRelease:(c.set&&c.set.releaseDate)||'', printedTotal:(c.set&&c.set.printedTotal)||null,
-    };
+    // The canonical card (identity, printed number, image, facts) comes from the adapter, so this
+    // page and the batch runner build byte-identical inventory rows for the same card.
+    const nc=GA.normalizeCard(c,setObj);
+    // Only what this page RENDERS. Every SEO fact — hp, types, dex numbers, regulation mark,
+    // set series/release/total — lives on nc.facts, which is what card_facts and the publish
+    // overrides are both built from. Keeping a second copy on `card` is how the two drift.
+    card={ nc, raw:c, language:nc.language,
+      id:nc.identityKey, name:c.name, set_name:nc.setName, number:nc.number,
+      rawNumber:c.number||num, rarity:c.rarity||'', image:nc.image, artist:c.artist||'' };
     // default finish from rarity/name
     if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
     else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
@@ -356,12 +390,44 @@ async function doLookup(opts){
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
 
+// Every game that is not Pokémon. One request to the game's card route, then the adapter turns the
+// upstream record into the same `card` object the rest of this page reads — so nothing below here
+// knows which API answered.
+//
+// The default finish comes from the card's own DATA (Scryfall's `finishes`, plus promo_types for
+// surge), never from its rarity: Magic's rarity says nothing about foiling, and the Pokémon rarity
+// regex matches a bare "rare", so it would stamp Holo on every Magic rare and feed a wrong finish
+// into the comps search (GR5).
+async function doLookupGeneric(setObj,num,opts){
+  const act=TCG.activity?TCG.activity('Looking up '+setObj.value+' '+num):null;
+  stat($('status'),'load','Looking up…');
+  try{
+    const r=await TCG.fetchJson(GA.cardUrl(setObj.value,num)+(opts&&opts.refresh?'?refresh=1':''),
+      {onRetry:n=>stat($('status'),'load','Looking up… (retry '+n+')')});
+    if(!r.ok){ act&&act.fail('no match'); stat($('status'),'warn','No card '+num+' in '+setObj.label+'. Check the number.'); return; }
+    const c=await r.json();
+    if(!c||c.object==='error'||!c.name){ act&&act.fail('no card'); stat($('status'),'warn','No card found in '+setObj.label+'. Check the number.'); return; }
+    const nc=GA.normalizeCard(c,setObj);
+    card={ nc, raw:c, language:nc.language,
+      id:nc.identityKey, name:nc.name, set_name:nc.setName, number:nc.number, rawNumber:nc.rawNumber,
+      rarity:nc.rarity, image:nc.image, artist:nc.illustrator };
+    const want=GA.defaultFinish?GA.defaultFinish(c):null;
+    if(want){ const opt=[...$('finish').options].find(o=>o.value===want); if(opt) $('finish').value=want; }
+    afterLookup({fromRarity:false});
+    act&&act.done(GA.sourceName);
+    stat($('status'),'ok','Found. Verify the details, price and offers below.');
+  }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
+}
+
 // Everything that has to happen once `card` is populated, whichever lane filled it. Shared so the
 // MEP lane cannot quietly miss a step the pokemontcg.io lane does.
-function afterLookup(){
-  // default finish from rarity/name
-  if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
-  else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
+function afterLookup(o){
+  // default finish from rarity/name — POKÉMON ONLY, and a guess even there. The other games have a
+  // real finish on the record and set it before calling in.
+  if(GAME==='pokemon'&&!(o&&o.fromRarity===false)){
+    if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
+    else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
+  }
   renderCard();
   ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
   loadStoreCats();
@@ -390,18 +456,20 @@ async function doLookupMep(setObj,num){
   // downloads it server-side to re-host on eBay. A proxy path would be unreachable from there.
   const large=c.img?('https://images.scrydex.com/pokemon/mep-'+bare+'/large'):'';
   const s=(MEP&&MEP.set)||{};
-  card={
+  // The baked roster is not shaped like a pokemontcg.io card, so it is reshaped into one and run
+  // through the same adapter — one row builder, one card_facts blob, whichever lane found the card.
+  // `id` stays '' on purpose: there is no pokemontcg.io id for these, and inventing one would
+  // collide with a real card's key in the tracker.
+  const nc=GA.normalizeCard({
+    id:'', name:c.name, number:c.number, rarity:c.rarity||'Promo', artist:'',
+    supertype:'Pokémon', subtypes:c.stage?[c.stage]:[], types:c.type?[c.type]:[], hp:c.hp||'',
+    nationalPokedexNumbers:[], regulationMark:'', evolvesFrom:'',
+    images:{small:large,large:large}, set:Object.assign({mep:true},s),
+  },setObj);
+  card={ nc, language:nc.language, mep:true,
     id:'',                                  // no pokemontcg.io id — identity_key stays blank
-    name:c.name, set_name:s.name||setObj.label,
-    number:TCG.formatCardNumber(c.number,Object.assign({mep:true},s),{source:'ptcg',rarity:c.rarity}),
-    rawNumber:c.number, rarity:c.rarity||'Promo', image:large,
-    supertype:'Pokémon', subtypes:c.stage||'', artist:'',
-    subtypeList:c.stage?[c.stage]:[], types:c.type?[c.type]:[], hp:c.hp||'',
-    pokedex:[], regMark:'', evolvesFrom:'',
-    setSeries:s.series||'', setCode:(s.ptcgoCode||'MEP'),
-    setRelease:s.releaseDate||'', printedTotal:s.printedTotal||null,
-    mep:true,
-  };
+    name:c.name, set_name:nc.setName, number:nc.number,
+    rawNumber:c.number, rarity:c.rarity||'Promo', image:large, artist:'' };
   afterLookup();
   act&&act.done('found');
   const v=(c.variants||[]).find(x=>x.label==='Standard')||(c.variants||[])[0]||null;
@@ -430,24 +498,23 @@ function conditionStr(){ return graded()? ($('grCo').value+' '+($('grGrade').val
 function rawCondWord(){ // map the eBay enum back to the tool's condition string
   return {'Near Mint or Better':'Near Mint','Lightly Played (Excellent)':'Lightly Played','Moderately Played (Very Good)':'Moderately Played','Heavily Played (Poor)':'Heavily Played'}[$('rawGrade').value]||'Near Mint';
 }
+// The canonical inventory row, built by the game's adapter (lib/stock-games.mjs) — including the
+// card_facts blob, so this and the batch runner produce identical item specifics for the same card.
+// A later republish carrying no overrides (revise-price, a repricer apply) would otherwise strip
+// them back off: createOrReplaceInventoryItem is a full replace, not a patch.
 function cardRow(){
-  const r={game:'pokemon',name:card.name,set_name:card.set_name,number:card.number,rarity:card.rarity,
-    language:'EN',finish:$('finish').value,image_url:card.image,identity_key:card.id,
-    illustrator:card.artist||null,card_type:card.supertype||null,stage:/stage\s*2/i.test(card.subtypes)?'Stage 2':/stage\s*1/i.test(card.subtypes)?'Stage 1':/basic/i.test(card.subtypes)?'Basic':null,
-    // 'finish' is NOT an inventory_items column, so it was silently dropped on save and the Finish
-    // dropdown did nothing. 'variant' is the column that persists it.
+  const nc=card.nc||GA.normalizeCard(card.raw||{},setObj||{});
+  const r=GA.invRowFrom(nc,{
+    finish:$('finish').value,
+    // 'finish' is NOT an inventory_items column, so it is dropped on save; 'variant' is the column
+    // that persists the printing, and it is part of UNIQUE(game, identity_key, variant).
     // "Non-holo" contains "holo", so it MUST be tested before the holo branch or a plain card is
     // stored (and listed) as Holo.
-    variant:(function(v){return /reverse/i.test(v)?'Reverse Holo':/non[-\s]?(holo|foil)/i.test(v)?'Base':/holo/i.test(v)?'Holo':/foil/i.test(v)?'Foil':'Base';})($('finish').value),
-    // Everything the lookup found, persisted with the item. A later republish that carries no
-    // overrides (revise-price, a repricer apply) would otherwise strip the item specifics back off:
-    // createOrReplaceInventoryItem is a full replace, not a patch.
-    store_categories:storePick.slice(0,STORE_MAX),
-    card_facts:JSON.stringify({hp:card.hp,pokedex:card.pokedex,regulation_mark:card.regMark,
-      evolves_from:card.evolvesFrom,set_series:card.setSeries,set_code:card.setCode,
-      set_release_date:card.setRelease,printed_total:card.printedTotal,types:card.types,
-      subtypes:card.subtypeList,supertype:card.supertype})};
-  if(graded()){ r.graded=true; r.grading_company=$('grCo').value; r.grade=parseFloat($('grGrade').value)||null; r.cert_number=$('grCert').value||null; }
+    variant:(function(v){return /reverse/i.test(v)?'Reverse Holo':/non[-\s]?(holo|foil)/i.test(v)?'Base':/surge/i.test(v)?'Surge Foil':/etched/i.test(v)?'Etched Foil':/holo/i.test(v)?'Holo':/foil/i.test(v)?'Foil':'Base';})($('finish').value),
+    language:card.language||'EN',
+    storeCategories:storePick.slice(0,STORE_MAX),
+  });
+  if(graded()){ r.graded=true; r.grading_company=$('grCo').value; r.grade=parseFloat($('grGrade').value)||null; r.cert_number=$('grCert').value||null; delete r.condition; }
   else { r.condition=conditionStr(); }
   return r;
 }
@@ -486,7 +553,7 @@ async function loadNextLabel(){
     $('lblHint').textContent=j.seeded
       ? '— next is '+j.next+', leave blank to take it'
       : '— series not set up yet, so this gets a BK-… label (fix in Settings)';
-    $('stockLabel').placeholder=j.next||'BK-PKM-…';
+    $('stockLabel').placeholder=j.next||('BK-'+GA.code+'-…');
   }catch(e){ $('lblHint').textContent=''; }
 }
 // A typed label must look like the series and must not already be in use. Checked as you type so the
@@ -515,7 +582,7 @@ async function checkStock(){
   const box=$('stockBox');
   if(!card){ box.style.display='none'; return; }
   const r=cardRow();
-  const qs=new URLSearchParams({game:'pokemon',identity_key:card.id,name:card.name,variant:r.variant||'',
+  const qs=new URLSearchParams({game:GAME,identity_key:card.id,name:card.name,variant:r.variant||'',
     language:'EN',condition:r.condition||'',graded:graded()?'1':'0',
     grading_company:r.grading_company||'',grade:r.grade!=null?String(r.grade):''});
   try{
@@ -604,7 +671,7 @@ async function bumpQty(id,qty,ours){
 // So parents render disabled, and the cap is enforced here rather than silently truncated server-side.
 const STORE_CATS_KEY='tcg_uploader_store_cats';
 let STORE_CATS=[], STORE_MAX=2, storePick=[];
-function storePickKey(){ return STORE_CATS_KEY+':'+(setObj?setObj.value:'')+':pokemon'; }
+function storePickKey(){ return STORE_CATS_KEY+':'+(setObj?setObj.value:'')+':'+GAME; }
 async function loadStoreCats(){
   const box=$('storeCats');
   if(STORE_CATS.length){ renderStoreCats(); return; }
@@ -617,7 +684,7 @@ async function loadStoreCats(){
     // Reuse the last pick for this set, else fall back to whatever Settings configured.
     let seed=[]; try{ seed=JSON.parse(localStorage.getItem(storePickKey())||'null')||[]; }catch(e){}
     if(!seed.length){ try{ const c=await fetch('/api/listings/config').then(r=>r.json()); const s=(c.config&&c.config.store)||{};
-      const d=(s.categoryByGame&&s.categoryByGame.pokemon)||s.defaultCategory||''; if(d) seed=Array.isArray(d)?d:[d]; }catch(e){} }
+      const d=(s.categoryByGame&&s.categoryByGame[GAME])||s.defaultCategory||''; if(d) seed=Array.isArray(d)?d:[d]; }catch(e){} }
     const leaves=new Set(STORE_CATS.filter(c=>c.leaf).map(c=>c.path));
     storePick=seed.filter(p=>leaves.has(p)).slice(0,STORE_MAX);
     renderStoreCats();
@@ -649,7 +716,10 @@ function renderStoreCats(){
 function compsQuery(){
   if(priceInfo&&priceInfo.query) return priceInfo.query;
   if(!card) return '';
-  return ['Pokemon',card.name,card.number,card.set_name].filter(Boolean).join(' ');   // same parts the server joins
+  // The SAME function the server calls (lib/stock-games.mjs, re-exported by lib/listings.mjs), so
+  // the link cannot drift from the search the price came from — Magic's drops the collector number.
+  const cq=window.TCG&&TCG.stockGames&&TCG.stockGames.compsQueryFor;
+  return cq?cq(GAME,{name:card.name,set_name:card.set_name},card.number):'';
 }
 // The URLs come from lib/ebay-links.mjs, handed to this classic script by the module shim at the
 // bottom of the page — one implementation, shared with the batch runner and the Telegram cards.
@@ -855,16 +925,20 @@ async function uploadPhotos(itemId){
     await fetch('/api/listings/photos',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({itemId,kind:ph.kind,dataUrl:ph.dataUrl,compose:composeFlag()})});
   }
 }
+// The per-row aspect overrides the server merges over the stored inventory row. The per-game half
+// comes from the adapter (the same one the batch runner uses), so a card listed here and the same
+// card listed in a batch carry identical item specifics.
+//
+// character + speciality are deliberately absent: the server derives them (ebayCharacters from the
+// dex numbers, ebaySpeciality from the subtypes) and sending null would just look like data.
 function publishBody(itemId){
   const r=cardRow();
-  // character + speciality are deliberately absent: the server derives them (ebayCharacters from the
-  // dex numbers, ebaySpeciality from the subtypes) and sending null would just look like data.
-  return {itemId,price_cents:Math.round((parseFloat($('price').value)||0)*100),bestOffer:bestOffer(),compose:composeFlag(),
-    card_type:r.card_type,stage:r.stage,illustrator:r.illustrator,finish:r.finish,
-    supertype:card.supertype,subtypes:card.subtypeList,types:card.types,hp:card.hp,
-    pokedex_numbers:card.pokedex,regulation_mark:card.regMark,set_code:card.setCode,
-    set_series:card.setSeries,set_release_date:card.setRelease,printed_total:card.printedTotal,
-    evolves_from:card.evolvesFrom,store_categories:storePick.slice(0,STORE_MAX)};
+  const nc=card.nc||GA.normalizeCard(card.raw||{},setObj||{});
+  return Object.assign(GA.overridesFrom(nc),{
+    itemId,price_cents:Math.round((parseFloat($('price').value)||0)*100),
+    bestOffer:bestOffer(),compose:composeFlag(),finish:r.finish,
+    store_categories:storePick.slice(0,STORE_MAX),
+  });
 }
 
 // ---- preview (dry run) ----
@@ -969,19 +1043,40 @@ async function applyDeepLink(){
 // Same two reused comps windows as the batch runner — the pair is shared by name, so a card checked
 // here repaints the windows a card checked there opened.
 if(window.TCG&&TCG.wireCompsWindows) TCG.wireCompsWindows();
-(async function(){ await loadSets(); await checkAccount(); if(window.TCG&&TCG.loadFx) TCG.loadFx(); await applyDeepLink(); })();
+// NOT self-invoking any more: everything below depends on the game adapter, which arrives with the
+// module shim under this script (a module runs after the document is parsed). The shim calls boot().
+async function boot(){
+  const q=new URLSearchParams(location.search);
+  $('gameSel').innerHTML=TCG.stockGames.ids.map(g=>'<option value="'+g+'">'+esc(TCG.stockGames.adapterFor(g).label)+'</option>').join('');
+  $('gameSel').addEventListener('change',()=>selectGame($('gameSel').value));
+  // ?game= wins over the remembered one, so the Batch Runner's handover lands in the right
+  // catalogue — settled BEFORE loadSets, or the set below resolves against the wrong one.
+  let g='pokemon';
+  try{ const st=localStorage.getItem(GAME_KEY); if(st) g=st; }catch(e){}
+  await selectGame(q.get('game')||g,{boot:true});
+  await checkAccount();
+  if(window.TCG&&TCG.loadFx) TCG.loadFx();
+  await applyDeepLink();
+}
 </script>
 
-<!-- The comps URLs, from the one module that owns them (lib/ebay-links.mjs) — the same code the
-     batch runner imports and the Telegram cards call. The script above is CLASSIC on purpose: its
-     buttons use inline onclick= handlers, which need functions in the global scope, so this hands
-     the module over instead of converting the page. Modules run after the document is parsed, so
-     syncEbayLinks() is redrawn here for any card that was already on screen. -->
+<!-- The comps URLs, from the one module that owns them (lib/ebay-links.mjs), and the per-game
+     adapter table (lib/stock-games.mjs) the batch runner imports directly. The script above is
+     CLASSIC on purpose: its buttons use inline onclick= handlers, which need functions in the
+     global scope, so this hands the modules over instead of converting the page.
+     (test/invariants/ebay-links-single-source.test.mjs pins that arrangement.)
+
+     Modules run after the document is parsed, which is also why boot() is called from here rather
+     than self-invoking above: every URL it touches comes out of the adapter installed on the line
+     before. syncEbayLinks() is redrawn for any card that was already on screen. -->
 <script type="module">
 import { searchUrl, itemUrl } from '/lib/ebay-links.mjs';
+import { adapterFor, STOCK_GAME_IDS, compsQueryFor } from '/lib/stock-games.mjs';
 window.TCG = window.TCG || {};
 TCG.ebaySearchUrl = (q, sold) => searchUrl(q, { sold: !!sold });
 TCG.ebayItemUrl = (id) => itemUrl(id);
+TCG.stockGames = { adapterFor, ids: STOCK_GAME_IDS, compsQueryFor };
+if (window.boot) await window.boot();
 if (window.syncEbayLinks) window.syncEbayLinks();
 </script>
 </body>
