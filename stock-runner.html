@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Batch Runner — Pokémon</title>
+<title>Batch Runner</title>
 <style>
   :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
     --text:#eef1fb;--gold:#f0c020;--gold-dim:#8a7016;--field:#0a1230;--green:#36d399;--red:#f06262;--amber:#f0c04a;}
@@ -191,7 +191,7 @@
 <body>
 <div class="wrap">
   <a href="/" style="display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;">&larr; All tools</a>
-  <div class="tag">Pokémon TCG</div>
+  <div class="tag" id="gameTag">Pokémon TCG</div>
   <h1>Batch Runner</h1>
   <p class="sub">Work a pile card by card, or tick off a box break — prices fill in behind you, you scan one column, then publish the lot.</p>
 
@@ -204,6 +204,8 @@
     <h3>1 &middot; Add cards <span class="h-note" id="idxNote"></span></h3>
     <div class="srcgrid">
       <div>
+        <label for="gameSel">Game</label>
+        <select id="gameSel" style="margin-bottom:12px;"></select>
         <div class="setrow">
           <label for="setCode">Set</label>
           <input id="setCode" placeholder="Type a set name or code…" autocomplete="off">
@@ -224,11 +226,7 @@
             <input id="catch" autocomplete="off" spellcheck="false" placeholder="125" disabled>
           </div>
           <div class="ghoststrip" id="ghost"><span class="g-none">Pick a set to start.</span></div>
-          <div class="grammar">
-            <span><b>125</b> number</span><span><b>r h n</b> printing</span><span><b>x3</b> quantity</span>
-            <span><b>@12.50</b> price</span><span><b>lp mp hp</b> condition</span><span><b>*name</b> search</span>
-            <span><b>obf</b> switch set</span>
-          </div>
+          <div class="grammar" id="grammar"></div>
           <div class="muted" style="margin-top:6px;">↑ ↓ move the row cursor · <b>Del</b> drop it · <b>+ −</b> quantity · <b>o</b> open a played card in the single uploader · <b>Ctrl+Z</b> undo the last add</div>
         </div>
 
@@ -236,7 +234,7 @@
           <div class="filterbar">
             <span class="flab">Filter</span>
             <input id="tq" placeholder="name or number" style="min-width:150px;">
-            <select id="trar"><option value="">all rarities</option><option value="common">common</option><option value="uncommon">uncommon</option><option value="rare_plus">rare and up</option></select>
+            <select id="trar"><option value="">all rarities</option></select>
             <span class="flab">Min market</span>
             <input id="tmin" class="mono" style="width:74px;" value="2.00">
             <button class="btn sm" id="tAdd">Add ticked</button>
@@ -340,11 +338,14 @@ import { feeAU } from '/lib/fees.mjs';
 // of lib/ebay-links.mjs for why there is exactly one implementation of these URLs.
 import { searchUrl } from '/lib/ebay-links.mjs';
 import {
-  numKeys, numRank, cmpRank, printingsFor, finishFromRarity, pickPrinting, parseCatch,
+  numKeys, numRank, cmpRank, pickPrinting, parseCatch,
   isNearMint, medianOf, flagsFor, deriveState, isPublishable, rowKey,
   scaleGeometry, atMechanicalUndercut,
   PRICE_CEILING_AUD, MEDIAN_MULT, DISAGREE_HI, DISAGREE_LO,
 } from '/lib/runner-core.mjs';
+// Everything that differs between games — the catalogue URLs, the printing matrix, the row shape,
+// the comps query. Adding a game is an entry in that table, not a branch in this page.
+import { adapterFor, STOCK_GAME_IDS, STOCK_GAME_ADAPTERS, compsQueryFor } from '/lib/stock-games.mjs';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -368,10 +369,38 @@ let labelSeeded = false, labelUpcoming = [];   // upcoming[0] is the next free l
 const LABEL_PEEK = 250;           // labels fetched ahead — one per row, so this caps a single batch's preview
 const ROWEL = new Map();          // uid -> <tr>, so a row is patched in place instead of re-rendered
 
-const IDX_KEY = 'tcg_runner_idx1:';
-const Q_KEY = 'tcg_runner_queue1';
-const STORE_KEY = 'tcg_runner_store';
-const SETS_CACHE = 'tcg_uploader_pkm_sets';   // shared with the single uploader on purpose
+// ---------------------------------------------------------------------------
+// The active game
+//
+// One page, two games, and the storage keys have to say which. Set ids and set CODES share a
+// namespace across games — a Pokémon set id and a Magic set code can collide — so an unscoped
+// index key would serve Magic cards out of a Pokémon set's copy. The queue key is versioned rather
+// than scoped: a v1 queue predates the switcher, so it restores as Pokémon.
+const GAME_KEY = 'tcg_stock_game';            // shared with the single uploader, so the two agree
+const IDX_KEY = 'tcg_runner_idx2:';           // + game + ':' + setId
+const Q_KEY = 'tcg_runner_queue2';            // + ':' + game  (v1 = the pre-switcher Pokémon queue)
+const Q_KEY_V1 = 'tcg_runner_queue1';
+const STORE_KEY = 'tcg_runner_store';         // + ':' + game
+
+let GAME = 'pokemon', GA = adapterFor(GAME);
+function readGame() {
+  try { const g = localStorage.getItem(GAME_KEY); if (g && STOCK_GAME_IDS.includes(g)) return g; } catch (e) {}
+  return 'pokemon';
+}
+const idxKey = (setId) => IDX_KEY + GAME + ':' + setId;
+const qKey = (g) => Q_KEY + ':' + (g || GAME);
+const storeKey = () => STORE_KEY + ':' + GAME;
+
+// The v1 index keys were not game-scoped, and every browser that has used this tool is holding 1-2 MB
+// of them. Nothing else would ever remove them: the quota-recovery sweep in cacheIndex only knows
+// about the current prefix, so on a nearly-full origin the first set load under the new key would
+// throw QuotaExceeded, free nothing, and fail its retry — leaving the index cache permanently dead
+// and every set pick going back to the server. One sweep at boot, once.
+function dropLegacyIndexes() {
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('tcg_runner_idx1:')) localStorage.removeItem(k);
+  } catch (e) { /* GR7: a browser that will not let us tidy up is not a reason to fail */ }
+}
 
 // ---------------------------------------------------------------------------
 // Account readiness
@@ -446,20 +475,66 @@ function wireSetCombobox() {
   });
 }
 async function loadSets() {
-  try { const c = JSON.parse(localStorage.getItem(SETS_CACHE) || 'null'); if (c && c.length) { SETS = c; $('setStatus').textContent = SETS.length + ' sets'; wireSetCombobox(); } } catch (e) {}
+  const cacheKey = GA.setsCacheKey;
+  SETS = [];
+  try { const c = JSON.parse(localStorage.getItem(cacheKey) || 'null'); if (c && c.length) { SETS = c; $('setStatus').textContent = SETS.length + ' sets'; wireSetCombobox(); } } catch (e) {}
   try {
-    const r = await TCG.fetchJson('/api/pkm/sets?pageSize=500', { onRetry: (n) => { if (!SETS.length) $('setStatus').textContent = 'loading sets… (retry ' + n + ')'; } });
+    const r = await TCG.fetchJson(GA.setsUrl(), { onRetry: (n) => { if (!SETS.length) $('setStatus').textContent = 'loading sets… (retry ' + n + ')'; } });
     if (!r.ok) throw new Error('http ' + r.status);
     const j = await r.json();
-    const list = (j.data || []).map((s) => ({ value: s.id, label: s.name, code: (s.ptcgoCode || s.id || '').toUpperCase(), icon: (s.images && s.images.symbol) || '', releaseDate: s.releaseDate }))
-      .sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || ''));
+    const list = GA.setsFrom(j);
     if (list.length) {
-      SETS = list; try { localStorage.setItem(SETS_CACHE, JSON.stringify(SETS)); } catch (e) {}
+      SETS = list; try { localStorage.setItem(cacheKey, JSON.stringify(SETS)); } catch (e) {}
       $('setStatus').textContent = SETS.length + ' sets' + (j.stale ? ' (cached — source down)' : ''); wireSetCombobox();
     } else if (!SETS.length) $('setStatus').textContent = 'no sets (source flaky) — retry';
   } catch (e) { if (!SETS.length) $('setStatus').textContent = 'sets failed (source down) — retry'; }
 }
 function setCodes() { return new Set(SETS.map((s) => s.code).filter(Boolean)); }
+
+// ---------------------------------------------------------------------------
+// The game switcher
+//
+// One page, two catalogues. Switching drops the set picker and the resident indexes (they belong to
+// the other game's API) but KEEPS the queue: every row carries its own `game`, so a mixed pile
+// stages, prices and publishes each row against the right catalogue. That is the whole reason
+// rowKey() leads with the game.
+// ---------------------------------------------------------------------------
+function applyGameChrome() {
+  document.title = 'Batch Runner — ' + GA.label;
+  $('gameTag').textContent = GA.tag;
+  $('setCode').placeholder = 'Type a set name or code…';
+  // The catch-line grammar is per game: Magic has no reverse holo, and its finish letters differ.
+  const toks = Object.keys(GA.printingTokens).join(' ');
+  const eg = GAME === 'mtg' ? '249' : '125', egSet = GAME === 'mtg' ? 'neo' : 'obf';
+  $('grammar').innerHTML = '<span><b>' + esc(eg) + '</b> number</span><span><b>' + esc(toks) + '</b> printing</span>'
+    + '<span><b>x3</b> quantity</span><span><b>@12.50</b> price</span><span><b>lp mp hp</b> condition</span>'
+    + '<span><b>*name</b> search</span><span><b>' + esc(egSet) + '</b> switch set</span>';
+  $('catch').placeholder = eg;
+  // Rarity filter options come from the adapter — Magic splits mythic out, because on a set that is
+  // 61% mythic "rare and up" selects most of the box.
+  const rar = $('trar'), was = rar.value;
+  rar.innerHTML = '<option value="">all rarities</option>'
+    + GA.rarityOptions.map((o) => '<option value="' + esc(o.value) + '">' + esc(o.label.toLowerCase()) + '</option>').join('');
+  if ([...rar.options].some((o) => o.value === was)) rar.value = was;
+}
+async function selectGame(g, { boot = false } = {}) {
+  if (!boot && g === GAME) return;
+  GAME = STOCK_GAME_IDS.includes(g) ? g : 'pokemon';
+  GA = adapterFor(GAME);
+  try { localStorage.setItem(GAME_KEY, GAME); } catch (e) {}
+  $('gameSel').value = GAME;
+  applyGameChrome();
+  // The other game's sets and indexes are not this game's. Drop them rather than leaving a picker
+  // that offers sets this catalogue has never heard of.
+  setObj = null; INDEX.clear(); SETS = []; SET_AGE.clear();
+  $('setCode').value = ''; $('catch').value = ''; $('catch').disabled = true;
+  refreshIdxNote(); renderGhost();
+  if (mode === 'set') renderTickList();
+  stat($('setStatus'), 'load', 'loading ' + esc(GA.label) + ' sets…');
+  await loadSets();
+  // Departments are per game too — a Magic pile does not belong in the Pokémon department.
+  if (!boot) loadStoreCats();
+}
 
 // ---------------------------------------------------------------------------
 // The set index — the one structural move: no network inside the typing loop.
@@ -474,31 +549,33 @@ function setCodes() { return new Set(SETS.map((s) => s.code).filter(Boolean)); }
 function buildIndex(setMeta, cards) {
   const byNum = new Map(), byName = [];
   for (const c of cards) {
-    for (const k of numKeys(c.number)) { if (!byNum.has(k)) byNum.set(k, []); byNum.get(k).push(c); }
+    for (const k of numKeys(GA.rawNumber(c))) { if (!byNum.has(k)) byNum.set(k, []); byNum.get(k).push(c); }
     byName.push({ q: String(c.name || '').toLowerCase(), c });
   }
   return { set: setMeta, cards, byNum, byName };
 }
 function cacheIndex(setId, cards) {
-  try { localStorage.setItem(IDX_KEY + setId, JSON.stringify({ v: 1, at: Date.now(), cards })); }
+  const k0 = idxKey(setId);
+  try { localStorage.setItem(k0, JSON.stringify({ v: 1, at: Date.now(), cards })); }
   catch (e) {
     // Quota: drop every other cached index and try once more. Losing the cache costs a refetch,
     // never correctness.
-    try { for (const k of Object.keys(localStorage)) if (k.startsWith(IDX_KEY) && k !== IDX_KEY + setId) localStorage.removeItem(k); localStorage.setItem(IDX_KEY + setId, JSON.stringify({ v: 1, at: Date.now(), cards })); } catch (e2) {}
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith(IDX_KEY) && k !== k0) localStorage.removeItem(k); localStorage.setItem(k0, JSON.stringify({ v: 1, at: Date.now(), cards })); } catch (e2) {}
   }
 }
 // A set's cards, from the nearest copy that exists. A released set's card list never changes, so
 // nothing here re-fetches on its own: memory, then this browser's own copy, then the server's
-// (/api/pkm/set/:id/cards, which keeps its own copy on disk forever). Only ↻ goes upstream.
+// (/api/pkm/set/:id/cards or /api/mtg/set/:id/cards — the adapter picks, and the two answer in the
+// same envelope so nothing below this line cares which). Only ↻ goes upstream.
 //
-// This used to page pokemontcg.io directly on every single set pick — even when localStorage already
+// This used to page the card API directly on every single set pick — even when localStorage already
 // held the set, which meant the cached copy shortened the wait without ever avoiding it.
 async function loadSetIndex(setMeta, { refresh = false } = {}) {
   const setId = setMeta.value;
   if (INDEX.has(setId) && !refresh) return INDEX.get(setId);
   if (!refresh) {
     try {
-      const c = JSON.parse(localStorage.getItem(IDX_KEY + setId) || 'null');
+      const c = JSON.parse(localStorage.getItem(idxKey(setId)) || 'null');
       if (c && Array.isArray(c.cards) && c.cards.length) {
         const ix = buildIndex(setMeta, c.cards); INDEX.set(setId, ix); refreshIdxNote();
         setCacheAge(setId, c.at || 0);
@@ -510,7 +587,7 @@ async function loadSetIndex(setMeta, { refresh = false } = {}) {
   try {
     // ONE request: the server does the paging (a set over 250 cards needs several) and answers from
     // its own disk copy unless we ask it not to.
-    const r = await TCG.fetchJson('/api/pkm/set/' + encodeURIComponent(setId) + '/cards' + (refresh ? '?refresh=1' : ''),
+    const r = await TCG.fetchJson(GA.setCardsUrl(setId, refresh),
       { onRetry: (n) => act && act.update('retry ' + n) });
     if (!r.ok) throw new Error('http ' + r.status);
     const j = await r.json();
@@ -519,10 +596,10 @@ async function loadSetIndex(setMeta, { refresh = false } = {}) {
     const ix = buildIndex(setMeta, all);
     INDEX.set(setId, ix); cacheIndex(setId, all); setCacheAge(setId, Date.parse(j.cachedAt) || Date.now());
     act && act.done(all.length + ' cards');
-    // The server saying "stale" means it could not reach pokemontcg.io and served its own copy —
+    // The server saying "stale" means it could not reach the card API and served its own copy —
     // worth saying out loud on a refresh, since the operator asked for new data and did not get it.
-    if (j.stale) stat($('setStatus'), 'warn', 'pokemontcg.io is not answering — this is the stored copy of ' + esc(setMeta.label) + '.');
-    else if (j.partial) stat($('setStatus'), 'warn', 'pokemontcg.io returned only part of this set. Try ↻ again in a minute.');
+    if (j.stale) stat($('setStatus'), 'warn', esc(GA.sourceName) + ' is not answering — this is the stored copy of ' + esc(setMeta.label) + '.');
+    else if (j.partial) stat($('setStatus'), 'warn', esc(GA.sourceName) + ' returned only part of this set. Try ↻ again in a minute.');
     return ix;
   } catch (e) {
     act && act.fail('source down');
@@ -550,10 +627,10 @@ async function selectSet(s, { refresh = false } = {}) {
   stat($('setStatus'), 'load', (refresh ? 'Refreshing ' : 'Loading ') + esc(s.label) + '…');
   const ix = await loadSetIndex(s, { refresh });
   if (!ix) return;
-  // The ↻ is the only thing in the tool that goes to pokemontcg.io for a set, so it says what it is
-  // for: a set that gained cards after release (they trickle in for a few weeks) is the case.
+  // The ↻ is the only thing in the tool that goes upstream for a set, so it says what it is for:
+  // a set that gained cards after release (they trickle in for a few weeks) is the case.
   stat($('setStatus'), 'ok', ix.cards.length + ' cards ready — no lookup delay from here.' + esc(cacheAgeNote(s.value))
-    + ' <button class="btn sm" id="setRefresh" title="Fetch this set from pokemontcg.io again. Worth doing for a set released in the last few weeks, which can still be gaining cards.">↻ refresh</button>');
+    + ' <button class="btn sm" id="setRefresh" title="Fetch this set from ' + esc(GA.sourceName) + ' again. Worth doing for a set released in the last few weeks, which can still be gaining cards.">↻ refresh</button>');
   const rb = $('setRefresh'); if (rb) rb.addEventListener('click', () => selectSet(s, { refresh: true }));
   $('catch').disabled = false; renderGhost(); focusCatch();
   if (mode === 'set') renderTickList();
@@ -584,22 +661,39 @@ function resolveEntry(parsed) {
 
 // A row's printing comes from the card's price keys; the rarity regex is only for a card with no
 // price object at all, and such a row is chipped so the guess is never invisible (GR5).
+// Display helpers. numOfRow reads the ROW's adapter, not the active one, so a mixed pile keeps
+// showing each card the number that is printed on it after the switcher moves.
+const numOf = (c) => GA.cardNumber(c);
+const numOfRow = (r) => adapterFor(r.game || GAME).cardNumber(r.card);
+const thumbOf = (g, c) => adapterFor(g || GAME).thumbUrl(c);
+
 function printingFor(card, token) {
-  const ps = printingsFor(card);
+  const ps = GA.printingsFor(card);
   if (ps.length) return { p: pickPrinting(ps, token), all: ps, fromRarity: false };
-  const f = finishFromRarity(card.rarity);
-  return { p: { key: null, finish: f.finish, edition: '', variant: f.variant, marketUsd: null }, all: [], fromRarity: true };
+  const f = GA.finishFallback(card);
+  return { p: { key: null, finish: f.finish, edition: '', variant: f.variant, marketUsd: null }, all: [], fromRarity: !!f.fromRarity };
 }
 
 function makeRow(card, ix, parsed) {
   const pk = printingFor(card, parsed.printing);
+  // The canonical card, per game: identity, printed number, image, language and the facts that get
+  // persisted. Held on the row so nothing downstream has to know which API the card came from.
+  const nc = GA.normalizeCard(card, ix.set);
   const r = {
-    uid: uid++, setId: ix.set.value, setCode: ix.set.code, setLabel: ix.set.label, card,
-    cardId: card.id, rawNumber: card.number, identityKey: card.id,
+    // GAME IS PART OF ROW IDENTITY. rowKey() leads with it, and set codes collide across games —
+    // an unstamped row would merge a Pokémon sv3-125 and a Magic hob-125 into one listing.
+    uid: uid++, game: GAME, nc,
+    setId: ix.set.value, setCode: ix.set.code, setLabel: ix.set.label, card,
+    cardId: nc.identityKey, rawNumber: GA.rawNumber(card), identityKey: nc.identityKey,
     printingKey: pk.p.key, printings: pk.all, fromRarity: pk.fromRarity,
     finish: pk.p.finish, variant: pk.p.variant, edition: pk.p.edition,
-    mktUsd: pk.p.marketUsd, mktAud: null,
-    cond: parsed.cond || $('defCond').value, qty: parsed.qty || 1, language: 'EN',
+    // A surge foil's Scryfall figure is the plain-foil one, so the printing withholds it rather
+    // than feeding a number that is wrong by 4x into the disagreement detector.
+    mktUsd: pk.p.marketUsd, mktAud: null, mktUnreliable: !!pk.p.marketUnreliable,
+    cond: parsed.cond || $('defCond').value, qty: parsed.qty || 1,
+    // Off the PRINT, not hardcoded: a whole-set fetch carries Dwarvish, Japanese and Phyrexian
+    // printings, and listing one of those as English is a straight INAD exposure.
+    language: nc.language || 'EN',
     askAud: parsed.askAud != null ? parsed.askAud : null, manual: parsed.askAud != null,
     comps: null, priceInfo: null, pricing: false, noComps: false,
     dupe: null, released: false, inc: true,
@@ -615,32 +709,21 @@ function mktToAud(r) {
   return (a != null && isFinite(a)) ? a : null;
 }
 function titleFor(r) {
-  try { return buildTitle('pokemon', rowToFields(invRow(r)), 80); } catch (e) { return r.card.name || ''; }
+  try { return buildTitle(r.game || GAME, rowToFields(invRow(r)), 80); } catch (e) { return r.card.name || ''; }
 }
-function stageOf(c) {
-  const s = (c.subtypes || []).join(', ');
-  return /stage\s*2/i.test(s) ? 'Stage 2' : /stage\s*1/i.test(s) ? 'Stage 1' : /basic/i.test(s) ? 'Basic' : null;
-}
-// The canonical inventory row — a verbatim port of stock-uploader.html cardRow() (line 314),
-// including the card_facts blob, so a batch listing carries exactly the same item specifics a
-// hand-made one does.
+// The canonical inventory row. Built by the game's adapter (lib/stock-games.mjs), including the
+// card_facts blob, so a batch listing carries exactly the same item specifics a hand-made one does
+// — test/unit/stock-games.test.mjs deep-compares the Pokémon output against what this used to build
+// inline, because a dropped key here does not throw, it just quietly loses an item specific.
 function invRow(r) {
-  const c = r.card;
-  return {
-    game: 'pokemon', name: c.name, set_name: (c.set && c.set.name) || r.setLabel, rarity: c.rarity || '',
-    number: TCG.formatCardNumber(c.number, c.set || {}, { source: 'ptcg', rarity: c.rarity }),
-    language: 'EN', finish: r.finish, image_url: c.images.large || c.images.small, identity_key: c.id,
-    illustrator: c.artist || null, card_type: c.supertype || null, stage: stageOf(c),
-    variant: r.variant, edition: r.edition || undefined,
+  const a = adapterFor(r.game || GAME);
+  const nc = r.nc || a.normalizeCard(r.card, { value: r.setId, label: r.setLabel, code: r.setCode });
+  return a.invRowFrom(nc, {
+    finish: r.finish, variant: r.variant, edition: r.edition || '',
+    language: r.language,
     condition: isNearMint(r.cond) ? 'Ungraded, Near Mint' : 'Ungraded, ' + r.cond,
-    store_categories: storePick.slice(0, STORE_MAX),
-    card_facts: JSON.stringify({
-      hp: c.hp, pokedex: c.nationalPokedexNumbers, regulation_mark: c.regulationMark,
-      evolves_from: c.evolvesFrom, set_series: (c.set && c.set.series) || '', set_code: (c.set && c.set.ptcgoCode) || '',
-      set_release_date: (c.set && c.set.releaseDate) || '', printed_total: (c.set && c.set.printedTotal) || null,
-      types: c.types, subtypes: c.subtypes, supertype: c.supertype,
-    }),
-  };
+    storeCategories: storePick.slice(0, STORE_MAX),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -733,7 +816,9 @@ function enqueueDupe(r) { if (!dupeQ.includes(r)) dupeQ.push(r); clearTimeout(du
 async function flushDupes() {
   const batch = dupeQ.splice(0); if (!batch.length) return;
   const keys = batch.map((r) => ({
-    game: 'pokemon', identity_key: r.identityKey, name: r.card.name, variant: r.variant,
+    // r.game, not the active one: a mixed pile asks each row's own shelf. Getting this wrong reads
+    // as a CLEAN duplicate check, because it confidently answers about the other game's stock.
+    game: r.game || GAME, identity_key: r.identityKey, name: r.card.name, variant: r.variant,
     language: 'EN', condition: isNearMint(r.cond) ? 'Ungraded, Near Mint' : 'Ungraded, ' + r.cond,
   }));
   try {
@@ -782,11 +867,11 @@ function rowInBatch(r, st) { const s = st || stateOf(r); return !!r.inc && !r.pu
 
 function rowHtml(r) {
   const c = r.card;
-  const numDisp = TCG.formatCardNumber(c.number, c.set || {}, { source: 'ptcg', rarity: c.rarity });
+  const numDisp = numOfRow(r);
   return ''
     + '<td><input type="checkbox" class="inc"></td>'
     + '<td data-c="state"></td>'
-    + '<td class="c-thumb"><img loading="lazy" src="' + esc(c.images.small || c.images.large) + '" alt=""></td>'
+    + '<td class="c-thumb"><img loading="lazy" src="' + esc(thumbOf(r.game, c)) + '" alt=""></td>'
     + '<td class="c-card"><div class="nm">' + esc(c.name) + '</div><div class="sm">' + esc(r.setLabel) + (c.rarity ? ' · ' + esc(c.rarity) : '') + '</div></td>'
     + '<td class="mono" data-c="num">' + esc(numDisp) + '</td>'
     + '<td data-c="printing"></td>'
@@ -840,9 +925,14 @@ function patchRow(r) {
 
   setCell(tr, 'cond', '<span class="chip ' + (isNearMint(r.cond) ? 'dim' : 'amber') + '">' + esc(r.cond) + '</span>');
 
+  // An empty MKT cell on a surge foil is a DECISION, not a gap: Scryfall reports the plain-foil
+  // figure for a surge print, so using it as the disagreement cross-check would be wrong by ~4x.
+  // Say so, or the blank reads as missing data.
   setCell(tr, 'mkt', r.mktUsd != null
     ? '<span>US$' + r.mktUsd.toFixed(2) + '</span>' + (r.mktAud != null ? '<div class="muted mono">' + money(r.mktAud) + '</div>' : '')
-    : '<span class="muted">—</span>');
+    : r.mktUnreliable
+      ? '<span class="chip amber" title="Scryfall reports the plain foil price for a surge foil print, which is several times off. It is not used as a cross-check here.">surge — no market</span>'
+      : '<span class="muted">—</span>');
 
   const c = r.comps || {};
   let eb = '<span class="muted">—</span>';
@@ -883,7 +973,10 @@ function patchRow(r) {
         : 'Not in this batch, so no shelf number is lined up for it. Tick the row and it takes the next one.') + '">'
       + esc(!labelSeeded ? 'BK-…' : (heading || '—')) + '</span>');
 
-  const q = (r.priceInfo && r.priceInfo.query) || ['Pokemon', r.card.name, TCG.formatCardNumber(r.card.number, r.card.set || {}, { source: 'ptcg', rarity: r.card.rarity }), r.setLabel].filter(Boolean).join(' ');
+  // The same query lib/listings.mjs priceItem builds, from the same module — so the ↗ link opens
+  // the search the price actually came from, and Magic's does not carry a collector number.
+  const q = (r.priceInfo && r.priceInfo.query)
+    || compsQueryFor(r.game || GAME, { name: r.card.name, set_name: r.nc ? r.nc.setName : r.setLabel }, numOfRow(r));
   // What it is selling for now, and what it actually sold for — both Australian sellers only. The
   // pair stays on the row after it lists, because the first thing you want after listing a card is
   // to see where you landed against the ones you are competing with.
@@ -1164,7 +1257,7 @@ $('qBody').addEventListener('click', (e) => {
   else if (e.target.classList.contains('pk')) {
     const p = r.printings.find((x) => x.key === e.target.dataset.pk); if (!p) return;
     r.printingKey = p.key; r.finish = p.finish; r.variant = p.variant; r.edition = p.edition;
-    r.mktUsd = p.marketUsd; r.mktAud = mktToAud(r); r.title = titleFor(r);
+    r.mktUsd = p.marketUsd; r.mktUnreliable = !!p.marketUnreliable; r.mktAud = mktToAud(r); r.title = titleFor(r);
     // The printing IS the comps query's finish hint, so a change re-prices from scratch.
     if (!r.manual) { r.askAud = null; enqueuePrice(r); }
     enqueueDupe(r); refresh();
@@ -1228,7 +1321,7 @@ function renderGhost() {
   const g = $('ghost'), raw = $('catch').value;
   g.classList.remove('bad');
   if (!raw.trim()) { g.innerHTML = setObj ? '<span class="g-none">Type a card number and press Enter.</span>' : '<span class="g-none">Pick a set to start.</span>'; return; }
-  const parsed = parseCatch(raw, { setCodes: setCodes() });
+  const parsed = parseCatch(raw, { setCodes: setCodes(), printingTokens: GA.printingTokens });
   const res = resolveEntry(parsed);
   if (res.error) { g.classList.add('bad'); g.innerHTML = '<span class="g-none" style="color:var(--red)">' + esc(res.error) + '</span>'; return; }
   if (!res.card) { g.innerHTML = '<span class="g-none">Keep typing…</span>'; return; }
@@ -1237,8 +1330,8 @@ function renderGhost() {
   if (parsed.qty) bits.push('×' + parsed.qty);
   if (parsed.askAud != null) bits.push('@ ' + money(parsed.askAud));
   const dupWarn = pk.fromRarity ? ' <span class="chip amber">finish from rarity</span>' : (pk.all.length > 1 ? ' <span class="chip amber">' + pk.all.length + ' printings</span>' : '');
-  g.innerHTML = '<img src="' + esc(c.images.small) + '" alt="">'
-    + '<div><div class="g-nm">' + esc(c.name) + ' <span class="mono muted">' + esc(TCG.formatCardNumber(c.number, c.set || {}, { source: 'ptcg', rarity: c.rarity })) + '</span>' + dupWarn + '</div>'
+  g.innerHTML = '<img src="' + esc(thumbOf(GAME, c)) + '" alt="">'
+    + '<div><div class="g-nm">' + esc(c.name) + ' <span class="mono muted">' + esc(numOf(c)) + '</span>' + dupWarn + '</div>'
     + '<div class="g-meta">' + bits.map(esc).join(' · ') + '</div></div>';
 }
 $('catch').addEventListener('input', renderGhost);
@@ -1247,7 +1340,7 @@ $('catch').addEventListener('keydown', async (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
     const raw = el.value.trim(); if (!raw) return;
-    const parsed = parseCatch(raw, { setCodes: setCodes() });
+    const parsed = parseCatch(raw, { setCodes: setCodes(), printingTokens: GA.printingTokens });
     // A bare set code with no number switches the active set and stays on the keyboard.
     if (parsed.setCode && !parsed.num && !parsed.nameQuery) {
       const s = SETS.find((x) => x.code === parsed.setCode);
@@ -1311,7 +1404,9 @@ async function bumpExisting(r) {
 }
 
 function openInUploader(r) {
-  const p = new URLSearchParams({ set: r.setId, num: r.rawNumber, cond: r.cond, finish: r.finish });
+  // game rides along, or the uploader resolves this set against the wrong catalogue and reports
+  // "could not find the set" for a card that is sitting right here.
+  const p = new URLSearchParams({ game: r.game || GAME, set: r.setId, num: r.rawNumber, cond: r.cond, finish: r.finish });
   window.open('/stock-uploader.html?' + p.toString(), '_blank', 'noopener');
 }
 
@@ -1332,18 +1427,20 @@ function tickEntries() {
   const q = $('tq').value.trim().toLowerCase(), rar = $('trar').value, min = parseFloat($('tmin').value) || 0;
   const out = [];
   for (const c of ix.cards) {
-    const ps = printingsFor(c);
-    const list = ps.length ? ps : [{ key: null, finish: finishFromRarity(c.rarity).finish, variant: finishFromRarity(c.rarity).variant, marketUsd: null }];
+    const num = GA.rawNumber(c);
+    const ps = GA.printingsFor(c);
+    const fb = GA.finishFallback(c);
+    const list = ps.length ? ps : [{ key: null, finish: fb.finish, variant: fb.variant, marketUsd: null }];
     for (const p of list) {
       const aud = p.marketUsd != null && TCG.toAUD ? TCG.toAUD(p.marketUsd, 'USD') : null;
-      const e = { c, p, aud, key: c.id + '|' + (p.key || 'x') };
-      if (q && !(String(c.name).toLowerCase().includes(q) || String(c.number).toLowerCase().includes(q))) continue;
-      if (rar) { const rl = String(c.rarity || '').toLowerCase(); const cls = /^common$/.test(rl) ? 'common' : /^uncommon$/.test(rl) ? 'uncommon' : 'rare_plus'; if (cls !== rar) continue; }
+      const e = { c, p, aud, key: GA.rawNumber(c) + '|' + (p.key || 'x') };
+      if (q && !(String(c.name).toLowerCase().includes(q) || String(num).toLowerCase().includes(q))) continue;
+      if (rar && GA.rarityClass(c.rarity) !== rar) continue;
       e.below = min > 0 && (aud == null || aud < min);
       out.push(e);
     }
   }
-  out.sort((a, b) => cmpRank(numRank(a.c.number, a.p.key), numRank(b.c.number, b.p.key)));
+  out.sort((a, b) => cmpRank(numRank(GA.rawNumber(a.c), a.p.key), numRank(GA.rawNumber(b.c), b.p.key)));
   return out;
 }
 function renderTickList() {
@@ -1355,8 +1452,8 @@ function renderTickList() {
     const on = TICK.has(e.key);
     return '<div class="tickrow' + (on ? ' on' : '') + '" data-k="' + esc(e.key) + '">'
       + '<input type="checkbox" ' + (on ? 'checked' : '') + '>'
-      + '<img loading="lazy" src="' + esc(e.c.images.small) + '" alt="">'
-      + '<span class="t-num mono">' + esc(TCG.formatCardNumber(e.c.number, e.c.set || {}, { source: 'ptcg', rarity: e.c.rarity })) + '</span>'
+      + '<img loading="lazy" src="' + esc(thumbOf(GAME, e.c)) + '" alt="">'
+      + '<span class="t-num mono">' + esc(numOf(e.c)) + '</span>'
       + '<span class="t-nm">' + esc(e.c.name) + '</span>'
       + '<span class="t-pr">' + esc(e.p.finish) + '</span>'
       + '<span class="t-mkt mono">' + (e.aud != null ? money(e.aud) : '<span class="muted">—</span>') + '</span>'
@@ -1479,8 +1576,9 @@ async function loadStoreCats() {
     const j = await fetch('/api/listings/store/categories').then((r) => r.json());
     if (!j.ok || !Array.isArray(j.categories) || !j.categories.length) { box.innerHTML = '<span class="muted">' + esc(j.error || 'no store departments found — listings will go to “Other”') + '</span>'; return; }
     STORE_CATS = j.categories; STORE_MAX = j.max || 2;
-    let seed = []; try { seed = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || []; } catch (e) {}
-    if (!seed.length) { try { const c = await fetch('/api/listings/config').then((r) => r.json()); const s = (c.config && c.config.store) || {}; const d = (s.categoryByGame && s.categoryByGame.pokemon) || s.defaultCategory || ''; if (d) seed = Array.isArray(d) ? d : [d]; } catch (e) {} }
+    // Scoped by game: a Magic pile does not belong in the Pokémon department.
+    let seed = []; try { seed = JSON.parse(localStorage.getItem(storeKey()) || 'null') || []; } catch (e) {}
+    if (!seed.length) { try { const c = await fetch('/api/listings/config').then((r) => r.json()); const s = (c.config && c.config.store) || {}; const d = (s.categoryByGame && s.categoryByGame[GAME]) || s.defaultCategory || ''; if (d) seed = Array.isArray(d) ? d : [d]; } catch (e) {} }
     const leaves = new Set(STORE_CATS.filter((c) => c.leaf).map((c) => c.path));
     storePick = seed.filter((p) => leaves.has(p)).slice(0, STORE_MAX);
     renderStoreCats();
@@ -1498,7 +1596,7 @@ function renderStoreCats() {
     const c = STORE_CATS[+cb.dataset.i];
     if (cb.checked) { if (storePick.length >= STORE_MAX) { cb.checked = false; return; } storePick.push(c.path); }
     else storePick = storePick.filter((p) => p !== c.path);
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(storePick)); } catch (e) {}
+    try { localStorage.setItem(storeKey(), JSON.stringify(storePick)); } catch (e) {}
     renderStoreCats(); refresh();
   });
   $('storeCount').textContent = storePick.length ? '— ' + storePick.length + ' of ' + STORE_MAX : '— none chosen, these go to “Other”';
@@ -1711,22 +1809,19 @@ $('pubBtn').addEventListener('click', async () => {
   $('mGo').addEventListener('click', () => { closeModal(); runPublish(go); });
 });
 
-// The per-row aspect overrides the server merges over the stored inventory row.
+// The per-row aspect overrides the server merges over the stored inventory row. The per-game half
+// comes from the adapter; price, finish and the department are the page's.
 function overridesFor(r) {
-  const c = r.card;
-  return {
+  const a = adapterFor(r.game || GAME);
+  const nc = r.nc || a.normalizeCard(r.card, { value: r.setId, label: r.setLabel, code: r.setCode });
+  return Object.assign(a.overridesFrom(nc), {
     price_cents: Math.round((r.askAud || 0) * 100),
-    card_type: c.supertype || null, stage: stageOf(c), illustrator: c.artist || null, finish: r.finish,
-    supertype: c.supertype, subtypes: c.subtypes, types: c.types, hp: c.hp,
-    pokedex_numbers: c.nationalPokedexNumbers, regulation_mark: c.regulationMark,
-    set_code: (c.set && c.set.ptcgoCode) || '', set_series: (c.set && c.set.series) || '',
-    set_release_date: (c.set && c.set.releaseDate) || '', printed_total: (c.set && c.set.printedTotal) || null,
-    evolves_from: c.evolvesFrom,
+    finish: r.finish,
     // A per-row department overrides the batch pick. pickOverrides already honours store_categories,
     // so this needed no server change — an ABSENT array leaves the persisted pick alone, an array
     // replaces it.
     store_categories: r.storeOverride ? [r.storeOverride] : storePick.slice(0, STORE_MAX),
-  };
+  });
 }
 // ONE request for the whole batch, streaming NDJSON back. The loop lives on the server now, which
 // is what makes the price ceiling, the sub-NM rule and the abort-on-descriptor-failure real: this
@@ -1846,7 +1941,7 @@ function batchResults(rows, s) {
   const held = rows.filter((r) => r.failed);
   const line = (r, right) => '<div class="rrow"><span style="min-width:0;">'
     + (r.sku ? '<span class="mono" style="color:var(--gold)">' + esc(r.sku) + '</span> ' : '')
-    + esc(r.card.name) + ' <span class="muted">' + esc(TCG.formatCardNumber(r.card.number, r.card.set || {}, { source: 'ptcg', rarity: r.card.rarity }) || '') + '</span>'
+    + esc(r.card.name) + ' <span class="muted">' + esc(numOfRow(r) || '') + '</span>'
     + (r.qty > 1 ? ' <span class="muted">×' + r.qty + '</span>' : '')
     + '</span>' + right + '</div>';
 
@@ -1900,9 +1995,11 @@ function saveQueue() {
   clearTimeout(saveT);
   saveT = setTimeout(() => {
     try {
-      localStorage.setItem(Q_KEY, JSON.stringify({
-        v: 1, at: Date.now(),
-        rows: QUEUE.map((r) => ({ uid: r.uid, setId: r.setId, cardId: r.cardId, printingKey: r.printingKey, cond: r.cond, condManual: !!r.condManual, qty: r.qty, askAud: r.askAud, manual: r.manual, released: r.released, inc: r.inc, itemId: r.itemId, sku: r.sku, staged: r.staged, published: r.published, listingUrl: r.listingUrl })),
+      // Written under the ACTIVE game's key, and every row carries its own — a mixed pile restores
+      // each card against the right catalogue.
+      localStorage.setItem(qKey(), JSON.stringify({
+        v: 2, at: Date.now(),
+        rows: QUEUE.map((r) => ({ uid: r.uid, game: r.game || GAME, setId: r.setId, cardId: r.cardId, printingKey: r.printingKey, cond: r.cond, condManual: !!r.condManual, qty: r.qty, askAud: r.askAud, manual: r.manual, released: r.released, inc: r.inc, itemId: r.itemId, sku: r.sku, staged: r.staged, published: r.published, listingUrl: r.listingUrl })),
       }));
     } catch (e) {}
   }, 400);
@@ -1911,8 +2008,19 @@ function saveQueue() {
 // behind a dialog before the tool has even drawn — and the common case is starting a fresh pile,
 // which should not cost a click.
 function offerRestore() {
-  let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(Q_KEY) || 'null'); } catch (e) {}
+  let saved = null, from = qKey();
+  try { saved = JSON.parse(localStorage.getItem(from) || 'null'); } catch (e) {}
+  // A v1 queue predates the game switcher, so every row in it is Pokémon. Offered back rather than
+  // dropped: it is the one piece of state here that represents work already done by hand.
+  if ((!saved || !saved.rows || !saved.rows.length) && GAME === 'pokemon') {
+    try {
+      const legacy = JSON.parse(localStorage.getItem(Q_KEY_V1) || 'null');
+      if (legacy && Array.isArray(legacy.rows) && legacy.rows.length) {
+        saved = { ...legacy, rows: legacy.rows.map((r) => ({ ...r, game: 'pokemon' })) };
+        from = Q_KEY_V1;
+      }
+    } catch (e) {}
+  }
   if (!saved || !Array.isArray(saved.rows) || !saved.rows.length) return;
   const age = Math.round((Date.now() - (saved.at || 0)) / 60000);
   const when = age < 1 ? 'a moment' : age < 60 ? age + ' minutes' : Math.round(age / 60) + ' hours';
@@ -1923,15 +2031,25 @@ function offerRestore() {
     + '. <button class="btn sm" id="qRestore" style="margin-left:8px;">Restore them</button> '
     + '<button class="btn sm" id="qDiscard">Discard</button>';
   bar.style.display = 'block';
-  $('qRestore').addEventListener('click', async () => { bar.style.display = 'none'; await restoreQueue(saved); });
-  $('qDiscard').addEventListener('click', () => { try { localStorage.removeItem(Q_KEY); } catch (e) {} bar.style.display = 'none'; });
+  // Restoring a v1 queue CONSUMES it. Left in place it would be re-offered the moment queue2 went
+  // empty again (clear the queue, reload, and there is the same old pile back), because the
+  // fall-through above only fires when the current game's key holds nothing.
+  $('qRestore').addEventListener('click', async () => {
+    bar.style.display = 'none';
+    await restoreQueue(saved);
+    if (from === Q_KEY_V1) { try { localStorage.removeItem(Q_KEY_V1); } catch (e) {} }
+  });
+  $('qDiscard').addEventListener('click', () => { try { localStorage.removeItem(from); } catch (e) {} bar.style.display = 'none'; });
 }
 async function restoreQueue(saved) {
-  const setIds = [...new Set(saved.rows.map((r) => r.setId))];
+  // Rows for a game that is not the active one cannot be rebuilt — their set index lives behind a
+  // different catalogue. Restore what belongs to this game and say what was left.
+  const rows = saved.rows.filter((r) => (r.game || 'pokemon') === GAME);
+  const setIds = [...new Set(rows.map((r) => r.setId))];
   for (const sid of setIds) { const s = SETS.find((x) => x.value === sid); if (s) await loadSetIndex(s); }
-  for (const sv of saved.rows) {
+  for (const sv of rows) {
     const ix = INDEX.get(sv.setId); if (!ix) continue;
-    const card = ix.cards.find((c) => c.id === sv.cardId); if (!card) continue;
+    const card = ix.cards.find((c) => GA.identityKey(c) === sv.cardId); if (!card) continue;
     const r = makeRow(card, ix, { printing: null, qty: sv.qty, cond: sv.cond, askAud: sv.askAud });
     Object.assign(r, {
       printingKey: sv.printingKey, cond: sv.cond, condManual: sv.condManual, qty: sv.qty, askAud: sv.askAud,
@@ -1939,12 +2057,14 @@ async function restoreQueue(saved) {
       staged: sv.staged, published: sv.published, listingUrl: sv.listingUrl,
     });
     const p = r.printings.find((x) => x.key === sv.printingKey);
-    if (p) { r.finish = p.finish; r.variant = p.variant; r.edition = p.edition; r.mktUsd = p.marketUsd; r.mktAud = mktToAud(r); }
+    if (p) { r.finish = p.finish; r.variant = p.variant; r.edition = p.edition; r.mktUsd = p.marketUsd; r.mktUnreliable = !!p.marketUnreliable; r.mktAud = mktToAud(r); }
     r.title = titleFor(r);
     QUEUE.push(r); appendRowEl(r);
     if (!r.staged && !r.published) { enqueuePrice(r); enqueueDupe(r); }
   }
   uid = Math.max(uid, ...QUEUE.map((r) => r.uid)) + 1;
+  const other = saved.rows.length - rows.length;
+  if (other) toast(other + ' row' + (other > 1 ? 's' : '') + ' from another game were left where they are — switch to it to restore them');
   refresh();
 }
 window.addEventListener('beforeunload', (e) => {
@@ -1963,7 +2083,13 @@ window.addEventListener('beforeunload', (e) => {
   // strings, and this listens on the document rather than on each row.
   if (window.TCG && TCG.wireCompsWindows) TCG.wireCompsWindows();
   if (window.TCG && TCG.loadFx) await TCG.loadFx();
-  await loadSets();
+  dropLegacyIndexes();
+  // The game is settled BEFORE anything loads: every URL below it depends on which catalogue we are
+  // in. ?game= wins over the remembered one, so a handover from the uploader lands in the right place.
+  const qp = new URLSearchParams(location.search);
+  $('gameSel').innerHTML = STOCK_GAME_IDS.map((g) => '<option value="' + g + '">' + esc(STOCK_GAME_ADAPTERS[g].label) + '</option>').join('');
+  $('gameSel').addEventListener('change', () => selectGame($('gameSel').value));
+  await selectGame(qp.get('game') || readGame(), { boot: true });
   await checkAccount();
   await loadLabelState();
   loadStoreCats();
@@ -1972,7 +2098,6 @@ window.addEventListener('beforeunload', (e) => {
   refresh();
   attachIfRunning();
   // Deep link: /stock-runner.html?set=sv3 opens straight into a set.
-  const qp = new URLSearchParams(location.search);
   const want = qp.get('set');
   if (want) { const s = SETS.find((x) => x.value === want || x.code === want.toUpperCase()); if (s) await selectSet(s); }
 })();

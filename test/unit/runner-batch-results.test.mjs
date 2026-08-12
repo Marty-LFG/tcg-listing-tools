@@ -19,10 +19,12 @@ function render(rows, s = {}, queue = rows) {
   const $ = () => ({ addEventListener: (_, fn) => wired.push(fn) });
   const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const money = (a) => (a == null || !isFinite(a)) ? '—' : 'A$' + (Math.round(a * 100) / 100).toFixed(2);
-  const TCG = { formatCardNumber: (n) => String(n || '') };
-  const fn = new Function('QUEUE', 'modal', '$', 'esc', 'money', 'TCG', 'closeModal', 'clearQueue',
+  // numOfRow is the page's per-game number renderer (lib/stock-games.mjs picks the adapter). The
+  // receipt only needs A number, so it is stubbed rather than importing the whole table.
+  const numOfRow = (r) => String((r.card && r.card.number) || '');
+  const fn = new Function('QUEUE', 'modal', '$', 'esc', 'money', 'numOfRow', 'closeModal', 'clearQueue',
     'return (' + extractFn(html, 'function batchResults') + ')')(
-    queue, (h) => { painted = h; }, $, esc, money, TCG, () => {}, () => {});
+    queue, (h) => { painted = h; }, $, esc, money, numOfRow, () => {}, () => {});
   fn(rows, s);
   return { html: painted, wired };
 }
