@@ -64,4 +64,22 @@ describe('Pokémon card numbers go through the shared formatter (GR10)', () => {
     // The parity harness extracts by this exact marker style (scripts/check-listing-copy.mjs).
     assert.match(read('extras.js'), /TCG\.cardNumberKey=function/, 'extras.js lost cardNumberKey');
   });
+
+  // The other half of GR10, for the two pages that serve more than one game. The formatter is
+  // POKÉMON-ONLY — it pads to the set's era and appends the printed total, so HOB #1 would come out
+  // '001/531', a number that is not on the Magic card and not what a buyer searches. Both stock
+  // pages route every number through the game's adapter (lib/stock-games.mjs cardNumber), which
+  // calls the formatter for Pokémon and passes Magic's through verbatim.
+  //
+  // An absence check is the right instrument here precisely because the failure is silent: a
+  // reinstated TCG.formatCardNumber( call still renders A number, just the wrong one.
+  it('the multi-game stock pages never format a number themselves', () => {
+    for (const rel of ['stock-runner.html', 'stock-uploader.html']) {
+      const src = read(rel);
+      assert.ok(!/formatCardNumber\(/.test(src),
+        rel + ' calls formatCardNumber() directly — that is Pokémon padding, and this page also '
+        + 'serves Magic. Go through the adapter: GA.cardNumber(card) / numOfRow(row).');
+      assert.match(src, /stock-games\.mjs/, rel + ' must get its per-game rules from the adapter table');
+    }
+  });
 });

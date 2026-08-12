@@ -853,7 +853,7 @@ Deliberately **not** sent: `PictureDetails` (also a complete replace — a parti
 
 Sold and unsold history reaches back about 90 days, so the mirror is complete for active listings and partial for history. Migrating the hand-made listings into the Inventory model (`bulkMigrateListing`) would collapse this into one population, but it is **one-way** — Trading `Revise*` is permanently blocked afterwards — so it is a deliberate decision, not a default.
 
-## 17. eBay stock uploader (Sell Inventory API) — Pokémon first
+## 17. eBay stock uploader (Sell Inventory API) — Pokémon and Magic
 
 Brings the listing builders and the eBay inventory together: pick a card + qty → verify price +
 Best-Offer → one button → the card is **created live on eBay**, and local stock stays in sync as it
@@ -911,16 +911,51 @@ mirrored offers vs eBay and marks ended/out-of-stock drift.
 the first call — tests MUST use `openDbAt(path)` / `openPostsaleDbAt(path)` (fresh, non-cached) so they
 never write to the real `data/tracker.db` / `data/postsale.db`.
 
-**The UI:** `stock-uploader.html` (linked from `index.html`) is the one-button flow — Pokémon set/card
-picker (reuses `TCG.setCombobox` + `/api/pkm`, sets cached in localStorage against pokemontcg.io
-flakiness) → live eBay-AU price panel (`/price`) → Best-Offer verify → optional photos → **List on
-eBay** (saves to inventory → uploads photos → `/publish`). Degrades: not-connected / not-set-up show a
-banner instead of publishing. Lookup + live price verified end-to-end; the publish leg needs the
+**The UI:** `stock-uploader.html` (linked from `index.html`) is the one-button flow — game + set/card
+picker (reuses `TCG.setCombobox`, sets cached in localStorage against upstream flakiness) → live
+eBay-AU price panel (`/price`) → Best-Offer verify → optional photos → **List on eBay** (saves to
+inventory → uploads photos → `/publish`). Degrades: not-connected / not-set-up show a banner instead
+of publishing. Lookup + live price verified end-to-end for both games; the publish leg needs the
 connected account (ALCSERVER) + a completed bootstrap.
+
+**This page stays a CLASSIC script.** Its buttons use inline `onclick=` handlers, which need global
+scope, so it cannot `import`. The module shim at the bottom hands over `lib/ebay-links.mjs` and
+`lib/stock-games.mjs` and then calls `boot()` — the boot is down there, not a self-invoking IIFE up
+top, because a module runs after the document is parsed and every URL boot touches comes out of the
+adapter. `test/invariants/ebay-links-single-source.test.mjs` pins the arrangement.
+
+### Two games, one page (`lib/stock-games.mjs`)
+
+Both stock tools read a per-game adapter table — the third in the repo, beside `MAPPERS`
+(`lib/normalize.mjs`, price extraction) and `ENUMERATORS` (`lib/enumerate.mjs`, set → rows). Adding
+SWU or Lorcana is one entry, not a second copy of a 130 KB page. Browser-safe ESM, same contract as
+`lib/runner-core.mjs`, so the pages load it and `test/unit/stock-games.test.mjs` imports it directly.
+
+Each adapter owns the catalogue URLs (`setsUrl`/`setCardsUrl`/`cardUrl`), the set-list mapping, the
+printed number, the identity key, the thumbnail, the printing matrix, the finish options, the catch
+tokens, the rarity classes, `normalizeCard` → `invRowFrom` (the inventory row incl. `card_facts`) and
+`overridesFrom`. `compsQueryFor`/`compsNumberMatch` live here too, and `lib/listings.mjs` imports
+them back — one source, so the pages' ↗ links cannot drift from the search the price came from.
+
+`STOCK_GAME_IDS` is deliberately a SUBSET of `GAMES`: a game only belongs here once its eBay aspects
+have been checked against the live Taxonomy, which so far is Pokémon and Magic alone.
+
+Three things that are load-bearing rather than cosmetic:
+
+- **The Pokémon sets-cache key is the literal `tcg_uploader_pkm_sets`.** Templating it would orphan
+  every browser's cached set list, and that cache is the only thing between a flaky pokemontcg.io and
+  an empty picker (GR7) — a regression no test can catch, because it only shows on a machine that had
+  the old key.
+- **The MTG `set_name` carries `(CODE)`** (`The Hobbit (HOB)`). `titleParts`' mtg branch reads the
+  code out of those parens for the abbreviated title; `stripSetCodeSuffix` and `compsQueryFor` both
+  strip it back off.
+- **MTG `card_facts` key names are fixed by `buildRowIn`.** It falls back to `item.colour` /
+  `card_type` / `treatment` / `promo_note` / `full_art` / `promo` when `resolveMtgCard` comes back
+  empty (a cold Scryfall cache after a restart). Rename one and the fallback silently drops an aspect.
 
 **Roadmap:** Phases 0–4 BUILT + tested (Phase 2 `/price` + the Phase-3 lookup/price flow live-verified
 against eBay AU). **Remaining:** an auto-scheduler for `reconcileListings`; the first real publish smoke
-on ALCSERVER (run the Settings bootstrap first); later: incoming-offer response, other games, sealed,
+on ALCSERVER (run the Settings bootstrap first); later: incoming-offer response, more games, sealed,
 Shopify (a `shopify` sink beside `ebay-map.mjs`, same SKU key).
 
 ---
@@ -931,34 +966,67 @@ Shopify (a `shopify` sink beside `ebay-map.mjs`, same SKU key).
 the two things that actually cost time are **finding/entering the card** and **verifying the price**,
 so it removes the network from the typing loop and turns price checking into one column scan.
 
-**The one structural move.** Picking a set PAGES `/api/pkm/cards?q=set.id:X&pageSize=250&page=N`
-until `totalCount` (looping, exactly as `lib/enumerate.mjs:75` does — one request truncates any set
-over 250, and Paldea Evolved is 279) and keeps a trimmed index resident in a
-`Map(setId → {byNum, byName, cards})`. Several sets stay resident at once, so a mixed shoebox costs
-one prefetch per set and 0 ms after that. **That index is both entry modes**: the pile mode looks a
-number up in it, the set-list mode renders it as a tick list. There is no second data path, which is
-why the box break costs no extra fetch. A trimmed copy is cached per set in `localStorage` (never the
-raw payloads — 1–2 MB against a ~5 MB quota shared with the set list), so a repeat pile works with
-pokemontcg.io down (GR7).
+**The one structural move.** Picking a set costs ONE request — `/api/pkm/set/:id/cards` or
+`/api/mtg/set/:id/cards`, whichever the game's adapter names. The server does the paging and answers
+from its own disk copy (`lib/pkm-cards-cache.mjs`, `lib/mtg-cards-cache.mjs`), **in the same
+envelope**, so the page parses one shape and only the URL differs. The trimmed index stays resident
+in a `Map(setId → {byNum, byName, cards})`; several sets stay resident at once, so a mixed shoebox
+costs one prefetch per set and 0 ms after that. **That index is both entry modes**: the pile mode
+looks a number up in it, the set-list mode renders it as a tick list. There is no second data path,
+which is why the box break costs no extra fetch. A trimmed copy is cached per set in `localStorage`
+under `tcg_runner_idx2:<game>:<setId>` — game-scoped because set ids and set codes collide across
+games, and an unscoped key would serve Magic cards out of a Pokémon set's copy.
+
+**Both games in one pile.** The switcher changes the catalogue, not the queue: every row carries its
+own `game`, `rowKey()` leads with it, `flushDupes` asks that row's shelf, and the grid renders each
+row through its own adapter. So a Magic row keeps `417 / Etched Foil` while a Pokémon row beside it
+keeps `025/182 / Normal`. The saved queue is `tcg_runner_queue2:<game>` (a v1 queue predates the
+switcher and restores as Pokémon).
 
 **The catch line.** `125` + Enter is the whole common case; everything else is optional and
-order-free: `r|h|n` printing, `x3` quantity, `@12.50` price, `nm|lp|mp|hp` condition, `*name` search,
-and a bare set code to switch sets mid-pile. **`hp` is parsed before `h`** or "heavily played"
-silently becomes "holofoil". Resolution happens BEFORE Enter (a ghost strip), so a mistype is caught
-rather than corrected.
+order-free: printing, `x3` quantity, `@12.50` price, `nm|lp|mp|hp` condition, `*name` search,
+and a bare set code to switch sets mid-pile. The printing letters are per game — `r|h|n` for Pokémon,
+`n|f|h` for Magic, which has no reverse holo. **`hp` is parsed before the printing tokens** or
+"heavily played" silently becomes "holofoil". There is deliberately no token for etched or surge
+foil: across every cached set, Scryfall's only `finishes` combinations are `nonfoil+foil`, `nonfoil`,
+`foil` and `etched` — an etched or surge print is a SEPARATE COLLECTOR NUMBER, so it is typed as its
+own number and a token for it could only ever match nothing. Resolution happens BEFORE Enter (a ghost
+strip), so a mistype is caught rather than corrected.
 
 **One label per LISTING, quantity N on it.** A repeat of the same card bumps quantity instead of
 making a second row — the only behaviour that avoids eBay `[25002]`, and the reason 5 copies take one
 `AAD-001` rather than five labels. Identity is `rowKey()`, mirroring `stockKey()` (`lib/inventory.mjs:85`):
 condition and printing are part of it, so an LP copy is separate stock from an NM one.
 
-**Printings come from DATA, never a rarity regex (GR5).** The matrix is read off the card's
+**Printings come from DATA, never a rarity regex (GR5).** Pokémon's matrix is read off the card's
 `tcgplayer.prices` keys through `PRINTING_TO_FINISH`/`PRINTING_TO_EDITION`/`variantToken`
-(`lib/listing-copy.mjs:40-77`) — the same source `ENUMERATORS.pokemon` uses. The uploader's rarity
-regex (`stock-uploader.html:282`) matches a plain `Rare` and returns Holo; a wrong finish feeds
-`finishHint()` into the comps search and returns a **confident price for a card you do not own**. It
-survives only as the fallback for a card with no price object at all, and such a row is chipped
-`from rarity`.
+(`lib/listing-copy.mjs`) — the same source `ENUMERATORS.pokemon` uses. The uploader's rarity regex
+matches a plain `Rare` and returns Holo; a wrong finish feeds `finishHint()` into the comps search
+and returns a **confident price for a card you do not own**. It survives only as the fallback for a
+card with no price object at all, and such a row is chipped `from rarity`.
+
+**Magic's matrix is `mtgPrintingsFor` (`lib/runner-core.mjs`) — `card.finishes[]`, not the price
+keys**, because Scryfall's `prices` object always carries all three fields (mostly null) and `usd`
+already means "Normal" for Lorcana in the shared `PRINTING_TO_FINISH` namespace. Three things it
+gets right that the obvious version does not:
+
+- **`finishFromRarity` must never run for Magic.** Its regex matches a bare `rare`, so every Rare and
+  Mythic would come back Holofoil — the exact failure above. The adapter's fallback is a plain
+  `Nonfoil`, and it is effectively unreachable because Scryfall always populates `finishes`.
+- **"Nonfoil" contains "foil".** `printingOrder` tests the negation FIRST, or every unfoiled Magic
+  card ranks as a foil and a typed `n` finds nothing. `variantToken` has always done this; `etched`
+  gained its own branch beside `surge` for the same GR5 reason — `usd_etched` is a distinct
+  TCGplayer product, and `variant` is part of `UNIQUE(game, identity_key, variant)`.
+- **Surge foil is priced at `null`, on purpose.** Scryfall marks surge only in `promo_types` and
+  reports the PLAIN foil figure in `usd_foil` (HOC #53 says US$50; the real spread is #25 US$29.93 vs
+  #65 US$125). The disagreement detector below is the Runner's only independent second opinion, so
+  feeding it a number wrong by 4× turns a real check into noise. The MKT cell chips
+  `surge — no market` rather than going blank, or the empty cell reads as missing data (GR4).
+
+**The comps number filter has to agree with the comps query.** `compsQueryFor('mtg', …)` drops the
+collector number (Magic titles rarely carry one), so `compsNumberMatch` returns `null` for it —
+`singlesFilter` hard-rejects any title the number regex misses, and passing one anyway threw the
+whole cluster away and left every Magic row reading "no confident comps".
 
 **Triage.** Comps run behind the typing in a 3-wide client pool against the EXISTING
 `POST /api/listings/price`, which already accepts an inline `{row:{…}}` with no connect gate
