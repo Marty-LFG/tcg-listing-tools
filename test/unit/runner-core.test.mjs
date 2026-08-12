@@ -6,11 +6,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  numKeys, numRank, cmpRank, printingOrder, printingsFor, finishFromRarity, pickPrinting,
+  numKeys, numRank, cmpRank, printingOrder, printingsFor, mtgPrintingsFor, finishFromRarity, pickPrinting,
   parseCatch, isNearMint, medianOf, flagsFor, deriveState, isPublishable, rowKey,
   refuseRow, blockingRefusals, scaleGeometry, atMechanicalUndercut, SPREAD_WIDE,
-  PRICE_CEILING_AUD, MEDIAN_MULT,
+  PRICE_CEILING_AUD, MEDIAN_MULT, MTG_PRINTING_TOKENS,
 } from '../../lib/runner-core.mjs';
+import { variantToken } from '../../lib/listing-copy.mjs';
 
 // ---------------------------------------------------------------------------
 describe('numKeys — typed number → lookup keys (GR10: lookup only, never storage)', () => {
@@ -80,6 +81,110 @@ describe('printingOrder', () => {
   it('1st Edition holo still ranks as holo', () => {
     assert.equal(printingOrder('1stEditionHolofoil'), 2);
   });
+  // Scryfall's plain finish is literally the string "Nonfoil", which CONTAINS "foil". Without the
+  // negation test the /holo|foil/ branch catches it and every unfoiled Magic card ranks as a foil —
+  // and `n` on the catch line, which asks printingOrder for a 0, would find nothing and silently
+  // fall through to whatever printing happened to be first.
+  it('"Nonfoil" contains "foil", and still ranks 0', () => {
+    assert.equal(printingOrder('nonfoil'), 0);
+    assert.equal(printingOrder('foil'), 2);
+    assert.equal(printingOrder('etched'), 2);
+    assert.equal(printingOrder('surgefoil'), 2);
+  });
+  // Pinned because the negation above is a change to a shared function: the Pokémon and Lorcana
+  // finish strings must rank exactly as they did before it existed.
+  it('every pre-existing key ranks exactly as it always has', () => {
+    assert.deepEqual(
+      ['normal', 'holofoil', 'reverseHolofoil', '1stEditionNormal', '1stEditionHolofoil', 'unlimited', 'unlimitedHolofoil', 'usd', 'usd_foil'].map(printingOrder),
+      [0, 2, 1, 0, 2, 0, 2, 0, 2]);
+  });
+  it('an unknown key ranks 0 rather than throwing', () => {
+    assert.equal(printingOrder('somethingNew'), 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// variantToken is the UNIQUE(game, identity_key, variant) column, so these strings ARE stock
+// identity. Pinned here beside printingOrder because the two move together.
+describe('variantToken — the identity column', () => {
+  it('the pre-existing tokens are unchanged', () => {
+    assert.equal(variantToken('', 'Normal'), 'Base');
+    assert.equal(variantToken('', 'Holofoil'), 'Holo');
+    assert.equal(variantToken('', 'Reverse Holofoil'), 'Reverse Holo');
+    assert.equal(variantToken('', 'Foil'), 'Foil');
+    assert.equal(variantToken('', 'Enchanted'), 'Enchanted');
+    assert.equal(variantToken('1st Edition', 'Holofoil'), '1st Edition Holo');
+    assert.equal(variantToken('Unlimited', 'Holofoil'), 'Holo');
+  });
+  it('"Nonfoil" is Base, not Foil — the negation is tested first', () => {
+    assert.equal(variantToken('', 'Nonfoil'), 'Base');
+  });
+  // Scryfall prices etched separately (usd_etched) because TCGplayer sells it as its own product.
+  // Collapsing it onto 'Foil' would put two different cards on one row of the UNIQUE index.
+  it('etched foil earns its own identity, like surge foil already does', () => {
+    assert.equal(variantToken('', 'Etched Foil'), 'Etched Foil');
+    assert.equal(variantToken('', 'Surge Foil'), 'Surge Foil');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('mtgPrintingsFor — the same matrix, off Scryfall', () => {
+  const card = (over) => Object.assign({ finishes: [], promo_types: [], prices: {} }, over);
+
+  it('the common case: one print, two finishes, two prices', () => {
+    const out = mtgPrintingsFor(card({ finishes: ['nonfoil', 'foil'], prices: { usd: '1.50', usd_foil: '6.00' } }));
+    assert.deepEqual(out.map((p) => p.key), ['nonfoil', 'foil']);
+    assert.deepEqual(out.map((p) => p.variant), ['Base', 'Foil']);
+    assert.deepEqual(out.map((p) => p.marketUsd), [1.5, 6]);
+  });
+
+  it('a foil-only print offers only the foil', () => {
+    const out = mtgPrintingsFor(card({ finishes: ['foil'], prices: { usd_foil: '199.99' } }));
+    assert.deepEqual(out.map((p) => p.key), ['foil']);
+    assert.equal(out[0].marketUsd, 199.99);
+  });
+
+  // NEO has 12 of these. Etched is always its OWN collector number, never a third finish beside
+  // nonfoil+foil — counted across every cached set, the only combinations are nonfoil+foil,
+  // nonfoil, foil and etched.
+  it('an etched print prices off usd_etched and keeps its own identity', () => {
+    const out = mtgPrintingsFor(card({ finishes: ['etched'], prices: { usd_etched: '12.00', usd_foil: '3.00' } }));
+    assert.deepEqual(out.map((p) => p.key), ['etched']);
+    assert.equal(out[0].variant, 'Etched Foil');
+    assert.equal(out[0].marketUsd, 12);
+  });
+
+  // Scryfall marks surge only in promo_types and calls the printing plain "foil".
+  it('surge foil is promoted out of "foil" into its own product', () => {
+    const out = mtgPrintingsFor(card({ finishes: ['foil'], promo_types: ['surgefoil'], prices: { usd_foil: '50.00' } }));
+    assert.equal(out[0].key, 'surgefoil');
+    assert.equal(out[0].variant, 'Surge Foil');
+  });
+
+  // Scryfall reports the PLAIN foil figure for a surge print (HOC #53 says 50.00; the real spread
+  // is #25 US$29.93 vs #65 US$125). The disagreement detector is the runner's only independent
+  // second opinion, so feeding it a number wrong by 4x turns a real check into noise.
+  it('and refuses to price it, because that figure is known-bad', () => {
+    const p = mtgPrintingsFor(card({ finishes: ['foil'], promo_types: ['surgefoil'], prices: { usd_foil: '50.00' } }))[0];
+    assert.equal(p.marketUsd, null, 'no figure at all beats a wrong one (GR4)');
+    assert.equal(p.marketUnreliable, true, 'and the grid says why, so the empty cell is a decision');
+    assert.equal(p.marketUsdRaw, 50, 'the raw number survives for anyone who wants to eyeball it');
+  });
+
+  it('a missing price is null, never zero', () => {
+    const out = mtgPrintingsFor(card({ finishes: ['nonfoil'], prices: { usd: null } }));
+    assert.equal(out[0].marketUsd, null);
+  });
+
+  it('an unknown finish is ignored rather than invented into one', () => {
+    const out = mtgPrintingsFor(card({ finishes: ['glossy', 'nonfoil'], prices: { usd: '1' } }));
+    assert.deepEqual(out.map((p) => p.key), ['nonfoil']);
+  });
+
+  it('no finishes at all → empty, so the caller falls back', () => {
+    assert.deepEqual(mtgPrintingsFor(card({})), []);
+    assert.deepEqual(mtgPrintingsFor(null), []);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -146,6 +251,15 @@ describe('pickPrinting', () => {
   it('empty printings → null', () => {
     assert.equal(pickPrinting([], 'normal'), null);
   });
+
+  // Magic has three printings that all sort as 2 (foil, etched, surge), so the order heuristic
+  // alone would hand back whichever sorted first and quietly ignore what was typed.
+  it('an exact key beats the order heuristic', () => {
+    const mtgPs = mtgPrintingsFor({ finishes: ['nonfoil', 'foil'], prices: { usd: '1', usd_foil: '5' } });
+    assert.equal(pickPrinting(mtgPs, 'nonfoil').key, 'nonfoil');
+    assert.equal(pickPrinting(mtgPs, 'foil').key, 'foil');
+    assert.equal(pickPrinting(mtgPs, null).key, 'nonfoil', 'the unfoiled default');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -169,6 +283,40 @@ describe('parseCatch — the entry grammar', () => {
     assert.equal(P('125 r').printing, 'reverseHolofoil');
     assert.equal(P('125 h').printing, 'holofoil');
     assert.equal(P('125 n').printing, 'normal');
+  });
+
+  // A game brings its own printing vocabulary. Magic has no reverse holo, and its two words are
+  // nonfoil and foil — there is deliberately no etched or surge token, because those are separate
+  // collector numbers and a token for them could only ever match nothing.
+  describe('a game can bring its own printing vocabulary', () => {
+    const M = (s) => parseCatch(s, { setCodes: new Set(['HOB', 'NEO']), printingTokens: MTG_PRINTING_TOKENS });
+
+    it('Magic reads n and f as its own finishes', () => {
+      assert.equal(M('249 n').printing, 'nonfoil');
+      assert.equal(M('249 f').printing, 'foil');
+      assert.equal(M('249 h').printing, 'foil', 'h carries over as an alias for plain foil');
+    });
+    it('"hp" is STILL heavily played under the Magic vocabulary', () => {
+      const r = M('249 hp');
+      assert.equal(r.cond, 'Heavily Played');
+      assert.equal(r.printing, null);
+    });
+    it('r means nothing in Magic rather than silently meaning reverse holo', () => {
+      const r = M('249 r');
+      assert.equal(r.printing, null);
+      assert.deepEqual(r.unknown, ['r'], 'an unrecognised token is surfaced, not swallowed');
+    });
+    it('the rest of the grammar is unchanged', () => {
+      const r = M('249 f x3 @12.50 lp');
+      assert.equal(r.num, '249'); assert.equal(r.printing, 'foil');
+      assert.equal(r.qty, 3); assert.equal(r.askAud, 12.5); assert.equal(r.cond, 'Lightly Played');
+    });
+    it('a bare Magic set code still switches sets mid-pile', () => {
+      assert.equal(M('neo').setCode, 'NEO');
+    });
+    it('the default vocabulary is untouched when nothing is passed', () => {
+      assert.equal(parseCatch('125 r', { setCodes }).printing, 'reverseHolofoil');
+    });
   });
   it('"hp" is heavily played, NOT holofoil — the ordering trap', () => {
     const r = P('125 hp');
@@ -566,5 +714,14 @@ describe('rowKey — one label per listing, N copies on it', () => {
   });
   it('a different language is different stock', () => {
     assert.notEqual(rowKey(base), rowKey({ ...base, language: 'JP' }));
+  });
+  // Load-bearing since Magic reached the runner. Set codes collide across games, and without the
+  // game segment a Pokémon sv3-125 and a Magic hob-125 in the same pile would merge into one row —
+  // one label, one listing, two different cards.
+  it('two games never merge, even at the same identity', () => {
+    assert.notEqual(rowKey({ ...base, game: 'pokemon' }), rowKey({ ...base, game: 'mtg' }));
+  });
+  it('a row built before the switcher existed is still Pokémon', () => {
+    assert.equal(rowKey(base), rowKey({ ...base, game: 'pokemon' }));
   });
 });

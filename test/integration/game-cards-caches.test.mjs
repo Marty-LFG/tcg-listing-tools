@@ -43,6 +43,8 @@ function mount(plugin, at) {
 }
 const callSwu = mount(swu.swuCardsPlugin(), '/api/swu/cards');
 const callMtg = mount(mtg.mtgCardsPlugin(), '/api/mtg/cards');
+// The same plugin mounts a second route: the whole set, which is what the batch runner loads.
+const callMtgSet = mount(mtg.mtgCardsPlugin(), '/api/mtg/set');
 const callOp = mount(op.onepieceCardsPlugin(), '/api/op/sets/card');
 // What the price tracker's collector sends.
 const callSwuFresh = (url) => callSwu(url, { 'x-tcg-cache-bypass': '1' });
@@ -216,6 +218,151 @@ describe('Scryfall', () => {
 
   it('leaves /cards/search and other Scryfall paths to the proxy', async () => {
     for (const url of ['/search', '/', '/otj/1/extra']) assert.equal((await callMtg(url)).status, 'next', url);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/mtg/set/:setId/cards — the batch runner's one structural move, for Magic. It answers in
+// the SAME envelope lib/pkm-cards-cache.mjs uses, because stock-runner.html reads both through one
+// code path and only the URL differs between the games.
+describe('Scryfall — the whole set (the batch runner index)', () => {
+  const SET = 'hob';
+  const file = path.join(DIRS.mtg, SET + '.json');
+  // A real-ish printing: two finishes, a frame effect, and the fat fields the trim must drop.
+  const print = (n) => ({
+    id: 'uuid-' + n, oracle_id: 'o-' + n, name: 'Card ' + n, collector_number: String(n),
+    rarity: n === 1 ? 'mythic' : 'common', artist: 'Someone', lang: 'en', released_at: '2023-06-23',
+    type_line: 'Creature — Dragon', colors: ['R'], finishes: ['nonfoil', 'foil'], promo_types: [],
+    promo: false, frame_effects: [], border_color: 'black', full_art: false,
+    set: SET, set_name: 'The Hobbit',
+    image_uris: { small: 's' + n, normal: 'n' + n, large: 'l' + n, png: 'p' + n, art_crop: 'a' + n },
+    prices: { usd: '1.00', usd_foil: '5.00', usd_etched: null, eur: '0.90', tix: '0.02' },
+    // The bulk a raw Scryfall card carries and nothing here reads.
+    oracle_text: 'x'.repeat(400), legalities: { standard: 'legal', modern: 'legal' },
+    rulings_uri: 'https://…', prints_search_uri: 'https://…', related_uris: { gatherer: 'https://…' },
+  });
+  const stub = (total, { fail = false, short = false } = {}) => {
+    const calls = [];
+    globalThis.fetch = async (url) => {
+      calls.push(String(url));
+      if (fail) return dead;
+      const pageSize = 175;
+      const from = Number((String(url).match(/[?&]page=(\d+)/) || [])[1] || 1);
+      const start = (from - 1) * pageSize;
+      const count = short ? Math.max(1, total - 2) : total;
+      const data = Array.from({ length: Math.max(0, Math.min(pageSize, count - start)) }, (_, i) => print(start + i + 1));
+      const has_more = start + pageSize < count;
+      return json({ total_cards: total, has_more, next_page: has_more ? 'https://api.scryfall.com/cards/search?page=' + (from + 1) : null, data });
+    };
+    return calls;
+  };
+  beforeEach(() => { try { fs.unlinkSync(file); } catch {} });
+
+  it('fetches the set once and answers from disk, then from memory', async () => {
+    const calls = stub(200);
+    const cold = await callMtgSet('/' + SET + '/cards');
+    assert.equal(cold.status, 200);
+    assert.equal(cold.json.count, 200);
+    assert.equal(cold.json.setId, SET);
+    assert.equal(cold.headers['x-tcg-cache'], 'upstream');
+    assert.equal(calls.length, 2, '175 + 25');
+
+    const calls2 = stub(200);
+    const warm = await callMtgSet('/' + SET + '/cards');
+    assert.equal(warm.json.count, 200);
+    assert.equal(warm.headers['x-tcg-cache'], 'memory');
+    assert.equal(calls2.length, 0, 'a released set does not change, so nothing goes upstream');
+  });
+
+  it('answers in the same envelope the Pokémon route does', async () => {
+    stub(3);
+    const r = await callMtgSet('/' + SET + '/cards');
+    for (const k of ['setId', 'count', 'cachedAt', 'source', 'cards']) {
+      assert.ok(k in r.json, 'the envelope is missing ' + k + ' — the runner parses one shape');
+    }
+    assert.ok(Array.isArray(r.json.cards));
+  });
+
+  it('trims the card to what the pickers read, and drops the rest', async () => {
+    stub(1);
+    const c = (await callMtgSet('/' + SET + '/cards')).json.cards[0];
+    // Kept: identity, the printing matrix, the treatment axis, the money.
+    for (const k of ['name', 'collector_number', 'rarity', 'lang', 'artist', 'released_at', 'type_line',
+      'colors', 'finishes', 'promo_types', 'promo', 'frame_effects', 'border_color', 'full_art',
+      'set', 'set_name', 'image_uris', 'prices']) {
+      assert.ok(k in c, 'trimCard dropped ' + k + ', which the adapter reads');
+    }
+    // Dropped: a raw printing is 4-8 KB, and a 531-card set has to fit a shared ~5 MB localStorage
+    // quota alongside the set list.
+    for (const k of ['oracle_text', 'legalities', 'rulings_uri', 'prints_search_uri', 'related_uris', 'oracle_id']) {
+      assert.ok(!(k in c), 'trimCard kept ' + k + ', which nothing reads');
+    }
+    assert.deepEqual(c.prices, { usd: '1.00', usd_foil: '5.00', usd_etched: null }, 'eur/tix are not AU comps');
+    assert.deepEqual(Object.keys(c.image_uris).sort(), ['large', 'normal', 'small']);
+  });
+
+  // NEO has 41 prints with no top-level image_uris. Without the face fallback that is 8% of the set
+  // rendering thumbnail-less and reaching publish with no picture.
+  it('takes a double-faced card\'s art off the front face', () => {
+    const dfc = mtg.trimCard({
+      name: 'Two Sides', collector_number: '5', set: SET,
+      card_faces: [{ colors: ['U'], image_uris: { small: 'fs', normal: 'fn', large: 'fl' } }, { image_uris: { normal: 'bn' } }],
+    });
+    assert.equal(dfc.image_uris.normal, 'fn');
+    assert.deepEqual(dfc.colors, ['U'], 'the colours are on the face too');
+  });
+
+  it('?refresh=1 goes back upstream and rewrites the copy', async () => {
+    stub(3);
+    await callMtgSet('/' + SET + '/cards');
+    const calls = stub(4);
+    const r = await callMtgSet('/' + SET + '/cards?refresh=1');
+    assert.ok(calls.length >= 1, 'the button has to actually reach Scryfall');
+    assert.equal(r.json.count, 4);
+    assert.equal(mtg.readSetCache(SET).count, 4);
+  });
+
+  it('serves the stored copy when Scryfall is down, and says so', async () => {
+    stub(3);
+    await callMtgSet('/' + SET + '/cards');
+    stub(0, { fail: true });
+    const r = await callMtgSet('/' + SET + '/cards?refresh=1');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.count, 3);
+    assert.equal(r.json.stale, true);
+    assert.equal(r.headers['x-tcg-cache'], 'stale');
+  });
+
+  it('502s rather than pretending, when it is cold AND Scryfall is down', async () => {
+    stub(0, { fail: true });
+    const r = await callMtgSet('/' + SET + '/cards');
+    assert.equal(r.status, 502);
+    assert.equal(r.json.code, 'upstream_unreachable');
+    assert.equal(r.headers['x-tcg-cache'], 'none');
+  });
+
+  // A partial set written into a cache that never expires is missing its high numbers for good.
+  it('serves a short walk but refuses to store it', async () => {
+    stub(10, { short: true });
+    const r = await callMtgSet('/' + SET + '/cards');
+    assert.equal(r.json.partial, true);
+    assert.equal(r.json.count, 8);
+    assert.equal(mtg.hasSetCache(SET), false, 'a half-walked set must never reach disk');
+  });
+
+  it('rejects a set id that would escape the cache directory', async () => {
+    const r = await callMtgSet('/..%2F..%2Fetc/cards');
+    assert.equal(r.status, 400);
+    assert.equal(r.json.code, 'bad_set_id');
+  });
+
+  // connect only enters a mount when the next character is '/' or '.', so /api/mtg/sets never
+  // reaches the /api/mtg/set mount — and mtgSetsPlugin is registered ahead of it besides. This pins
+  // the second line of defence: anything that is not /:setId/cards falls through untouched.
+  it('leaves every other path to the next middleware', async () => {
+    for (const url of ['/sets', '/' + SET, '/' + SET + '/cards/extra', '/']) {
+      assert.equal((await callMtgSet(url)).status, 'next', url);
+    }
   });
 });
 
