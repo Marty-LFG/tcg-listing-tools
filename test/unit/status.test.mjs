@@ -124,6 +124,20 @@ describe('SETTINGS validators', () => {
     assert.match(ebayBands((b) => { b[0].copy = 'free'; }), /no description wording/);
     assert.match(ebayBands((b, s) => { s.bands = undefined; b.length = 0; }), /shipping\.bands/);
   });
+  it('ebay-listing: a config predating bands is normalised BEFORE the form sees it', () => {
+    // The lived failure: /api/settings served the raw file, so a config with no `bands` key rendered
+    // empty band fields. The save builds its payload from that content and overlays only the fields
+    // the form owns — and the form has no `id` field, because ids are internal. So it saved three
+    // bands with no id and the PUT was refused with "band 1 needs an id", which the owner had no way
+    // to act on. Normalising on READ is what makes the round trip possible at all.
+    const legacy = { marketplaceId: 'EBAY_AU', shipping: { serviceCode: 'AU_StandardDelivery', freeDomestic: true } };
+    const seen = SETTINGS['ebay-listing'].normalize(legacy);
+    assert.equal(seen.shipping.bands.length, 3);
+    for (const b of seen.shipping.bands) assert.ok(b.id, 'every band the form renders must carry its id');
+    assert.equal(seen.shipping.minBandForSlab, 1);
+    // ...and what comes back out of that round trip validates, so the owner can actually save.
+    assert.equal(SETTINGS['ebay-listing'].validate({ ...ebayOk(), shipping: seen.shipping }), null);
+  });
   it('ebay-listing: the graded-slab floor must name a band that exists', () => {
     const c = ebayOk(); c.shipping.minBandForSlab = 7;
     assert.match(SETTINGS['ebay-listing'].validate(c), /only 3 bands/);

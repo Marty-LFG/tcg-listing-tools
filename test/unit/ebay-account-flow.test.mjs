@@ -75,6 +75,34 @@ describe('bootstrapAccount — happy path (opted in, all created fresh)', () => 
   });
 });
 
+describe('bootstrapAccount — an unassigned band is NEVER filled in by creating a policy', () => {
+  it('reports the gap and creates nothing (lived: three duplicate policies, 2026-08-14)', async () => {
+    // The real failure: the server's config predated bands, migration blanked the policy ids, and
+    // setup helpfully created "TCG postage — Regular letter" beside the seller's own
+    // "Paid Shipping $0 - $49.98". Same money, a name they never chose, and six policies where they
+    // wanted three. A band with no policy is a configuration gap, not something to invent.
+    const calls = stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
+      'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
+    });
+    const blanked = testBands().map((b) => ({ ...b, policyId: '' }));
+    const report = await bootstrapAccount(ENV, { ...CFG, shipping: { minBandForSlab: 1, bands: blanked } });
+
+    assert.equal(calls.some((c) => c.method === 'POST' && c.url.includes('fulfillment_policy')), false,
+      'setup must not create a postage policy for an unassigned band');
+    assert.equal(report.ready, false);
+    assert.ok(report.bands.every((b) => b.policyId === null && b.created === false));
+    // Every band is named, and every error is about the missing assignment — nothing else went wrong.
+    // Six rather than three: verifyBandPolicies flags them independently of the loop, which is the
+    // belt-and-braces that would have caught a duplicate even if the loop had created one.
+    for (const b of testBands()) assert.ok(report.errors.some((e) => e.includes(b.label)), `no error names "${b.label}"`);
+    for (const e of report.errors) assert.match(e, /no eBay policy (is )?assigned|will not create/);
+  });
+});
+
 describe('bootstrapAccount — opt-in still processing', () => {
   it('short-circuits with optInPending when the program is not yet active', async () => {
     stubFetch({
