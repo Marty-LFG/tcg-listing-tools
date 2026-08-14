@@ -5,7 +5,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { bootstrapAccount, accountStatus } from '../../lib/ebay-account.mjs';
-import { testShipping, testBands, fulfillmentPolicyRows } from '../helpers/ebay-config.mjs';
+import { testShipping, testBands, fulfillmentPolicyRows, paymentPolicyRow, returnPolicyRow } from '../helpers/ebay-config.mjs';
 
 const ENV = { EBAY_APP_ID: 'PRD-x', EBAY_CERT_ID: 'PRD-y', EBAY_REFRESH_TOKEN: 'fake-refresh' };
 const CFG = {
@@ -50,8 +50,8 @@ describe('bootstrapAccount — happy path (opts in, verifies every pinned policy
     const calls = stubFetch({
       'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: optedPrograms.map((p) => ({ programType: p })) } }),
       'POST /program/opt_in': () => { optedPrograms = ['SELLING_POLICY_MANAGEMENT']; return { status: 200, json: {} }; },
-      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
       'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
       'GET /inventory/v1/location/': () => ({ status: 404, json: { errors: [{ errorId: 25802, message: 'not found' }] } }),
       'POST /inventory/v1/location/': () => ({ status: 204, json: null }),
@@ -82,8 +82,8 @@ describe('bootstrapAccount — a policy the owner never picked', () => {
   it('refuses by name for payment and return, exactly as it does for a band', async () => {
     const calls = stubFetch({
       'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
-      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
       'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
       'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
     });
@@ -101,7 +101,7 @@ describe('bootstrapAccount — a policy the owner never picked', () => {
     stubFetch({
       'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
       'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [] } }),      // the pin is gone
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
       'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
       'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
     });
@@ -109,6 +109,31 @@ describe('bootstrapAccount — a policy the owner never picked', () => {
     assert.equal(report.policies.paymentPolicyId, null);
     assert.ok(report.errors.some((e) => /no longer on this eBay account/.test(e)), report.errors.join(' · '));
     assert.equal(report.ready, false);
+  });
+});
+
+describe('bootstrapAccount — a policy that is the RIGHT one but wrongly configured', () => {
+  it('is not ready, and says which setting to change in Seller Hub', async () => {
+    // The band ids are correct and charge the right money, so verifyBandPolicies is happy. The policy
+    // is still unusable: 5-day dispatch takes Authenticity-Guarantee items out of eligibility. Two
+    // different questions, and only the constraint check answers this one.
+    const rows = fulfillmentPolicyRows();
+    rows[0].handlingTime = { value: 5, unit: 'DAY' };
+    stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: rows } }),
+      'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
+    });
+    const report = await bootstrapAccount(ENV, CFG);
+    assert.equal(report.bandCheck.ok, true, 'the right policy is on the right band');
+    assert.equal(report.policyCheck.ok, false, 'but it is not configured correctly');
+    assert.equal(report.ready, false);
+    const bad = report.policyCheck.issues.filter((i) => i.severity === 'error');
+    assert.equal(bad.length, 1);
+    assert.equal(bad[0].field, 'handlingTime');
+    assert.match(bad[0].message, /Authenticity-Guarantee/);
   });
 });
 
@@ -120,8 +145,8 @@ describe('bootstrapAccount — an unassigned band is NEVER filled in by creating
     // wanted three. A band with no policy is a configuration gap, not something to invent.
     const calls = stubFetch({
       'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
-      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
       'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
       'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
     });
@@ -158,8 +183,8 @@ describe('bootstrapAccount — missing warehouse postcode', () => {
   it('reports the location error pointing at the settings field, without blocking the policies', async () => {
     stubFetch({
       'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
-      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
       'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
       'GET /inventory/v1/location/': () => ({ status: 404, json: { errors: [{ errorId: 25802, message: 'not found' }] } }),
     });

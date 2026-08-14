@@ -57,3 +57,19 @@ export function fulfillmentPolicyRow(id, name, costCents, serviceCode = 'AU_AusP
 export function fulfillmentPolicyRows() {
   return testBands().map((b) => fulfillmentPolicyRow(b.policyId, b.policyName, b.costCents, b.serviceCode || 'AU_AusPostStandardLetter'));
 }
+
+// Payment and return rows shaped the way a CORRECTLY configured policy really is — immediate payment
+// under managed payments, and a return policy matching the config's stated intent. Minimal stubs used
+// to be fine when nothing inspected them; checkPolicyConstraints does, so a stub missing immediatePay
+// now (rightly) reads as a policy the Inventory API cannot publish against.
+export function paymentPolicyRow(id = 'PAY-EXIST', name = 'Pay AU') {
+  return { paymentPolicyId: id, name, marketplaceId: 'EBAY_AU', immediatePay: true };
+}
+export function returnPolicyRow(id = 'RET-EXIST', name = 'Ret AU', returns = { accepted: true, days: 30, shippingCostPayer: 'BUYER' }) {
+  if (!returns.accepted) return { returnPolicyId: id, name, marketplaceId: 'EBAY_AU', returnsAccepted: false };
+  return {
+    returnPolicyId: id, name, marketplaceId: 'EBAY_AU', returnsAccepted: true,
+    returnPeriod: { value: returns.days, unit: 'DAY' },
+    returnShippingCostPayer: returns.shippingCostPayer, refundMethod: 'MONEY_BACK',
+  };
+}

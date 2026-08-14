@@ -4,7 +4,7 @@
 // listing must use immediatePay, no offline paymentMethods, a 30/60-day return, and ≤3-day handling.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { paymentBody, returnBody, fulfillmentBody, fulfillmentTerms, verifyBandPolicies } from '../../lib/ebay-account.mjs';
+import { paymentBody, returnBody, fulfillmentBody, fulfillmentTerms, verifyBandPolicies, checkPolicyConstraints } from '../../lib/ebay-account.mjs';
 import { restErrors, firstErrorText } from '../../lib/ebay-rest.mjs';
 import { DEFAULT_BANDS } from '../../lib/shipping-bands.mjs';
 import { testBands, fulfillmentPolicyRow, fulfillmentPolicyRows } from '../helpers/ebay-config.mjs';
@@ -133,6 +133,111 @@ describe('fulfillmentTerms / verifyBandPolicies — which policy is which band',
     const v = verifyBandPolicies(bands, rows, 'fulfillmentPolicyId');
     assert.equal(v.ok, true, 'a second service is a warning, not a refusal');
     assert.match(v.warnings.join(' · '), /offers 2 services/);
+  });
+});
+
+// The other half of the *Body builders' job. Nothing creates a policy any more, so these constraints
+// are only useful read BACKWARDS: given a policy the owner built by hand in Seller Hub, does it meet
+// them? Distinct from verifyBandPolicies, which asks whether it is the right policy for its band.
+describe('checkPolicyConstraints', () => {
+  const sev = (issues, field) => (issues.find((i) => i.field === field) || {}).severity || null;
+  const CFG3 = { ...CFG, handlingDays: 1, returns: { accepted: false, days: 30, shippingCostPayer: 'BUYER' } };
+
+  describe('payment', () => {
+    const good = { paymentPolicyId: 'P1', name: 'Managed', immediatePay: true };
+    it('a correct managed-payments policy raises nothing', () => {
+      assert.deepEqual(checkPolicyConstraints('payment_policy', good, CFG3), []);
+    });
+    it('ERROR when immediate payment is off — the Inventory API cannot publish against it', () => {
+      const i = checkPolicyConstraints('payment_policy', { ...good, immediatePay: false }, CFG3);
+      assert.equal(sev(i, 'immediatePay'), 'error');
+      assert.match(i[0].message, /immediate payment/i);
+    });
+    it('warns about leftover offline payment methods under managed payments', () => {
+      const i = checkPolicyConstraints('payment_policy', { ...good, paymentMethods: [{ paymentMethodType: 'PERSONAL_CHECK' }] }, CFG3);
+      assert.equal(sev(i, 'paymentMethods'), 'warning');
+    });
+  });
+
+  describe('return', () => {
+    it('a no-returns policy matching a no-returns store raises nothing', () => {
+      assert.deepEqual(checkPolicyConstraints('return_policy', { returnPolicyId: 'R1', name: 'No returns', returnsAccepted: false }, CFG3), []);
+    });
+    it('warns when the policy accepts returns and Settings says the store does not', () => {
+      // THE lived mismatch: 30-day returns quietly sitting on a store whose own listings say
+      // "No returns accepted". A warning rather than an error — buyers see the policy, and which
+      // side is wrong is the owner's call, not ours.
+      const row = { returnPolicyId: 'R1', name: '30-day', returnsAccepted: true, returnPeriod: { value: 30, unit: 'DAY' }, refundMethod: 'MONEY_BACK', returnShippingCostPayer: 'BUYER' };
+      const i = checkPolicyConstraints('return_policy', row, CFG3);
+      assert.equal(sev(i, 'returnsAccepted'), 'warning');
+      assert.match(i.find((x) => x.field === 'returnsAccepted').message, /Buyers see the policy/);
+    });
+    it('ERROR on a return period eBay AU does not allow', () => {
+      const cfg = { ...CFG3, returns: { accepted: true, days: 30, shippingCostPayer: 'BUYER' } };
+      const row = { returnPolicyId: 'R1', name: 'odd', returnsAccepted: true, returnPeriod: { value: 14, unit: 'DAY' } };
+      assert.equal(sev(checkPolicyConstraints('return_policy', row, cfg), 'returnPeriod'), 'error');
+    });
+    it('warns when the window or the return-postage payer disagrees with Settings', () => {
+      const cfg = { ...CFG3, returns: { accepted: true, days: 30, shippingCostPayer: 'BUYER' } };
+      const row = { returnPolicyId: 'R1', name: '60-day', returnsAccepted: true, returnPeriod: { value: 60, unit: 'DAY' }, refundMethod: 'MONEY_BACK', returnShippingCostPayer: 'SELLER' };
+      const i = checkPolicyConstraints('return_policy', row, cfg);
+      assert.equal(sev(i, 'returnPeriod'), 'warning');
+      assert.equal(sev(i, 'returnShippingCostPayer'), 'warning');
+    });
+  });
+
+  describe('fulfilment', () => {
+    const band = DEFAULT_BANDS[0];
+    const good = fulfillmentPolicyRow('F1', 'Paid Shipping $0 - $49.98', 170);
+    it('a correct postage policy raises nothing', () => {
+      assert.deepEqual(checkPolicyConstraints('fulfillment_policy', good, CFG3, band), []);
+    });
+    it('ERROR when dispatch runs past 3 days — Authenticity Guarantee stops applying', () => {
+      const row = { ...good, handlingTime: { value: 5, unit: 'DAY' } };
+      const i = checkPolicyConstraints('fulfillment_policy', row, CFG3, band);
+      assert.equal(sev(i, 'handlingTime'), 'error');
+      assert.match(i[0].message, /Authenticity-Guarantee/);
+      assert.match(i[0].message, /Regular letter/, 'the message names the band it belongs to');
+    });
+    it('ERROR when the policy offers FREE postage while the description quotes an amount', () => {
+      const row = JSON.parse(JSON.stringify(good));
+      row.shippingOptions[0].shippingServices[0].freeShipping = true;
+      const i = checkPolicyConstraints('fulfillment_policy', row, CFG3, band);
+      assert.equal(sev(i, 'freeShipping'), 'error');
+      assert.match(i.find((x) => x.field === 'freeShipping').message, /lying to the buyer/);
+    });
+    it('ERROR when there is no DOMESTIC option at all', () => {
+      const row = { ...good, shippingOptions: [{ optionType: 'INTERNATIONAL', shippingServices: [] }] };
+      assert.equal(sev(checkPolicyConstraints('fulfillment_policy', row, CFG3, band), 'shippingOptions'), 'error');
+    });
+    it('warns when dispatch disagrees with Settings, and when postage is not flat rate', () => {
+      const row = JSON.parse(JSON.stringify(good));
+      row.handlingTime = { value: 3, unit: 'DAY' };
+      row.shippingOptions[0].costType = 'CALCULATED';
+      const i = checkPolicyConstraints('fulfillment_policy', row, CFG3, band);
+      assert.equal(sev(i, 'handlingTime'), 'warning');
+      assert.equal(sev(i, 'costType'), 'warning');
+    });
+    it('warns when shipToLocations carries a country NAME rather than its code', () => {
+      // live 2026-07-26: regionName 'Australia' → [20400] Invalid request (Invalid Location(s))
+      const row = { ...good, shipToLocations: { regionIncluded: [{ regionName: 'Australia' }] } };
+      assert.equal(sev(checkPolicyConstraints('fulfillment_policy', row, CFG3, band), 'shipToLocations'), 'warning');
+      const ok = { ...good, shipToLocations: { regionIncluded: [{ regionName: 'AU' }] } };
+      assert.deepEqual(checkPolicyConstraints('fulfillment_policy', ok, CFG3, band), []);
+    });
+  });
+
+  it('the shipped band table, built by our own fulfillmentBody, passes its own constraints', () => {
+    // The builders and the checker have to agree, or the reference shape is not a reference at all.
+    for (const b of DEFAULT_BANDS) {
+      const body = fulfillmentBody({ ...CFG3, policyNames: { payment: 'p', return: 'r' } }, b);
+      const row = { fulfillmentPolicyId: 'X', name: b.label, ...body };
+      assert.deepEqual(checkPolicyConstraints('fulfillment_policy', row, CFG3, b), [], b.id);
+    }
+    const pay = { paymentPolicyId: 'X', name: 'p', ...paymentBody(CFG3) };
+    assert.deepEqual(checkPolicyConstraints('payment_policy', pay, CFG3), []);
+    const ret = { returnPolicyId: 'X', name: 'r', ...returnBody(CFG3) };
+    assert.deepEqual(checkPolicyConstraints('return_policy', ret, CFG3), []);
   });
 });
 
