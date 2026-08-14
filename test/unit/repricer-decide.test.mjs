@@ -7,6 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { decideReprice, eligibleForReprice, scaleBestOfferCents, anchorFor, corroborate, DEFAULT_GUARDRAILS } from '../../lib/repricer-decide.mjs';
+import { DEFAULT_BANDS } from '../../lib/shipping-bands.mjs';
 
 const listing = (over = {}) => ({
   listingId: '168537104622', title: 'Pokemon Wailord ex 016/084 Pitch Black Double Rare Holo EN M/NM',
@@ -664,5 +665,100 @@ describe('decideReprice — corroboration is the last gate', () => {
     const r = decide(withComps({ context: { corroborators: [{ name: 'own_sale', cents: 500 }] } }));
     assert.equal(r.evidence.corroboration.ceilingCents, 650);
     assert.deepEqual(r.evidence.corroboration.sources, [{ name: 'own_sale', cents: 500, at: null }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TRAP 4 — banded postage. Postage is a function of OUR price now, so "list = delivered anchor minus
+// our postage" is circular. Every case above still exercises the FLAT path (postageCents: 0, and no
+// shippingBands in context), which is what a hand-made listing on a fixed parcel policy still gets.
+// ---------------------------------------------------------------------------
+describe('banded postage (trap 4)', () => {
+  const BANDS = DEFAULT_BANDS;
+  // Only a listing THIS tool published, on one of our band costs, gets banded treatment.
+  const ours = (over = {}) => listing({ createdVia: 'tool', postageCents: 170, priceCents: 1000, ...over });
+  const ctx = (over = {}) => ({ corroborators: [{ name: 'own_sale', cents: 500000 }], shippingBands: BANDS, ...over });
+
+  it('a hand-made listing keeps the flat subtraction — its postage really is fixed', () => {
+    // createdVia 'manual' with a $9.95 parcel cost: no band matches, and none should.
+    const d = decideReprice({
+      listing: listing({ createdVia: 'manual', postageCents: 995, priceCents: 1000 }),
+      identity: identity(), comps: comps({ recommended: 30, cheapest: 30.01, fair: 31, clusterRange: [30, 32], lowest: [29, 29.5, 30.01] }),
+      guardrails: {}, context: ctx(),
+    });
+    assert.equal(d.verdict, 'raise');
+    assert.equal(d.evidence.band, null, 'no band should be attributed to a hand-made listing');
+    assert.equal(d.evidence.bandCapped, false);
+    assert.equal(d.evidence.ourPostageCents, 995, 'the flat figure is what was subtracted');
+  });
+
+  it('a tool listing whose postage matches NO band is skipped, not guessed at', () => {
+    const d = decideReprice({
+      listing: ours({ postageCents: 995 }), identity: identity(), comps: comps(), guardrails: {}, context: ctx(),
+    });
+    assert.equal(d.verdict, 'skip');
+    assert.equal(d.code, 'postage_off_band');
+  });
+
+  it('subtracts the BAND postage, not a flat figure', () => {
+    // Delivered anchor A$30.00 undercut to 2999; band 1 costs 170 → 2829, snapped down.
+    const d = decideReprice({
+      listing: ours(), identity: identity(),
+      comps: comps({ recommended: 30, cheapest: 30.01, fair: 31, clusterRange: [30, 32], lowest: [29, 29.5, 30.01] }),
+      guardrails: {}, context: ctx(),
+    });
+    assert.equal(d.verdict, 'raise');
+    assert.equal(d.evidence.band, 'letter');
+    assert.ok(d.toPriceCents <= 2829, String(d.toPriceCents));
+  });
+
+  it('DEAD ZONE: an anchor with no self-consistent price resolves to the band ceiling below', () => {
+    // D≈5500c has NO solution — 5330 is band 2, 4674 is band 1, and a re-resolve loop oscillates
+    // between them forever. The correct answer is 4998: the highest price that still delivers under.
+    const d = decideReprice({
+      listing: ours({ priceCents: 4000 }), identity: identity(),
+      comps: comps({ recommended: 55, cheapest: 55.01, fair: 56, clusterRange: [55, 57], lowest: [54, 54.5, 55.01] }),
+      guardrails: {}, context: ctx(),
+    });
+    assert.equal(d.verdict, 'raise');
+    assert.ok(d.toPriceCents <= 4998, `must not cross into band 2: ${d.toPriceCents}`);
+  });
+
+  it('CLAMP: a raise that would cross a band stops at that band ceiling and says so', () => {
+    const d = decideReprice({
+      listing: ours({ priceCents: 4000 }), identity: identity(),
+      comps: comps({ recommended: 200, cheapest: 200.01, fair: 205, clusterRange: [200, 210], lowest: [199, 199.5, 200.01] }),
+      guardrails: { maxIncreasePct: 1000 }, context: ctx(),
+    });
+    assert.equal(d.verdict, 'raise');
+    assert.equal(d.evidence.bandCapped, true);
+    assert.equal(d.evidence.bandCeilingCents, 4998);
+    assert.equal(d.toPriceCents, 4998, 'the clamp is the ceiling exactly, not a snapped-down value');
+  });
+
+  it('an accepted proposal NEVER leaves its band, in either direction', () => {
+    // The completeness argument for the clamp: up-only keeps it above fromCents (which is inside the
+    // band), and the ceiling keeps it below the top. snapToEnding drops up to 49c and still cannot
+    // fall out the bottom.
+    for (const priceCents of [200, 1000, 4000, 4900, 4997]) {
+      const d = decideReprice({
+        listing: ours({ priceCents }), identity: identity(),
+        comps: comps({ recommended: 500, cheapest: 500.01, fair: 505, clusterRange: [500, 510], lowest: [499, 499.5, 500.01] }),
+        guardrails: { maxIncreasePct: 100000 }, context: ctx(),
+      });
+      if (d.verdict !== 'raise') continue;
+      assert.ok(d.toPriceCents > priceCents, `up-only broken at ${priceCents}`);
+      assert.ok(d.toPriceCents <= 4998, `left band 1 at ${priceCents} → ${d.toPriceCents}`);
+    }
+  });
+
+  it('an anchor smaller than the cheapest postage declines rather than pricing at zero', () => {
+    const d = decideReprice({
+      listing: ours({ priceCents: 100 }), identity: identity(),
+      comps: comps({ recommended: 1.2, cheapest: 1.21, fair: 1.3, clusterRange: [1.2, 1.4], lowest: [1.0, 1.1, 1.21] }),
+      guardrails: {}, context: ctx(),
+    });
+    assert.equal(d.verdict, 'decline');
+    assert.equal(d.code, 'postage_exceeds_anchor');
   });
 });

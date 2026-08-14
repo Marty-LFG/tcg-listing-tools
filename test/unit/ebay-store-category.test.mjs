@@ -5,9 +5,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildOfferPayload, resolveStoreCategoryNames } from '../../lib/channels/ebay-inventory-api.mjs';
+import { testEbayConfig } from '../helpers/ebay-config.mjs';
 
 const listing = { sku: 'BK-PKM-1', game: 'pokemon', categoryId: '183454', price_cents: 498, quantity: 1 };
-const base = { marketplaceId: 'EBAY_AU', listingDuration: 'GTC', policies: { paymentPolicyId: 'P', returnPolicyId: 'R', fulfillmentPolicyId: 'F' }, location: { merchantLocationKey: 'tcg-au-1' } };
+const base = testEbayConfig();
 
 describe('resolveStoreCategoryNames', () => {
   it('prefers the per-game path over the default', () => {

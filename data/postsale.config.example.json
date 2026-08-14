@@ -33,6 +33,10 @@
     "seller_hub_order_url": "https://www.ebay.com.au/sh/ord/details?orderid={orderId}",
     "seller_hub_fallback_url": "https://www.ebay.com.au/sh/ord?filter=status:AWAITING_SHIPMENT",
     "tracking_url": "https://auspost.com.au/mypost/track/details/{tracking}",
-    "services": {}
+    "_services_comment": "Observed eBay service code -> { label, tier, tracked, note }. Checked FIRST, before every regex, so this is how the store's banded postage gets classified honestly. Band 1 is the NORMAL band now, so it is tier 'standard' even though the buyer paid $1.70: a plain letter needs nothing different from the packer. Bands 2 and 3 are 'tracked' because someone has to go and buy a label.",
+    "services": {
+      "AU_AusPostStandardLetter": { "label": "Regular letter", "tier": "standard", "tracked": false },
+      "AU_AusPostStandardLetterWithTracking": { "label": "Tracked letter", "tier": "tracked", "tracked": true }
+    }
   }
 }

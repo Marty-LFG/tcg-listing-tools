@@ -98,22 +98,36 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    `itemFinish` (bulk), `parseVariance` (collectr), `ebayFinish`, `MAPPERS.mtg`
    (normalize), and each builder's `genTitle`.
 
-6. **Condition / postage / footer blocks are per-product-type.** For the **five
-   card builders** they are identical, owner-verified wording — if you edit one
-   card builder, edit all five: condition = `"{cond}. Pulled straight to sleeve
-   and stored in a toploader."` (default `Ungraded, Near Mint`); postage =
-   `"Ships in a penny sleeve and toploader inside a rigid mailer, with FREE
-   postage within Australia."`; footer = `"From a smoke-free home. Fast dispatch.
-   Thanks for looking."`
-   The **LEGO and Funko builders have their own condition/postage wording**
+6. **Condition / protection / footer blocks are per-product-type; POSTAGE is per
+   price band.** For the **six card builders** (pokemon, mtg, lorcana, riftbound,
+   swu, onepiece — the list lives in `test/helpers/extract-inline.mjs`
+   `CARD_BUILDERS`) the wording is identical and owner-verified — edit one, edit
+   all six: condition = `"{cond}. Pulled straight to sleeve and stored in a
+   toploader."` (default `Ungraded, Near Mint`); protection = `"Ships in a penny
+   sleeve and toploader inside a rigid mailer."`; footer = `"From a smoke-free
+   home. Fast dispatch. Thanks for looking."`
+   The postage sentence itself is **not a constant**: it is
+   `postagePhrase(band)` from `lib/shipping-bands.mjs`, one template per price
+   band, with the amount supplied by config. Protection and postage used to be
+   one sentence ending "…with FREE postage within Australia", which stopped being
+   true the day the store moved to three buyer-paid bands.
+   **THE RULE THAT REPLACES "do not reword": the amount and service a description
+   quotes MUST equal the `shippingCost` and service on the eBay policy pinned to
+   that band.** A description contradicting the policy is an INAD claim on every
+   listing in the band, so `verifyBandPolicies` checks it against eBay live and
+   `publishListing` refuses rather than publishing a guess.
+   The **LEGO and Funko builders keep their own condition/PROTECTION wording**
    (`condText()` / `postageText()` in each file) because the card wording is
    physically wrong for boxed goods — a LEGO set or Funko box does not ship in a
-   penny sleeve, and bulky LEGO can't honestly offer free postage. **Do not
-   "unify" these back to the card constant.** The footer line stays shared across
-   all product types. Condition wording is driven by explicit seller fields and
-   defaults to the *safest* option (LEGO `Used – Complete`, Funko `Near-Mint`
-   box) so an un-edited listing under-promises — never over-promises (INAD risk).
-   Enforced by `test/invariants/builder-wording.test.mjs` (`pnpm test`).
+   penny sleeve. **Do not "unify" those back to the card constants.** They DO
+   share the band phrases and the footer, which are suite-wide. (The old carve-out
+   line "bulky LEGO can't honestly offer free postage" is obsolete: nothing is
+   free now.) Condition wording is driven by explicit seller fields and defaults
+   to the *safest* option (LEGO `Used – Complete`, Funko `Near-Mint` box) so an
+   un-edited listing under-promises — never over-promises (INAD risk).
+   Enforced by `test/invariants/builder-wording.test.mjs`, which runs each
+   builder's own `postagePhrase()` and compares the rendered sentence against the
+   module's (`pnpm test`).
 
 7. **Every builder must survive its API being down.** Fields are editable; a
    failed lookup shows a warning, never a crash. Keep manual entry working.
@@ -683,6 +697,9 @@ The pairs, each with a fixture block in that harness:
 | `lorcana` … / `lorcanaPitch` | `lorcana-listing-builder.html` |
 | `riftbound` … / `riftboundPitch` | `riftbound-listing-builder.html` |
 | `mtg` … / `mtgPitch`, `MTG_COLOURS`/`mtgColourName`/`mtgTreatmentOf`/`mtgPromoNote`/`MTG_LANG` | `mtg-listing-builder.html` |
+| `swu` … / `swuPitch` | `swu-listing-builder.html` |
+| `onepiece` … / `onepiecePitch`, `onepieceIsChaseVariant` | `onepiece-listing-builder.html` |
+| `lib/shipping-bands.mjs` `DEFAULT_BANDS`/`postagePhrase`/`money` | **all eight** builders' inline `POSTAGE_BANDS`/`postagePhrase()`, and `extras.js`'s comps analyser |
 
 **Validation (§8 style):** `scripts/check-{listing-copy,pricing,collectr,collectr-graded,collectr-ebay,enumerate,comps}.mjs`
 — run them all after touching bulk code. They are wrapped by
@@ -705,6 +722,26 @@ of a parallel store.
 **Hard invariant: the system NEVER decreases a price.** Decreases are human-only. Every increase is
 gated behind a **Telegram Approve tap** (owner's choice) — no autonomous writes. Enforced in code at
 the proposal layer *and* re-checked immediately before any eBay write.
+
+**Banded postage (trap 4).** Comps are DELIVERED prices and our price is a LIST price, so the
+conversion subtracts our postage — but postage is now a function of OUR price (three bands), which
+makes that circular. Two consequences, both load-bearing:
+
+- **Never iterate to a fixed point.** For a delivered anchor in `[5169, 5824]` or `[15825, 16518]`
+  cents there is *no* self-consistent price, and re-resolving oscillates between two bands forever
+  (at D=5500: 5330 → band 2 → 4674 → band 1 → 5330 → …). `delivered(P)` is monotonically increasing,
+  so `listPriceForDelivered` answers it with one descending scan instead. That monotonicity is
+  guaranteed by `validateBands`' **strictly-increasing cost** rule — which also makes `bandForCost`
+  one-to-one, so a live listing's postage identifies the band it is on. Do not relax it.
+- **A raise stops at its band ceiling.** Crossing a band would change postage, policy and description
+  together, and `Revise*` can send none of them (§16). The clamp is *complete*, not a mitigation:
+  up-only keeps the price above `fromCents` (inside the band) and the ceiling keeps it below the top,
+  so an accepted proposal cannot leave its band in either direction. **That argument depends on
+  `never_decrease`**, which `test/data/configs.test.mjs` pins as a hard invariant.
+
+Banded logic applies only to listings this tool published *and* whose live postage still matches a
+configured band cost. A hand-made listing on a flat parcel policy keeps the simple subtraction; a
+tool-published one that matches no band is skipped as `postage_off_band` rather than clamped wrongly.
 
 **Why the Trading API (not the Sell Inventory API).** Our listings are created **manually in Seller
 Hub**. The modern Sell Inventory API is *blind* to manual listings unless each is migrated via
@@ -849,7 +886,9 @@ Two rules follow, both enforced in code: a **failed read ABORTS** (an empty read
 
 Uses **`ReviseItem`, not `ReviseFixedPriceItem`**: only ReviseItem carries `VerifyOnly`, a real dry run that validates the whole payload without persisting — so the owner sees the exact merge *and eBay's verdict on it* before anything changes. `VerifyOnly` is a sibling of `Item`, not a child. Error **5028** (a legacy value that no longer validates against the category's current aspects) fails the *entire* call because the container is all-or-nothing, so it is surfaced by name rather than as a bare failure.
 
-Deliberately **not** sent: `PictureDetails` (also a complete replace — a partial send deletes photos and reshuffles the gallery thumbnail), `ShippingDetails` (same trap), and the **description**, which eBay blocks on a fixed-price listing that has any quantity sold or a pending Best Offer (error 10029). Best Offer thresholds live in `ListingDetails`, not `BestOfferDetails`, if that is ever added.
+Deliberately **not** sent: `PictureDetails` (also a complete replace — a partial send deletes photos and reshuffles the gallery thumbnail), `ShippingDetails` (same trap), and the **description**, which eBay blocks on a fixed-price listing that has any quantity sold or a pending Best Offer (error 10029).
+
+That `ShippingDetails` omission is **why the repricer cannot move a listing between postage bands.** Postage is banded by price now (§15), so a raise that crosses a band boundary would have to change the buyer's postage, the fulfilment policy *and* the amount quoted in the description — and this write path can send none of the three. So the repricer clamps a raise at the top of the band the listing is already in and flags it on the proposal for a human to move by hand. An Inventory-API listing *could* be moved (one `updateOffer` rebuilds the whole offer), but a hand-made Trading-only listing never can. Best Offer thresholds live in `ListingDetails`, not `BestOfferDetails`, if that is ever added.
 
 Sold and unsold history reaches back about 90 days, so the mirror is complete for active listings and partial for history. Migrating the hand-made listings into the Inventory model (`bulkMigrateListing`) would collapse this into one population, but it is **one-way** — Trading `Revise*` is permanently blocked afterwards — so it is a deliberate decision, not a default.
 

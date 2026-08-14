@@ -45,7 +45,24 @@ describe('classifyPostage — tiers', () => {
   it('falls back to `paid` when the buyer paid for something we cannot otherwise name', () => {
     const p = classifyPostage({ ship_service: 'AU_Freight', shipping_cents: 900 }, {}, EMPTY);
     assert.equal(p.tier, 'paid');
-    assert.equal(p.tracked, false);   // paid is an upgrade, but nothing promises a tracking number
+    assert.equal(p.tracked, false);   // nothing here promises a tracking number
+    // NOT an upgrade any more. `upgrade` means "the packer must do something different", and since
+    // the store went to banded postage EVERY card order is paid — so treating paid as an upgrade
+    // would flag the entire day's run and the flag would stop meaning anything.
+    assert.equal(isUpgrade(p.tier), false);
+  });
+  it('the $1.70 letter band is standard, not an upgrade — it is the normal case', () => {
+    // Configured in data/postsale.config.json services, which is checked before every regex.
+    const cfg = { services: { AU_AusPostStandardLetter: { label: 'Regular letter', tier: 'standard', tracked: false } } };
+    const p = classifyPostage({ ship_service: 'AU_AusPostStandardLetter', shipping_cents: 170 }, cfg, EMPTY);
+    assert.equal(p.tier, 'standard');
+    assert.equal(isUpgrade(p.tier), false);
+  });
+  it('the $8.26 tracked band IS an upgrade — someone has to buy a label', () => {
+    const cfg = { services: { AU_AusPostStandardLetterWithTracking: { label: 'Tracked letter', tier: 'tracked', tracked: true } } };
+    const p = classifyPostage({ ship_service: 'AU_AusPostStandardLetterWithTracking', shipping_cents: 826 }, cfg, EMPTY);
+    assert.equal(p.tier, 'tracked');
+    assert.equal(p.tracked, true);
     assert.equal(isUpgrade(p.tier), true);
   });
 

@@ -345,6 +345,24 @@
   // delivered totals (item + shipping), AU vs Worldwide, and the cheapest-delivered "undercut" target.
   var ebaySoldOff = false;   // set once we learn Marketplace Insights isn't granted (no retry this session)
   function ebMoney(n){ return 'A$' + (Math.round(n * 100) / 100).toFixed(2); }
+  // The highest LIST price whose delivered total (list + that price's band postage) stays at or under
+  // `deliveredCents`. MIRROR of listPriceForDelivered in lib/shipping-bands.mjs (GR6/9) — extras.js is a
+  // classic script and cannot import the ESM module. NOT an iteration: with banded postage there is no
+  // self-consistent price for a delivered figure inside either dead zone, and re-resolving oscillates
+  // between two bands forever. One descending scan instead, at most one candidate per band.
+  // Reads the builder page's POSTAGE_BANDS, which loadPostageBands() refreshes from the live config.
+  // Without it the advice is dropped rather than guessed — the store charges real money for postage now.
+  function ebListForDelivered(deliveredCents){
+    var bands = (typeof window !== 'undefined' && window.POSTAGE_BANDS) || null;
+    if (!bands || !bands.length || !(deliveredCents > 0)) return null;
+    for (var i = bands.length - 1; i >= 0; i--) {
+      var hi = bands[i].maxCents == null ? Infinity : bands[i].maxCents;
+      var cand = Math.min(hi, deliveredCents - bands[i].costCents);
+      var lo = i ? bands[i - 1].maxCents + 1 : 1;
+      if (cand >= lo) return { listCents: cand, band: bands[i] };
+    }
+    return null;
+  }
   function ebShip(opt){ var so = (opt || [])[0]; return (so && so.shippingCost && so.shippingCost.value != null) ? parseFloat(so.shippingCost.value) : null; } // null = calculated/unknown
   function ebAuction(it){ return Array.isArray(it.buyingOptions) && it.buyingOptions.indexOf('AUCTION') >= 0; }
   function ebNormAsk(it){ var price = it.price && parseFloat(it.price.value); if (!(price > 0)) return null;
@@ -371,7 +389,12 @@
       html += '<div style="border:1px solid var(--gold,#c8aa6e);border-radius:9px;padding:10px 12px;margin-bottom:12px;background:rgba(200,170,110,.08);">'
         + '<div style="color:var(--gold,#c8aa6e);font-weight:700;font-size:14px;">Cheapest delivered: ' + ebMoney(overall.delivered) + '</div>'
         + '<div style="font-size:12px;color:var(--text,#eee);margin-top:3px;">item ' + ebMoney(overall.price) + ' + ship ' + ebMoney(overall.ship) + (overall.loc && overall.loc !== '?' ? ' · ' + overall.loc : '') + '</div>'
-        + '<div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">List with <b style="color:var(--gold,#c8aa6e);">FREE shipping under ' + ebMoney(overall.delivered) + '</b> to be the cheapest total a buyer pays.</div>'
+        // One cent under the cheapest competitor, because matching it is not undercutting it.
+        + (function (t) {
+          return '<div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">' + (t
+            ? 'List at <b style="color:var(--gold,#c8aa6e);">' + ebMoney(t.listCents / 100) + '</b> to be the cheapest total a buyer pays &mdash; that plus ' + ebMoney(t.band.costCents / 100) + ' postage comes in under ' + ebMoney(overall.delivered) + '.'
+            : 'To be the cheapest total a buyer pays, keep your price plus postage under <b style="color:var(--gold,#c8aa6e);">' + ebMoney(overall.delivered) + '</b>.') + '</div>';
+        })(ebListForDelivered(Math.round(overall.delivered * 100) - 1))
         + '</div>';
     }
     function segRow(label, s){ if (!s.n) return '';

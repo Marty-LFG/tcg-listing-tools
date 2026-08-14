@@ -660,28 +660,41 @@
         {p:'location.postalCode',l:'Warehouse postcode',t:'text',tip:'AU postcode for the merchant inventory location. Required before the first listing (used to create the eBay inventory location).'},
         {p:'handlingDays',l:'Handling days',t:'number',min:0,max:3,tip:'Dispatch time in days (0–3). Kept ≤3 so Authenticity-Guarantee items stay eligible.'},
         {p:'returns.days',l:'Return window (days)',t:'number',min:30,max:60,tip:'How long a buyer has to request a return. eBay AU allows only 30 or 60. Only used when the tool has to <b>create</b> a return policy.'},
-        {p:'shipping.serviceCode',l:'Postage service',t:'select',wide:true,
-         opts:[{v:'AU_AusPostStandardLetter',l:'Australia Post Domestic Regular Letter Untracked (2–8 days)'},
-               {v:'AU_AusPostStandardLetterWithTracking',l:'Australia Post Domestic Regular Letter With Tracking (2–7 days)'},
-               {v:'AU_AusPostPriorityLetter',l:'Australia Post Domestic Priority Letter (2–6 days)'},
-               {v:'AU_AusPostPriorityLetterWithTracking',l:'Australia Post Domestic Priority Letter With Tracking (1–5 days)'},
-               {v:'AU_AusPostExpressLetter',l:'Australia Post Domestic Express Letter (1–2 days)'},
-               {v:'AU_StandardDelivery',l:'Standard Parcel Delivery (1–6 days)'},
-               {v:'AU_Express',l:'Australia Post Express Post (1–3 days)'}],
-         tip:'How a single card actually ships. Codes read live from eBay AU on 2026-07-26. The letter services cap at 500&nbsp;g and 2&nbsp;cm thick, which a sleeved card in a rigid mailer fits. Only used when the tool has to <b>create</b> a postage policy — a policy picked below always wins.'},
+        {p:'shipping.minBandForSlab',l:'Graded slabs start at',t:'select',wide:true,num:true,
+         opts:[{v:0,l:'Band 1 — a slab follows its price like any card'},{v:1,l:'Band 2 — a graded card never travels untracked'},{v:2,l:'Band 3 — every slab is signed for'}],
+         tip:'A graded slab fits the letter service physically, so without a floor a $20 PSA 8 would go untracked for $1.70. This lifts a slab to at least this band whatever it is worth. It only ever lifts: a dear slab keeps its own higher band.'},
       ]},
+      ...[0,1,2].map(i=>({name:'Postage band '+(i+1),fields:[
+        {p:`shipping.bands.${i}.label`,l:'Band name',t:'text',
+         tip:'What you call this band in Settings and on the setup card. Buyers never see it.'},
+        {p:`shipping.bands.${i}.maxCents`,l:'Applies up to (cents)',t:'number',min:1,
+         tip:'The HIGHEST item price in this band, in <b>cents</b> — 4998 is A$49.98. The next band starts one cent above it, so there is no gap to get wrong. <b>Leave the last band blank</b>: the top band has no ceiling.'},
+        {p:`shipping.bands.${i}.costCents`,l:'Buyer pays (cents)',t:'number',min:1,
+         tip:'What the buyer is charged, in <b>cents</b> — 826 is A$8.26. This exact figure is quoted in every description in this band, and setup checks it against the eBay policy below. A mismatch is refused rather than published.'},
+        {p:`shipping.bands.${i}.copy`,l:'Description wording',t:'select',wide:true,
+         opts:[{v:'letter_untracked',l:'Regular letter, no tracking'},{v:'tracked',l:'Tracked'},{v:'tracked_signature',l:'Tracked + signature on delivery'}],
+         tip:'Which sentence the description uses. It has to describe what the policy actually does — promising tracking on an untracked service is a “not as described” claim waiting to happen.'},
+        {p:`shipping.bands.${i}.serviceCode`,l:'eBay service code',t:'text',
+         tip:'Only used if this tool ever has to <b>create</b> this policy. A policy picked below always wins, so leaving it blank is fine.'},
+        {p:`shipping.bands.${i}.policyId`,l:'eBay postage policy',t:'select',src:'/api/listings/account/policies',kind:'fulfillment',wide:true,
+         matchCentsFrom:`shipping.bands.${i}.costCents`,blank:'— not assigned —',
+         tip:'Pick the policy that charges this band’s amount. Each option shows the amount and service it really uses, read live from eBay, and a ✓ marks the one whose price matches this band. Setup refuses to publish if they disagree.'},
+      ]})),
       {name:'Business policies',fields:[
         {p:'policies.paymentPolicyId',l:'Payment policy',t:'select',src:'/api/listings/account/policies',kind:'payment',wide:true,
          tip:'Pick the policy you already use on eBay — <b>its</b> terms are what buyers see. “Let setup manage it” lets the tool create and keep its own instead, which is what put 30-day returns and parcel post on the first API listing.'},
         {p:'policies.returnPolicyId',l:'Return policy',t:'select',src:'/api/listings/account/policies',kind:'return',wide:true,
          tip:'Your hand-made listings say “No returns accepted”. Pick that same policy here so the tool’s listings match.'},
-        {p:'policies.fulfillmentPolicyId',l:'Postage policy',t:'select',src:'/api/listings/account/policies',kind:'fulfillment',wide:true,
-         tip:'Pick the policy that posts by Australia Post untracked letter. Each option shows the eBay service code it actually uses.'},
         {p:'returns.accepted',l:'Accept returns',t:'toggle',tip:'Only used when the tool has to <b>create</b> its own return policy. Off = “No returns accepted”. A policy picked above always wins over this.'},
       ]},
       {name:'Store category',fields:[
-        {p:'store.defaultCategory',l:'Default store category',t:'text',wide:true,
-         tip:'Full path of the storefront department, e.g. <b>/Trading Card Games</b>. Leave blank and eBay files every listing under “Other” — which is where the first API listing landed, the only one of 163 items outside Trading Card Games.'},
+        {p:'store.defaultCategory',l:'Default store category',t:'select',src:'/api/listings/store/categories',wide:true,blank:'— none (eBay files it under “Other”) —',
+         tip:'Full path of the storefront department, e.g. <b>/Trading Card Games</b>. Leave it unset and eBay files every listing under “Other” — which is where the first API listing landed, the only one of 163 items outside Trading Card Games. Read live from your storefront.'},
+        // Keyed by the game codes lib/channels/ebay-map.mjs knows (cats.games), spelled the way the
+        // storefront does. One Piece has no eBay category entry yet, so it has no row here either.
+        ...[['pokemon','Pokémon'],['mtg','Magic: The Gathering'],['lorcana','Disney Lorcana'],['swu','Star Wars: Unlimited'],['riftbound','Riftbound']].map(([g,l])=>({
+          p:`store.categoryByGame.${g}`,l,t:'select',src:'/api/listings/store/categories',wide:true,blank:'— use the default above —',
+          tip:'Storefront department for '+l+' listings. Overrides the default above. Leave it unset to use the default.'})),
       ]},
       {name:'Best Offer defaults',fields:[
         {p:'bestOffer.enabled',l:'Best Offer on by default',t:'toggle',tip:'Prefills the Best Offer toggle on the uploader verify screen.'},
@@ -696,7 +709,33 @@
   };
 
   const getP=(o,p)=>p.split('.').reduce((x,k)=>x==null?x:x[k],o);
-  const setP=(o,p,v)=>{const ks=p.split('.');let x=o;for(const k of ks.slice(0,-1))x=x[k]=x[k]||{};x[ks.at(-1)]=v;};
+  // A NUMERIC next segment means this level is an ARRAY, not an object. Creating an object here is how
+  // "shipping.bands.0.costCents" silently saves as {bands:{"0":…}}: it parses, it saves, the PUT is
+  // accepted, and then every band lookup returns nothing because bands is no longer a list.
+  const setP=(o,p,v)=>{const ks=p.split('.');let x=o;
+    for(let i=0;i<ks.length-1;i++){const k=ks[i];
+      if(x[k]==null) x[k]=/^\d+$/.test(ks[i+1])?[]:{};
+      x=x[k];}
+    x[ks.at(-1)]=v;};
+
+  // One fetch per source URL, shared by every field bound to it. The three band policy pickers all
+  // read /account/policies, which is a live eBay call — three identical round trips would be three
+  // times the rate-limit spend for one answer.
+  const srcCache={};
+  const srcFetch=(u)=>(srcCache[u]||(srcCache[u]=fetch(u).then(r=>r.json())));
+
+  // Normalise the two source shapes into {rows,missingId}. Business policies arrive under
+  // kinds[kind].rows; store categories arrive as a flat category list whose PATH is the value the
+  // config stores (resolveStoreCategoryNames only accepts names starting with "/").
+  function srcRows(j,f){
+    if(f.kind){
+      const k=(j.kinds||{})[f.kind];
+      if(!k||!k.rows) return null;
+      return {rows:k.rows,missingId:(k.missing&&k.selectedId)||null};
+    }
+    if(!Array.isArray(j.categories)) return null;
+    return {rows:j.categories.filter(c=>c&&c.path).map(c=>({id:c.path,name:c.path})),missingId:null};
+  }
 
   function fieldCtl(f,c,inputs){
     const cur=getP(c,f.p);
@@ -714,15 +753,23 @@
         // Options come from a live eBay read. Always seed with the CURRENT value first so a failed
         // fetch can never blank a live pin — the saved value has to survive a flaky lookup.
         addOpt(cur??'',cur?('current: '+cur):'— let setup manage it —');
-        fetch(f.src).then(r=>r.json()).then(j=>{
-          const k=(j.kinds||{})[f.kind]; if(!k||!k.rows) return;
-          input.innerHTML=''; addOpt('','— let setup manage it —');
-          for(const row of k.rows) addOpt(row.id,row.name+(row.summary?'  ·  '+row.summary:''));
-          if(k.missing&&k.selectedId) addOpt(k.selectedId,'⚠ '+k.selectedId+' is no longer on eBay');
+        srcFetch(f.src).then(j=>{
+          const got=srcRows(j,f); if(!got) return;
+          input.innerHTML=''; addOpt('',f.blank||'— let setup manage it —');
+          for(const row of got.rows){
+            // f.matchCents marks the policy that actually charges this band's amount, so the owner
+            // matches money to money instead of guessing from three near-identical policy names.
+            const wantCents=f.matchCentsFrom!=null?getP(c,f.matchCentsFrom):null;
+            const fits=wantCents!=null&&row.costCents!=null&&row.costCents===wantCents;
+            addOpt(row.id,(fits?'✓ ':'')+row.name+(row.summary?'  ·  '+row.summary:''));
+          }
+          if(got.missingId) addOpt(got.missingId,'⚠ '+got.missingId+' is no longer on eBay');
           input.value=cur??'';
         }).catch(()=>{});
       } else { for(const o of f.opts){const oo=(o&&o.v!==undefined)?o:{v:o,l:o};addOpt(oo.v,oo.l);} input.value=cur??(f.opts[0]&&f.opts[0].v!==undefined?f.opts[0].v:f.opts[0]); }
-      inputs[f.p]=()=>input.value;
+      // A <select> always yields a STRING. f.num says the setting is a number, and saving "1" where the
+      // validator wants an integer is a save that fails for a reason the form cannot explain.
+      inputs[f.p]=f.num?(()=>input.value===''?null:+input.value):(()=>input.value);
     }
     else if(f.t==='textarea'){ input=document.createElement('textarea'); input.value=cur??''; inputs[f.p]=()=>input.value; }
     // f.def is what the CODE falls back to when the key is absent. Showing it beats showing blank: a
@@ -807,7 +854,7 @@
       '<div class="kv"><span class="k">Subscription</span><span class="v">'+esc(st.subscriptionLevel||'—')+(st.apiListingEntitled?' <span class="pill ok plain">API ok</span>':'')+'</span></div>'+
       '<div class="kv"><span class="k">Payment policy</span><span class="v">'+(pol.paymentPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Return policy</span><span class="v">'+(pol.returnPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
-      '<div class="kv"><span class="k">Fulfilment policy</span><span class="v">'+(pol.fulfillmentPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
+      '<div class="kv"><span class="k">Postage bands</span><span class="v" id="ebBands">checking…</span></div>'+
       '<div class="kv"><span class="k">Merchant location</span><span class="v">'+(st.merchantLocationKey?esc(st.merchantLocationKey):yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Ready to list</span><span class="v">'+yn(st.ready)+'</span></div>'+
       '<div class="kv"><span class="k">Listing as</span><span class="v" id="ebIdentity">checking…</span></div>'+
@@ -825,11 +872,29 @@
       n.innerHTML=j&&j.ok?esc(j.userId||'?')+(j.storeOwner?' <span class="pill ok plain">store</span>'+(j.storeUrl?' <a href="'+esc(j.storeUrl)+'" target="_blank" rel="noopener">visit ↗</a>':''):' <span class="pill plain">no store</span>'):'unknown';
     }).catch(()=>{const n=$('ebIdentity'); if(n) n.textContent='unknown';});
     fetch('/api/listings/config').then(r=>r.json()).then(j=>{
-      const n=$('ebStoreCat'); if(!n) return;
-      const s=(j&&j.config&&j.config.store)||{}, byGame=Object.values(s.categoryByGame||{}).filter(Boolean);
-      const set=s.defaultCategory||byGame[0]||'';
-      n.innerHTML=set?esc(set)+(byGame.length?' <span class="dim">(+per-game)</span>':''):'<span class="pill bad plain">not set</span> <span class="dim">listings file under “Other”</span>';
-    }).catch(()=>{const n=$('ebStoreCat'); if(n) n.textContent='unknown';});
+      const n=$('ebStoreCat');
+      if(n){
+        const s=(j&&j.config&&j.config.store)||{}, byGame=Object.values(s.categoryByGame||{}).filter(Boolean);
+        const set=s.defaultCategory||byGame[0]||'';
+        n.innerHTML=set?esc(set)+(byGame.length?' <span class="dim">(+per-game)</span>':''):'<span class="pill bad plain">not set</span> <span class="dim">listings file under “Other”</span>';
+      }
+      // One row per postage band, showing the amount and whether an eBay policy is pinned to it. This
+      // is where three policy ids pasted in the wrong order becomes visible without reading JSON:
+      // bandCheck (from /account/status) compares each band's amount against what the pinned policy
+      // really charges on eBay, and the costs are distinct enough that a policy identifies its own band.
+      const b=$('ebBands'); if(!b) return;
+      const bands=(j&&j.config&&j.config.shipping&&j.config.shipping.bands)||[];
+      if(!bands.length){ b.innerHTML='<span class="pill bad plain">none</span> <span class="dim">no band table configured</span>'; return; }
+      const checks={}; for(const c of (st.bandCheck&&st.bandCheck.bands)||[]) checks[c.id]=c;
+      b.innerHTML='<div style="display:grid;gap:2px;">'+bands.map(bd=>{
+        const chk=checks[bd.id], money='A$'+((+bd.costCents||0)/100).toFixed(2);
+        const mark=!bd.policyId?'<span class="pill bad plain">not assigned</span>'
+          :chk&&chk.ok===false?'<span class="pill bad plain">⚠ '+esc(chk.error||'does not match eBay')+'</span>'
+          :chk&&chk.ok?'<span class="pill ok plain">✓ '+esc(chk.policyName||bd.policyId)+'</span>'
+          :'<span class="pill plain">'+esc(bd.policyName||bd.policyId)+'</span>';
+        return '<div>'+esc(bd.label||bd.id)+' <span class="dim">'+money+'</span> '+mark+'</div>';
+      }).join('')+'</div>';
+    }).catch(()=>{const n=$('ebStoreCat'); if(n) n.textContent='unknown'; const b=$('ebBands'); if(b) b.textContent='unknown';});
     btn.disabled=false;
     btn.onclick=async()=>{
       btn.disabled=true; note.style.color='var(--dim)'; note.textContent='running setup (opt-in + policies + location; may take a moment)…';

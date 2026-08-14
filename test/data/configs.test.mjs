@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { read } from '../helpers/extract-inline.mjs';
 import { availableBakes } from '../../lib/refresh.mjs';
 import { LAYOUT_OVERRIDE_KEYS, TEXT_OVERRIDE_KEYS, BADGE_OVERRIDE_KEYS, VARIANTS, resolveLayout } from '../../lib/listing-image-config.mjs';
+import { validateBands } from '../../lib/shipping-bands.mjs';
 
 const cfg = (name) => JSON.parse(read(`data/${name}`));
 
@@ -102,14 +103,31 @@ describe('ebay-listing.config.example.json', () => {
     assert.equal(c.listingDuration, 'GTC');
     assert.ok(Number.isInteger(c.handlingDays) && c.handlingDays >= 0 && c.handlingDays <= 3, `handlingDays=${c.handlingDays}`);
   });
-  it('has a merchant location key + the three business-policy names', () => {
+  it('has a merchant location key + the payment/return policy names', () => {
+    // No policyNames.fulfillment any more — each postage BAND names its own policy.
     assert.ok(c.location && c.location.merchantLocationKey, 'location.merchantLocationKey');
-    assert.ok(c.policyNames.payment && c.policyNames.return && c.policyNames.fulfillment, 'policyNames');
+    assert.ok(c.policyNames.payment && c.policyNames.return, 'policyNames');
   });
   it('returns period is 30 or 60 when accepted; best-offer pcts are bounded', () => {
     if (c.returns.accepted) assert.ok([30, 60].includes(c.returns.days), `returns.days=${c.returns.days}`);
     assert.ok(c.bestOffer.autoAcceptPct > 0 && c.bestOffer.autoAcceptPct <= 100);
     assert.ok(c.bestOffer.autoDeclinePct >= 0 && c.bestOffer.autoDeclinePct <= 100);
+  });
+  it('the postage band table passes its own validator', () => {
+    assert.equal(validateBands(c.shipping.bands), null);
+  });
+  it('NOTHING is free — every band charges the buyer', () => {
+    // The store moved off free postage. A 0c band is how it would sneak back in.
+    for (const b of c.shipping.bands) assert.ok(b.costCents > 0, `${b.id} charges ${b.costCents}c`);
+  });
+  it('graded slabs never travel untracked', () => {
+    assert.ok(Number.isInteger(c.shipping.minBandForSlab) && c.shipping.minBandForSlab >= 1,
+      `minBandForSlab=${c.shipping.minBandForSlab}`);
+  });
+  it('the old free-postage keys are gone', () => {
+    assert.equal(c.shipping.freeDomestic, undefined, 'shipping.freeDomestic is retired');
+    assert.equal(c.shipping.serviceCode, undefined, 'each band owns its own serviceCode now');
+    assert.equal(c.policies.fulfillmentPolicyId, undefined, 'the single fulfilment policy is retired');
   });
 });
 

@@ -16,15 +16,10 @@ import path from 'node:path';
 import { openDbAt } from '../../lib/db.mjs';
 import { runBatchPublish, batchPreflight, pickCanaries } from '../../lib/listings.mjs';
 import { PRICE_CEILING_AUD } from '../../lib/runner-core.mjs';
+import { testEbayConfig } from '../helpers/ebay-config.mjs';
 
 const ENV = { EBAY_REFRESH_TOKEN: 'fake', EBAY_CERT_ID: 'c' };   // no EBAY_APP_ID → baked descriptor ids
-const CFG = {
-  marketplaceId: 'EBAY_AU', categoryTreeId: '15', listingDuration: 'GTC',
-  location: { merchantLocationKey: 'tcg-au-1' },
-  policies: { paymentPolicyId: 'PAY', returnPolicyId: 'RET', fulfillmentPolicyId: 'FUL' },
-  bestOffer: { enabled: false, autoAcceptPct: 95, autoDeclinePct: 78 },
-  genericImage: { enabled: false },
-};
+const CFG = testEbayConfig({ genericImage: { enabled: false } });
 const saveCfg = () => {};
 
 let db, tmpDir;

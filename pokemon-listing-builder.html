@@ -117,6 +117,7 @@
             <option>Ungraded, Damaged</option>
           </datalist>
         </div>
+        <div class="f-full"><label>Postage band <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">— pick the band matching the price you will list at</span></label><select id="f_postage"></select></div>
         <div><label>Cert # <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">graded slabs</span></label><input id="f_cert" autocomplete="off" placeholder="e.g. 12345678"></div>
         <div><label>Subgrades <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">if on the slab</span></label><input id="f_subgrades" autocomplete="off" placeholder="e.g. Centering 9.5 · Corners 9 · Edges 9.5 · Surface 10"></div>
         <div class="f-full"><label>Image URL <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">— auto-filled from lookup, paste to override</span></label><input id="f_img" autocomplete="off" placeholder="https://… card image (fills on lookup; override here if needed)"></div>
@@ -191,11 +192,62 @@ function rarShortOf(r){return PKM_RAB[(''+(r||'')).toLowerCase()]||r;}
 // "Illustration Rare (IR)" — full name + abbreviation when one exists (details table).
 function rarDisplay(r){if(!r)return '';var rl=(''+r).toLowerCase(),ab=PKM_RAB[rl];return ab&&ab.toLowerCase()!==rl?r+' ('+ab+')':r;}
 
+/* ---- postage bands — MIRROR of lib/shipping-bands.mjs (GR6/9) -------------------------------------
+   This is a classic <script> and cannot import the ESM module, so the band table and the buyer-facing
+   sentence are duplicated here. Change one side, change the other: test/invariants/builder-wording.test.mjs
+   compares the RENDERED strings against postagePhrase() from the module.
+   loadPostageBands() refreshes the table from the live config on load; a failed fetch keeps these
+   defaults, which is GR7 and is also what keeps the copy harnesses byte-exact (they run this file in a
+   vm with no fetch at all). */
+var POSTAGE_BANDS=[
+  {id:'letter',label:'Regular letter',maxCents:4998,costCents:170,copy:'letter_untracked'},
+  {id:'tracked',label:'Tracked',maxCents:14998,costCents:826,copy:'tracked'},
+  {id:'signature',label:'Tracked + signature',maxCents:null,costCents:1520,copy:'tracked_signature'}];
+var POSTAGE_MIN_BAND_FOR_SLAB=1;   // a graded card never travels untracked, whatever it is worth
+function bandMoney(c){return '$'+((Math.round(Number(c))||0)/100).toFixed(2);}
+function postagePhrase(b){
+  if(!b) return 'Postage within Australia is shown at checkout.';
+  var m=bandMoney(b.costCents);
+  if(b.copy==='tracked') return 'Postage is '+m+' anywhere in Australia, sent tracked with Australia Post so you can follow it along.';
+  if(b.copy==='tracked_signature') return 'Postage is '+m+' anywhere in Australia, sent tracked and signed for when it lands.';
+  return 'Postage is '+m+' anywhere in Australia, going as a regular Australia Post letter. There\'s no tracking on that one.';
+}
+function bandById(id){for(var i=0;i<POSTAGE_BANDS.length;i++)if(POSTAGE_BANDS[i].id===id)return POSTAGE_BANDS[i];return null;}
+function bandRangeLabel(i){
+  var b=POSTAGE_BANDS[i],lo=i?bandMoney(POSTAGE_BANDS[i-1].maxCents+1):null;
+  var range=b.maxCents==null?(lo+' and over'):(lo?(lo+' to '+bandMoney(b.maxCents)):('Up to '+bandMoney(b.maxCents)));
+  return range+' — '+bandMoney(b.costCents)+' '+String(b.label||b.id).toLowerCase();
+}
+function readPostageBand(slab){
+  var sel=document.getElementById('f_postage'),b=(sel&&bandById(sel.value))||POSTAGE_BANDS[0],i=POSTAGE_BANDS.indexOf(b);
+  return (slab&&i<POSTAGE_MIN_BAND_FOR_SLAB)?POSTAGE_BANDS[POSTAGE_MIN_BAND_FOR_SLAB]:b;
+}
+function loadPostageBands(){
+  var sel=document.getElementById('f_postage'); if(!sel) return;
+  var paint=function(){var v=sel.value;sel.innerHTML='';
+    for(var i=0;i<POSTAGE_BANDS.length;i++){var o=document.createElement('option');o.value=POSTAGE_BANDS[i].id;o.textContent=bandRangeLabel(i);sel.appendChild(o);}
+    sel.value=bandById(v)?v:POSTAGE_BANDS[0].id;};
+  paint();
+  fetch('/api/listings/config').then(function(r){return r.json();}).then(function(j){
+    var s=j&&j.config&&j.config.shipping;
+    if(!s||!s.bands||!s.bands.length) return;
+    POSTAGE_BANDS=s.bands;
+    if(s.minBandForSlab!=null) POSTAGE_MIN_BAND_FOR_SLAB=s.minBandForSlab;
+    paint(); if(typeof render==='function') render();
+  }).catch(function(){});
+}
+// MIRROR of condPostage() in lib/listing-copy.mjs: protection is per product type, postage is per band.
+function postageText(f,slab){
+  return (slab?'Ships securely inside a rigid mailer.':'Ships in a penny sleeve and toploader inside a rigid mailer.')
+    +' '+postagePhrase(f.postageBand);
+}
+
 let _intlMeta=null;   // native JP/CN/KO card+set names for the description (set on an intl lookup, cleared otherwise)
 function readFields(){var f=Object.assign({name:val('f_name'),set:val('f_set'),num:val('f_num'),rarity:val('f_rarity'),
   poke:val('f_poke'),stage:val('f_stage'),type:val('f_type'),finish:val('f_finish'),lang:val('f_lang'),
   cond:val('f_cond'),cert:val('f_cert'),subgrades:val('f_subgrades'),pitch:val('f_pitch')}, _intlMeta||{});   // _intlMeta adds native JP/CN/KO name+set for the description
   f.img=val('f_img');   // the Image URL field is the source of truth — lookups pre-fill it (below), user can override
+  f.postageBand=readPostageBand(/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||''));
   return f;}
 function findEbay(){
   const f=readFields(), st=document.getElementById('status');
@@ -288,7 +340,7 @@ function buildHTML(f){
   // + SLAB_/CARD_ wording in lib/listing-copy.mjs (buildDescription) — keep both sides identical.
   const slab=/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||'');
   const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated — see photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
-  const postageLine=esc(slab?'Ships securely inside a rigid mailer, with FREE postage within Australia.':'Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.');
+  const postageLine=esc(postageText(f,slab));
   return `<div style="max-width:760px;margin:0 auto;font-family:${SERIF_BODY};color:#1b1420;line-height:1.6;font-size:16px;background:#ffffff;">
   <div style="background:#160f1d;padding:26px 26px 22px;">
     <div style="font-family:${SANS_UI};color:#d4b072;font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;font-weight:700;">Binders Keepers &middot; Pok&eacute;mon TCG</div>
@@ -937,8 +989,9 @@ async function addTrack(){
 (function(){
   document.getElementById('c_base').value=base;
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
-  ['f_name','f_set','f_num','f_rarity','f_poke','f_stage','f_type','f_finish','f_lang','f_cond','f_cert','f_subgrades','f_img','f_pitch']
+  ['f_name','f_set','f_num','f_rarity','f_poke','f_stage','f_type','f_finish','f_lang','f_cond','f_cert','f_subgrades','f_img','f_pitch','f_postage']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));
+  loadPostageBands();
   (function(){var _sc=document.getElementById('setCode');
     _sc.addEventListener('input',function(){selectedSet=null;renderSetMenu(_sc.value);});
     _sc.addEventListener('focus',function(){renderSetMenu(_sc.value);});

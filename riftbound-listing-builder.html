@@ -122,6 +122,7 @@
         <div class="f-full"><label>Energy / Power / Might (units &mdash; blank to hide; Scrydex has no stats)</label>
           <div class="stat3"><input id="f_e" placeholder="Energy"><input id="f_p" placeholder="Power"><input id="f_m" placeholder="Might"></div></div>
         <div class="f-full"><label>Condition</label><input id="f_cond" value="Ungraded, Near Mint"></div>
+        <div class="f-full"><label>Postage band <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">— pick the band matching the price you will list at</span></label><select id="f_postage"></select></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
       <div class="hint">Covers every released set with images, market price and no key &mdash; via baked offline data or live Riftscribe. The set list comes straight from Riot's card gallery, so a new set appears on its own. <b>Market price is keyless on every source</b> (TCGplayer, refreshed daily); Scrydex only adds the price-trend graph, and needs an active paid subscription. Alt art: type the number with its letter (e.g. <b>162a</b>). <b>Signature</b> uses <b>*</b> (e.g. <b>299*</b>); a number above the set total is <b>Overnumbered</b> (e.g. <b>167</b> in a 166-card set) &mdash; both are Showcase foils. Vendetta's six special showcase cards use <b>SP#</b> (e.g. <b>SP1</b>). Runes (Spiritforged onward) use <b>R##</b> &mdash; type e.g. <b>R01a</b> (Fury Rune, alt-art); reprints price only on Origins.</div>
@@ -339,10 +340,61 @@ function runeFill(raw){
   _trk={game:'riftbound',identity_key:code+'-'+_idNum,name:name,variant:val('f_finish'),price:null};
   regenTitle(); return true; }
 
+/* ---- postage bands — MIRROR of lib/shipping-bands.mjs (GR6/9) -------------------------------------
+   This is a classic <script> and cannot import the ESM module, so the band table and the buyer-facing
+   sentence are duplicated here. Change one side, change the other: test/invariants/builder-wording.test.mjs
+   compares the RENDERED strings against postagePhrase() from the module.
+   loadPostageBands() refreshes the table from the live config on load; a failed fetch keeps these
+   defaults, which is GR7 and is also what keeps the copy harnesses byte-exact (they run this file in a
+   vm with no fetch at all). */
+var POSTAGE_BANDS=[
+  {id:'letter',label:'Regular letter',maxCents:4998,costCents:170,copy:'letter_untracked'},
+  {id:'tracked',label:'Tracked',maxCents:14998,costCents:826,copy:'tracked'},
+  {id:'signature',label:'Tracked + signature',maxCents:null,costCents:1520,copy:'tracked_signature'}];
+var POSTAGE_MIN_BAND_FOR_SLAB=1;   // a graded card never travels untracked, whatever it is worth
+function bandMoney(c){return '$'+((Math.round(Number(c))||0)/100).toFixed(2);}
+function postagePhrase(b){
+  if(!b) return 'Postage within Australia is shown at checkout.';
+  var m=bandMoney(b.costCents);
+  if(b.copy==='tracked') return 'Postage is '+m+' anywhere in Australia, sent tracked with Australia Post so you can follow it along.';
+  if(b.copy==='tracked_signature') return 'Postage is '+m+' anywhere in Australia, sent tracked and signed for when it lands.';
+  return 'Postage is '+m+' anywhere in Australia, going as a regular Australia Post letter. There\'s no tracking on that one.';
+}
+function bandById(id){for(var i=0;i<POSTAGE_BANDS.length;i++)if(POSTAGE_BANDS[i].id===id)return POSTAGE_BANDS[i];return null;}
+function bandRangeLabel(i){
+  var b=POSTAGE_BANDS[i],lo=i?bandMoney(POSTAGE_BANDS[i-1].maxCents+1):null;
+  var range=b.maxCents==null?(lo+' and over'):(lo?(lo+' to '+bandMoney(b.maxCents)):('Up to '+bandMoney(b.maxCents)));
+  return range+' — '+bandMoney(b.costCents)+' '+String(b.label||b.id).toLowerCase();
+}
+function readPostageBand(slab){
+  var sel=document.getElementById('f_postage'),b=(sel&&bandById(sel.value))||POSTAGE_BANDS[0],i=POSTAGE_BANDS.indexOf(b);
+  return (slab&&i<POSTAGE_MIN_BAND_FOR_SLAB)?POSTAGE_BANDS[POSTAGE_MIN_BAND_FOR_SLAB]:b;
+}
+function loadPostageBands(){
+  var sel=document.getElementById('f_postage'); if(!sel) return;
+  var paint=function(){var v=sel.value;sel.innerHTML='';
+    for(var i=0;i<POSTAGE_BANDS.length;i++){var o=document.createElement('option');o.value=POSTAGE_BANDS[i].id;o.textContent=bandRangeLabel(i);sel.appendChild(o);}
+    sel.value=bandById(v)?v:POSTAGE_BANDS[0].id;};
+  paint();
+  fetch('/api/listings/config').then(function(r){return r.json();}).then(function(j){
+    var s=j&&j.config&&j.config.shipping;
+    if(!s||!s.bands||!s.bands.length) return;
+    POSTAGE_BANDS=s.bands;
+    if(s.minBandForSlab!=null) POSTAGE_MIN_BAND_FOR_SLAB=s.minBandForSlab;
+    paint(); if(typeof render==='function') render();
+  }).catch(function(){});
+}
+// MIRROR of condPostage() in lib/listing-copy.mjs: protection is per product type, postage is per band.
+function postageText(f,slab){
+  return (slab?'Ships securely inside a rigid mailer.':'Ships in a penny sleeve and toploader inside a rigid mailer.')
+    +' '+postagePhrase(f.postageBand);
+}
+
 function readFields(){return {name:val('f_name'),set:val('f_set'),setName:curSetName(),
   num:val('f_num'),rarity:val('f_rarity'),variant:val('f_variant'),type:val('f_type'),domain:val('f_domain'),
   tags:val('f_tags'),finish:val('f_finish'),lang:val('f_lang'),e:val('f_e'),p:val('f_p'),m:val('f_m'),
-  cond:val('f_cond'),pitch:val('f_pitch')};}
+  cond:val('f_cond'),pitch:val('f_pitch'),
+  postageBand:readPostageBand(false)};}   // raw-only tool: no slab path here
 function curSetName(){
   if(source==='scrydex'){const e=SCRY_EXP.find(x=>x.id===curSet);return e?e.name:curSet;}
   if(source==='riftscribe'){const e=RBS_SETS.find(x=>x[0]===curSet);return e?e[1]:curSet;}
@@ -391,7 +443,7 @@ function buildHTML(f){
   </div>
   <div style="padding:18px 24px 4px;">
     <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#091428;font-weight:700;border-bottom:2px solid #e6e9f2;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
-    <p style="margin:0;">Ships in a penny sleeve and toploader inside a rigid mailer, with FREE postage within Australia.</p>
+    <p style="margin:0;">${esc(postageText(f,false))}</p>
   </div>
   <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
 </div>`;
@@ -766,8 +818,9 @@ async function addTrack(){
   if(source==='riftscribe') loadRiftscribeSets(); else buildPills();
   document.getElementById('num').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup();});
   document.getElementById('num').addEventListener('input',()=>{ if(source==='offline')embedLookup(); else if(source==='riftscribe')riftscribeLookup(); });
-  ['f_name','f_set','f_num','f_rarity','f_variant','f_type','f_domain','f_tags','f_finish','f_lang','f_e','f_p','f_m','f_cond','f_pitch']
+  ['f_name','f_set','f_num','f_rarity','f_variant','f_type','f_domain','f_tags','f_finish','f_lang','f_e','f_p','f_m','f_cond','f_pitch','f_postage']
     .forEach(id=>document.getElementById(id).addEventListener('input',render));
+  loadPostageBands();
   render();
 })();
 </script>

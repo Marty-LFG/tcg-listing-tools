@@ -4,17 +4,18 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildInventoryItemPayload, buildOfferPayload, publishListing, fitDescription } from '../../lib/channels/ebay-inventory-api.mjs';
-import { toEbayListing, loadEbayCategories } from '../../lib/channels/ebay-map.mjs';
+import { toEbayListing, loadEbayCategories, buildItemDescription } from '../../lib/channels/ebay-map.mjs';
 import { resolveConditionDescriptorIds, parseConditionPolicies, __test } from '../../lib/ebay-taxonomy.mjs';
+import { testEbayConfig, testShipping, TEST_BAND_POLICY } from '../helpers/ebay-config.mjs';
+import { money } from '../../lib/shipping-bands.mjs';
 
 const cats = loadEbayCategories();
-const CFG = {
-  marketplaceId: 'EBAY_AU', listingDuration: 'GTC',
-  policies: { paymentPolicyId: 'PAY', returnPolicyId: 'RET', fulfillmentPolicyId: 'FUL' },
-  location: { merchantLocationKey: 'tcg-au-1' },
-};
-const rawListing = toEbayListing({ sku: 'BK-RAW-PKM-1', game: 'pokemon', name: 'Pikachu', set_name: 'Base Set', number: '58/102', rarity: 'Common', condition: 'Near Mint', language: 'EN', quantity: 3, target_price_cents: 1299, image_url: 'https://cdn/x.png', finish: 'Regular' }, null, cats);
-const slabListing = toEbayListing({ sku: 'BK-PKM-9', game: 'pokemon', name: 'Charizard', set_name: 'Base Set', number: '4/102', variant: 'Holo', grading_company: 'PSA', grade: 10, cert_number: '12345678', language: 'EN', quantity: 1, target_price_cents: 500000, image_url: 'https://cdn/charizard.png', finish: 'Holofoil' }, null, cats);
+const CFG = testEbayConfig();
+// The same band table CFG carries, so the policy on the offer and the amount in the description come
+// from one place — building these against the code defaults instead would silently test nothing.
+const SHIPPING = testShipping();
+const rawListing = toEbayListing({ sku: 'BK-RAW-PKM-1', game: 'pokemon', name: 'Pikachu', set_name: 'Base Set', number: '58/102', rarity: 'Common', condition: 'Near Mint', language: 'EN', quantity: 3, target_price_cents: 1299, image_url: 'https://cdn/x.png', finish: 'Regular' }, null, cats, { shipping: SHIPPING });
+const slabListing = toEbayListing({ sku: 'BK-PKM-9', game: 'pokemon', name: 'Charizard', set_name: 'Base Set', number: '4/102', variant: 'Holo', grading_company: 'PSA', grade: 10, cert_number: '12345678', language: 'EN', quantity: 1, target_price_cents: 500000, image_url: 'https://cdn/charizard.png', finish: 'Holofoil' }, null, cats, { shipping: SHIPPING });
 
 describe('buildInventoryItemPayload', () => {
   it('raw → USED_VERY_GOOD, aspects as arrays, image + quantity', () => {
@@ -83,7 +84,8 @@ describe('buildOfferPayload', () => {
     assert.equal(o.availableQuantity, 3);
     assert.equal(o.listingPolicies.paymentPolicyId, 'PAY');
     assert.equal(o.listingPolicies.returnPolicyId, 'RET');
-    assert.equal(o.listingPolicies.fulfillmentPolicyId, 'FUL');
+    // A$12.99 is the cheapest band, so the offer carries THAT band's policy.
+    assert.equal(o.listingPolicies.fulfillmentPolicyId, TEST_BAND_POLICY.letter);
     assert.equal(o.merchantLocationKey, 'tcg-au-1');
     assert.deepEqual(o.pricingSummary.price, { value: '12.99', currency: 'AUD' });   // 1299 cents
     assert.equal(o.tax, undefined, 'no tax container on AU (GST baked into price)');
@@ -96,6 +98,56 @@ describe('buildOfferPayload', () => {
   });
   it('no best offer container when disabled', () => {
     assert.equal(buildOfferPayload(rawListing, CFG, { bestOffer: { enabled: false } }).listingPolicies.bestOfferTerms, undefined);
+  });
+});
+
+// The load-bearing round trip. Postage is banded by price, and the two things that must agree are the
+// POLICY eBay charges under and the AMOUNT the description quotes. They are derived once, in
+// toEbayListing, precisely so they cannot drift — this proves it at every band boundary.
+describe('price band → fulfilment policy AND quoted postage, from one decision', () => {
+  const SHIP = testShipping();
+  const cases = [
+    [199, 'letter'], [4998, 'letter'],       // ≤ A$49.98
+    [4999, 'tracked'], [14998, 'tracked'],   // A$49.99 – A$149.98
+    [14999, 'signature'], [250000, 'signature'],
+  ];
+  for (const [cents, wantBand] of cases) {
+    it(`A$${(cents / 100).toFixed(2)} → the "${wantBand}" band`, () => {
+      const l = toEbayListing({ sku: 'BK-B-' + cents, game: 'pokemon', name: 'Pikachu', set_name: 'Base Set', number: '58/102', rarity: 'Common', condition: 'Near Mint', language: 'EN', quantity: 1, target_price_cents: cents, image_url: 'https://cdn/x.png', finish: 'Regular' }, null, cats, { shipping: SHIP });
+      const band = SHIP.bands.find((b) => b.id === wantBand);
+      assert.equal(l.postageBand.id, wantBand);
+      assert.equal(buildOfferPayload(l, CFG, {}).listingPolicies.fulfillmentPolicyId, band.policyId);
+      assert.ok(l.descriptionHtml.includes(money(band.costCents)), `description does not quote ${money(band.costCents)}`);
+      for (const other of SHIP.bands) {
+        if (other.id === wantBand) continue;
+        assert.ok(!l.descriptionHtml.includes(money(other.costCents)), `description also quotes the "${other.id}" amount`);
+      }
+    });
+  }
+  it('a graded slab is lifted off the untracked band even when its price sits there', () => {
+    const l = toEbayListing({ sku: 'BK-SLAB-CHEAP', game: 'pokemon', name: 'Charizard', set_name: 'Base Set', number: '4/102', variant: 'Holo', grading_company: 'PSA', grade: 8, cert_number: '999', language: 'EN', quantity: 1, target_price_cents: 2000, image_url: 'https://cdn/c.png', finish: 'Holofoil' }, null, cats, { shipping: SHIP });
+    assert.equal(l.postageBand.id, 'tracked');
+    assert.equal(buildOfferPayload(l, CFG, {}).listingPolicies.fulfillmentPolicyId, TEST_BAND_POLICY.tracked);
+  });
+  it('the EPS re-render quotes the SAME band as the offer', () => {
+    // buildItemDescription runs again after the image upload. Resolving a different band there would
+    // publish a description quoting an amount the pinned policy does not charge.
+    const item = { sku: 'BK-EPS', game: 'pokemon', name: 'Pikachu', set_name: 'Base Set', number: '58/102', rarity: 'Common', condition: 'Near Mint', language: 'EN', quantity: 1, target_price_cents: 9999, image_url: 'https://cdn/x.png', finish: 'Regular' };
+    const l = toEbayListing(item, null, cats, { shipping: SHIP });
+    const rerendered = buildItemDescription(item, { imageUrl: 'https://eps/1.jpg', cats, shipping: SHIP });
+    const band = SHIP.bands.find((b) => b.id === 'tracked');
+    assert.equal(l.postageBand.id, 'tracked');
+    assert.ok(rerendered.includes(money(band.costCents)), 're-render lost the band');
+    assert.ok(!rerendered.includes(money(SHIP.bands[0].costCents)), 're-render fell back to the cheapest band');
+  });
+  it('publishing refuses, by name, when the band has no policy', async () => {
+    const noPolicy = { minBandForSlab: 1, bands: SHIP.bands.map((b) => ({ ...b, policyId: '' })) };
+    const l = toEbayListing({ sku: 'BK-NOPOL', game: 'pokemon', name: 'Pikachu', set_name: 'Base Set', number: '58/102', rarity: 'Common', condition: 'Near Mint', language: 'EN', quantity: 1, target_price_cents: 500, image_url: 'https://cdn/x.png', finish: 'Regular' }, null, cats, { shipping: noPolicy });
+    const r = await publishListing({}, { listing: l, cfg: { ...CFG, shipping: noPolicy }, imageUrls: ['https://cdn/x.png'] });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /no eBay policy assigned/);
+    // and it refused BEFORE touching the inventory item, so nothing half-built is left on eBay
+    assert.deepEqual(r.steps.map((s) => s.step), ['postage_band']);
   });
 });
 

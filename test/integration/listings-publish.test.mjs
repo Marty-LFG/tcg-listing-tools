@@ -9,15 +9,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDbAt } from '../../lib/db.mjs';
 import { runPublish } from '../../lib/listings.mjs';
+import { testEbayConfig } from '../helpers/ebay-config.mjs';
 
 const ENV = { EBAY_REFRESH_TOKEN: 'fake', EBAY_CERT_ID: 'c' };   // no EBAY_APP_ID → taxonomy uses baked ids
-const CFG = {
-  marketplaceId: 'EBAY_AU', categoryTreeId: '15', listingDuration: 'GTC',
-  location: { merchantLocationKey: 'tcg-au-1' },
-  policies: { paymentPolicyId: 'PAY', returnPolicyId: 'RET', fulfillmentPolicyId: 'FUL' },
-  bestOffer: { enabled: false, autoAcceptPct: 95, autoDeclinePct: 78 },
-  genericImage: { enabled: false },
-};
+const CFG = testEbayConfig({ genericImage: { enabled: false } });
 
 let db, tmpDir, itemId;
 const realFetch = globalThis.fetch;

@@ -13,9 +13,16 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import * as LC from '../lib/listing-copy.mjs';
+import * as SB from '../lib/shipping-bands.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+
+// Every description now quotes the postage for the band its price lands in, so a fixture has to carry
+// one. Cycling by index means all three bands get exercised across each game's fixture set rather than
+// only the cheapest — a builder that hardcoded $1.70 into its band-2 branch fails here.
+const BANDS = SB.DEFAULT_BANDS;
+const bandFor = (i) => BANDS[i % BANDS.length];
 
 let failures = 0;
 function check(label, actual, expected) {
@@ -111,8 +118,21 @@ function builderContext(file, markers, fixture, extraCtx) {
     val: (id) => (fixture['f_' + id.replace(/^f_/, '')] != null ? fixture[id] ?? fixture['f_' + id.replace(/^f_/, '')] : (fixture[id] != null ? fixture[id] : '')),
   }, extraCtx || {});
   ctx.val = (id) => (fixture[id] != null ? fixture[id] : '');
+  // readPostageBand() reads the page's <select>; with no DOM it falls back to the first band, which is
+  // all readFields() needs here (the fixtures pass an explicit postageBand into buildHTML).
+  ctx.document = { getElementById: () => null };
+  // The band TABLE is injected rather than extracted — extractFn brace-counts, and the table is an
+  // array of objects, so it would stop at the first band. The builders' own inline tables are pinned
+  // against these same literals by test/invariants/builder-wording.test.mjs; what THIS harness proves
+  // is that the builder's own bandMoney/postagePhrase turn a band into the same sentence the shared
+  // module does.
+  ctx.POSTAGE_BANDS = SB.DEFAULT_BANDS;
+  ctx.POSTAGE_MIN_BAND_FOR_SLAB = SB.DEFAULT_MIN_BAND_FOR_SLAB;
   vm.createContext(ctx);
-  for (const m of markers) vm.runInContext(extractFn(src, m) + ';', ctx);
+  // The postage-band mirror is in every builder and buildHTML() reaches the buyer-facing sentence
+  // through it, so it is always loaded rather than being named at each call site.
+  const POSTAGE = ['function bandMoney(', 'function postagePhrase(', 'function bandById(', 'function readPostageBand(', 'function postageText('];
+  for (const m of [...POSTAGE, ...markers]) vm.runInContext(extractFn(src, m) + ';', ctx);
   return ctx;
 }
 
@@ -134,7 +154,7 @@ console.log('\n[pokemon builder parity]');
     // Graded slab with cert number + subgrades — both surface as detail rows when present.
     { f_name: 'Charizard', f_num: '4/102', f_set: 'Base Set', f_rarity: 'Holo Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'BGS 9.5', f_poke: 'Charizard', f_stage: 'Stage 2', f_type: 'Fire', f_cert: '0012345678', f_subgrades: 'Centering 9.5 · Corners 9 · Edges 9.5 · Surface 10' },
   ];
-  for (const fx of fixtures) {
+  for (const [fi, fx] of fixtures.entries()) {
     const ctx = builderContext('pokemon-listing-builder.html', ['var PKM_RAB=', 'function rarShortOf(', 'function rarDisplay(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
     const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, finish: fx.f_finish, lang: fx.f_lang, cond: fx.f_cond, poke: fx.f_poke, stage: fx.f_stage, type: fx.f_type,
       nativeName: fx.f_nativeName, romaji: fx.f_romaji, nativeSet: fx.f_nativeSet, enSet: fx.f_enSet, setSymbol: fx.f_setSymbol, illustrator: fx.f_illustrator, hp: fx.f_hp, regMark: fx.f_regMark, releaseYear: fx.f_releaseYear, img: fx.f_img,
@@ -142,7 +162,7 @@ console.log('\n[pokemon builder parity]');
     check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('pokemon', f), vm.runInContext('genTitle()', ctx));
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 20), LC.pokemonPitch(f), pitch);
-    const ff = Object.assign({}, f, { pitch });
+    const ff = Object.assign({}, f, { pitch, postageBand: bandFor(fi) });
     check('buildHTML ' + fx.f_name.slice(0, 20), LC.buildDescription('pokemon', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
   }
 }
@@ -156,7 +176,7 @@ console.log('\n[lorcana builder parity]');
     { f_name: 'Elsa - Spirit of Winter', f_num: '207/204', f_set: 'The First Chapter (TFC)', f_rarity: 'Enchanted', f_variant: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Character', f_ink: 'Amethyst', f_class: 'Storyborn, Hero, Queen, Sorcerer', f_cost: '8', f_strength: '4', f_willpower: '6', f_lore: '3' },
     { f_name: 'Mickey Mouse - Brave Little Tailor', f_num: '12/204', f_set: 'Rise of the Floodborn (ROF)', f_rarity: 'Common', f_variant: 'Standard', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Character', f_ink: 'Ruby', f_class: 'Dreamborn, Hero', f_cost: '2', f_strength: '2', f_willpower: '3', f_lore: '1' },
   ];
-  for (const fx of fixtures) {
+  for (const [fi, fx] of fixtures.entries()) {
     const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
     const ctx = builderContext('lorcana-listing-builder.html', ['function rarAbbr(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx,
       { SETS: { 1: setName }, curSet: '1' });
@@ -164,7 +184,7 @@ console.log('\n[lorcana builder parity]');
     check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('lorcana', f), vm.runInContext('genTitle()', ctx));
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ',' + JSON.stringify(fx.f_rarity) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 20), LC.lorcanaPitch(f, fx.f_rarity, setName), pitch);
-    const ff = Object.assign({}, f, { pitch });
+    const ff = Object.assign({}, f, { pitch, postageBand: bandFor(fi) });
     check('buildHTML ' + fx.f_name.slice(0, 20), LC.buildDescription('lorcana', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
   }
 }
@@ -191,7 +211,7 @@ console.log('\n[riftbound builder parity]');
     // The one hardcoded treatment (TREATMENT_OVERRIDE): over the set total, but Ultimate, not Overnumbered.
     { f_name: 'Baron Nashor', f_num: '238/219', f_set: 'Unleashed (UNL)', f_rarity: 'Showcase', f_variant: 'Ultimate', f_finish: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Unit', f_domain: 'Chaos', f_tags: '', f_e: '10', f_p: '3', f_m: '12' },
   ];
-  for (const fx of fixtures) {
+  for (const [fi, fx] of fixtures.entries()) {
     const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
     const ctx = builderContext('riftbound-listing-builder.html',
       ['function mapRarity(', 'function readFields()', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx,
@@ -208,7 +228,7 @@ console.log('\n[riftbound builder parity]');
     }
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ',' + JSON.stringify(rawRarity) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 18), LC.riftboundPitch(f, rawRarity), pitch);
-    const ff = Object.assign({}, f, { pitch });
+    const ff = Object.assign({}, f, { pitch, postageBand: bandFor(fi) });
     check('buildHTML ' + fx.f_name.slice(0, 18), LC.buildDescription('riftbound', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
   }
 }
@@ -238,7 +258,7 @@ console.log('\n[mtg builder parity]');
     { f_name: 'Arcane Signet', f_num: '95', f_set: 'The Hobbit Eternal (HOC)', f_rarity: 'Mythic', f_colour: 'Colourless', f_type: 'Artifact', f_treat: 'Borderless', f_finish: 'Etched Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint' },
     { f_name: 'Smaug the Magnificent', f_num: '229', f_set: HOB, f_rarity: 'Mythic', f_colour: 'Red', f_type: 'Legendary Creature — Dragon', f_treat: 'Normal', f_finish: 'Foil', f_lang: 'English', f_cond: 'PSA 10' },
   ];
-  for (const fx of fixtures) {
+  for (const [fi, fx] of fixtures.entries()) {
     const ctx = builderContext('mtg-listing-builder.html',
       ['const COLOURS=', 'function colourName(', 'function treatmentOf(', 'function promoNoteOf(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
     const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, colour: fx.f_colour, type: fx.f_type,
@@ -248,7 +268,7 @@ console.log('\n[mtg builder parity]');
     check('genTitle ' + fx.f_name.slice(0, 20) + ' #' + fx.f_num, LC.buildTitle('mtg', f), title);
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 20) + ' #' + fx.f_num, LC.mtgPitch(f), pitch);
-    const ff = Object.assign({}, f, { pitch });
+    const ff = Object.assign({}, f, { pitch, postageBand: bandFor(fi) });
     check('buildHTML ' + fx.f_name.slice(0, 20) + ' #' + fx.f_num, LC.buildDescription('mtg', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
   }
   // GR5: a non-foil card must not claim a finish, and Surge Foil must not collapse to Foil.
@@ -274,15 +294,122 @@ console.log('\n[mtg builder parity]');
   check('langCode(Dwarvish) → DW', LC.langCode('Dwarvish'), 'DW');
   // A graded MTG row must still reach the slab wording — it did before this branch existed, via the
   // shared frame, and an mtg branch that forgot it would silently regress to penny-sleeve copy.
-  const slabbed = LC.rowToFields({ game: 'mtg', name: 'Smaug the Magnificent', number: '249', set_name: 'The Hobbit (HOB)', rarity: 'Mythic', finish: 'Foil', language: 'EN', graded: true, grading_company: 'PSA', grade: 10, grade_label: 'PSA 10 GEM MT' });
+  // Priced at A$20 on purpose: by price that is the cheapest band, and a graded card must still be
+  // lifted off it. An untracked $1.70 letter for a slab is the exact thing minBandForSlab exists to stop.
+  const slabbed = LC.rowToFields({ game: 'mtg', name: 'Smaug the Magnificent', number: '249', set_name: 'The Hobbit (HOB)', rarity: 'Mythic', finish: 'Foil', language: 'EN', graded: true, grading_company: 'PSA', grade: 10, grade_label: 'PSA 10 GEM MT', price_cents: 2000 });
   const slabHtml = LC.buildDescription('mtg', slabbed, { slab: true });
-  assert('graded mtg reaches SLAB wording', slabHtml.includes(LC.SLAB_POSTAGE) && !slabHtml.includes(LC.CARD_POSTAGE));
+  assert('graded mtg reaches SLAB protection wording', slabHtml.includes(LC.SLAB_PROTECTION) && !slabHtml.includes(LC.CARD_PROTECTION));
+  const slabBand = SB.DEFAULT_BANDS[SB.DEFAULT_MIN_BAND_FOR_SLAB];
+  assert('a cheap graded slab is lifted to the tracked band', slabbed.postageBand && slabbed.postageBand.id === slabBand.id, slabbed.postageBand && slabbed.postageBand.id);
+  assert('graded mtg quotes the tracked amount, not the letter one',
+    slabHtml.includes(SB.money(slabBand.costCents)) && !slabHtml.includes(SB.money(BANDS[0].costCents)));
   assert('graded mtg title carries the grade', LC.buildTitle('mtg', slabbed).includes('PSA 10 GEM MINT'), LC.buildTitle('mtg', slabbed));
   // rowToFields must stop handing MTG the Pokémon pitch.
   const mrow = LC.rowToFields({ game: 'mtg', name: 'Smaug the Magnificent', number: '249', set_name: 'The Hobbit (HOB)', rarity: 'Mythic', finish: 'Foil', language: 'EN', colour: 'Red', type: 'Legendary Creature — Dragon', treat: 'Normal' });
   assert('rowToFields mtg pitch is not the Pokémon one', !/Pok[eé]mon/.test(mrow.pitch), mrow.pitch);
   assert('rowToFields mtg description is not the Pokémon frame', !/Pok[eé]mon/.test(LC.buildDescription('mtg', mrow)));
   check('rowToFields mtg DW → Dwarvish for the Language row', LC.rowToFields({ game: 'mtg', name: 'Mox Amber', number: '96', set_name: 'HOC', language: 'DW' }).lang, 'Dwarvish');
+}
+
+// ---------------------------------------------------------------------------
+// 3e. SWU + One Piece buildHTML ⇄ buildDescription.
+// These two had NO parity harness, which is how buildDescription('swu', …) came to render the POKÉMON
+// frame without anyone noticing: every Star Wars card the bulk/channel path listed carried Pokémon
+// branding. Both are raw-only tools (no slab path), and both read their set name straight off f.set.
+// ---------------------------------------------------------------------------
+console.log('\n[swu builder parity]');
+{
+  const fixtures = [
+    { f_name: 'Darth Vader - Dark Lord of the Sith', f_num: '10/252', f_set: 'Spark of Rebellion (SOR)', f_rarity: 'Legendary', f_variant: 'Standard', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Leader', f_aspect: 'Aggression', f_arena: 'Ground', f_traits: 'Force · Sith', f_cost: '7', f_power: '5', f_hp: '8' },
+    { f_name: 'Vanquish', f_num: '104/252', f_set: 'Shadows of the Galaxy (SHD)', f_rarity: 'Common', f_variant: 'Hyperspace Foil', f_lang: 'English', f_cond: 'Lightly Played', f_type: 'Event', f_aspect: 'Command', f_arena: '', f_traits: '', f_cost: '5', f_power: '', f_hp: '' },
+    { f_name: 'Rey - More Than a Scavenger', f_num: '1/262', f_set: 'Jump to Lightspeed (JTL)', f_rarity: 'Special', f_variant: 'Showcase', f_lang: 'Japanese', f_cond: 'Near Mint', f_type: 'Unit', f_aspect: 'Heroism', f_arena: 'Ground', f_traits: 'Force', f_cost: '3', f_power: '2', f_hp: '4' },
+  ];
+  for (const [fi, fx] of fixtures.entries()) {
+    const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
+    const ctx = builderContext('swu-listing-builder.html',
+      ['function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx,
+      { SETS: { 1: setName }, curSet: '1' });
+    const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, variant: fx.f_variant, lang: fx.f_lang, cond: fx.f_cond, type: fx.f_type, aspect: fx.f_aspect, arena: fx.f_arena, traits: fx.f_traits, cost: fx.f_cost, power: fx.f_power, hp: fx.f_hp };
+    check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('swu', f), vm.runInContext('genTitle()', ctx));
+    const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ',' + JSON.stringify(fx.f_rarity) + ')', ctx);
+    check('genPitch ' + fx.f_name.slice(0, 20), LC.swuPitch(f, fx.f_rarity, setName), pitch);
+    const ff = Object.assign({}, f, { pitch, postageBand: bandFor(fi) });
+    check('buildHTML ' + fx.f_name.slice(0, 20), LC.buildDescription('swu', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
+  }
+}
+
+console.log('\n[onepiece builder parity]');
+{
+  const fixtures = [
+    { f_name: 'Monkey D. Luffy', f_num: 'OP01-003', f_set: 'Romance Dawn (OP-01)', f_rarity: 'L', f_variant: '', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Leader', f_color: 'Red', f_attr: 'Strike', f_traits: 'Supernovas · Straw Hat Crew', f_cost: '', f_power: '5000', f_counter: '', f_life: '5' },
+    { f_name: 'Trafalgar Law', f_num: 'OP01-047', f_set: 'Romance Dawn (OP-01)', f_rarity: 'SR', f_variant: 'Parallel', f_lang: 'Japanese', f_cond: 'Near Mint', f_type: 'Character', f_color: 'Green', f_attr: 'Slash', f_traits: 'Heart Pirates', f_cost: '5', f_power: '6000', f_counter: '1000', f_life: '' },
+    { f_name: 'Gum-Gum Red Roc', f_num: 'OP02-015', f_set: 'Paramount War (OP-02)', f_rarity: 'C', f_variant: '', f_lang: 'English', f_cond: 'Lightly Played', f_type: 'Event', f_color: 'Red', f_attr: '', f_traits: '', f_cost: '4', f_power: '', f_counter: '', f_life: '' },
+  ];
+  for (const [fi, fx] of fixtures.entries()) {
+    const ctx = builderContext('onepiece-listing-builder.html',
+      ['function isChaseVariant(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
+    const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, variant: fx.f_variant, lang: fx.f_lang, cond: fx.f_cond, type: fx.f_type, color: fx.f_color, attr: fx.f_attr, traits: fx.f_traits, cost: fx.f_cost, power: fx.f_power, counter: fx.f_counter, life: fx.f_life };
+    check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('onepiece', f), vm.runInContext('genTitle()', ctx));
+    const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);
+    check('genPitch ' + fx.f_name.slice(0, 20), LC.onepiecePitch(f), pitch);
+    const ff = Object.assign({}, f, { pitch, postageBand: bandFor(fi) });
+    check('buildHTML ' + fx.f_name.slice(0, 20), LC.buildDescription('onepiece', ff), vm.runInContext('buildHTML(' + JSON.stringify(ff) + ')', ctx));
+  }
+  // The regression that started this: neither game may fall through to the Pokémon frame again.
+  for (const game of ['swu', 'onepiece']) {
+    const html = LC.buildDescription(game, { name: 'X', num: '1', set: 'S', rarity: 'C', lang: 'English', cond: 'Near Mint', pitch: 'p', postageBand: BANDS[0] });
+    assert(`${game} does not render the Pokémon frame`, !/Pok[eé]mon/i.test(html));
+  }
+
+  // GR5 guards — the same shape as the mtg ones above. These pin the DIFFERENTIATORS, so a future
+  // edit that deletes either titleParts branch (dropping both games back to the generic fallback,
+  // which is where they were) fails here by name rather than quietly shipping a weaker title.
+  const swuT = (over) => LC.buildTitle('swu', { name: 'Rey', num: '1/262', set: 'Jump to Lightspeed (JTL)', rarity: 'Special', lang: 'English', cond: 'Near Mint', ...over });
+  assert('swu title carries the game token', /SWU|Star Wars Unlimited/.test(swuT({})), swuT({}));
+  assert('swu title keeps a Showcase variant', /SHOWCASE/.test(swuT({ variant: 'Showcase' })), swuT({ variant: 'Showcase' }));
+  assert('swu title drops a Standard variant', !/STANDARD/i.test(swuT({ variant: 'Standard' })), swuT({ variant: 'Standard' }));
+  assert('swu title drops a common rarity', !/COMMON/i.test(swuT({ rarity: 'Common' })), swuT({ rarity: 'Common' }));
+
+  const opT = (over) => LC.buildTitle('onepiece', { name: 'Trafalgar Law', num: 'OP01-047', set: 'Romance Dawn (OP-01)', rarity: 'SR', lang: 'English', cond: 'Near Mint', ...over });
+  assert('onepiece title carries the game token', /One Piece/.test(opT({})), opT({}));
+  // A parallel is worth many times its base print, so this token is the whole differentiator (GR5).
+  assert('onepiece title keeps a Parallel variant', /PARALLEL/.test(opT({ variant: 'Parallel' })), opT({ variant: 'Parallel' }));
+  assert('onepiece title ignores a non-chase variant', !/BASE/i.test(opT({ variant: 'Base' })), opT({ variant: 'Base' }));
+  assert('onepiece title drops a common rarity', !/\bC\b/.test(opT({ rarity: 'C' }).replace('OP01-047', '')), opT({ rarity: 'C' }));
+  // Under 80-char pressure the variant must OUTLIVE the rarity token, never the other way round —
+  // a parallel is worth many times its base print, and "SR" is shared by hundreds of cards. This name
+  // is sized so exactly one of the two can fit, which is what makes it a test of the ORDER.
+  const longOp = LC.buildTitle('onepiece', { name: 'Trafalgar Law - Surgeon of Death Captain', num: 'OP01-047', set: 'Romance Dawn (OP-01)', rarity: 'SR', variant: 'Parallel', lang: 'Japanese', cond: 'Lightly Played' });
+  assert('onepiece: a shed title keeps PARALLEL', /PARALLEL/.test(longOp), longOp);
+  assert('onepiece: ...and sheds the rarity token to do it', !/\bSR\b/.test(longOp), longOp);
+}
+
+// ---------------------------------------------------------------------------
+// 3d. Postage bands across every game frame — the description must quote the band it is ON, and no
+// other. This is the assertion that catches a frame which hardcoded $1.70 into its band-2 branch:
+// the sentence would still read perfectly while charging the buyer the wrong money.
+// ---------------------------------------------------------------------------
+console.log('\n[postage band coverage]');
+{
+  const base = { name: 'Charizard', num: '4/102', set: 'Base Set', rarity: 'Holo Rare', finish: 'Holo', variant: 'Standard', lang: 'English', cond: 'Near Mint', type: 'Character', pitch: 'A card.' };
+  for (const game of ['pokemon', 'lorcana', 'riftbound', 'mtg', 'swu', 'onepiece']) {
+    for (const b of BANDS) {
+      const html = LC.buildDescription(game, { ...base, postageBand: b });
+      assert(`${game} band ${b.id} quotes ${SB.money(b.costCents)}`, html.includes(SB.money(b.costCents)));
+      const others = BANDS.filter((o) => o.id !== b.id).filter((o) => html.includes(SB.money(o.costCents)));
+      assert(`${game} band ${b.id} quotes ONLY its own amount`, others.length === 0, others.map((o) => o.id).join(', '));
+    }
+    // An unpriced preview quotes no money at all rather than defaulting to the cheapest band.
+    const unknown = LC.buildDescription(game, { ...base, postageBand: null });
+    assert(`${game} with no band quotes no amount`, !/\$\d/.test(unknown) && unknown.includes(SB.POSTAGE_UNKNOWN));
+  }
+  // Both product types carry the same band sentence; only the protection sentence differs.
+  for (const b of BANDS) {
+    const raw = LC.buildDescription('pokemon', { ...base, postageBand: b });
+    const slab = LC.buildDescription('pokemon', { ...base, cond: 'PSA 10', postageBand: b });
+    assert(`band ${b.id}: raw and slab share the postage sentence`, raw.includes(SB.postagePhrase(b)) && slab.includes(SB.postagePhrase(b)));
+    assert(`band ${b.id}: only the protection sentence differs`, raw.includes(LC.CARD_PROTECTION) && slab.includes(LC.SLAB_PROTECTION));
+  }
 }
 
 // ---------------------------------------------------------------------------

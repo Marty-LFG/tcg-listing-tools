@@ -4,15 +4,16 @@
 // listing must use immediatePay, no offline paymentMethods, a 30/60-day return, and ≤3-day handling.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { paymentBody, returnBody, fulfillmentBody } from '../../lib/ebay-account.mjs';
+import { paymentBody, returnBody, fulfillmentBody, fulfillmentTerms, verifyBandPolicies } from '../../lib/ebay-account.mjs';
 import { restErrors, firstErrorText } from '../../lib/ebay-rest.mjs';
+import { DEFAULT_BANDS } from '../../lib/shipping-bands.mjs';
+import { testBands, fulfillmentPolicyRow, fulfillmentPolicyRows } from '../helpers/ebay-config.mjs';
 
 const CFG = {
   marketplaceId: 'EBAY_AU',
   handlingDays: 1,
-  policyNames: { payment: 'Pay AU', return: 'Ret AU', fulfillment: 'Post AU' },
+  policyNames: { payment: 'Pay AU', return: 'Ret AU' },
   returns: { accepted: true, days: 30, shippingCostPayer: 'BUYER' },
-  shipping: { serviceCode: 'AU_StandardDelivery', freeDomestic: true },
 };
 const ALL = [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }];
 
@@ -49,31 +50,89 @@ describe('returnBody', () => {
   });
 });
 
-describe('fulfillmentBody (free AU post)', () => {
-  const b = fulfillmentBody(CFG);
-  it('handling ≤3 days, one free-shipping domestic AU standard service', () => {
+describe('fulfillmentBody — one policy per price band, nothing free', () => {
+  const LETTER = DEFAULT_BANDS[0], TRACKED = DEFAULT_BANDS[1], SIG = DEFAULT_BANDS[2];
+  const b = fulfillmentBody(CFG, LETTER);
+  it('handling ≤3 days, one flat-rate domestic service', () => {
     assert.equal(b.handlingTime.unit, 'DAY');
     assert.ok(b.handlingTime.value <= 3, 'handling must stay ≤3 days (Authenticity-Guarantee safe)');
     assert.equal(b.shippingOptions.length, 1);
     const opt = b.shippingOptions[0];
     assert.equal(opt.optionType, 'DOMESTIC');
     assert.equal(opt.costType, 'FLAT_RATE');
-    const svc = opt.shippingServices[0];
-    assert.equal(svc.shippingServiceCode, 'AU_StandardDelivery');
-    assert.equal(svc.freeShipping, true);
+    assert.equal(opt.shippingServices[0].shippingServiceCode, LETTER.serviceCode);
+  });
+  it('EVERY band charges the buyer — there is no free branch left', () => {
+    // A store that charges for every band should not carry a code path capable of emitting
+    // freeShipping:true. That branch is deleted, not made conditional.
+    for (const band of DEFAULT_BANDS) {
+      const body = fulfillmentBody(CFG, band);
+      const svc = body.shippingOptions[0].shippingServices[0];
+      assert.equal(svc.freeShipping, false, `${band.id} must not be free`);
+      assert.deepEqual(svc.shippingCost, { value: (band.costCents / 100).toFixed(2), currency: 'AUD' });
+    }
+  });
+  it('each band renders its own amount', () => {
+    assert.equal(fulfillmentBody(CFG, LETTER).shippingOptions[0].shippingServices[0].shippingCost.value, '1.70');
+    assert.equal(fulfillmentBody(CFG, TRACKED).shippingOptions[0].shippingServices[0].shippingCost.value, '8.26');
+    assert.equal(fulfillmentBody(CFG, SIG).shippingOptions[0].shippingServices[0].shippingCost.value, '15.20');
+  });
+  it('the policy is named after its band, not after one global name', () => {
+    assert.equal(fulfillmentBody(CFG, { ...LETTER, policyName: 'BK Postage 1' }).name, 'BK Postage 1');
+    assert.match(fulfillmentBody(CFG, { ...LETTER, policyName: '' }).name, /Regular letter/);
   });
   it('ships to the ISO country code, never the country name', () => {
     // live 2026-07-26: regionName 'Australia' → [20400] Invalid request (Invalid Location(s)=Australia)
     assert.deepEqual(b.shipToLocations.regionIncluded, [{ regionName: 'AU' }]);
-    assert.deepEqual(fulfillmentBody({ ...CFG, location: { country: 'NZ' } }).shipToLocations.regionIncluded, [{ regionName: 'NZ' }]);
+    assert.deepEqual(fulfillmentBody({ ...CFG, location: { country: 'NZ' } }, LETTER).shipToLocations.regionIncluded, [{ regionName: 'NZ' }]);
   });
   it('clamps a too-long handling time to 3 days', () => {
-    assert.equal(fulfillmentBody({ ...CFG, handlingDays: 10 }).handlingTime.value, 3);
+    assert.equal(fulfillmentBody({ ...CFG, handlingDays: 10 }, LETTER).handlingTime.value, 3);
   });
-  it('paid domestic post carries an explicit shippingCost', () => {
-    const b2 = fulfillmentBody({ ...CFG, shipping: { serviceCode: 'AU_StandardDelivery', freeDomestic: false, domesticCost: '9.95' } });
-    assert.equal(b2.shippingOptions[0].shippingServices[0].freeShipping, false);
-    assert.deepEqual(b2.shippingOptions[0].shippingServices[0].shippingCost, { value: '9.95', currency: 'AUD' });
+});
+
+describe('fulfillmentTerms / verifyBandPolicies — which policy is which band', () => {
+  const bands = testBands();
+  it('reads the amount a policy really charges', () => {
+    const t = fulfillmentTerms(fulfillmentPolicyRow('X', 'n', 826));
+    assert.equal(t.costCents, 826);
+    assert.equal(t.free, false);
+    assert.equal(t.serviceCount, 1);
+  });
+  it('a correctly wired account verifies clean', () => {
+    const v = verifyBandPolicies(bands, fulfillmentPolicyRows(), 'fulfillmentPolicyId');
+    assert.equal(v.ok, true, v.errors.join(' · '));
+    assert.equal(v.bands.length, 3);
+    assert.ok(v.bands.every((b) => b.ok));
+  });
+  it('catches three policy ids pasted in the WRONG ORDER, and names the band each really is', () => {
+    // The whole point: eBay publishes a wrong-order paste happily, and the only symptom is a $200 slab
+    // charged $1.70. The costs are distinct, so a policy identifies its own band.
+    const swapped = [
+      { ...bands[0], policyId: bands[1].policyId },
+      { ...bands[1], policyId: bands[0].policyId },
+      bands[2],
+    ];
+    const v = verifyBandPolicies(swapped, fulfillmentPolicyRows(), 'fulfillmentPolicyId');
+    assert.equal(v.ok, false);
+    assert.match(v.errors.join(' · '), /out of order/);
+    assert.match(v.errors[0], /Regular letter/);
+    assert.match(v.errors[0], /A\$1\.70/);
+    assert.match(v.errors[0], /A\$8\.26/);
+  });
+  it('catches an unassigned band, a missing policy, and one policy on two bands', () => {
+    const rows = fulfillmentPolicyRows();
+    assert.match(verifyBandPolicies([{ ...bands[0], policyId: '' }], rows, 'fulfillmentPolicyId').errors[0], /no eBay policy is assigned/);
+    assert.match(verifyBandPolicies([{ ...bands[0], policyId: '999' }], rows, 'fulfillmentPolicyId').errors[0], /no longer on this eBay account/);
+    const dup = [bands[0], { ...bands[1], policyId: bands[0].policyId }];
+    assert.match(verifyBandPolicies(dup, rows, 'fulfillmentPolicyId').errors.join(' · '), /on both the/);
+  });
+  it('warns when a policy offers more than one service — the quoted amount stops being a fact', () => {
+    const rows = fulfillmentPolicyRows();
+    rows[0].shippingOptions[0].shippingServices.push({ sortOrder: 2, shippingServiceCode: 'AU_Express', shippingCost: { value: '12.00', currency: 'AUD' } });
+    const v = verifyBandPolicies(bands, rows, 'fulfillmentPolicyId');
+    assert.equal(v.ok, true, 'a second service is a warning, not a refusal');
+    assert.match(v.warnings.join(' · '), /offers 2 services/);
   });
 });
 

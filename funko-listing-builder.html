@@ -132,8 +132,7 @@
             <label class="cb"><input type="checkbox" class="feat" value="Diamond Collection"> Diamond</label>
             <label class="cb"><input type="checkbox" class="feat" value="6-Inch"> 6-inch</label>
           </div></div>
-        <div class="f-full"><label>Postage</label><select id="f_postage">
-          <option selected>Free (within Australia)</option><option>Calculated at checkout</option></select></div>
+        <div class="f-full"><label>Postage band <span style="text-transform:none;letter-spacing:0;color:var(--muted);font-weight:400;">— pick the band matching the price you will list at</span></label><select id="f_postage"></select></div>
         <div class="f-full"><label>Pitch (auto-generated, editable)</label><textarea id="f_pitch"></textarea></div>
       </div>
       <button class="btn" style="margin-top:12px;" onclick="findComps()">Find eBay price comps (AUD)</button>
@@ -179,12 +178,56 @@ function chk(id){return document.getElementById(id).checked;}
 function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function readFeatures(){return Array.prototype.slice.call(document.querySelectorAll('.feat:checked')).map(function(c){return c.value;});}
 
+/* ---- postage bands — MIRROR of lib/shipping-bands.mjs (GR6/9) -------------------------------------
+   This is a classic <script> and cannot import the ESM module, so the band table and the buyer-facing
+   sentence are duplicated here. Change one side, change the other: test/invariants/builder-wording.test.mjs
+   compares the RENDERED strings against postagePhrase() from the module.
+   loadPostageBands() refreshes the table from the live config on load; a failed fetch keeps these
+   defaults, which is GR7 and is also what keeps the copy harnesses byte-exact (they run this file in a
+   vm with no fetch at all). */
+var POSTAGE_BANDS=[
+  {id:'letter',label:'Regular letter',maxCents:4998,costCents:170,copy:'letter_untracked'},
+  {id:'tracked',label:'Tracked',maxCents:14998,costCents:826,copy:'tracked'},
+  {id:'signature',label:'Tracked + signature',maxCents:null,costCents:1520,copy:'tracked_signature'}];
+var POSTAGE_MIN_BAND_FOR_SLAB=1;   // a graded card never travels untracked, whatever it is worth
+function bandMoney(c){return '$'+((Math.round(Number(c))||0)/100).toFixed(2);}
+function postagePhrase(b){
+  if(!b) return 'Postage within Australia is shown at checkout.';
+  var m=bandMoney(b.costCents);
+  if(b.copy==='tracked') return 'Postage is '+m+' anywhere in Australia, sent tracked with Australia Post so you can follow it along.';
+  if(b.copy==='tracked_signature') return 'Postage is '+m+' anywhere in Australia, sent tracked and signed for when it lands.';
+  return 'Postage is '+m+' anywhere in Australia, going as a regular Australia Post letter. There\'s no tracking on that one.';
+}
+function bandById(id){for(var i=0;i<POSTAGE_BANDS.length;i++)if(POSTAGE_BANDS[i].id===id)return POSTAGE_BANDS[i];return null;}
+function bandRangeLabel(i){
+  var b=POSTAGE_BANDS[i],lo=i?bandMoney(POSTAGE_BANDS[i-1].maxCents+1):null;
+  var range=b.maxCents==null?(lo+' and over'):(lo?(lo+' to '+bandMoney(b.maxCents)):('Up to '+bandMoney(b.maxCents)));
+  return range+' — '+bandMoney(b.costCents)+' '+String(b.label||b.id).toLowerCase();
+}
+function readPostageBand(slab){
+  var sel=document.getElementById('f_postage'),b=(sel&&bandById(sel.value))||POSTAGE_BANDS[0],i=POSTAGE_BANDS.indexOf(b);
+  return (slab&&i<POSTAGE_MIN_BAND_FOR_SLAB)?POSTAGE_BANDS[POSTAGE_MIN_BAND_FOR_SLAB]:b;
+}
+function loadPostageBands(){
+  var sel=document.getElementById('f_postage'); if(!sel) return;
+  var paint=function(){var v=sel.value;sel.innerHTML='';
+    for(var i=0;i<POSTAGE_BANDS.length;i++){var o=document.createElement('option');o.value=POSTAGE_BANDS[i].id;o.textContent=bandRangeLabel(i);sel.appendChild(o);}
+    sel.value=bandById(v)?v:POSTAGE_BANDS[0].id;};
+  paint();
+  fetch('/api/listings/config').then(function(r){return r.json();}).then(function(j){
+    var s=j&&j.config&&j.config.shipping;
+    if(!s||!s.bands||!s.bands.length) return;
+    POSTAGE_BANDS=s.bands;
+    if(s.minBandForSlab!=null) POSTAGE_MIN_BAND_FOR_SLAB=s.minBandForSlab;
+    paint(); if(typeof render==='function') render();
+  }).catch(function(){});
+}
 function readFields(){
   return {character:val('f_character'),franchise:val('f_franchise'),series:val('f_series'),
     popnum:val('f_popnum'),variant:val('f_variant'),year:val('f_year'),exclusive:val('f_exclusive'),
     boxcond:val('f_boxcond'),grade:val('f_grade'),chase:chk('f_chase'),vaulted:chk('f_vaulted'),
     oob:chk('f_oob'),protector:chk('f_protector'),features:readFeatures(),
-    postage:val('f_postage'),pitch:val('f_pitch')};
+    postageBand:readPostageBand(false),pitch:val('f_pitch')};
 }
 
 function exclusiveTitle(ex){ if(!ex)return ''; return /excl|sdcc|nycc|eccc|comic/i.test(ex)?ex:ex+' Exclusive'; }
@@ -225,9 +268,9 @@ function condText(f){
   s+=f.protector?' Ships inside a hard Pop protector.':' (No protector included.)';
   return s;
 }
+// Boxed goods keep their OWN protection sentence (GR6) but share the price bands.
 function postageText(f){
-  if(/calculated/i.test(f.postage)) return 'Shipped within Australia inside a protective hard case and a padded box. Postage calculated at checkout.';
-  return 'Shipped within Australia inside a protective hard case and a padded box to keep the corners sharp, with FREE postage.';
+  return 'Shipped inside a protective hard case and a padded box to keep the corners sharp. '+postagePhrase(f.postageBand);
 }
 
 function buildHTML(f){
@@ -451,6 +494,7 @@ var tt;function showToast(m){var t=document.getElementById('toast');t.textConten
 (function(){
   ['f_character','f_franchise','f_series','f_popnum','f_variant','f_year','f_exclusive','f_boxcond','f_grade','f_postage','f_pitch']
     .forEach(function(id){document.getElementById(id).addEventListener('input',render);});
+  loadPostageBands();
   ['f_chase','f_vaulted','f_oob','f_protector'].forEach(function(id){document.getElementById(id).addEventListener('change',render);});
   document.querySelectorAll('.feat').forEach(function(c){c.addEventListener('change',render);});
   var q=document.getElementById('popq');

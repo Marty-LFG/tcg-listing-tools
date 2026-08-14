@@ -324,10 +324,13 @@
       // Tiers are told apart by BORDER WEIGHT, not by a filled background: browsers print with
       // "Background graphics" off by default, so a reversed block can come out as white text on white
       // paper. Silent and invisible is the one failure mode this feature cannot have.
+      // Ink economy: a tier's weight is how much work it costs the packer. Express boxes hardest,
+      // tracked boxes, and `paid` — which is now just "a normal letter someone paid for" — gets no box
+      // at all, only a hairline underline. A box on a sheet still means stop and do something.
       + '.tier{display:inline-block;font-family:Arial,Helvetica,sans-serif;font-weight:700;font-size:7.5pt;letter-spacing:.09em;padding:1px 5px;white-space:nowrap;line-height:1.5;}'
       + '.t-express{border:2.5px solid #000;color:#000;}'
       + '.t-tracked{border:1.5px solid #000;color:#000;}'
-      + '.t-paid{border:1px dashed #555;color:#333;}'
+      + '.t-paid{border:0;border-bottom:1px dotted #777;color:#555;padding:1px 0;}'
       + '.tc{width:78px;text-align:right;}'
       // Exception banner: read before anyone walks off to the shelves, so it sits above the first box.
       + '.upg{border:3px solid #000;margin:0 0 16px;page-break-inside:avoid;}'
@@ -394,7 +397,14 @@
     return (list || []).reduce(function (best, t) { return tierRank(t) > tierRank(best) ? t : best; }, 'standard');
   }
   // The word that goes in the box. Short enough to read from across a packing bench.
-  var TIER_WORD = { express: 'EXPRESS', tracked: 'TRACKED', paid: 'PAID POSTAGE' };
+  //
+  // `paid` is deliberately absent. Every card order is paid postage now, so a PAID POSTAGE box would
+  // be on every slip — and a box that is always there is a box nobody reads. Only the tiers that
+  // change what the packer physically does earn a word.
+  var TIER_WORD = { express: 'EXPRESS', tracked: 'TRACKED' };
+  // Mirrors isUpgrade() in lib/postage.mjs: tracked or better. This is the one question the printed
+  // sheets ask — does this order need something other than an envelope and a stamp?
+  function isUpgradeTier(t) { return tierRank(t) >= tierRank('tracked'); }
 
   // Print treatment is border WEIGHT, never a filled background with knocked-out text. Browsers print
   // with "Background graphics" off by default, and an inverted block whose fill doesn't print is white
@@ -426,8 +436,10 @@
   // the buyer as confirmation that we saw what they paid for, and it is the second checkpoint for
   // whoever is packing — the pick sheet catches it at the shelf, this catches it at the bench.
   //
-  // A free letter (the great majority of card orders) gets one quiet grey line and no box. Only an
-  // upgrade gets a bordered block, so a sheet with a box on it is worth stopping for.
+  // INK ECONOMY is the hierarchy. A plain letter — the normal band, and the great majority of card
+  // orders — spends no ink at all beyond its own words: one quiet grey line, no box, no rule. Every
+  // step up buys more ink, so the amount of black on a sheet IS the amount of attention it wants.
+  // A tracked order gets the bordered block and the rule; Express gets the heaviest border.
   function postageBlockHTML(orders) {
     var ps = orders.map(function (o) { return o.postage || {}; }).filter(function (p) { return p && p.tier; });
     if (!ps.length) return '';
@@ -436,8 +448,10 @@
     var paid = orders.reduce(function (n, o) { return n + (+(o.postage && o.postage.paid_cents) || 0); }, 0);
 
     var line = esc(lead.label || 'Standard delivery');
-    if (tier === 'standard' && !paid) line += ', free';
-    else if (paid) line += ' &middot; ' + esc(money(paid, orders[0].currency));
+    // ", free" is gone: nothing is free postage any more, and printing it on a paid order is the kind
+    // of contradiction a buyer notices. A zero here now means we genuinely have no amount, so the line
+    // simply says what the service was.
+    if (paid) line += ' &middot; ' + esc(money(paid, orders[0].currency));
 
     // Scheduled dates only exist once the parcel is moving, and they are the accurate ones by then, so
     // the wording follows the source rather than promising an estimate as a fact.
@@ -450,10 +464,17 @@
       ? '<div class="ptrk">Tracking &middot; <b>' + esc(lead.tracking) + '</b>' + (lead.carrier ? ' (' + esc(lead.carrier) + ')' : '') + '</div>'
       : '';
 
-    return '<section class="postage t-' + esc(tier) + (tier !== 'standard' ? ' up' : '') + '">'
+    // A service note the config carries — "signature required on delivery" is the one that matters,
+    // because the top band needs a physical thing doing that tracking alone does not imply. It rides
+    // in `note` rather than as a fourth POSTAGE_TIER: tierRank ordering is load-bearing on a combined
+    // slip, and a new member would have to be threaded through every rank comparison to gain nothing.
+    var note = lead.note ? '<div class="pnote">' + esc(lead.note) + '</div>' : '';
+
+    return '<section class="postage t-' + esc(tier) + (isUpgradeTier(tier) ? ' up' : '') + '">'
       + '<div class="lbl">POSTAGE</div>'
       + (TIER_WORD[tier] ? '<div class="pblock">' + TIER_WORD[tier] + '</div>' : '')
       + '<div class="pline">' + line + '</div>'
+      + note
       + (eta ? '<div class="peta">' + eta + '</div>' : '')
       + trk
       + '</section>';
@@ -648,11 +669,16 @@
       + '.postage .ptrk{font-family:"Courier New",monospace;font-size:calc(9pt*var(--s));color:#222;margin-top:calc(3pt*var(--s));word-break:break-all;}'
       + '.postage .pblock{display:inline-block;font-weight:700;letter-spacing:.16em;line-height:1;'
       + 'padding:calc(4pt*var(--s)) calc(8pt*var(--s));margin-bottom:calc(4pt*var(--s));}'
+      // .up is tracked-or-better only. A paid letter is the NORMAL band now, so it keeps the quiet
+      // treatment a free letter used to have: no rule, no bold, just the line and the amount.
       + '.postage.up{border-left:3px solid #111;padding-left:calc(9pt*var(--s));}'
       + '.postage.up .pline{font-weight:700;color:#111;}'
+      + '.postage .pnote{font-size:calc(9.5pt*var(--s));color:#333;margin-top:calc(1pt*var(--s));}'
+      // The signature note is the one instruction on this block that is an ACTION, so it is the only
+      // part of a quiet block allowed to go bold.
+      + '.postage.up .pnote{font-weight:700;color:#000;}'
       + '.postage.t-express .pblock{border:2.5px solid #000;font-size:calc(13pt*var(--s));}'
       + '.postage.t-tracked .pblock{border:1.5px solid #000;font-size:calc(11.5pt*var(--s));}'
-      + '.postage.t-paid .pblock{border:1px dashed #555;color:#333;font-size:calc(10.5pt*var(--s));}'
       // combined slip, mixed tiers: a per-order marker beside each sub-header total
       + '.otier{border:1.5px solid #000;font-family:Arial,Helvetica,sans-serif;font-weight:700;letter-spacing:.1em;font-size:calc(7.5pt*var(--s));padding:0 calc(4pt*var(--s));margin-right:calc(6pt*var(--s));}'
       + '.opost{font-weight:400;color:#555;margin-right:calc(8pt*var(--s));}'
@@ -816,6 +842,10 @@
 
   // The postage exception banner. Rendered only when this run actually contains an order that is not a
   // plain letter, so a normal day's sheet looks exactly as it always has.
+  //
+  // "not a plain letter" now means TRACKED OR BETTER (isUpgrade in lib/postage.mjs). Every card order
+  // is paid postage since the store went to bands, so keying this on "the buyer paid something" would
+  // banner the entire day's run and the banner would stop meaning anything.
   function upgradeBanner(meta) {
     var ups = (meta && meta.upgrades) || [];
     var total = (meta && meta.order_count) || ups.length;
@@ -829,7 +859,7 @@
         return {
           chip: tierChip(u.tier), order_id: u.order_id, sales_record_number: u.sales_record_number,
           buyer_username: u.buyer_username,
-          detail: [named, paid].filter(Boolean).join(' · '),
+          detail: [named, paid, u.note].filter(Boolean).join(' · '),
           // eBay's Australia Post deal has no API, so buying the label stays a person's job. Saying so
           // on the sheet is the difference between a flagged order and an actioned one.
           todo: u.tracked ? (u.tracking ? 'Label bought · ' + u.tracking : 'Buy the label on eBay') : 'Check the postage on eBay',

@@ -116,15 +116,42 @@ test('pickSheetHTML — box-grouped seller list: tick box + image + full slot co
    paper. Invisible is the one failure this feature cannot have. */
 
 const POST = (over = {}) => ({ tier: 'standard', upgrade: false, tracked: false, label: 'Standard delivery', paid_cents: 0, ...over })
+// The store's NORMAL band since postage went banded: a $1.70 untracked letter. It is paid, and it
+// still needs nothing different from the packer, so it must stay as quiet as a free letter ever was.
+const LETTER = POST({ label: 'Regular letter', paid_cents: 170 })
+const TRACKED = POST({ tier: 'tracked', upgrade: true, tracked: true, label: 'Tracked letter', paid_cents: 826 })
 const EXPRESS = POST({ tier: 'express', upgrade: true, tracked: true, label: 'Express Post', paid_cents: 1295,
   eta_min: '2026-08-04T04:00:00.000Z', eta_max: '2026-08-06T04:00:00.000Z', eta_source: 'estimated' })
 
-test('packing slip: a free letter gets one quiet line and no block', () => {
+test('packing slip: a plain letter gets one quiet line and no block', () => {
   const html = LR.packingSlipHTML({ ...O1, postage: POST() })
   assert.match(html, /POSTAGE/)
-  assert.match(html, /Standard delivery, free/)
+  assert.match(html, /Standard delivery/)
   assert.doesNotMatch(html, /class="pblock"/)          // no bordered block
   assert.doesNotMatch(html, /class="postage t-standard up"/)  // no heavy left rule either
+})
+
+test('packing slip: the $1.70 band prints its amount and STILL gets no ink', () => {
+  // The inversion this guards against: every card order is paid postage now, so keying emphasis on
+  // "the buyer paid something" would put a bordered block on every slip we ever print.
+  const html = LR.packingSlipHTML({ ...O1, postage: LETTER })
+  assert.match(html, /Regular letter &middot; A\$1\.70/)
+  assert.doesNotMatch(html, /class="pblock"/)
+  assert.doesNotMatch(html, / up"/)
+  assert.doesNotMatch(html, /, free/, 'nothing is free postage any more')
+})
+
+test('packing slip: the tracked band DOES earn the block and the rule', () => {
+  const html = LR.packingSlipHTML({ ...O1, postage: TRACKED })
+  assert.match(html, /class="postage t-tracked up"/)
+  assert.match(html, /<div class="pblock">TRACKED<\/div>/)
+  assert.match(html, /Tracked letter &middot; A\$8\.26/)
+})
+
+test('packing slip: a signature note reaches the bench', () => {
+  // The top band needs a physical thing doing that tracking alone does not imply.
+  const html = LR.packingSlipHTML({ ...O1, postage: POST({ tier: 'tracked', upgrade: true, tracked: true, label: 'Tracked letter', paid_cents: 1520, note: 'signature required on delivery' }) })
+  assert.match(html, /class="pnote">signature required on delivery</)
 })
 
 test('packing slip: an express order gets a bordered EXPRESS block, what they paid and the window', () => {
@@ -199,7 +226,9 @@ test('no tier marker relies on a printed background fill', () => {
   // If "Background graphics" is off, a reversed block prints as white text on white paper.
   for (const css of [LR.pickSheetHTML([], {}), LR.packingSlipHTML(O1)]) {
     const tierRules = css.match(/\.t-(?:express|tracked|paid)\s*(?:\.pblock\s*)?\{[^}]*\}/g) || []
-    assert.ok(tierRules.length >= 3, 'tier rules should be present')
+    // Two, not three: `paid` no longer gets a bordered block on the packing slip. It is the normal
+    // band now, and a box that appears on every slip is a box nobody reads.
+    assert.ok(tierRules.length >= 2, 'tier rules should be present')
     for (const rule of tierRules) {
       assert.doesNotMatch(rule, /background/, rule)
       assert.doesNotMatch(rule, /color:\s*#fff/i, rule)

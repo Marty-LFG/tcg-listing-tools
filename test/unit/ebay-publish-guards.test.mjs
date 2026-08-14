@@ -10,6 +10,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { toEbayListing, loadEbayCategories, validateListing, EBAY_MIN_PRICE_CENTS } from '../../lib/channels/ebay-map.mjs';
+import { testEbayConfig, testShipping } from '../helpers/ebay-config.mjs';
 import { publishListing } from '../../lib/channels/ebay-inventory-api.mjs';
 
 const cats = loadEbayCategories();
@@ -17,7 +18,9 @@ const raw = (over = {}) => toEbayListing({
   sku: 'BK-RAW-PKM-1', game: 'pokemon', name: 'Pikachu', set_name: 'Base Set', number: '58/102',
   rarity: 'Common', condition: 'Near Mint', language: 'EN', quantity: 1, target_price_cents: 1299,
   image_url: 'https://cdn/x.png', finish: 'Regular', ...over,
-}, null, cats);
+  // The band table the publish path resolves against; without it the listing has no postage band and
+  // publishListing refuses before it ever reaches the fee check.
+}, null, cats, { shipping: testShipping() });
 
 const priceErrors = (l) => validateListing(l, cats).errors.filter((e) => /minimum|no price/.test(e));
 
@@ -48,11 +51,7 @@ describe('validateListing — eBay’s A$1.00 protocol floor', () => {
 });
 
 describe('publishListing dryRun — a preflight may not report ok when eBay refused', () => {
-  const CFG = {
-    marketplaceId: 'EBAY_AU', listingDuration: 'GTC',
-    policies: { paymentPolicyId: 'PAY', returnPolicyId: 'RET', fulfillmentPolicyId: 'FUL' },
-    location: { merchantLocationKey: 'tcg-au-1' },
-  };
+  const CFG = testEbayConfig();
   const ENV = { EBAY_REFRESH_TOKEN: 'fake', EBAY_CERT_ID: 'c' };   // mints a user token off the stub
   const descriptors = [{ name: 'Card Condition', id: '400011', valueId: '4000112' }];
 

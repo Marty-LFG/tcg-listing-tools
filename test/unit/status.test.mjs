@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { keyPresence, versionInfo, SETTINGS, PROBES, diagTokenCheck } from '../../lib/status.mjs';
 import { availableBakes } from '../../lib/refresh.mjs';
+import { DEFAULT_BANDS } from '../../lib/shipping-bands.mjs';
 
 describe('keyPresence', () => {
   const env = {
@@ -86,21 +87,48 @@ describe('SETTINGS validators', () => {
     assert.match(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: ['nope'] }), /unknown bake/);
     assert.match(SETTINGS.refresh.validate({ enabled: true, interval_hours: 6, bakes: ['funko'] }), /unknown bake/);   // funko isn't a bake
   });
+  const ebayOk = () => ({
+    marketplaceId: 'EBAY_AU', categoryTreeId: '15', listingDuration: 'GTC', handlingDays: 1,
+    location: { merchantLocationKey: 'tcg-au-1' },
+    policyNames: { payment: 'P', return: 'R' },
+    returns: { accepted: true, days: 30 },
+    shipping: { minBandForSlab: 1, bands: JSON.parse(JSON.stringify(DEFAULT_BANDS)) },
+    bestOffer: { enabled: true, autoAcceptPct: 95, autoDeclinePct: 78 },
+  });
+  const ebayBands = (mutate) => {
+    const c = ebayOk(); mutate(c.shipping.bands, c.shipping); return SETTINGS['ebay-listing'].validate(c);
+  };
+
   it('ebay-listing: a transposed best-offer pair cannot be saved as the default', () => {
     // Each percentage is separately legal, so only the PAIR can be wrong — and eBay rejects an
     // auto-accept below the auto-decline (25002) at publish, i.e. once per listing that inherits it.
-    const ok = {
-      marketplaceId: 'EBAY_AU', categoryTreeId: '15', listingDuration: 'GTC', handlingDays: 1,
-      location: { merchantLocationKey: 'tcg-au-1' },
-      policyNames: { payment: 'P', return: 'R', fulfillment: 'F' },
-      returns: { accepted: true, days: 30 },
-      bestOffer: { enabled: true, autoAcceptPct: 95, autoDeclinePct: 78 },
-    };
+    const ok = ebayOk();
     assert.equal(SETTINGS['ebay-listing'].validate(ok), null);
     const swapped = { ...ok, bestOffer: { enabled: true, autoAcceptPct: 71, autoDeclinePct: 94 } };
     assert.match(SETTINGS['ebay-listing'].validate(swapped), /autoAcceptPct must be ≥ autoDeclinePct/);
     // Equal is fine — eBay only objects to accept being LOWER than decline.
     assert.equal(SETTINGS['ebay-listing'].validate({ ...ok, bestOffer: { enabled: true, autoAcceptPct: 80, autoDeclinePct: 80 } }), null);
+  });
+  it('ebay-listing: no fulfilment policy NAME is required — each band names its own policy', () => {
+    const c = ebayOk(); delete c.policyNames.fulfillment;
+    assert.equal(SETTINGS['ebay-listing'].validate(c), null);
+  });
+  it('ebay-listing: a broken postage band table cannot be saved', () => {
+    // Every one of these would publish a listing whose description contradicts what eBay charges the
+    // buyer, so the form has to refuse it rather than the publish call failing per listing.
+    assert.match(ebayBands((b) => { b[0].costCents = 0; }), /above zero/);                       // free postage sneaking back in
+    assert.match(ebayBands((b) => { b[0].maxCents = 20000; }), /ceilings must increase/);        // overlap
+    assert.match(ebayBands((b) => { b[0].costCents = 900; }), /postage must increase/);          // breaks the monotone anchor maths
+    assert.match(ebayBands((b) => { b[1].policyId = b[0].policyId; }), /more than one band/);    // one policy on two bands
+    assert.match(ebayBands((b) => { b[2].maxCents = 99999; }), /last band .* no ceiling/);       // a ceiling on the top band
+    assert.match(ebayBands((b) => { b[0].copy = 'free'; }), /no description wording/);
+    assert.match(ebayBands((b, s) => { s.bands = undefined; b.length = 0; }), /shipping\.bands/);
+  });
+  it('ebay-listing: the graded-slab floor must name a band that exists', () => {
+    const c = ebayOk(); c.shipping.minBandForSlab = 7;
+    assert.match(SETTINGS['ebay-listing'].validate(c), /only 3 bands/);
+    const d = ebayOk(); d.shipping.minBandForSlab = '1';
+    assert.match(SETTINGS['ebay-listing'].validate(d), /whole number/);
   });
   it('postsale: the postage block is optional, but a bad one cannot be saved', () => {
     // The whole config as the settings form posts it, minus postage — an install that predates the
