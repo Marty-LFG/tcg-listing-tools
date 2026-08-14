@@ -46,7 +46,9 @@ const MTG_CARD = {
 // ---------------------------------------------------------------------------
 describe('the registry', () => {
   it('lists exactly the games whose eBay aspects have been checked live', () => {
-    assert.deepEqual(STOCK_GAME_IDS, ['pokemon', 'mtg']);
+    // Lorcana joined 2026-08-14 after its own live Taxonomy run — which is what found that its
+    // required Game aspect had never matched the enum ('Disney Lorcana' vs 'Disney Lorcana TCG').
+    assert.deepEqual(STOCK_GAME_IDS, ['pokemon', 'mtg', 'lorcana']);
     for (const id of STOCK_GAME_IDS) assert.ok(STOCK_GAME_ADAPTERS[id], id + ' is listed but has no adapter');
   });
 
