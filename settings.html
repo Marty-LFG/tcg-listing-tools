@@ -589,7 +589,7 @@
         {p:'postage.seller_hub_order_url',l:'Seller Hub order URL',t:'text',wide:true,tip:'Where the <b>Buy label on eBay</b> button on the Fulfilment dashboard points. <code>{orderId}</code> is substituted. eBay does not document this deep link, so if it ever stops resolving you can correct it here instead of waiting for a code change.'},
         {p:'postage.tracking_url',l:'Tracking URL',t:'text',wide:true,tip:'Carrier tracking page, with <code>{tracking}</code> substituted. Used for the ↗ link on the dashboard, and for the buyer message only when “Include tracking link” is on.'},
       ]},
-    ]},
+    ], json:'postage.services', jsonTip:'eBay service code → <code>{ label, tier, tracked, note }</code>, checked <b>before</b> every pattern the classifier has. This is how a service gets read correctly when its code says nothing useful: <code>AU_Regular</code> is the store’s <b>tracked</b> band but matches none of the patterns, so without an entry here an $8.26 tracked order reads as a plain paid letter, gets no upgrade banner, and is packed in an envelope. <code>tier</code> is one of standard/paid/tracked/express. The Fulfilment dashboard lists every code actually sold under, which is the list worth working from.' },
     tracker:{ title:'Price tracker', groups:[{name:null,fields:[
       {p:'cadence_hours',l:'Cadence (hrs)',t:'number',tip:'How often the price collector runs a full pass. Saving restarts the collector.'},
       {p:'thresholds.opportunity_drop_pct',l:'Opportunity drop %',t:'number',tip:'A price drop of at least this % flags a <b>buy opportunity</b>. Use a negative number (e.g. -10).'},
@@ -972,7 +972,9 @@
       let jsonBox=null;
       if(spec.json){
         const cell=el('<div class="fgroup"><div class="field jsonf wide"><label>'+esc(spec.json)+' (JSON)'+inf(spec.jsonTip||'')+'</label></div></div>');
-        jsonBox=document.createElement('textarea'); jsonBox.value=JSON.stringify(c[spec.json],null,2);
+        // A dotted path, not just a top-level key: the one advanced blob that most needs an editor is
+        // postage.services, and it is nested. getP/setP already speak paths.
+        jsonBox=document.createElement('textarea'); jsonBox.value=JSON.stringify(getP(c,spec.json)??{},null,2);
         cell.querySelector('.field').appendChild(jsonBox); card.appendChild(cell);
       }
       if(spec.locked) card.appendChild(el('<div style="margin-top:12px;"><span class="lock">🔒 '+esc(spec.locked)+'</span></div>'));
@@ -983,7 +985,7 @@
         const body=JSON.parse(JSON.stringify(f.content));   // start from disk → unknown keys survive
         for(const [p,get] of Object.entries(inputs)) setP(body,p,get());
         if(bakesBox) body.bakes=[...bakesBox.querySelectorAll('input:checked')].map(x=>x.dataset.bake);
-        if(jsonBox){ try{ body[spec.json]=JSON.parse(jsonBox.value); }catch(err){ note.style.color='var(--red)'; note.textContent='bad JSON: '+err.message; btn.disabled=false; return; } }
+        if(jsonBox){ try{ setP(body,spec.json,JSON.parse(jsonBox.value)); }catch(err){ note.style.color='var(--red)'; note.textContent='bad JSON: '+err.message; btn.disabled=false; return; } }
         try{
           const r=await fetch('/api/settings/'+name,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
           const j=await r.json();
