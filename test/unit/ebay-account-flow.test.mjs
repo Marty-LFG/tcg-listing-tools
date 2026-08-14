@@ -5,7 +5,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { bootstrapAccount, accountStatus } from '../../lib/ebay-account.mjs';
-import { testShipping, testBands, fulfillmentPolicyRows, paymentPolicyRow, returnPolicyRow } from '../helpers/ebay-config.mjs';
+import { testShipping, testBands, fulfillmentPolicyRow, fulfillmentPolicyRows, paymentPolicyRow, returnPolicyRow } from '../helpers/ebay-config.mjs';
 
 const ENV = { EBAY_APP_ID: 'PRD-x', EBAY_CERT_ID: 'PRD-y', EBAY_REFRESH_TOKEN: 'fake-refresh' };
 const CFG = {
@@ -109,6 +109,39 @@ describe('bootstrapAccount — a policy the owner never picked', () => {
     assert.equal(report.policies.paymentPolicyId, null);
     assert.ok(report.errors.some((e) => /no longer on this eBay account/.test(e)), report.errors.join(' · '));
     assert.equal(report.ready, false);
+  });
+});
+
+describe('accountStatus — the constraint checks actually RUN against the fulfilment policies', () => {
+  it('a policy with no combined-postage rule produces one info per band, not silence', async () => {
+    // Guards against a vacuous green: if rowFor() ever failed to match a policy id, every fulfilment
+    // check would return [] and the settings card would say "all policies meet the constraints"
+    // having checked nothing at all. Three bands with no rule attached must produce three infos.
+    stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /subscription': () => ({ status: 200, json: { subscriptions: [{ subscriptionLevel: 'Basic' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
+    });
+    const st = await accountStatus(ENV, { ...CFG, policies: { paymentPolicyId: 'PAY-EXIST', returnPolicyId: 'RET-EXIST' } });
+    const combined = st.policyCheck.issues.filter((i) => i.field === 'combinedPostage');
+    assert.equal(combined.length, 3, 'one per band — silence here means the checks never ran');
+    assert.ok(combined.every((i) => i.severity === 'info'));
+    assert.equal(st.policyCheck.ok, true, 'info is not a failure');
+    assert.equal(st.ready, true);
+  });
+  it('and goes quiet on every band once a rule really is attached', async () => {
+    const rows = testBands().map((b) => fulfillmentPolicyRow(b.policyId, b.policyName, b.costCents, b.serviceCode || 'AU_AusPostStandardLetter', { combined: true }));
+    stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /subscription': () => ({ status: 200, json: { subscriptions: [{ subscriptionLevel: 'Basic' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: rows } }),
+    });
+    const st = await accountStatus(ENV, { ...CFG, policies: { paymentPolicyId: 'PAY-EXIST', returnPolicyId: 'RET-EXIST' } });
+    assert.deepEqual(st.policyCheck.issues.filter((i) => i.field === 'combinedPostage').map(i=>i.message), []);
   });
 });
 
