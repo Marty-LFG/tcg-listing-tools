@@ -17,7 +17,11 @@
     "payment": "TCG Managed Payments AU",
     "return": "TCG 30-day returns AU"
   },
-  "returns": { "accepted": false, "days": 30, "shippingCostPayer": "BUYER" },
+  "returns": {
+    "accepted": false,
+    "days": 30,
+    "shippingCostPayer": "BUYER"
+  },
   "shipping": {
     "_comment": "PRICE-BANDED buyer-paid postage. A band's LOWER bound is the previous band's maxCents + 1, so a gap or an overlap is impossible by construction; the LAST band must have maxCents null. costCents is what the BUYER pays and is the exact figure quoted in every description in that band, so it must equal the shippingCost on the pinned eBay policy — POST /account/bootstrap verifies that against eBay before anything publishes. `copy` picks the buyer-facing sentence template in lib/shipping-bands.mjs and is an enum, never free text, so the description cannot drift from the policy. minBandForSlab is a 0-indexed floor for graded slabs: a graded card never travels untracked whatever it is worth. These values are pinned equal to DEFAULT_BANDS in lib/shipping-bands.mjs by test/invariants/shipping-band-copy.test.mjs.",
     "minBandForSlab": 1,
@@ -39,7 +43,7 @@
         "maxCents": 14998,
         "costCents": 826,
         "copy": "tracked",
-        "serviceCode": "",
+        "serviceCode": "AU_Regular",
         "serviceLabel": "Tracked with Australia Post",
         "policyId": "273172636012",
         "policyName": ""
@@ -50,15 +54,30 @@
         "maxCents": null,
         "costCents": 1520,
         "copy": "tracked_signature",
-        "serviceCode": "",
+        "serviceCode": "AUP_500G_SATCHEL_SIG",
         "serviceLabel": "Tracked with Signature on Delivery",
         "policyId": "273172669012",
         "policyName": ""
       }
     ]
   },
-  "policies": { "paymentPolicyId": "", "returnPolicyId": "" },
-  "store": { "defaultCategory": "", "categoryByGame": {} },
-  "bestOffer": { "enabled": false, "autoAcceptPct": 95, "autoDeclinePct": 78 },
-  "genericImage": { "enabled": false, "path": "", "eps": "", "expires": "" }
+  "policies": {
+    "paymentPolicyId": "",
+    "returnPolicyId": ""
+  },
+  "store": {
+    "defaultCategory": "",
+    "categoryByGame": {}
+  },
+  "bestOffer": {
+    "enabled": false,
+    "autoAcceptPct": 95,
+    "autoDeclinePct": 78
+  },
+  "genericImage": {
+    "enabled": false,
+    "path": "",
+    "eps": "",
+    "expires": ""
+  }
 }

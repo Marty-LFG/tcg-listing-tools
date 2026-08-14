@@ -354,7 +354,11 @@ describe('postsale — push-card refuses a message in a terminal state', () => {
 // test/unit/postage.test.mjs; this is about it surviving the round trip through the API.
 describe('postsale — postage over the API', () => {
   before(() => {
-    ingestOrder(db, mkOrder('P-STD', { shipService: 'AU_Regular', shippingCents: 0 }), cfg);
+    // The store's real band-1 code, charging its real $1.70. This fixture used to be AU_Regular at 0c
+    // as a stand-in "plain letter" — but AU_Regular is the account's TRACKED band (verified live
+    // 2026-08-14), so it means the opposite now. This is the honest normal case: paid, and still not
+    // an upgrade, because a plain letter needs nothing different from the packer.
+    ingestOrder(db, mkOrder('P-STD', { shipService: 'AU_AusPostStandardLetter', shippingCents: 170 }), cfg);
     ingestOrder(db, mkOrder('P-EXP', {
       shipService: 'AU_Express', shippingCents: 1295, expedited: true,
       handleByTime: '2026-08-03T06:59:59.000Z', etaMin: '2026-08-04T04:00:00.000Z', etaMax: '2026-08-06T04:00:00.000Z',
@@ -367,7 +371,8 @@ describe('postsale — postage over the API', () => {
     const exp = orders.find((o) => o.order_id === 'P-EXP');
 
     assert.equal(std.postage.tier, 'standard');
-    assert.equal(std.postage.upgrade, false, 'a free letter is not an upgrade — it gets no ink anywhere');
+    assert.equal(std.postage.paid_cents, 170, 'the normal band is PAID now — nothing is free postage');
+    assert.equal(std.postage.upgrade, false, 'a plain letter is not an upgrade — it gets no ink anywhere');
     assert.equal(std.postage.tracking_url, null);
 
     assert.equal(exp.postage.tier, 'express');
@@ -399,13 +404,12 @@ describe('postsale — postage over the API', () => {
     assert.equal(byCode.AU_Express.overridden, false);
     assert.equal(byCode.AU_Express.mixed, null, 'every AU_Express order read the same way');
 
-    // AU_Regular has been sold both free (P-STD → standard) and with postage charged (T-1/T-2 → paid).
-    // The list reports the tier most of them actually got, and flags the split — which is the whole
-    // point of the panel: it is how you notice a service being driven by price rather than by its code.
-    // (counts are left loose: other blocks in this file seed AU_Regular orders too.)
-    assert.equal(byCode.AU_Regular.tier, 'paid');
-    assert.ok(byCode.AU_Regular.mixed.some((m) => m.startsWith('paid×')), byCode.AU_Regular.mixed);
-    assert.ok(byCode.AU_Regular.mixed.some((m) => m.startsWith('standard×')), byCode.AU_Regular.mixed);
+    // AU_Regular is the account's TRACKED band, and the config names it explicitly — which is the one
+    // entry that MUST be there, because the code matches none of the classifier's own patterns. Left
+    // to the regexes it would read as a plain paid letter and the packer would never be told to buy a
+    // label. This asserts the override is doing that work.
+    assert.equal(byCode.AU_Regular.tier, 'tracked');
+    assert.equal(byCode.AU_Regular.overridden, true, 'AU_Regular is only tracked because the config says so');
   });
 });
 

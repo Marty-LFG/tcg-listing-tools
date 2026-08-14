@@ -231,7 +231,15 @@ describe('validateBands — the ONE validator both the settings API and the publ
   });
   it('rejects a service code that is not shaped like one, but allows a blank', () => {
     bad([{ ...band('letter'), serviceCode: 'regular letter' }, band('tracked'), band('signature')], /does not look like one/);
+    bad([{ ...band('letter'), serviceCode: 'TCG Free AU Post' }, band('tracked'), band('signature')], /does not look like one/);
     ok([{ ...band('letter'), serviceCode: '' }, band('tracked'), band('signature')]);
+  });
+  it('accepts the REAL eBay AU codes, which are less regular than they look', () => {
+    // All three read live off the account 2026-08-14. A tighter shape check rejected
+    // AUP_500G_SATCHEL_SIG — three-letter prefix, digits, multiple underscores.
+    for (const code of ['AU_AusPostStandardLetter', 'AU_Regular', 'AUP_500G_SATCHEL_SIG', 'AU_Express']) {
+      ok([{ ...band('letter'), serviceCode: code }, band('tracked'), band('signature')], code);
+    }
   });
   it('rejects a policy id that is not a number, or one used on two bands', () => {
     bad([{ ...band('letter'), policyId: 'TCG Free AU Post' }, band('tracked'), band('signature')], /not a number/);
