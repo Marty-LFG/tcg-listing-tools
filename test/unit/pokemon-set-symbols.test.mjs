@@ -235,6 +235,17 @@ describe('the baked index', { skip: !baked && 'data/pokemon-set-symbols.json not
       assert.ok(en, 'EN 151 resolved no symbol');
       assert.notEqual(jp.url, en.url);
     });
+    it('the baked Mega Evolution Promo roster resolves the wiki\'s MEP Black Star Promos symbol', () => {
+      // The set is absent from pokemontcg.io (that is why data/pokemon-mep.json exists), so the
+      // alias is the only route to a rail badge for it. Both identities a stock row can carry
+      // must resolve — and to the EN file, since the roster is an English set.
+      for (const ours of ['Mega Evolution Promo', 'mep']) {
+        const hit = findSetSymbol('EN', ours);
+        assert.ok(hit, `${ours} resolved no symbol`);
+        assert.match(hit.url, /SetSymbolMEP_Black_Star_Promos/, `${ours} resolved the wrong art`);
+        assert.equal(hit.lang, 'en');
+      }
+    });
     it('an alias never rescues a set that genuinely does not exist', () => {
       assert.equal(findSetSymbol('JP', 'Completely Made Up Set'), null);
       assert.equal(findSetLogo('JP', 'ZZ99Q'), null);

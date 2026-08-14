@@ -54,6 +54,18 @@ describe('composeMetaFor', () => {
     assert.equal(m.setSymbolUrl, '');
   });
 
+  const symbolsBaked = fs.existsSync(path.join(ROOT, 'data', 'pokemon-set-symbols.json'));
+  it('the baked Mega Evolution Promo set gets its black-star badge',
+    { skip: !symbolsBaked && 'data/pokemon-set-symbols.json not built on this host' }, () => {
+      // MEP is absent from pokemontcg.io, so findSet cannot supply images.symbol here — the alias
+      // into the Bulbapedia bake ("MEP Black Star Promos") is the only source. A skip, not an if:
+      // this must never go green by resolving nothing. (No wordmark assertion: Bulbapedia carries
+      // no MEP logo today, and the left rail correctly stays store-mark only.)
+      const m = composeMetaFor({ game: 'pokemon', name: 'Meganium', set_name: 'Mega Evolution Promo', set_code: 'mep', number: '001', language: 'EN' });
+      assert.match(m.setSymbolUrl, /SetSymbolMEP_Black_Star_Promos/);
+      assert.equal(m.cardNumber, '001', 'promos print bare — the alias must not invent a denominator');
+    });
+
   describe('non-English cards resolve against the JP index, not the English one', () => {
     // A JP card is a different product, not a translation: its own set name, its own card count and
     // therefore its own printed number. The English set's identity on a JP rail is simply wrong.
