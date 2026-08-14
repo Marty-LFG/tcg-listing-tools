@@ -105,8 +105,8 @@
   <div class="sec">
     <div class="qa">
       <span class="sec-h" style="margin:0;">Quick add</span>
-      <select id="qa_game"><option value="riftbound">Riftbound</option><option value="mtg">MTG</option><option value="pokemon">Pokémon</option><option value="swu">SWU</option></select>
-      <input id="qa_key" placeholder="identity key (e.g. neo-1)" style="width:170px;">
+      <select id="qa_game"><option value="riftbound">Riftbound</option><option value="mtg">MTG</option><option value="pokemon">Pokémon</option><option value="lorcana">Disney Lorcana</option><option value="swu">SWU</option></select>
+      <input id="qa_key" placeholder="identity key (e.g. neo-1, 10/241)" style="width:170px;">
       <input id="qa_name" placeholder="name" style="width:170px;">
       <input id="qa_variant" placeholder="variant (optional)" style="width:140px;">
       <button class="btn sm" onclick="quickAdd(this)">+ Track</button>
@@ -125,7 +125,7 @@
 <script src="/extras.js"></script>
 <script>
 const B='/api/tracker';
-const GAME_NAMES={riftbound:'Riftbound',mtg:'Magic: The Gathering',pokemon:'Pokémon',swu:'Star Wars: Unlimited'};
+const GAME_NAMES={riftbound:'Riftbound',mtg:'Magic: The Gathering',pokemon:'Pokémon',lorcana:'Disney Lorcana',swu:'Star Wars: Unlimited'};
 let CFG=null;
 
 function api(path,opts){return fetch(B+path,opts).then(r=>r.ok?r.json():Promise.reject(r));}
@@ -162,7 +162,7 @@ function cardRow(card){
   const L=card.latest;
   const native=L?usd(L.market,L.currency):'—';
   const a=L?aud(L.market_aud):'—';
-  const SRC={pokemontcg:'TCGplayer',scryfall:'Scryfall',swudb:'swu-db',scrydex:'Scrydex',ebay:'eBay fair value',user:'manual',claude:'claude'};
+  const SRC={pokemontcg:'TCGplayer',scryfall:'Scryfall',lorcast:'Lorcast',swudb:'swu-db',scrydex:'Scrydex',ebay:'eBay fair value',user:'manual',claude:'claude'};
   const srcMeta=L?('<div style="font-size:10.5px;color:var(--muted);margin-top:3px;"><span style="border:1px solid var(--line);border-radius:5px;padding:0 5px;">'+esc(SRC[L.source]||L.source||'source ?')+'</span>'+(card.count?' · '+card.count+' snapshot'+(card.count>1?'s':''):'')+(L.ts?' · as of '+esc(TZ.date(L.ts))+' (Sydney)':'')+'</div>'):'';
   const tags=[];
   if(card.source==='claude')tags.push('<span class="tag claude">claude</span>');
@@ -226,7 +226,7 @@ async function load(){
   const allEl=document.getElementById('all');
   let html='<div class="sec-h">All tracked <span class="count">'+cards.length+'</span></div>';
   if(!cards.length) html+='<div class="empty">Nothing tracked yet — add a card above or from a listing builder.</div>';
-  for(const g of ['riftbound','mtg','pokemon','swu']){
+  for(const g of ['riftbound','mtg','pokemon','lorcana','swu']){
     const grp=cards.filter(c=>c.game===g);
     if(!grp.length)continue;
     html+='<div class="group-h">'+GAME_NAMES[g]+' ('+grp.length+')</div>'+grp.map(cardRow).join('');

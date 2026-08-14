@@ -271,8 +271,10 @@ function banner(html){ const b=$('setupBanner'); b.innerHTML=html; b.style.displ
 function applyGameChrome(){
   document.title='eBay Stock Uploader — '+GA.label;
   $('gameTag').textContent=GA.tag;
-  $('setCode').placeholder=GAME==='mtg'?'set name or code, e.g. NEO or Kamigawa':'set name or code, e.g. PAR or Paradox Rift';
-  $('num').placeholder=GAME==='mtg'?'e.g. 249':'e.g. 25  or  199/165';
+  // Off the adapter, not a ternary on GAME: these were the last hardcoded game literals in the page.
+  const ex=GA.catchExample||{};
+  $('setCode').placeholder=ex.setHint||'set name or code';
+  $('num').placeholder=ex.numHint||'e.g. 25';
   $('finish').innerHTML=GA.finishOptions.map(o=>'<option>'+esc(o)+'</option>').join('');
 }
 async function selectGame(g,opts){

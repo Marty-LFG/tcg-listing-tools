@@ -89,7 +89,8 @@
         <div><label>Number</label><input id="f_num"></div>
         <div><label>Rarity</label><input id="f_rarity"></div>
         <div><label>Variant / finish</label><select id="f_variant">
-          <option>Standard</option><option>Foil</option></select></div>
+          <option>Standard</option><option>Foil</option><option>Cold Foil</option>
+          <option>Enchanted</option><option>Epic</option><option>Iconic</option></select></div>
         <div><label>Card type</label><input id="f_type"></div>
         <div><label>Ink</label><input id="f_ink" placeholder="Amber / Amethyst / …"></div>
         <div class="f-full"><label>Classifications</label><input id="f_class" placeholder="Floodborn · Hero · Queen"></div>
@@ -203,7 +204,11 @@ function prettyRarity(r){return (r||'').replace(/_/g,' ').replace(/\b\w/g,functi
 // Mirror of lib/normalize.mjs MAPPERS.lorcana — keep both in sync (Golden Rule 9).
 function priceFromCard(c,variant){
   var p=c&&c.prices; if(!p)return null;
-  var foil=/foil/i.test(variant||'');
+  // Enchanted/Epic/Iconic are foil-only printings whose words contain neither "foil" nor "holo", so
+  // a bare /foil/ test reads them as NON-foil and reaches for `usd` first. It falls through to
+  // usd_foil today only because their `usd` is null — one upstream change and an Iconic quotes a
+  // base-card price.
+  var foil=/foil|enchanted|iconic|epic/i.test(variant||'');
   var m=foil?(p.usd_foil!=null?p.usd_foil:p.usd):(p.usd!=null?p.usd:p.usd_foil);
   if(m==null)return null;
   return {market:+m,low:null,currency:'USD'};
@@ -293,7 +298,7 @@ function findEbay(){
     // can't separate the base printing from the Enchanted/alt-art (distinct high numbers) — so
     // number-match to pin THIS exact card (like Riftbound). f_num holds the bare collector number.
     // Foil and non-foil share a number, so also split by finish (drops the explicitly-opposite finish).
-    precision:true, numberMatch:f.num, finish:(/foil/i.test(f.variant)?'foil':'nonfoil'),
+    precision:true, numberMatch:f.num, finish:(/foil|enchanted|iconic|epic/i.test(f.variant)?'foil':'nonfoil'),
     filterKey:'raw',
     filterOptions:[
       {key:'raw',    label:'Raw · Buy It Now', filter:'conditionIds:{4000},buyingOptions:{FIXED_PRICE}'},
@@ -306,14 +311,21 @@ function findEbay(){
 function genPitch(f, rawRarity){
   const setName=SETS[curSet], name=f.name, type=(f.type||'card').toLowerCase();
   const ink=f.ink, v=f.variant;
-  const foil=/foil/i.test(v||'');
-  const chaseRarity=['Legendary','Super Rare','Enchanted'].includes(rawRarity);
+  // Enchanted / Epic / Iconic are foil-only printings whose words contain neither "foil" nor
+  // "holo", so a bare /foil/ test called the best cards in the game non-foil.
+  const foil=/foil|enchanted|iconic|epic/i.test(v||'');
+  const chaseRarity=['Legendary','Super Rare','Enchanted','Epic','Iconic'].includes(rawRarity);
   const inkPhrase = ink ? ink+'-ink ' : '';
+  // Three of the six inks start with a vowel (Amber, Amethyst, Emerald), so a hardcoded "a" wrote
+  // "A Amber-ink standout" on roughly half the chase cards in the game.
+  const an = /^[aeiou]/i.test(inkPhrase) ? 'n' : '';
   if(foil||chaseRarity){
-    const vWord = foil ? 'foil ' : '';
-    return `The ${vWord}${name} ${type} from Disney Lorcana — ${setName}. A ${inkPhrase}standout chase card prized by collectors and players alike.`;
+    // Use the finish's own word when it has one — "the enchanted Elsa", "the iconic Ariel" — rather
+    // than flattening every chase print to the word "foil".
+    const vWord = foil ? (/^foil$/i.test(v||'') ? 'foil ' : String(v||'').toLowerCase()+' ') : '';
+    return `The ${vWord}${name} ${type} from Disney Lorcana — ${setName}. A${an} ${inkPhrase}standout chase card prized by collectors and players alike.`;
   }
-  return `${name} — a ${inkPhrase}${type} from Disney Lorcana's ${setName} set. ${rawRarity||''} rarity${foil?', foil finish':''}.`;
+  return `${name} — a${an} ${inkPhrase}${type} from Disney Lorcana's ${setName} set. ${rawRarity||''} rarity${foil?', foil finish':''}.`;
 }
 
 function buildHTML(f){
@@ -429,22 +441,33 @@ async function doLookup(opts){
     set('f_num',cnum);
     set('f_rarity',rarity);
     set('f_type',(c.type||[]).join('/'));
-    set('f_ink',c.ink||'');
+    // READ BOTH FIELDS. Lorcast populates `ink` on some cards and `inks` on others, and neither is
+    // complete alone: Jolly Roger has ink:null with inks:["Ruby"], Never Land has ink:"Amber" with
+    // inks:null. Reading `ink` alone left the Ink row blank on 160 of 3,192 cards. 187 cards are
+    // dual-ink; the hyphen is how the community writes them ("Amber-Steel").
+    set('f_ink',((c.inks&&c.inks.length?c.inks:(c.ink?[c.ink]:[])).join('-')));
     set('f_class',(c.classifications||[]).join(' · '));
     set('f_cost',c.cost!=null?c.cost:'');
     set('f_strength',c.strength!=null?c.strength:'');
     set('f_willpower',c.willpower!=null?c.willpower:'');
     set('f_lore',c.lore!=null?c.lore:'');
-    // Set the finish deterministically each lookup (no leak between cards): foil-only printings
-    // (Enchanted/promo — no normal price) -> Foil so pricing lands; everything else -> Standard.
-    set('f_variant', (c.prices && c.prices.usd==null && c.prices.usd_foil!=null) ? 'Foil' : 'Standard');
+    // Set the finish deterministically each lookup (no leak between cards). A chase rarity names
+    // its OWN finish -- Enchanted, Epic and Iconic are foil-only and are separate products, not the
+    // foil version of something (Iconic tops out at US$3,632 against US$1 base cards), so calling
+    // one 'Foil' would put it on the same identity row as the plain foil printing (GR5). Any other
+    // foil-only printing -> Foil so pricing lands; everything else -> Standard.
+    const _rl=(c.rarity||'').toLowerCase();
+    const _special=/enchanted/.test(_rl)?'Enchanted':/iconic/.test(_rl)?'Iconic':/epic/.test(_rl)?'Epic':'';
+    set('f_variant', _special || ((c.prices && c.prices.usd==null && c.prices.usd_foil!=null) ? 'Foil' : 'Standard'));
     const f=readFields();
     set('f_pitch',genPitch(f,rarity));
     const pr=priceFromCard(c,val('f_variant'));
     act&&act.done('Lorcast');
     st.className='status ok';
-    st.textContent='✓ '+name+'  ('+(rarity||'?')+')'+(pr&&pr.market!=null?'  ·  ~US$'+pr.market+(/foil/i.test(val('f_variant'))?' foil':' market'):'');
-    _trk={game:'lorcana',identity_key:reqSet+'/'+cnum,name:name,variant:(/foil/i.test(val('f_variant'))?'Foil':''),price:pr};
+    st.textContent='✓ '+name+'  ('+(rarity||'?')+')'+(pr&&pr.market!=null?'  ·  ~US$'+pr.market+(/foil|enchanted|iconic|epic/i.test(val('f_variant'))?' foil':' market'):'');
+    // The tracker's variant is the identity, so it carries the chase finish rather than flattening
+    // it to 'Foil' — a tracked Iconic and a tracked plain foil of the same card are different rows.
+    _trk={game:'lorcana',identity_key:reqSet+'/'+cnum,name:name,variant:(val('f_variant')==='Standard'?'':val('f_variant')),price:pr};
     render();
     if(window.TCG){
       const img=(c.image_uris&&c.image_uris.digital)||{};

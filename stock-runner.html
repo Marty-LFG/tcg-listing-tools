@@ -506,10 +506,15 @@ function applyGameChrome() {
   $('setCode').placeholder = 'Type a set name or code…';
   // The catch-line grammar is per game: Magic has no reverse holo, and its finish letters differ.
   const toks = Object.keys(GA.printingTokens).join(' ');
-  const eg = GAME === 'mtg' ? '249' : '125', egSet = GAME === 'mtg' ? 'neo' : 'obf';
+  // Off the adapter, not a ternary on GAME — this was the last hardcoded game literal in the page,
+  // and a two-way ternary does not survive a third game. It matters more than a placeholder
+  // usually would: `egSet` documents a set switch, and for Lorcana the numbered sets deliberately
+  // contribute no token, so a wrong example here would advertise something that does nothing.
+  const ex = GA.catchExample || {}, eg = ex.num || '125', egSet = ex.setCode || '';
   $('grammar').innerHTML = '<span><b>' + esc(eg) + '</b> number</span><span><b>' + esc(toks) + '</b> printing</span>'
     + '<span><b>x3</b> quantity</span><span><b>@12.50</b> price</span><span><b>lp mp hp</b> condition</span>'
-    + '<span><b>*name</b> search</span><span><b>' + esc(egSet) + '</b> switch set</span>';
+    + '<span><b>*name</b> search</span>'
+    + (egSet ? '<span><b>' + esc(egSet) + '</b> switch set</span>' : '');
   $('catch').placeholder = eg;
   // Rarity filter options come from the adapter — Magic splits mythic out, because on a set that is
   // 61% mythic "rare and up" selects most of the box.
