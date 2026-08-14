@@ -16,7 +16,8 @@ const CFG = {
   // Three PINNED postage policies, one per price band. That is the normal path now the owner supplied
   // real ids: bootstrap VERIFIES them against eBay rather than creating anything.
   shipping: testShipping(),
-  policies: {},
+  // Payment and return are PINNED too. Nothing bootstrap touches can create a policy any more.
+  policies: { paymentPolicyId: 'PAY-EXIST', returnPolicyId: 'RET-EXIST' },
 };
 
 const realFetch = globalThis.fetch;
@@ -43,35 +44,71 @@ function resp(status, json) {
   return { ok: status >= 200 && status < 300, status, headers: { get: () => null }, text: async () => JSON.stringify(json || {}) };
 }
 
-describe('bootstrapAccount — happy path (opted in, all created fresh)', () => {
-  it('opts-in as needed, creates all three policies + location, reports ready', async () => {
+describe('bootstrapAccount — happy path (opts in, verifies every pinned policy, makes the location)', () => {
+  it('creates NO policy of any kind, and reports ready', async () => {
     let optedPrograms = [];   // starts empty → opt-in flips it
     const calls = stubFetch({
       'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: optedPrograms.map((p) => ({ programType: p })) } }),
       'POST /program/opt_in': () => { optedPrograms = ['SELLING_POLICY_MANAGEMENT']; return { status: 200, json: {} }; },
-      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [] } }),
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
       'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
-      'POST /payment_policy': () => ({ status: 201, json: { paymentPolicyId: 'PAY-1' } }),
-      'POST /return_policy': () => ({ status: 201, json: { returnPolicyId: 'RET-1' } }),
-      'POST /fulfillment_policy': () => ({ status: 201, json: { fulfillmentPolicyId: 'FUL-1' } }),
       'GET /inventory/v1/location/': () => ({ status: 404, json: { errors: [{ errorId: 25802, message: 'not found' }] } }),
       'POST /inventory/v1/location/': () => ({ status: 204, json: null }),
     });
     const report = await bootstrapAccount(ENV, CFG);
     assert.equal(report.optedIn, true);
     assert.equal(report.optInPending, false);
-    assert.deepEqual(report.policies.paymentPolicyId, 'PAY-1');
-    assert.equal(report.policies.returnPolicyId, 'RET-1');
-    // Postage policies are PINNED per band, so bootstrap verifies them and creates nothing.
+    assert.equal(report.policies.paymentPolicyId, 'PAY-EXIST');
+    assert.equal(report.policies.returnPolicyId, 'RET-EXIST');
     assert.deepEqual(report.bands.map((b) => b.policyId), testBands().map((b) => b.policyId));
     assert.equal(report.bandCheck.ok, true, (report.bandCheck.errors || []).join(' · '));
     assert.equal(report.location, 'tcg-au-1');
     assert.equal(report.ready, true);
     assert.deepEqual(report.errors, []);
-    // the location POST body carries the AU postcode
+
+    // THE invariant of this whole module: setup never POSTs a policy. eBay business policies are the
+    // terms buyers see, and the owner makes them by hand. The location IS created — that is an
+    // internal warehouse record, not something a buyer ever sees.
+    const posted = calls.filter((c) => c.method === 'POST' && /_policy/.test(c.url));
+    assert.deepEqual(posted, [], 'setup must never create a business policy');
     const locPost = calls.find((c) => c.method === 'POST' && c.url.includes('/inventory/v1/location/'));
     assert.match(locPost.body, /"postalCode":"3000"/);
+  });
+});
+
+describe('bootstrapAccount — a policy the owner never picked', () => {
+  const noPins = { ...CFG, policies: {} };
+  it('refuses by name for payment and return, exactly as it does for a band', async () => {
+    const calls = stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
+      'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
+    });
+    const report = await bootstrapAccount(ENV, noPins);
+    // A policy named exactly as policyNames asks IS on the account — and it still is not adopted.
+    // Matching by name is a guess about which policy the owner meant; picking one is not.
+    assert.equal(report.policies.paymentPolicyId, null);
+    assert.equal(report.policies.returnPolicyId, null);
+    assert.equal(report.ready, false);
+    assert.ok(report.errors.some((e) => /payment policy: no payment policy is chosen/.test(e)), report.errors.join(' · '));
+    assert.ok(report.errors.some((e) => /return policy: no return policy is chosen/.test(e)), report.errors.join(' · '));
+    assert.deepEqual(calls.filter((c) => c.method === 'POST' && /_policy/.test(c.url)), []);
+  });
+  it('refuses when a pinned policy has been deleted on eBay, rather than replacing it', async () => {
+    stubFetch({
+      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [] } }),      // the pin is gone
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
+      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
+      'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
+    });
+    const report = await bootstrapAccount(ENV, CFG);
+    assert.equal(report.policies.paymentPolicyId, null);
+    assert.ok(report.errors.some((e) => /no longer on this eBay account/.test(e)), report.errors.join(' · '));
+    assert.equal(report.ready, false);
   });
 });
 
@@ -114,45 +151,6 @@ describe('bootstrapAccount — opt-in still processing', () => {
     assert.equal(report.optInPending, true);
     assert.equal(report.ready, undefined);   // never reaches the ready computation
     assert.ok(report.warnings.some((w) => /24h/.test(w)));
-  });
-});
-
-describe('bootstrapAccount — reuses existing policies (idempotent re-run)', () => {
-  it('finds policies by name and does not create duplicates', async () => {
-    const calls = stubFetch({
-      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
-      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'Pay AU', paymentPolicyId: 'PAY-EXIST' }] } }),
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
-      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
-      'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
-    });
-    const report = await bootstrapAccount(ENV, CFG);
-    assert.equal(report.policies.paymentPolicyId, 'PAY-EXIST');
-    assert.deepEqual(report.bands.map((b) => b.policyId), testBands().map((b) => b.policyId));
-    assert.equal(report.ready, true);
-    assert.equal(calls.some((c) => c.method === 'POST' && c.url.includes('_policy')), false, 'must not create when found');
-    assert.equal(calls.some((c) => c.method === 'POST' && c.url.includes('/location/')), false, 'must not create existing location');
-  });
-});
-
-describe('bootstrapAccount — duplicate policy (eBay allows one per category type)', () => {
-  it('adopts the duplicatePolicyId eBay returns when our name is not on any existing policy', async () => {
-    // Live failure 2026-07-26: create returned [20400] Duplicate policy (duplicatePolicyId=266339227012)
-    // while the account's policy carried an unrelated name, so the name-based re-list found nothing.
-    stubFetch({
-      'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
-      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [{ name: 'eBay default payment', paymentPolicyId: '266339227012' }] } }),
-      'POST /payment_policy': () => ({ status: 400, json: { errors: [{ errorId: 20400, message: 'Duplicate policy', parameters: [{ name: 'duplicatePolicyId', value: '266339227012' }] }] } }),
-      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [{ name: 'Ret AU', returnPolicyId: 'RET-EXIST' }] } }),
-      'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
-      'GET /inventory/v1/location/': () => ({ status: 200, json: { merchantLocationKey: 'tcg-au-1' } }),
-    });
-    const report = await bootstrapAccount(ENV, CFG);
-    assert.equal(report.policies.paymentPolicyId, '266339227012');
-    assert.deepEqual(report.errors, []);
-    assert.equal(report.ready, true);
-    assert.ok(report.warnings.some((w) => /payment policy: reusing/.test(w)), 'adopting a foreign policy must warn');
-    assert.ok(report.warnings.some((w) => /eBay default payment/.test(w)), 'warning names the adopted policy');
   });
 });
 
