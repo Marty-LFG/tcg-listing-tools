@@ -99,6 +99,30 @@ describe('fulfillmentTerms / verifyBandPolicies — which policy is which band',
     assert.equal(t.free, false);
     assert.equal(t.serviceCount, 1);
   });
+  it('captures EVERY domestic service, not just the one we quote', () => {
+    // A policy offering a choice is a policy whose buyers see a choice. Keeping only
+    // shippingServices[0] is what made the description describe one option out of three.
+    const row = fulfillmentPolicyRow('X', 'Paid Shipping', 170);
+    row.shippingOptions[0].shippingServices.push(
+      { sortOrder: 2, shippingServiceCode: 'AU_RegularParcelWithTracking', shippingCost: { value: '9.30', currency: 'AUD' }, additionalShippingCost: { value: '2.00', currency: 'AUD' } },
+      { sortOrder: 3, shippingServiceCode: 'AU_Express', shippingCost: { value: '15.95', currency: 'AUD' }, freeShipping: false },
+    );
+    const t = fulfillmentTerms(row);
+    assert.equal(t.serviceCount, 3);
+    assert.deepEqual(t.services.map((s) => s.code), ['AU_AusPostStandardLetter', 'AU_RegularParcelWithTracking', 'AU_Express']);
+    assert.deepEqual(t.services.map((s) => s.costCents), [170, 930, 1595]);
+    assert.equal(t.services[1].additionalCostCents, 200, 'what each extra unit adds');
+    assert.equal(t.services[2].additionalCostCents, null, 'absent means eBay charges the full rate again');
+    // The quoted figure stays the FIRST service, so band matching is unchanged.
+    assert.equal(t.costCents, 170);
+  });
+  it('reads a free service as 0c rather than null', () => {
+    const row = fulfillmentPolicyRow('X', 'n', 0);
+    row.shippingOptions[0].shippingServices[0] = { sortOrder: 1, shippingServiceCode: 'AU_Free', freeShipping: true };
+    const t = fulfillmentTerms(row);
+    assert.equal(t.services[0].free, true);
+    assert.equal(t.services[0].costCents, 0);
+  });
   it('a correctly wired account verifies clean', () => {
     const v = verifyBandPolicies(bands, fulfillmentPolicyRows(), 'fulfillmentPolicyId');
     assert.equal(v.ok, true, v.errors.join(' · '));
