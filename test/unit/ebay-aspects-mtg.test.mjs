@@ -137,7 +137,10 @@ describe('Manufacturer', () => {
     assert.equal(ebayManufacturer('mtg', 'EN', '2026-08-14'), 'Wizards of the Coast');
   });
   it('a game with no rule still gets nothing rather than a guess', () => {
-    assert.equal(ebayManufacturer('lorcana', 'EN', '2023-08-18'), null);
+    // Lorcana used to be the stand-in here and now has its own answer (Ravensburger, a live enum
+    // member). SWU and One Piece still have none, so they carry the assertion.
+    assert.equal(ebayManufacturer('swu', 'EN', '2024-03-08'), null);
+    assert.equal(ebayManufacturer('onepiece', 'EN', '2022-12-02'), null);
   });
 });
 
