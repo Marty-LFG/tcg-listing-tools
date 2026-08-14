@@ -36,6 +36,8 @@ data/mtg-cache/
 # Refetchable, so not source.
 data/pkm-cards/
 data/lorcana-cards/
+# Lorcast's set list, same deal as data/mtg-cache/ (lib/lorcana-sets-cache.mjs).
+data/lorcana-cache/
 data/swu-cards/
 data/mtg-cards/
 data/onepiece-cards/
