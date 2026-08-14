@@ -82,6 +82,30 @@ describe('setsFrom — Lorcast`s wrapper, and the set-code collision', () => {
   it('drops a set with no code rather than emitting one that cannot be fetched', () => {
     assert.equal(L.setsFrom({ results: [{ name: 'Codeless' }] }).length, 0);
   });
+
+  it('drops an UNRELEASED set — you can select it and never post it', () => {
+    // The same reasoning the mtg adapter drops `digital` sets on. Lorcana gains a set roughly every
+    // three months, and Lorcast lists it as soon as it is announced.
+    const future = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
+    const sets = L.setsFrom({ results: [
+      { code: '13', name: 'Attack of the Vine!', released_at: '2026-07-17' },
+      { code: '14', name: 'Not Out Yet', released_at: future, prereleased_at: future },
+    ] });
+    assert.deepEqual(sets.map((s) => s.code === '' ? s.value : s.code), ['13']);
+  });
+
+  it('KEEPS a set in prerelease — those cards are physically in hand', () => {
+    const future = new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    const sets = L.setsFrom({ results: [
+      { code: '14', name: 'Prereleasing Now', released_at: future, prereleased_at: yesterday },
+    ] });
+    assert.equal(sets.length, 1, 'a prerelease set is stock');
+  });
+
+  it('keeps a set carrying no dates at all rather than silently hiding it (GR7)', () => {
+    assert.equal(L.setsFrom({ results: [{ code: 'X1', name: 'Undated' }] }).length, 1);
+  });
 });
 
 describe('numbers and identity', () => {
