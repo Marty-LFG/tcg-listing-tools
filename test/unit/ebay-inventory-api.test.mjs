@@ -118,10 +118,11 @@ describe('price band → fulfilment policy AND quoted postage, from one decision
       assert.equal(l.postageBand.id, wantBand);
       assert.equal(buildOfferPayload(l, CFG, {}).listingPolicies.fulfillmentPolicyId, band.policyId);
       assert.ok(l.descriptionHtml.includes(money(band.costCents)), `description does not quote ${money(band.costCents)}`);
-      for (const other of SHIP.bands) {
-        if (other.id === wantBand) continue;
-        assert.ok(!l.descriptionHtml.includes(money(other.costCents)), `description also quotes the "${other.id}" amount`);
-      }
+      // A band's policy can offer several services, so the description legitimately shows several
+      // figures. What must never appear is a figure from a DIFFERENT band's policy.
+      const mine = new Set([money(band.costCents), ...(band.services || []).map((s) => money(s.costCents))]);
+      const foreign = [...new Set((l.descriptionHtml.match(/\$\d[\d,]*\.\d{2}/g) || []))].filter((v) => !mine.has(v));
+      assert.deepEqual(foreign, [], `description shows an amount from another band's policy`);
     });
   }
   it('a graded slab is lifted off the untracked band even when its price sits there', () => {

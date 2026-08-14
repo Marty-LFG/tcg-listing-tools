@@ -35,7 +35,27 @@
         "serviceCode": "AU_AusPostStandardLetter",
         "serviceLabel": "Australia Post Domestic Regular Letter (untracked)",
         "policyId": "269598843012",
-        "policyName": ""
+        "policyName": "",
+        "services": [
+          {
+            "code": "AU_AusPostStandardLetter",
+            "label": "Regular letter",
+            "costCents": 170,
+            "sortOrder": 1
+          },
+          {
+            "code": "AU_AusPostPriorityLetterWithTracking",
+            "label": "Priority letter, tracked",
+            "costCents": 826,
+            "sortOrder": 2
+          },
+          {
+            "code": "AUP_500G_SATCHEL_SIG",
+            "label": "Tracked satchel, signature on delivery",
+            "costCents": 1520,
+            "sortOrder": 3
+          }
+        ]
       },
       {
         "id": "tracked",
@@ -46,7 +66,21 @@
         "serviceCode": "AU_Regular",
         "serviceLabel": "Tracked with Australia Post",
         "policyId": "273172636012",
-        "policyName": ""
+        "policyName": "",
+        "services": [
+          {
+            "code": "AU_Regular",
+            "label": "Tracked letter",
+            "costCents": 826,
+            "sortOrder": 1
+          },
+          {
+            "code": "AUP_500G_SATCHEL_SIG",
+            "label": "Tracked satchel, signature on delivery",
+            "costCents": 1520,
+            "sortOrder": 2
+          }
+        ]
       },
       {
         "id": "signature",
@@ -57,7 +91,15 @@
         "serviceCode": "AUP_500G_SATCHEL_SIG",
         "serviceLabel": "Tracked with Signature on Delivery",
         "policyId": "273172669012",
-        "policyName": ""
+        "policyName": "",
+        "services": [
+          {
+            "code": "AUP_500G_SATCHEL_SIG",
+            "label": "Tracked satchel, signature on delivery",
+            "costCents": 1520,
+            "sortOrder": 1
+          }
+        ]
       }
     ]
   },

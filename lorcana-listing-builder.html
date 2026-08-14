@@ -222,6 +222,19 @@ function bandRangeLabel(i){
   var range=b.maxCents==null?(lo+' and over'):(lo?(lo+' to '+bandMoney(b.maxCents)):('Up to '+bandMoney(b.maxCents)));
   return range+' — '+bandMoney(b.costCents)+' '+String(b.label||b.id).toLowerCase();
 }
+var POSTAGE_OPTIONS_NOTE='You pick the one you want at checkout.';
+// MIRROR of postageOptions()/optionsTable() in lib/shipping-bands.mjs + lib/listing-copy.mjs (GR6/9).
+// Rows come from the band services loadPostageBands() fetched off the live config; a failed fetch
+// leaves none, so the preview shows no table rather than a wrong one (GR7).
+function postageOptions(b){var s=(b&&b.services)||[];if(s.length<2)return [];
+  return s.map(function(x){return [String(x.label||x.code||''),bandMoney(x.costCents)];});}
+function optionsTable(rows,zebra){
+  if(!rows||!rows.length)return '';
+  var tr='';
+  rows.forEach(function(r,i){var bg=i%2===0?('background:'+zebra+';'):'';
+    tr+='<tr style="'+bg+'"><td style="padding:9px 12px;color:#6b6b7e;width:68%;">'+esc(r[0])+'</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">'+esc(r[1])+'</td></tr>';});
+  return '<table style="width:100%;border-collapse:collapse;font-size:14px;margin:10px 0 0;"><tbody>'+tr+'</tbody></table>'
+    +'<p style="margin:8px 0 0;font-size:13px;color:#6b6b7e;">'+esc(POSTAGE_OPTIONS_NOTE)+'</p>';}
 function readPostageBand(slab){
   var sel=document.getElementById('f_postage'),b=(sel&&bandById(sel.value))||POSTAGE_BANDS[0],i=POSTAGE_BANDS.indexOf(b);
   return (slab&&i<POSTAGE_MIN_BAND_FOR_SLAB)?POSTAGE_BANDS[POSTAGE_MIN_BAND_FOR_SLAB]:b;
@@ -323,6 +336,7 @@ function buildHTML(f){
   <div style="padding:18px 24px 4px;">
     <div style="font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#1a1326;font-weight:700;border-bottom:2px solid #e8eaee;padding-bottom:6px;margin-bottom:10px;">Postage &amp; protection</div>
     <p style="margin:0;">${esc(postageText(f,false))}</p>
+    ${optionsTable(postageOptions(f.postageBand),'#f6f7f9')}
   </div>
   <div style="padding:18px 24px 22px;"><p style="margin:0;color:#6b6b7e;font-size:13px;">From a smoke-free home. Fast dispatch. Thanks for looking.</p></div>
 </div>`;

@@ -128,10 +128,15 @@ function builderContext(file, markers, fixture, extraCtx) {
   // module does.
   ctx.POSTAGE_BANDS = SB.DEFAULT_BANDS;
   ctx.POSTAGE_MIN_BAND_FOR_SLAB = SB.DEFAULT_MIN_BAND_FOR_SLAB;
+  // A `var`, not a function, so extractFn cannot reach it. Injecting from the module also makes the
+  // note itself a mirrored value: a builder that reworded it renders a different table footer and
+  // the byte comparison below catches it.
+  ctx.POSTAGE_OPTIONS_NOTE = SB.POSTAGE_OPTIONS_NOTE;
   vm.createContext(ctx);
   // The postage-band mirror is in every builder and buildHTML() reaches the buyer-facing sentence
   // through it, so it is always loaded rather than being named at each call site.
-  const POSTAGE = ['function bandMoney(', 'function postagePhrase(', 'function bandById(', 'function readPostageBand(', 'function postageText('];
+  const POSTAGE = ['function bandMoney(', 'function postagePhrase(', 'function bandById(', 'function readPostageBand(',
+    'function postageOptions(', 'function optionsTable(', 'function postageText('];
   for (const m of [...POSTAGE, ...markers]) vm.runInContext(extractFn(src, m) + ';', ctx);
   return ctx;
 }
@@ -396,8 +401,13 @@ console.log('\n[postage band coverage]');
     for (const b of BANDS) {
       const html = LC.buildDescription(game, { ...base, postageBand: b });
       assert(`${game} band ${b.id} quotes ${SB.money(b.costCents)}`, html.includes(SB.money(b.costCents)));
-      const others = BANDS.filter((o) => o.id !== b.id).filter((o) => html.includes(SB.money(o.costCents)));
-      assert(`${game} band ${b.id} quotes ONLY its own amount`, others.length === 0, others.map((o) => o.id).join(', '));
+      // Every money figure in the description has to belong to THIS band — its own cost in the
+      // sentence, or one of its own policy's services in the options table. A band now legitimately
+      // shows several, so "only one figure" is no longer the rule; "no figure from anywhere else"
+      // still is, and that is what catches a frame hardcoding $1.70 into the band-2 branch.
+      const mine = new Set([SB.money(b.costCents), ...(b.services || []).map((s) => SB.money(s.costCents))]);
+      const foreign = [...new Set((html.match(/\$\d[\d,]*\.\d{2}/g) || []))].filter((v) => !mine.has(v));
+      assert(`${game} band ${b.id} shows only its OWN policy's amounts`, foreign.length === 0, foreign.join(', '));
     }
     // An unpriced preview quotes no money at all rather than defaulting to the cheapest band.
     const unknown = LC.buildDescription(game, { ...base, postageBand: null });

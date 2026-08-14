@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read, extractFn, CARD_BUILDERS, COLLECTIBLE_BUILDERS } from '../helpers/extract-inline.mjs';
 import { CARD_CONDITION_SUFFIX, CARD_PROTECTION, CARD_FOOTER, DEFAULT_CARD_CONDITION } from '../../lib/listing-copy.mjs';
-import { DEFAULT_BANDS, postagePhrase, money } from '../../lib/shipping-bands.mjs';
+import { DEFAULT_BANDS, postagePhrase, postageOptions, money } from '../../lib/shipping-bands.mjs';
 
 const ALL_BUILDERS = [...CARD_BUILDERS, ...COLLECTIBLE_BUILDERS];
 
@@ -86,5 +86,31 @@ describe('postage bands (GR6: every builder mirrors lib/shipping-bands.mjs)', ()
   });
   it('the amounts a buyer reads come from ONE table', () => {
     for (const b of DEFAULT_BANDS) assert.ok(postagePhrase(b).includes(money(b.costCents)));
+  });
+
+  // The options table is a SECOND mirrored surface. Same trick as the phrase: pull each builder's own
+  // postageOptions out of the page, run it, compare against the module's.
+  const builderOptions = (file) => {
+    const src = read(file);
+    const fns = extractFn(src, 'function bandMoney(') + '\n' + extractFn(src, 'function postageOptions(') + '\nreturn postageOptions;';
+    return new Function(fns)();   // eslint-disable-line no-new-func -- running the page's own copy is the point
+  };
+  for (const file of ALL_BUILDERS) {
+    it(`${file} builds the same option rows as the module`, () => {
+      const rows = builderOptions(file);
+      for (const b of DEFAULT_BANDS) {
+        assert.deepEqual(rows(b), postageOptions(b), `band "${b.id}" rows drifted from lib/shipping-bands.mjs`);
+      }
+      // A band with one service renders no table at all — a one-row table says nothing the sentence
+      // has not, and it is also what a builder whose live config fetch failed shows (GR7).
+      assert.deepEqual(rows({ services: [{ code: 'X', label: 'X', costCents: 1 }] }), []);
+      assert.deepEqual(rows({}), []);
+      assert.deepEqual(rows(null), []);
+    });
+  }
+  it('every band with a choice actually has rows to show', () => {
+    const multi = DEFAULT_BANDS.filter((b) => (b.services || []).length > 1);
+    assert.ok(multi.length >= 2, 'the shipped table should exercise the multi-service case');
+    for (const b of multi) assert.equal(postageOptions(b).length, b.services.length);
   });
 });
