@@ -151,12 +151,30 @@ describe('fulfillmentTerms / verifyBandPolicies — which policy is which band',
     const dup = [bands[0], { ...bands[1], policyId: bands[0].policyId }];
     assert.match(verifyBandPolicies(dup, rows, 'fulfillmentPolicyId').errors.join(' · '), /on both the/);
   });
-  it('warns when a policy offers more than one service — the quoted amount stops being a fact', () => {
+  it('NOTES a policy offering more than one service — no longer a warning, the table shows them all', () => {
+    // This used to warn that "the description quotes only the first one's price". It does not any
+    // more: the description renders the whole list as a table, so a multi-service policy is described
+    // accurately. It stays worth saying because the SENTENCE still quotes the first service, and
+    // which one eBay puts first is eBay's call rather than ours.
     const rows = fulfillmentPolicyRows();
     rows[0].shippingOptions[0].shippingServices.push({ sortOrder: 2, shippingServiceCode: 'AU_Express', shippingCost: { value: '12.00', currency: 'AUD' } });
     const v = verifyBandPolicies(bands, rows, 'fulfillmentPolicyId');
-    assert.equal(v.ok, true, 'a second service is a warning, not a refusal');
-    assert.match(v.warnings.join(' · '), /offers 2 services/);
+    assert.equal(v.ok, true);
+    assert.deepEqual(v.warnings, [], 'a choice of services is not a problem');
+    assert.match(v.notes.join(' · '), /offers 2 services/);
+    assert.match(v.notes.join(' · '), /all of them are listed/);
+    assert.equal(v.bands[0].serviceCount, 2);
+  });
+  it('reports whether each band combines postage, and which profile says so', () => {
+    // Three DIFFERENT profile ids is the detail that matters: eBay groups a cart by discount profile,
+    // so one profile per band means a mixed-band order is several groups rather than one.
+    const withRules = testBands().map((b) => fulfillmentPolicyRow(b.policyId, b.policyName, b.costCents, b.serviceCode || 'AU_AusPostStandardLetter', { combined: true }));
+    const v = verifyBandPolicies(bands, withRules, 'fulfillmentPolicyId');
+    assert.ok(v.bands.every((b) => b.combined === true), 'every band should read as combining');
+    assert.ok(v.bands.every((b) => b.discountProfileId), 'and should name the profile that says so');
+    const none = verifyBandPolicies(bands, fulfillmentPolicyRows(), 'fulfillmentPolicyId');
+    assert.ok(none.bands.every((b) => b.combined === false));
+    assert.ok(none.bands.every((b) => b.discountProfileId === null));
   });
 });
 

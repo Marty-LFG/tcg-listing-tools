@@ -914,7 +914,16 @@
           :chk&&chk.ok===false?'<span class="pill bad plain">⚠ '+esc(chk.error||'does not match eBay')+'</span>'
           :chk&&chk.ok?'<span class="pill ok plain">✓ '+esc(chk.policyName||bd.policyId)+'</span>'
           :'<span class="pill plain">'+esc(bd.policyName||bd.policyId)+'</span>';
-        return '<div>'+esc(bd.label||bd.id)+' <span class="dim">'+money+'</span> '+mark+'</div>';
+        // Say the combined-postage state OUT LOUD rather than leaving it to be inferred from an
+        // absent warning. It was invisible long enough to be worth stating either way, and the
+        // PROFILE ID matters: eBay groups a cart by profile, so three different ones mean a mixed-band
+        // order is three groups and the buyer very likely pays postage more than once.
+        const extra=[];
+        if(chk&&chk.serviceCount>1) extra.push(chk.serviceCount+' options shown');
+        if(chk&&chk.combined===true) extra.push('combines · profile '+esc(chk.discountProfileId||'?'));
+        else if(chk&&chk.combined===false) extra.push('does not combine');
+        return '<div>'+esc(bd.label||bd.id)+' <span class="dim">'+money+'</span> '+mark
+          +(extra.length?' <span class="dim">'+extra.join(' · ')+'</span>':'')+'</div>';
       }).join('')+'</div>';
     }).catch(()=>{const n=$('ebStoreCat'); if(n) n.textContent='unknown'; const b=$('ebBands'); if(b) b.textContent='unknown';});
     btn.disabled=false;
