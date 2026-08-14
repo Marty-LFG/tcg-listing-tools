@@ -8,12 +8,16 @@
 // that misses its enum but REJECTS a SELECTION_ONLY one, so an unset aspect is always safer than a
 // near-miss (GR4) — and a near-miss on a FREE_TEXT aspect is INVISIBLE, which is how
 // 'Disney Lorcana' shipped for as long as it did.
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   toEbayListing, validateListing, loadEbayCategories, lorcanaCardTypeAspect, lorcanaInks,
   lorcanaInkAspect, lorcanaFeatures, lorcanaRarityAspect, ebayManufacturer, ebayFinish,
 } from '../../lib/channels/ebay-map.mjs';
+import { writeSetCache } from '../../lib/lorcana-cards-cache.mjs';
 
 const cats = loadEbayCategories();
 
@@ -196,6 +200,87 @@ describe('a Lorcana listing carries Lorcana aspects and NO Pokémon ones', () =>
   });
   it('carries a real facet set, not the handful it would have had', () => {
     assert.ok(Object.keys(l.aspects).length >= 15, `only ${Object.keys(l.aspects).length}: ${Object.keys(l.aspects)}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The DB round trip. inventory_items stores the IDENTITY and nothing else, so on a republish every
+// aspect below has to come back out of resolveLorcanaCard. The tests above all hand the facts in as
+// overrides, which is why they passed while two aspects were silently absent on this path: Character
+// and the ink were being read off `item` when buildRowIn had put them on `rowIn`.
+// ---------------------------------------------------------------------------
+describe('a row carrying only its identity still lists with every aspect', () => {
+  const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lorcana-aspects-'));
+  let keep;
+  before(() => {
+    keep = process.env.LORCANA_CARDS_CACHE_DIR;
+    process.env.LORCANA_CARDS_CACHE_DIR = TMP;     // read per call, so this lands before the lookup
+    writeSetCache('10', '2026-08-14T00:00:00.000Z', [
+      {
+        id: 'crd_a', name: 'Ariel', version: 'Ethereal Voice', collector_number: '241',
+        rarity: 'Iconic', released_at: '2025-11-07', ink: 'Amber', inks: null,
+        type: ['Character'], classifications: ['Storyborn', 'Hero', 'Princess'],
+        cost: 4, strength: 3, willpower: 4, lore: 2, illustrators: ['Aristeidis Zentelis'],
+        set: { code: '10', name: 'Whispers in the Well' },
+        image_uris: { digital: { large: 'l.avif' } }, prices: { usd: null, usd_foil: '1344.77' },
+      },
+      // The `ink: null, inks: [...]` shape — 160 cards are in it, and every dual-ink card is.
+      {
+        id: 'crd_b', name: 'Rhino', version: 'Motivational Speaker', collector_number: '1',
+        rarity: 'Rare', released_at: '2025-03-07', ink: null, inks: ['Amber', 'Steel'],
+        type: ['Action', 'Song'], classifications: ['Storyborn'],
+        cost: 2, strength: 1, willpower: 2, lore: 1, illustrators: ['Stefano Zanchi'],
+        set: { code: '10', name: 'Whispers in the Well' },
+        image_uris: { digital: { large: 'l2.avif' } }, prices: { usd: '0.17', usd_foil: '0.40' },
+      },
+    ]);
+  });
+  after(() => {
+    if (keep === undefined) delete process.env.LORCANA_CARDS_CACHE_DIR;
+    else process.env.LORCANA_CARDS_CACHE_DIR = keep;
+    try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
+  });
+
+  // Deliberately NO character, ink, card_type, illustrator or release date on the row.
+  const bare = (over) => ({
+    game: 'lorcana', name: 'Ariel - Ethereal Voice', set_name: 'Whispers in the Well',
+    number: '241', rarity: 'Iconic', language: 'EN', finish: 'Iconic', variant: 'Iconic',
+    condition: 'Ungraded, Near Mint', quantity: 1, target_price_cents: 199900,
+    identity_key: '10/241', ...over,
+  });
+
+  it('re-resolves Character, which is read off rowIn and not off the row', () => {
+    assert.equal(toEbayListing(bare(), null, cats).aspects.Character, 'Ariel');
+  });
+  it('re-resolves the ink, reading BOTH Lorcast fields', () => {
+    assert.equal(toEbayListing(bare(), null, cats).aspects['Attribute/MTG:Colour'], 'Amber');
+    const dual = toEbayListing(bare({ name: 'Rhino - Motivational Speaker', number: '1', rarity: 'Rare', identity_key: '10/1', finish: 'Normal', variant: 'Base' }), null, cats);
+    assert.equal(dual.aspects['Attribute/MTG:Colour'], 'Amber-Steel');
+    assert.equal(dual.aspects.Character, 'Rhino');
+    assert.equal(dual.aspects['Card Type'], 'Song', 'and Song still wins the Action+Song pair');
+  });
+  it('re-resolves Card Type, Illustrator and Year Manufactured', () => {
+    const l = toEbayListing(bare(), null, cats);
+    assert.equal(l.aspects['Card Type'], 'Character');
+    assert.equal(l.aspects.Illustrator, 'Aristeidis Zentelis');
+    assert.equal(l.aspects['Year Manufactured'], '2025');
+  });
+  it('fills the CARD DETAILS table rather than rendering it half-empty', () => {
+    const html = toEbayListing(bare(), null, cats).descriptionHtml;
+    for (const want of ['Amber', 'Storyborn · Hero · Princess', '4 / 3 / 4 / 2']) {
+      assert.ok(html.includes(want), 'description is missing ' + want);
+    }
+  });
+  it('validates, and carries MORE aspects than the same row did before re-resolution', () => {
+    const l = toEbayListing(bare(), null, cats);
+    assert.deepEqual(validateListing(l, cats).errors, []);
+    assert.ok(Object.keys(l.aspects).length >= 17, `only ${Object.keys(l.aspects).length}`);
+  });
+  it('a cold cache still lists — fewer facets, never a failed publish (GR7)', () => {
+    const l = toEbayListing(bare({ identity_key: '10/999' }), null, cats);
+    assert.deepEqual(validateListing(l, cats).errors, [], 'the listing must still be publishable');
+    assert.equal(l.aspects.Character, undefined, 'absent rather than invented');
+    assert.equal(l.aspects.Game, 'Disney Lorcana TCG');
   });
 });
 

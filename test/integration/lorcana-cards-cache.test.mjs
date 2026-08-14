@@ -263,6 +263,42 @@ describe('ENUMERATORS.lorcana — through the cache', () => {
     assert.equal(rows[0].set_name, 'Azurite Sea');
   });
 
+  it('a foil-only chase card enumerates as ONE row named by its rarity', async () => {
+    // The whole point of Phase 1. Before it, an Epic or an Iconic came out as an ordinary 'Foil'
+    // and collided with the plain foil printing on UNIQUE(game, identity_key, variant) — a US$3,632
+    // card and a US$1 one made indistinguishable (GR5).
+    globalThis.fetch = async () => ({
+      ok: true, status: 200, text: async () => JSON.stringify([
+        { ...card(241), rarity: 'Iconic', prices: { usd: null, usd_foil: '1344.77' } },
+        { ...card(216), rarity: 'Epic', prices: { usd: null, usd_foil: '8.47' } },
+        { ...card(1), rarity: 'Common', prices: { usd: '0.06', usd_foil: '0.18' } },
+      ]),
+    });
+    const { rows } = await drain();
+    const byNum = Object.fromEntries(rows.map((r) => [r.number + ':' + r.finish, r]));
+    assert.equal(rows.filter((r) => r.number === '241').length, 1, 'no plain printing to sell');
+    assert.equal(byNum['241:Iconic'].variant, 'Iconic');
+    assert.equal(byNum['241:Iconic'].market_usd, 1344.77);
+    assert.equal(byNum['216:Epic'].variant, 'Epic');
+    // An ordinary card still yields both printings, Normal first.
+    assert.equal(rows.filter((r) => r.number === '1').length, 2);
+    assert.equal(byNum['1:Normal'].variant, 'Base');
+    assert.equal(byNum['1:Foil'].variant, 'Foil');
+  });
+
+  it('a promo with no price at all is still a listable row (GR7)', async () => {
+    // 66 of the 193 promos are in exactly this state. Promo is NOT foil-only — twelve are non-foil
+    // — so it must not be treated as a chase rarity.
+    globalThis.fetch = async () => ({
+      ok: true, status: 200, text: async () => JSON.stringify([{ ...card(7), rarity: 'Promo', prices: {} }]),
+    });
+    const { rows } = await drain();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].finish, 'Normal', 'the under-promising answer, not a guessed foil');
+    assert.equal(rows[0].market_usd, null);
+    assert.equal(rows[0].rarity, 'Promo');
+  });
+
   it('the second enumeration costs nothing, and never falls back to walking the numbers', async () => {
     stubUpstream(2);
     await drain();
