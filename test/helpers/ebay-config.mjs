@@ -36,20 +36,24 @@ export function testEbayConfig(overrides = {}) {
 
 // A fulfilment policy row shaped the way the eBay Account API returns one, charging `costCents`.
 // Used to fake GET /fulfillment_policy so verifyBandPolicies has something real to check against.
-export function fulfillmentPolicyRow(id, name, costCents, serviceCode = 'AU_AusPostStandardLetter') {
+// `combined` attaches a combined-postage rule, the way Seller Hub → Business policies → Combined
+// postage discounts does. Off by default because that is the real account's state: no rule anywhere.
+export function fulfillmentPolicyRow(id, name, costCents, serviceCode = 'AU_AusPostStandardLetter', { combined = false } = {}) {
+  const opt = {
+    optionType: 'DOMESTIC',
+    costType: 'FLAT_RATE',
+    shippingServices: [{
+      sortOrder: 1, shippingServiceCode: serviceCode, freeShipping: false,
+      shippingCost: { value: (costCents / 100).toFixed(2), currency: 'AUD' },
+    }],
+  };
+  if (combined) { opt.shippingDiscountProfileId = '5000123'; opt.shippingPromotionOffered = true; }
   return {
     fulfillmentPolicyId: id,
     name,
     marketplaceId: 'EBAY_AU',
     handlingTime: { value: 1, unit: 'DAY' },
-    shippingOptions: [{
-      optionType: 'DOMESTIC',
-      costType: 'FLAT_RATE',
-      shippingServices: [{
-        sortOrder: 1, shippingServiceCode: serviceCode, freeShipping: false,
-        shippingCost: { value: (costCents / 100).toFixed(2), currency: 'AUD' },
-      }],
-    }],
+    shippingOptions: [opt],
   };
 }
 

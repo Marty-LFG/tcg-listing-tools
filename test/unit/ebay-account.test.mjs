@@ -165,6 +165,10 @@ describe('fulfillmentTerms / verifyBandPolicies — which policy is which band',
 // them? Distinct from verifyBandPolicies, which asks whether it is the right policy for its band.
 describe('checkPolicyConstraints', () => {
   const sev = (issues, field) => (issues.find((i) => i.field === field) || {}).severity || null;
+  // Informational notes are not problems. A policy with no combined-postage rule raises one, and that
+  // is the account's real state — asserting "raises nothing" on the whole list would make every other
+  // fixture here depend on a setting none of them are about.
+  const problems = (issues) => issues.filter((i) => i.severity !== 'info');
   const CFG3 = { ...CFG, handlingDays: 1, returns: { accepted: false, days: 30, shippingCostPayer: 'BUYER' } };
 
   describe('payment', () => {
@@ -214,7 +218,7 @@ describe('checkPolicyConstraints', () => {
     const band = DEFAULT_BANDS[0];
     const good = fulfillmentPolicyRow('F1', 'Paid Shipping $0 - $49.98', 170);
     it('a correct postage policy raises nothing', () => {
-      assert.deepEqual(checkPolicyConstraints('fulfillment_policy', good, CFG3, band), []);
+      assert.deepEqual(problems(checkPolicyConstraints('fulfillment_policy', good, CFG3, band)), []);
     });
     it('ERROR when dispatch runs past 3 days — Authenticity Guarantee stops applying', () => {
       const row = { ...good, handlingTime: { value: 5, unit: 'DAY' } };
@@ -242,12 +246,26 @@ describe('checkPolicyConstraints', () => {
       assert.equal(sev(i, 'handlingTime'), 'warning');
       assert.equal(sev(i, 'costType'), 'warning');
     });
+    it('says so when no combined-postage rule is attached — the blind spot that reported green', () => {
+      // Nothing in the codebase could see this until fulfillmentTerms learned to read
+      // shippingDiscountProfileId / shippingPromotionOffered, so every guard passed a policy on which
+      // combined postage was entirely off. INFO, not a problem: the store need not combine, and no
+      // description claims it. It is here so the answer is visible before any copy assumes it.
+      const i = checkPolicyConstraints('fulfillment_policy', good, CFG3, band);
+      assert.equal(sev(i, 'combinedPostage'), 'info');
+      assert.match(i.find((x) => x.field === 'combinedPostage').message, /pays postage twice/);
+      // ...and it goes quiet once a rule really is attached.
+      const withRule = fulfillmentPolicyRow('F1', 'Paid Shipping', 170, 'AU_AusPostStandardLetter', { combined: true });
+      assert.equal(sev(checkPolicyConstraints('fulfillment_policy', withRule, CFG3, band), 'combinedPostage'), null);
+      assert.equal(fulfillmentTerms(withRule).combined, true);
+      assert.equal(fulfillmentTerms(good).combined, false);
+    });
     it('warns when shipToLocations carries a country NAME rather than its code', () => {
       // live 2026-07-26: regionName 'Australia' → [20400] Invalid request (Invalid Location(s))
       const row = { ...good, shipToLocations: { regionIncluded: [{ regionName: 'Australia' }] } };
       assert.equal(sev(checkPolicyConstraints('fulfillment_policy', row, CFG3, band), 'shipToLocations'), 'warning');
       const ok = { ...good, shipToLocations: { regionIncluded: [{ regionName: 'AU' }] } };
-      assert.deepEqual(checkPolicyConstraints('fulfillment_policy', ok, CFG3, band), []);
+      assert.deepEqual(problems(checkPolicyConstraints('fulfillment_policy', ok, CFG3, band)), []);
     });
   });
 
@@ -256,7 +274,7 @@ describe('checkPolicyConstraints', () => {
     for (const b of DEFAULT_BANDS) {
       const body = fulfillmentBody({ ...CFG3, policyNames: { payment: 'p', return: 'r' } }, b);
       const row = { fulfillmentPolicyId: 'X', name: b.label, ...body };
-      assert.deepEqual(checkPolicyConstraints('fulfillment_policy', row, CFG3, b), [], b.id);
+      assert.deepEqual(problems(checkPolicyConstraints('fulfillment_policy', row, CFG3, b)), [], b.id);
     }
     const pay = { paymentPolicyId: 'X', name: 'p', ...paymentBody(CFG3) };
     assert.deepEqual(checkPolicyConstraints('payment_policy', pay, CFG3), []);

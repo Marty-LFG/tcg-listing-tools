@@ -871,11 +871,14 @@
       if(!pc){ n.innerHTML='<span class="dim">not checked</span>'; return; }
       const iss=pc.issues||[];
       if(!iss.length){ n.innerHTML='<span class="pill ok plain">✓ all policies meet the constraints</span>'; return; }
-      const errs=iss.filter(i=>i.severity==='error'), warns=iss.filter(i=>i.severity!=='error');
+      // Three weights, because they are three different asks: fix this, look at this, know this.
+      const errs=iss.filter(i=>i.severity==='error'), warns=iss.filter(i=>i.severity==='warning'), infos=iss.filter(i=>i.severity==='info');
+      const tone=s=>s==='error'?'color:var(--red);':s==='warning'?'color:var(--gold);':'color:var(--muted);';
       n.innerHTML='<div style="display:grid;gap:3px;">'
         +(errs.length?'<div><span class="pill bad plain">'+errs.length+' must fix</span></div>':'')
         +(warns.length?'<div><span class="pill plain">'+warns.length+' worth a look</span></div>':'')
-        +[...errs,...warns].map(i=>'<div style="font-size:12px;line-height:1.4;'+(i.severity==='error'?'color:var(--red);':'color:var(--gold);')+'">'
+        +(!errs.length&&!warns.length?'<div><span class="pill ok plain">✓ nothing to fix</span></div>':'')
+        +[...errs,...warns,...infos].map(i=>'<div style="font-size:12px;line-height:1.4;'+tone(i.severity)+'">'
           +'<b>'+esc(i.field)+'</b> &middot; '+esc(i.message)+'</div>').join('')
         +'<div class="dim" style="font-size:11px;margin-top:2px;">Policies are edited in eBay Seller Hub — this tool never changes them.</div>'
         +'</div>';
