@@ -14,7 +14,11 @@
   "brand_voice": "Casual, warm, a little playful — an Aussie Pokémon/TCG store owner who genuinely cares about the hobby.",
   "style_notes": "Thank them, name the card(s) by title, give the ship timing, and invite bundle deals or offers. Keep it short and human.",
   "invite_offers": true,
-  "quiet_hours": { "enabled": true, "start": "21:00", "end": "08:00" },
+  "quiet_hours": {
+    "enabled": true,
+    "start": "21:00",
+    "end": "08:00"
+  },
   "holidays": [],
   "dashboard_url": "",
   "telegram_allowed_user_ids": [],
@@ -28,16 +32,41 @@
   "cancel_restock": true,
   "sweep_interval_min": 60,
   "postage": {
-    "dispatch_message": { "enabled": true, "include_link": false, "delay_min": 20 },
-    "delivered_message": { "enabled": true, "force_approve": true },
+    "dispatch_message": {
+      "enabled": true,
+      "include_link": false,
+      "delay_min": 20
+    },
+    "delivered_message": {
+      "enabled": true,
+      "force_approve": true
+    },
     "seller_hub_order_url": "https://www.ebay.com.au/sh/ord/details?orderid={orderId}",
     "seller_hub_fallback_url": "https://www.ebay.com.au/sh/ord?filter=status:AWAITING_SHIPMENT",
     "tracking_url": "https://auspost.com.au/mypost/track/details/{tracking}",
-    "_services_comment": "Observed eBay service code -> { label, tier, tracked, note }. Checked FIRST, before every regex, so this is how the store's banded postage gets classified honestly. Codes read live off the account's three fulfilment policies 2026-08-14. Band 1 is the NORMAL band now, so it is tier 'standard' even though the buyer paid $1.70: a plain letter needs nothing different from the packer. Bands 2 and 3 are 'tracked' because someone has to go and buy a label. AU_Regular is the one that MUST be here — it matches none of the classifier's patterns, so without this entry an $8.26 tracked order falls through to 'paid', gets no upgrade banner, and is packed as a plain letter.",
+    "_services_comment": "Every service a buyer can actually pick across the three band policies, read live off eBay 2026-08-14. Checked BEFORE every regex. Two of these MUST be here: AU_Regular matches none of the classifier's patterns so it would read as a plain paid letter, and AU_AusPostPriorityLetterWithTracking matches /priorit/ so it would read as EXPRESS — it is a Priority letter with tracking, not Express Post. Band 1 is the store's normal band, so tier 'standard' even though the buyer paid $1.70: a plain letter needs nothing different from the packer.",
     "services": {
-      "AU_AusPostStandardLetter": { "label": "Regular letter", "tier": "standard", "tracked": false },
-      "AU_Regular": { "label": "Tracked letter", "tier": "tracked", "tracked": true },
-      "AUP_500G_SATCHEL_SIG": { "label": "Tracked satchel", "tier": "tracked", "tracked": true, "note": "signature required on delivery" }
+      "AU_AusPostStandardLetter": {
+        "label": "Regular letter",
+        "tier": "standard",
+        "tracked": false
+      },
+      "AU_AusPostPriorityLetterWithTracking": {
+        "label": "Priority letter, tracked",
+        "tier": "tracked",
+        "tracked": true
+      },
+      "AU_Regular": {
+        "label": "Tracked letter",
+        "tier": "tracked",
+        "tracked": true
+      },
+      "AUP_500G_SATCHEL_SIG": {
+        "label": "Tracked satchel",
+        "tier": "tracked",
+        "tracked": true,
+        "note": "signature required on delivery"
+      }
     }
   }
 }
