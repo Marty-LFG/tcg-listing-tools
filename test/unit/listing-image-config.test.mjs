@@ -8,11 +8,23 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ASSET_VERSION, CANVAS, DEFAULT_LAYOUT, DEFAULT_CONFIG, PROFILES, VARIANTS,
+  ASSET_VERSION, CANVAS, DEFAULT_LAYOUT, DEFAULT_CONFIG, PROFILES, VARIANTS, PROMO_STAR_URL,
   resolveVariant, resolveLayout, validateLayout, railText, composeHash, composeVersion, layoutFingerprint,
 } from '../../lib/listing-image-config.mjs';
 
 const BYTES = Buffer.from('pretend this is a card scan');
+
+describe('promo star config', () => {
+  it('ships inverted — the default rails are near-black, and a black star on them is invisible', () => {
+    assert.equal(DEFAULT_CONFIG.promoStar, 'inverted');
+  });
+  it('the star constant is pinned — compositor and description recognise the star by URL equality', () => {
+    // lib/listing-image.mjs gates the inverted treatment on `=== PROMO_STAR_URL`, and the
+    // listing-copy masthead (plus its builder mirror) matches the same file name. Changing this
+    // value silently un-inverts every promo masthead until the mirrors move with it.
+    assert.equal(PROMO_STAR_URL, 'https://images.pokemontcg.io/svp/symbol.png');
+  });
+});
 
 describe('resolveVariant', () => {
   it('explicit option beats every rule', () => {

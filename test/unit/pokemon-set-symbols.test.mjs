@@ -246,6 +246,16 @@ describe('the baked index', { skip: !baked && 'data/pokemon-set-symbols.json not
         assert.equal(hit.lang, 'en');
       }
     });
+    it('SVP resolves its boxed mark from pokemontcg.io\'s long name as well as the code', () => {
+      // Stock rows store "Scarlet & Violet Black Star Promos"; the wiki files the mark under the
+      // code. Without the alias the badge slot would fall back to the generic star — the exact
+      // duplication the promo design moves the star to the LEFT rail to avoid.
+      for (const ours of ['Scarlet & Violet Black Star Promos', 'svp', 'SVP Black Star Promos']) {
+        const hit = findSetSymbol('EN', ours);
+        assert.ok(hit, `${ours} resolved no symbol`);
+        assert.match(hit.url, /SetSymbolSVP_Black_Star_Promos/, `${ours} resolved the wrong art`);
+      }
+    });
     it('an alias never rescues a set that genuinely does not exist', () => {
       assert.equal(findSetSymbol('JP', 'Completely Made Up Set'), null);
       assert.equal(findSetLogo('JP', 'ZZ99Q'), null);

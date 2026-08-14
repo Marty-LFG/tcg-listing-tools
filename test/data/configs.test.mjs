@@ -138,6 +138,9 @@ describe('listing-image.config.example.json', () => {
     assert.equal(typeof c.applyTo.catalogArt, 'boolean');
     assert.equal(typeof c.applyTo.ownerPhotos, 'boolean');
   });
+  it('the promo star ships inverted — the default rails are near-black', () => {
+    assert.equal(c.promoStar, 'inverted');
+  });
   it('names BOTH a font family and a font file', () => {
     // sharp loads text.fontfile but still selects the face by family through fontconfig; a family
     // that does not match the TTF's internal name silently renders a different typeface.

@@ -261,6 +261,17 @@ function readFields(){var f=Object.assign({name:val('f_name'),set:val('f_set'),n
   cond:val('f_cond'),cert:val('f_cert'),subgrades:val('f_subgrades'),pitch:val('f_pitch')}, _intlMeta||{});   // _intlMeta adds native JP/CN/KO name+set for the description
   f.img=val('f_img');   // the Image URL field is the source of truth — lookups pre-fill it (below), user can override
   f.postageBand=readPostageBand(/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||''));
+  // MIRROR of the Black Star Promo rule in lib/listings.mjs composeMetaFor: a promo set wears the
+  // PROMO star in the masthead's logo slot (no promo era has a wordmark) and shows the set's own
+  // boxed mark beside the number where one exists (SVP/MEP — Bulbapedia files them; older eras have
+  // none, so they show the number alone). URLs pinned here because the browser has no bake index;
+  // the server resolves the same art through lib/pkm-sets-cache.mjs at publish time.
+  var setBare=(f.set||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+  if(/black star promos/i.test(setBare)||/^mega evolution promo$/i.test(setBare)){
+    f.setLogoUrl='https://images.pokemontcg.io/svp/symbol.png';
+    f.setSymbolUrl=/scarlet|^svp\b/i.test(setBare)?'https://archives.bulbagarden.net/media/upload/d/d8/SetSymbolSVP_Black_Star_Promos.png'
+      :/mega|^mep\b/i.test(setBare)?'https://archives.bulbagarden.net/media/upload/0/0c/SetSymbolMEP_Black_Star_Promos.png':'';
+  }
   return f;}
 function findEbay(){
   const f=readFields(), st=document.getElementById('status');
@@ -327,8 +338,11 @@ function buildHTML(f){
   const SANS_UI="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
   const MONO_DATA="ui-monospace,'Cascadia Mono',Menlo,Consolas,'Courier New',monospace";
 
+  // Black Star Promo star renders CSS-inverted on this near-black masthead (white star, dark
+  // lettering) unless f.promoStarStyle says 'normal'. MIRROR: lib/listing-copy.mjs buildDescription.
+  const promoStar=/\/svp\/symbol\.png$/i.test(f.setLogoUrl||'');
   const logoHtml=f.setLogoUrl
-    ?`<img src="${esc(f.setLogoUrl)}" alt="${esc(f.set)} set logo" style="height:34px;width:auto;max-width:58%;vertical-align:middle;" />`
+    ?`<img src="${esc(f.setLogoUrl)}" alt="${promoStar?'Black Star Promo':esc(f.set)+' set logo'}" style="height:34px;width:auto;max-width:58%;vertical-align:middle;${promoStar&&f.promoStarStyle!=='normal'?'filter:invert(1);':''}" />`
     :`<span style="color:#efe8f6;font-size:17px;vertical-align:middle;line-height:34px;">${esc(f.set)}</span>`;
   const symHtml=f.setSymbolUrl?`<img src="${esc(f.setSymbolUrl)}" alt="" style="height:17px;width:auto;vertical-align:-2px;margin-right:7px;" />`:'';
 

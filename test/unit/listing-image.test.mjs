@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
   composeListingImage, composeAvailable, describeCompositor, hashFor, trimDetector, ComposeUnavailable,
 } from '../../lib/listing-image.mjs';
-import { DEFAULT_CONFIG, resolveLayout } from '../../lib/listing-image-config.mjs';
+import { DEFAULT_CONFIG, resolveLayout, PROMO_STAR_URL } from '../../lib/listing-image-config.mjs';
 import { loadRail, clearAssetCache } from '../../lib/listing-image-assets.mjs';
 import { sharpOrNull, toRaw, diffRatio, fakeCard, cardOnBackground } from '../helpers/image-diff.mjs';
 
@@ -316,6 +316,48 @@ describe('composeListingImage', { skip: SKIP }, () => {
       const pre = await hashFor(card, meta, { cfg: CFG });
       const r = await compose(card, meta);
       assert.equal(pre.contentHash, r.contentHash, 'a cache probe that disagrees with the render serves the wrong image');
+    });
+
+    describe('the promo star (inverted treatment)', () => {
+      // Needs the real star bytes — cached on any box that has composed a promo listing; skipped,
+      // never failed, on a host that cannot fetch it (same absence-tolerance the compositor has).
+      let starOk = false;
+      before(async () => {
+        try {
+          const { fetchCached } = await import('../../lib/img-cache.mjs');
+          starOk = !!(await fetchCached(PROMO_STAR_URL)).buffer;
+        } catch { starOk = false; }
+      });
+      const promoMeta = { cardName: 'Pikachu', setName: 'Wizards Black Star Promos', cardNumber: '1', setLogoUrl: PROMO_STAR_URL };
+
+      it('inverted vs normal are different composites with different hashes', async (t) => {
+        if (!starOk) return t.skip('promo star not fetchable on this host');
+        const inv = await compose(card, promoMeta, { cfg: { ...CFG, promoStar: 'inverted' } });
+        const norm = await compose(card, promoMeta, { cfg: { ...CFG, promoStar: 'normal' } });
+        assert.equal(inv.badge.logo, true, 'inverted compose lost the star');
+        assert.equal(norm.badge.logo, true, 'normal compose lost the star');
+        assert.notEqual(inv.contentHash, norm.contentHash, 'flipping the toggle must re-key the composite');
+        // And the pixels agree with the names: the star region is BRIGHTER inverted than normal.
+        const l = resolveLayout(CFG, promoMeta);
+        const box = { left: 0, top: l.canvas - l.logo.marginBottom - Math.round(l.railWidth * l.logo.heightFraction), width: l.railWidth, height: Math.round(l.railWidth * l.logo.heightFraction) };
+        const mean = async (buf) => {
+          // stats() reads the INPUT image and ignores pipeline ops, so the crop must be
+          // materialised first or this quietly measures the whole composite.
+          const s = await sharp(await sharp(buf).extract(box).toBuffer()).stats();
+          return (s.channels[0].mean + s.channels[1].mean + s.channels[2].mean) / 3;
+        };
+        assert.ok(await mean(inv.buffer) > await mean(norm.buffer) + 10,
+          'the inverted star must actually read lighter than the normal one on the rail');
+      });
+      it('hashFor stays in lockstep with the compose under both toggle states', async (t) => {
+        if (!starOk) return t.skip('promo star not fetchable on this host');
+        for (const promoStar of ['inverted', 'normal']) {
+          const cfg = { ...CFG, promoStar };
+          const pre = await hashFor(card, promoMeta, { cfg });
+          const r = await compose(card, promoMeta, { cfg });
+          assert.equal(pre.contentHash, r.contentHash, `probe/render disagree when promoStar=${promoStar}`);
+        }
+      });
     });
     it('an unusable font degrades to rails-without-text, it does not fail the image', async () => {
       const badFont = { ...CFG, font: { family: 'Nope Not A Font 12345', file: 'fonts/Genty-Sans-Regular.ttf' } };

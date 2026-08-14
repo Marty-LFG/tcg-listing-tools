@@ -4,6 +4,7 @@
     "catalogArt": true,
     "ownerPhotos": true
   },
+  "promoStar": "inverted",
   "font": {
     "family": "Genty Sans",
     "file": "fonts/Genty-Sans-Regular.ttf"

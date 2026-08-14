@@ -8,9 +8,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber } from '../../lib/listings.mjs';
+import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber, isBlackStarPromoSet } from '../../lib/listings.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
-import { isRailDrawable } from '../../lib/listing-image-config.mjs';
+import { isRailDrawable, PROMO_STAR_URL } from '../../lib/listing-image-config.mjs';
 
 // composeContext reads the real config file, so these assertions pin the SHIPPED state: disabled.
 const shipped = (() => {
@@ -55,16 +55,49 @@ describe('composeMetaFor', () => {
   });
 
   const symbolsBaked = fs.existsSync(path.join(ROOT, 'data', 'pokemon-set-symbols.json'));
-  it('the baked Mega Evolution Promo set gets its black-star badge',
-    { skip: !symbolsBaked && 'data/pokemon-set-symbols.json not built on this host' }, () => {
-      // MEP is absent from pokemontcg.io, so findSet cannot supply images.symbol here — the alias
-      // into the Bulbapedia bake ("MEP Black Star Promos") is the only source. A skip, not an if:
-      // this must never go green by resolving nothing. (No wordmark assertion: Bulbapedia carries
-      // no MEP logo today, and the left rail correctly stays store-mark only.)
-      const m = composeMetaFor({ game: 'pokemon', name: 'Meganium', set_name: 'Mega Evolution Promo', set_code: 'mep', number: '001', language: 'EN' });
-      assert.match(m.setSymbolUrl, /SetSymbolMEP_Black_Star_Promos/);
-      assert.equal(m.cardNumber, '001', 'promos print bare — the alias must not invent a denominator');
+
+  describe('Black Star Promo sets: boxed mark right, PROMO star left', () => {
+    // The owner-approved promo design: every promo listing wears the (unbranded) PROMO star in the
+    // logo slot — no promo era has a wordmark — and the badge slot carries the SET's own boxed mark
+    // where one exists. pokemontcg.io must never supply the badge here: its "symbol" for a promo
+    // set is the generic star, which would put the same mark on both rails.
+    it('detects every promo era by name, plus the baked MEP set by its TCGplayer identity', () => {
+      for (const name of ['Wizards Black Star Promos', 'SM Black Star Promos', 'SWSH Black Star Promos',
+        'Scarlet & Violet Black Star Promos', 'SVP Black Star Promos', 'MEP Black Star Promos', 'Mega Evolution Promo']) {
+        assert.ok(isBlackStarPromoSet(name, ''), `${name} not detected`);
+      }
+      assert.ok(isBlackStarPromoSet('', 'mep'), 'the baked roster code alone must be enough');
+      assert.ok(!isBlackStarPromoSet('Base Set', 'BS'));
+      assert.ok(!isBlackStarPromoSet('Mega Evolution', 'me1'), 'the MAIN Mega Evolution set is not a promo set');
     });
+    it('every promo era wears the star in the logo slot', () => {
+      for (const set_name of ['Wizards Black Star Promos', 'SWSH Black Star Promos', 'Scarlet & Violet Black Star Promos', 'Mega Evolution Promo']) {
+        assert.equal(composeMetaFor({ game: 'pokemon', set_name, number: '1' }).setLogoUrl, PROMO_STAR_URL, set_name);
+      }
+    });
+    it('an older promo era gets NO badge symbol — the number stands alone', () => {
+      // SWSH has no boxed mark anywhere (the star IS its printed symbol, and the star is already on
+      // the left) — falling through to pokemontcg.io here would put the star on both rails.
+      const m = composeMetaFor({ game: 'pokemon', name: 'Pikachu', set_name: 'SWSH Black Star Promos', set_code: 'swshp', number: 'SWSH039', language: 'EN' });
+      assert.equal(m.setSymbolUrl, '');
+      assert.doesNotMatch(m.setLogoUrl + m.setSymbolUrl, /pokemontcg\.io\/swshp/, 'never that set’s own star art');
+    });
+    it('the baked Mega Evolution Promo set gets its boxed MEP badge',
+      { skip: !symbolsBaked && 'data/pokemon-set-symbols.json not built on this host' }, () => {
+        // MEP is absent from pokemontcg.io — the alias into the Bulbapedia bake ("MEP Black Star
+        // Promos") is the only source. A skip, not an if: never green by resolving nothing.
+        const m = composeMetaFor({ game: 'pokemon', name: 'Meganium', set_name: 'Mega Evolution Promo', set_code: 'mep', number: '001', language: 'EN' });
+        assert.match(m.setSymbolUrl, /SetSymbolMEP_Black_Star_Promos/);
+        assert.equal(m.setLogoUrl, PROMO_STAR_URL);
+        assert.equal(m.cardNumber, '001', 'promos print bare — the alias must not invent a denominator');
+      });
+    it('SVP resolves its boxed mark under pokemontcg.io’s long set name',
+      { skip: !symbolsBaked && 'data/pokemon-set-symbols.json not built on this host' }, () => {
+        const m = composeMetaFor({ game: 'pokemon', name: 'Pikachu with Grey Felt Hat', set_name: 'Scarlet & Violet Black Star Promos', set_code: 'SVP', number: '085', language: 'EN' });
+        assert.match(m.setSymbolUrl, /SetSymbolSVP_Black_Star_Promos/, 'the boxed SVP mark, not the generic star');
+        assert.equal(m.setLogoUrl, PROMO_STAR_URL);
+      });
+  });
 
   describe('non-English cards resolve against the JP index, not the English one', () => {
     // A JP card is a different product, not a translation: its own set name, its own card count and

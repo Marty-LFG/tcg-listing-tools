@@ -158,12 +158,17 @@ console.log('\n[pokemon builder parity]');
     { f_name: 'Charizard', f_num: '4/102', f_set: 'Base Set', f_rarity: 'Holo Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'PSA 10', f_poke: 'Charizard', f_stage: 'Stage 2', f_type: 'Fire', f_img: 'https://images.pokemontcg.io/base1/4_hires.png' },
     // Graded slab with cert number + subgrades — both surface as detail rows when present.
     { f_name: 'Charizard', f_num: '4/102', f_set: 'Base Set', f_rarity: 'Holo Rare', f_finish: 'Holo', f_lang: 'English', f_cond: 'BGS 9.5', f_poke: 'Charizard', f_stage: 'Stage 2', f_type: 'Fire', f_cert: '0012345678', f_subgrades: 'Centering 9.5 · Corners 9 · Edges 9.5 · Surface 10' },
+    // Black Star Promo — the PROMO star in the masthead's logo slot renders CSS-inverted (no
+    // promoStarStyle field = the inverted default), and the boxed SVP mark sits beside the number.
+    // Older promo eras pass no setSymbolUrl and show the number alone — same template branch.
+    { f_name: 'Pikachu with Grey Felt Hat', f_num: '085', f_set: 'Scarlet & Violet Black Star Promos', f_rarity: 'Promo', f_finish: 'Holo', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_poke: 'Pikachu', f_stage: 'Basic', f_type: 'Lightning', f_img: 'https://images.pokemontcg.io/svp/85_hires.png',
+      f_setLogoUrl: 'https://images.pokemontcg.io/svp/symbol.png', f_setSymbolUrl: 'https://archives.bulbagarden.net/media/upload/d/d8/SetSymbolSVP_Black_Star_Promos.png' },
   ];
   for (const [fi, fx] of fixtures.entries()) {
     const ctx = builderContext('pokemon-listing-builder.html', ['var PKM_RAB=', 'function rarShortOf(', 'function rarDisplay(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
     const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, finish: fx.f_finish, lang: fx.f_lang, cond: fx.f_cond, poke: fx.f_poke, stage: fx.f_stage, type: fx.f_type,
       nativeName: fx.f_nativeName, romaji: fx.f_romaji, nativeSet: fx.f_nativeSet, enSet: fx.f_enSet, setSymbol: fx.f_setSymbol, illustrator: fx.f_illustrator, hp: fx.f_hp, regMark: fx.f_regMark, releaseYear: fx.f_releaseYear, img: fx.f_img,
-      cert: fx.f_cert, subgrades: fx.f_subgrades };
+      cert: fx.f_cert, subgrades: fx.f_subgrades, setLogoUrl: fx.f_setLogoUrl, setSymbolUrl: fx.f_setSymbolUrl };
     check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('pokemon', f), vm.runInContext('genTitle()', ctx));
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);
     check('genPitch ' + fx.f_name.slice(0, 20), LC.pokemonPitch(f), pitch);

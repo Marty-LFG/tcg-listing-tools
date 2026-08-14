@@ -706,6 +706,14 @@
         {p:'genericImage.path',l:'Image file path',t:'text',wide:true,tip:'Absolute path on the server to the generic image (JPG/PNG).'},
       ]},
     ]},
+    'listing-image':{ title:'Listing images (branded rails)', groups:[{name:null,fields:[
+      {p:'enabled',l:'Branded rails',t:'toggle',tip:'<b>Master switch.</b> When on, listing photos are composed into the square branded frame (store mark + set art + card number on the rails) before upload. Off = photos go up untouched. Geometry is tuned in the <a href="/listing-image-lab.html">listing image lab</a>; saving there is deliberate and separate.'},
+      {p:'applyTo.catalogArt',l:'Brand catalog art',t:'toggle',tip:'Apply the rails to stock CDN card art (Near Mint listings that use the catalog scan).'},
+      {p:'applyTo.ownerPhotos',l:'Brand owner photos',t:'toggle',tip:'Apply the rails to your own photos (played cards, slabs) at upload time.'},
+      {p:'promoStar',l:'Promo star style',t:'select',wide:true,
+       opts:[{v:'inverted',l:'Inverted — white star (for the dark rails)'},{v:'normal',l:'Normal — the art’s own black'}],
+       tip:'Black Star Promo listings wear the PROMO star on the left rail (and the description masthead). The art comes off the CDN <b>black</b>, and the default rails are near-black purple — <b>inverted</b> redraws it white so it actually reads. Pick normal only for rail art with a light background. Flipping this re-composes and re-uploads every promo listing on its next pass.'},
+    ]}]},
   };
 
   const getP=(o,p)=>p.split('.').reduce((x,k)=>x==null?x:x[k],o);
