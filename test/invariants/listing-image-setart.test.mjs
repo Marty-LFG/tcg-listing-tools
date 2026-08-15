@@ -23,13 +23,15 @@ describe('loadSetArt has exactly one caller', () => {
     const body = SRC.replace(/^\s*async function loadSetArt\(/m, 'async function DECL_(')
       .replace(/\/\/[^\n]*/g, '')
       .replace(/\/\*[\s\S]*?\*\//g, '');
+    // Three calls: the symbol, the wordmark URL, and the game-logo asset fallback the wordmark
+    // degrades to at render time. All three must live in the ONE resolver.
     const calls = body.match(/\bloadSetArt\s*\(/g) || [];
-    assert.equal(calls.length, 2, `expected the two calls inside resolveSetArt, found ${calls.length}`);
-    // …and both of them inside resolveSetArt, not scattered back through the entry points.
+    assert.equal(calls.length, 3, `expected the three calls inside resolveSetArt, found ${calls.length}`);
+    // …and all of them inside resolveSetArt, not scattered back through the entry points.
     const fn = body.slice(body.indexOf('async function resolveSetArt'));
     const end = fn.indexOf('\n}');
     const inside = (fn.slice(0, end).match(/\bloadSetArt\s*\(/g) || []).length;
-    assert.equal(inside, 2, 'both loadSetArt calls must live inside resolveSetArt');
+    assert.equal(inside, 3, 'all loadSetArt calls must live inside resolveSetArt');
   });
 
   it('composeListingImage and hashFor go through the resolver, not the loader', () => {

@@ -53,18 +53,26 @@ export async function buildLorcanaSetArt({ dryRun = false, log = () => {} } = {}
   })();
   const sets = {};
   let logos = 0, totals = 0, missed = 0;
+  const seen = new Set();
   for (const s of lorcastSets()) {
     const key = normName(s.name);
     if (!key) continue;
+    seen.add(key);
     const prev = existing[key] || {};
     const entry = { name: s.name, code: s.code };
 
-    // Totals re-derive every run (a set's card file grows as Lorcast catalogues it).
+    // Totals re-derive every run (a set's card file grows as Lorcast catalogues it) but only ever
+    // RATCHET UP from the previous bake: a host missing the cards file must not silently drop a
+    // known denominator, and a mid-catalogue partial read must not shrink one. Residual risk: the
+    // very first bake of a set still mid-catalogue can under-count until the file completes —
+    // self-healing upward, never downward.
+    let derived = 0;
     try {
       const file = JSON.parse(fs.readFileSync(path.join(CARDS_DIR, s.code + '.json'), 'utf8'));
-      const total = printedTotalOf(file.cards);
-      if (total) { entry.printedTotal = total; totals++; }
-    } catch { /* set not cached on this host — no denominator, no drama */ }
+      derived = printedTotalOf(file.cards) || 0;
+    } catch { /* set not cached on this host */ }
+    const total = Math.max(derived, prev.printedTotal || 0);
+    if (total) { entry.printedTotal = total; totals++; }
 
     // Logos are accretive: a wiki hiccup keeps last run's URL.
     if (prev.logoUrl) { entry.logoUrl = prev.logoUrl; logos++; }
@@ -80,6 +88,14 @@ export async function buildLorcanaSetArt({ dryRun = false, log = () => {} } = {}
     if (codeKey && !sets[codeKey]) sets[codeKey] = entry;
   }
   if (!Object.keys(sets).length) throw new Error('no Lorcana sets resolved (is data/lorcana-cache/sets.json present?)');
+  // A shrunken or truncated Lorcast set list must not erase knowledge: any previously baked set
+  // absent from THIS run's list is carried forward untouched (name keys and their code aliases
+  // both come along, since aliases reference the same entry object within one bake generation).
+  let carried = 0;
+  for (const [key, entry] of Object.entries(existing)) {
+    if (!seen.has(normName(entry.name)) && !sets[key]) { sets[key] = entry; carried++; }
+  }
+  if (carried) log(`  carried ${carried} entr${carried === 1 ? 'y' : 'ies'} missing from this run's set list`);
   const doc = { format: INDEX_FORMAT, builtAt: new Date().toISOString(), source: WIKI + ' + data/lorcana-cards', game: 'lorcana', count: Object.keys(sets).length, sets };
   if (!dryRun) {
     fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });

@@ -18,8 +18,10 @@
 //   node scripts/build-onepiece-tcgimages.mjs [--dry-run]
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normName } from './build-pokemon-set-symbols.mjs';
+import { productImageUrl, canonPrintingTag } from '../lib/onepiece-clean-art.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -34,9 +36,9 @@ const TCGP_HEADERS = {
   Referer: 'https://www.tcgplayer.com/',
 };
 const PAGE = 50;                                   // API rejects size > 50
+const MAX_PAGES_PER_SET = 40;                      // hard stop if the API ever re-serves page 1 forever
 
 export const INDEX_FORMAT = 1;
-export const productImageUrl = (id) => `https://tcgplayer-cdn.tcgplayer.com/product/${id}_in_1000x1000.jpg`;
 
 // "Shanks (Parallel)" -> 'Parallel'; no parenthetical -> '' (the base printing).
 // Pure-digit parentheticals are DISAMBIGUATORS, not variants — TCGplayer writes
@@ -52,7 +54,7 @@ export function variantTagOf(productName) {
 }
 
 async function search(body, fetchImpl) {
-  const r = await fetchImpl(TCGP_URL, { method: 'POST', headers: TCGP_HEADERS, body: JSON.stringify(body) });
+  const r = await fetchImpl(TCGP_URL, { method: 'POST', headers: TCGP_HEADERS, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw new Error('TCGplayer search HTTP ' + r.status);
   const j = await r.json();
   return (j.results || [])[0] || {};
@@ -85,15 +87,17 @@ export async function resolveSetSlugs(fetchImpl = fetch) {
 
 export async function fetchSetProducts(slug, fetchImpl = fetch) {
   const out = [];
-  let from = 0, total = Infinity;
-  while (from < total) {
+  let from = 0, total = Infinity, pages = 0;
+  while (from < total && pages < MAX_PAGES_PER_SET) {
     const res = await search({
       algorithm: 'sales_dismax', from, size: PAGE,
       filters: { term: { productLineName: ['one piece card game'], setName: [slug] }, range: {}, match: {} },
       context: { shippingCountry: 'US' }, sort: {},
     }, fetchImpl);
     const items = res.results || [];
-    total = res.totalResults || 0;
+    // The FIRST page's totalResults is the authority; a later page missing the field must not
+    // collapse the loop into silently baking a partial set (the merge would keep it forever).
+    if (pages === 0) total = res.totalResults || 0;
     for (const p of items) {
       const num = p.customAttributes && p.customAttributes.number;
       if (p.sealed || !num || !p.productId) continue;
@@ -101,8 +105,49 @@ export async function fetchSetProducts(slug, fetchImpl = fetch) {
     }
     if (!items.length) break;
     from += PAGE;
+    pages++;
   }
   return out;
+}
+
+// The CDN answers 200 for ids it has no scan for — the images.scrydex.com placeholder trap over
+// again (AGENTS.md 19), except here the URL becomes the listing's HERO image. Probe each NEW
+// printing's image once at bake time and refuse anything that is not a real image. The sentinel
+// (a product id that cannot exist) teaches us what "missing" looks like on this CDN: a 404 means
+// missing products fail loudly and any 200 is trustworthy; a 200 gives us placeholder bytes to
+// compare by digest. Network errors keep the printing (GR7-optimistic, like the MEP image probe).
+export async function probeCleanImages(fresh, { fetchImpl = fetch, concurrency = 6, log = () => {} } = {}) {
+  if (!fresh.length) return { kept: 0, dropped: 0 };
+  const get = async (url) => {
+    const r = await fetchImpl(url, { headers: { 'User-Agent': TCGP_HEADERS['User-Agent'] }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) return { ok: false, status: r.status };
+    const ct = String(r.headers.get('content-type') || '');
+    const buf = Buffer.from(await r.arrayBuffer());
+    return { ok: true, image: /^image\//i.test(ct), sha: crypto.createHash('sha256').update(buf).digest('hex'), bytes: buf.length };
+  };
+  let placeholderSha = null, missingIs404 = false;
+  try {
+    const sentinel = await get(productImageUrl(999999901));
+    if (!sentinel.ok) missingIs404 = true;
+    else if (sentinel.image) placeholderSha = sentinel.sha;
+  } catch { /* sentinel unreachable — stay optimistic below */ }
+
+  let kept = 0, dropped = 0;
+  const queue = [...fresh];
+  const worker = async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) {
+      try {
+        const probe = await get(productImageUrl(job.printing.id));
+        const bad = (probe.ok && !probe.image)
+          || (probe.ok && placeholderSha && probe.sha === placeholderSha)
+          || (!probe.ok && missingIs404);
+        if (bad) { job.remove(); dropped++; log(`  dropped ${job.code} [${job.printing.tag || 'base'}] — no real scan (id ${job.printing.id})`); }
+        else kept++;
+      } catch { kept++; }                          // network blip: keep, next bake re-probes nothing (accretive) — better a rare miss than a mass drop
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return { kept, dropped };
 }
 
 export async function buildOnepieceTcgImages({ dryRun = false, log = () => {}, fetchImpl = fetch } = {}) {
@@ -113,16 +158,31 @@ export async function buildOnepieceTcgImages({ dryRun = false, log = () => {}, f
   const sets = await resolveSetSlugs(fetchImpl);
   if (!sets.length) throw new Error('no One Piece sets matched TCGplayer’s set list (is data/onepiece-cards/ empty?)');
   let mapped = 0;
+  const fresh = [];                                // new printings, queued for the placeholder probe
   for (const s of sets) {
     const products = await fetchSetProducts(s.slug, fetchImpl);
     for (const p of products) {
       const entry = cards[p.code] || (cards[p.code] = { printings: [] });
-      const prev = entry.printings.find((x) => x.tag === p.tag);
-      if (prev) prev.id = p.id;
-      else { entry.printings.push({ tag: p.tag, id: p.id }); mapped++; }
+      // Printings are SET-SCOPED and matched by the reader's own canonical tag, not the raw
+      // spelling. Two guards live here: a reprint group re-listing an OP01 code must never
+      // overwrite the original set's printing (first set wins — codes name their home set), and
+      // a TCGplayer respelling ("Alternate Art" → "Parallel") must update the one canonical
+      // printing rather than append a shadow twin the reader would race.
+      const canon = canonPrintingTag(p.tag);
+      const prev = entry.printings.find((x) => canonPrintingTag(x.tag) === canon);
+      if (prev) {
+        if ((prev.set || s.slug) === s.slug) { prev.id = p.id; prev.tag = p.tag; prev.set = s.slug; }
+      } else {
+        const printing = { tag: p.tag, id: p.id, set: s.slug };
+        entry.printings.push(printing);
+        mapped++;
+        fresh.push({ code: p.code, printing, remove: () => { entry.printings.splice(entry.printings.indexOf(printing), 1); } });
+      }
     }
     log(`  ${s.name}: ${products.length} products`);
   }
+  const probe = await probeCleanImages(fresh, { fetchImpl, log });
+  for (const code of Object.keys(cards)) if (!cards[code].printings.length) delete cards[code];
   const doc = { format: INDEX_FORMAT, builtAt: new Date().toISOString(), source: 'mp-search-api.tcgplayer.com', count: Object.keys(cards).length, cards };
   if (!dryRun) {
     fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
@@ -130,7 +190,7 @@ export async function buildOnepieceTcgImages({ dryRun = false, log = () => {}, f
     fs.writeFileSync(tmp, JSON.stringify(doc, null, 0));
     fs.renameSync(tmp, OUT_PATH);
   }
-  return { summary: `${Object.keys(cards).length} cards, ${mapped} new printings across ${sets.length} sets`, count: Object.keys(cards).length, path: path.relative(ROOT, OUT_PATH) };
+  return { summary: `${Object.keys(cards).length} cards, ${mapped} new printings (${probe.dropped} scan-less dropped) across ${sets.length} sets`, count: Object.keys(cards).length, path: path.relative(ROOT, OUT_PATH) };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {

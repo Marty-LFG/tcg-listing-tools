@@ -11,20 +11,28 @@ import { fileURLToPath } from 'node:url';
 import { logoMatchesSet } from '../../scripts/fandom-set-logos.mjs';
 import { printedTotalOf } from '../../scripts/build-lorcana-set-art.mjs';
 import { rosterFromCards } from '../../scripts/build-swu-set-art.mjs';
-import { variantTagOf, productImageUrl } from '../../scripts/build-onepiece-tcgimages.mjs';
+import { variantTagOf } from '../../scripts/build-onepiece-tcgimages.mjs';
 import { findGameSetArt } from '../../lib/set-art-data.mjs';
-import { cleanOnepieceArt } from '../../lib/onepiece-clean-art.mjs';
+import { cleanOnepieceArt, productImageUrl, canonPrintingTag } from '../../lib/onepiece-clean-art.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const baked = (f) => fs.existsSync(path.join(ROOT, 'data', f));
 
-describe('logoMatchesSet — the containment guard on wiki logo files', () => {
-  it('accepts the file only when its stem lives inside the set name', () => {
+describe('logoMatchesSet — the suffix-anchored guard on wiki logo files', () => {
+  it('accepts an exact stem or a subtitle-wordmark suffix', () => {
     assert.ok(logoMatchesSet('The_First_Chapter_logo.jpg', 'The First Chapter'));
     assert.ok(logoMatchesSet('Neon_Dynasty_logo.png', 'Kamigawa: Neon Dynasty'));
-    assert.ok(logoMatchesSet('Outlaws_logo.jpg', 'Outlaws of Thunder Junction'));
   });
-  it('refuses an unrelated logo mentioned on the page — a wrong wordmark is worse than none', () => {
+  it('refuses PREFIX matches — the sibling-set trap', () => {
+    // A "Modern Horizons 3" page that mentions MH1's wordmark must not bake it onto MH3 —
+    // the merges are accretive, so a wrong hit would be permanent. The cost: a legitimate
+    // prefix wordmark ('Outlaws_logo' on Outlaws of Thunder Junction) now misses and the rail
+    // wears the game logo — a wrong wordmark is worse than none (GR4).
+    assert.ok(!logoMatchesSet('Modern_Horizons_logo.png', 'Modern Horizons 3'));
+    assert.ok(!logoMatchesSet('Innistrad_logo.png', 'Innistrad: Midnight Hunt'));
+    assert.ok(!logoMatchesSet('Outlaws_logo.jpg', 'Outlaws of Thunder Junction'));
+  });
+  it('refuses an unrelated logo mentioned on the page', () => {
     assert.ok(!logoMatchesSet('Rise_of_the_Floodborn_logo.png', 'The First Chapter'));
     assert.ok(!logoMatchesSet('Project_TCG_logo.png', 'Bloomburrow'));
   });
@@ -96,6 +104,14 @@ describe('the baked indexes', () => {
     assert.equal(findGameSetArt('pokemon', { name: 'Base Set' }), null, 'Pokémon has its own pipeline — no index file exists for it');
     assert.equal(findGameSetArt('swu', { name: 'No Such Set' }), null);
   });
+  it('a set name normalising onto Object.prototype resolves null, not the prototype', () => {
+    // 'Constructor' -> normSetKey 'constructor' -> without Object.hasOwn the lookup returned
+    // Object.prototype.constructor and the rail printed "Object" as the set name.
+    for (const name of ['Constructor', 'To String', 'Has Own Property']) {
+      assert.equal(findGameSetArt('swu', { name }), null, `${name} leaked the prototype chain`);
+      assert.equal(findGameSetArt('lorcana', { code: name }), null);
+    }
+  });
 });
 
 describe('cleanOnepieceArt — variant-strict clean scans', () => {
@@ -113,6 +129,25 @@ describe('cleanOnepieceArt — variant-strict clean scans', () => {
   it('an unmatched variant serves NOTHING — base art on an alt-art listing misrepresents it', { skip }, () => {
     assert.equal(cleanOnepieceArt({ number: 'OP01-120', variant: 'Wanted Poster Deluxe' }), null);
     assert.equal(cleanOnepieceArt({ number: 'OP99-999', variant: '' }), null);
+  });
+  it('the builder’s own vocabulary maps to the right printings', { skip }, () => {
+    // 'Base Art' is the builder's default variant label — it IS the base printing, and before the
+    // canon table it matched nothing (the swap silently dead for every builder-written base row).
+    assert.equal(cleanOnepieceArt({ number: 'OP01-120', variant: 'Base Art' }),
+      cleanOnepieceArt({ number: 'OP01-120', variant: '' }));
+    // An alt-art flag carried in the NAME (variant field empty — a shape the aspects code proves
+    // exists) must reach the ALT printing, never fail open to the base scan (GR5).
+    const viaName = cleanOnepieceArt({ number: 'OP01-120', variant: '', name: 'Shanks (Alternate Art)' });
+    assert.equal(viaName, cleanOnepieceArt({ number: 'OP01-120', variant: 'Parallel' }));
+    assert.notEqual(viaName, cleanOnepieceArt({ number: 'OP01-120', variant: '' }));
+  });
+  it('non-English rows never get the EN TCGplayer scan', { skip }, () => {
+    assert.equal(cleanOnepieceArt({ number: 'OP01-120', variant: '', language: 'JP' }), null);
+  });
+  it('canonPrintingTag is the ONE vocabulary both writer and reader share', () => {
+    assert.equal(canonPrintingTag('Alternate Art'), 'parallel');
+    assert.equal(canonPrintingTag('Base Art'), '');
+    assert.equal(canonPrintingTag('Parallel Manga Alternate Art'), 'parallelmangaalternateart', 'multi-word tags stay distinct');
   });
   it('productImageUrl is the pinned CDN shape', () => {
     assert.equal(productImageUrl(454664), 'https://tcgplayer-cdn.tcgplayer.com/product/454664_in_1000x1000.jpg');

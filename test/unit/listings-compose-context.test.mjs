@@ -11,6 +11,7 @@ import path from 'node:path';
 import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber, isBlackStarPromoSet, splitSetIdent, gameCardNumber } from '../../lib/listings.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
 import { isRailDrawable, PROMO_STAR_URL } from '../../lib/listing-image-config.mjs';
+import { findGameSetArt } from '../../lib/set-art-data.mjs';
 
 // composeContext reads the real config file, so these assertions pin the SHIPPED state: disabled.
 const shipped = (() => {
@@ -206,19 +207,22 @@ describe('composeMetaFor', () => {
         assert.doesNotMatch(m.setSymbolUrl || '', /pokemontcg\.io|bulbagarden/, `set_code ${set_code} borrowed Pokémon art`);
         assert.doesNotMatch(m.setLogoUrl || '', /pokemontcg\.io|bulbagarden/, `set_code ${set_code} borrowed a Pokémon logo`);
         // A denominator may appear now, but only LORCANA's own (the set-art bake) — 241 is chase
-        // numbering, which Lorcana prints over the base total (241/204), never a Pokémon-derived
-        // figure. On an unbaked host the number stays verbatim.
-        assert.match(m.cardNumber, /^241(\/\d{3})?$/, `set_code ${set_code} mangled the number`);
+        // numbering, which Lorcana prints over the base total, never a Pokémon-derived figure.
+        // Pinned to the index's own value so a wrong-provenance total cannot slip through as
+        // "some plausible three digits"; on an unbaked host the number stays verbatim.
+        const witw = findGameSetArt('lorcana', { name: 'Whispers in the Well' });
+        const expected = witw && witw.printedTotal ? `241/${String(witw.printedTotal).padStart(3, '0')}` : '241';
+        assert.equal(m.cardNumber, expected, `set_code ${set_code} mangled the number`);
       }
     });
-    it('Lorcana gets NO symbol ever, and the wordmark slot degrades wiki → game logo', () => {
+    it('Lorcana gets NO symbol ever, and the game-logo backstop always rides along', () => {
       // No Lorcana card prints a set symbol — the badge is the number alone, and constructing a
       // symbol URL from the set code is the images.scrydex.com placeholder trap (AGENTS.md 19).
-      // The LEFT slot has a real chain now: the set's wiki wordmark where the bake found one,
-      // else the game logo (rail-only asset).
+      // The LEFT slot resolves at RENDER time: wiki wordmark first, game logo when the wordmark
+      // is absent OR stops fetching — so the asset must be present unconditionally.
       const m = composeMetaFor({ game: 'lorcana', set_name: 'Whispers in the Well', set_code: '10', number: '241' });
       assert.equal(m.setSymbolUrl, '');
-      if (!m.setLogoUrl) assert.equal(m.setLogoAsset, 'logos/rail/lorcana.png', 'no wordmark must still dress the rail');
+      assert.equal(m.setLogoAsset, 'logos/rail/lorcana.png', 'the backstop must always ride along');
       assert.equal(m.setName, 'Whispers in the Well', 'the owner’s own name still reaches the rail');
     });
     it('a promo-shaped Lorcana set is not mistaken for a Pokémon Black Star promo', () => {
@@ -281,14 +285,23 @@ describe('composeMetaFor', () => {
       { skip: !baked('lorcana') && 'data/lorcana-set-art.json not built on this host' }, () => {
         const m = composeMetaFor({ game: 'lorcana', name: 'Elsa - Spirit of Winter', set_name: 'The First Chapter (1)', number: '42', language: 'EN' });
         assert.match(m.setLogoUrl, /The_First_Chapter_logo/, 'the one wordmark the wiki carries');
-        assert.equal(m.setLogoAsset, '', 'a real wordmark beats the game logo');
+        assert.equal(m.setLogoAsset, 'logos/rail/lorcana.png', 'the game logo stays as the render-time backstop');
         assert.equal(m.cardNumber, '42/204');
       });
 
     it('MTG: an unbaked set falls back to the game logo, never an invented URL', () => {
       const m = composeMetaFor({ game: 'mtg', name: 'Gandalf, Party Guest', set_name: 'The Hobbit Eternal (HOC)', number: '2', language: 'EN' });
-      if (!m.setLogoUrl) assert.equal(m.setLogoAsset, 'logos/rail/mtg.png');
+      assert.equal(m.setLogoAsset, 'logos/rail/mtg.png');
       assert.equal(m.setAbbrev, '', 'MTG has a real symbol — no code badge');
+    });
+
+    it('a code-SHAPED parenthetical that no roster confirms earns no badge and rewrites nothing', () => {
+      // "(Promo)" is code-shaped to the splitter but confirmed by neither the SWU bake nor the
+      // Riftbound roster — printing a boxed "PROMO" the card does not carry is GR4 invention,
+      // and the stored name must pass through VERBATIM when nothing resolves.
+      const m = composeMetaFor({ game: 'swu', name: 'Some Card', set_name: 'Weekly Play (Promo)', number: '3', language: 'EN' });
+      assert.equal(m.setAbbrev, '', 'an unconfirmed code must not become a printed mark');
+      assert.equal(m.setName, 'Weekly Play (Promo)', 'unresolved identity passes through verbatim');
     });
 
     it('a Pokémon set with NO wordmark anywhere gets the game logo too', () => {
@@ -300,7 +313,7 @@ describe('composeMetaFor', () => {
     it('promo sets keep the star — it always beats the game logo', () => {
       const m = composeMetaFor({ game: 'pokemon', set_name: 'SWSH Black Star Promos', number: 'SWSH039', language: 'EN' });
       assert.equal(m.setLogoUrl, PROMO_STAR_URL);
-      assert.equal(m.setLogoAsset, '');
+      assert.equal(m.setLogoAsset, 'logos/rail/pokemon.png', 'the backstop rides along even behind the star');
     });
   });
 });

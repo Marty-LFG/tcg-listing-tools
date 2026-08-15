@@ -352,11 +352,14 @@ describe('composeListingImage', { skip: SKIP }, () => {
         const pre = await hashFor(card, meta, { cfg: CFG });
         assert.equal(pre.contentHash, r.contentHash);
       });
-      it('a real wordmark URL wins over the asset', async () => {
-        // Both set: the URL is unreachable so NOTHING draws — the asset must not sneak in as a
-        // fallback at render time, because the hash was keyed on the URL identity.
-        const r = await compose(card, { cardNumber: '1', setLogoUrl: 'https://unreachable.invalid/logo.png', setLogoAsset: 'logos/rail/swu.png' });
-        assert.equal(r.badge.logo, false);
+      it('a DEAD wordmark URL falls back to the asset — the rail never undresses', async () => {
+        // Both set, URL unreachable: the game logo must take the slot (and its digest keys the
+        // hash — compose and hashFor share the resolution, so the fallback is hash-consistent).
+        const meta = { cardNumber: '1', setLogoUrl: 'https://unreachable.invalid/logo.png', setLogoAsset: 'logos/rail/swu.png' };
+        const r = await compose(card, meta);
+        assert.equal(r.badge.logo, true, 'the asset must dress the slot when the wordmark is dead');
+        const pre = await hashFor(card, meta, { cfg: CFG });
+        assert.equal(pre.contentHash, r.contentHash, 'probe and render must agree on the fallback');
       });
       it('traversals and non-logo paths never load', async () => {
         for (const bad of ['logos/../../x.png', 'rails/default/left.png', 'C:/x.png', 'logos/rail/missing.png']) {

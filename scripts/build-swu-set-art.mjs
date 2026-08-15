@@ -47,11 +47,21 @@ export function rosterFromCards(data) {
 }
 
 export async function buildSwuSetArt({ dryRun = false, log = () => {} } = {}) {
-  const url = API + '/cards?locale=en&filters[cardNumber][$eq]=1&pagination[pageSize]=100';
-  const r = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(30000) });
-  if (!r.ok) throw new Error('official SWU API HTTP ' + r.status);
-  const j = await r.json();
-  const roster = rosterFromCards(j.data);
+  // PAGINATED, not a single capped page: card #1 recurs once per variant per expansion, so the
+  // row count grows with every set — a lone pageSize=100 request would silently truncate the
+  // newest expansions once the game crosses 100 card-#1 rows, and the roster would shed its
+  // latest sets with a perfectly plausible-looking summary.
+  const rows = [];
+  for (let page = 1, pageCount = 1; page <= pageCount && page <= 20; page++) {
+    const url = API + `/cards?locale=en&filters[cardNumber][$eq]=1&pagination[pageSize]=100&pagination[page]=${page}`;
+    const r = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error('official SWU API HTTP ' + r.status);
+    const j = await r.json();
+    rows.push(...(j.data || []));
+    const p = j.meta && j.meta.pagination;
+    pageCount = (p && p.pageCount) || 1;
+  }
+  const roster = rosterFromCards(rows);
   if (!roster.length) throw new Error('official SWU API returned no expansions — payload shape changed?');
 
   const sets = {};

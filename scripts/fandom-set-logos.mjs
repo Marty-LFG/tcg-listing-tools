@@ -18,13 +18,18 @@ async function api(base, params) {
 
 const LOGO_FILE_RE = /logo\.(png|jpe?g)$/i;
 
-// The guard that keeps this GR4-clean: the file's name (minus the trailing 'logo') must appear
-// INSIDE the set's own normalised name. 'The_First_Chapter_logo.jpg' ⊂ 'The First Chapter';
-// 'Neon_Dynasty_logo.png' ⊂ 'Kamigawa: Neon Dynasty'. An unrelated logo on the page fails it,
-// and a page with no passing file yields NOTHING — a wrong wordmark is worse than none.
+// The guard that keeps this GR4-clean: the file's stem (minus the trailing 'logo') must equal the
+// set's normalised name, or be a SUFFIX of it — the subtitle-wordmark shape ('Neon_Dynasty_logo'
+// on "Kamigawa: Neon Dynasty"). Bare substring containment was a trap: a page for "Modern
+// Horizons 3" that mentions 'Modern_Horizons_logo.png' would have baked MH1's wordmark onto MH3
+// forever (the merges are accretive), and 'Innistrad_logo' would have claimed every Innistrad
+// subtitle set. Prefix matches are therefore REFUSED even when legitimate ('Outlaws_logo' on
+// Outlaws of Thunder Junction now misses and wears the game logo) — a wrong wordmark is worse
+// than none, and a checked alias can rescue a known-good prefix later.
 export function logoMatchesSet(fileName, setName) {
   const stem = normName(String(fileName).replace(/\.[a-z]+$/i, '')).replace(/logo$/, '');
-  return !!stem && normName(setName).includes(stem);
+  const norm = normName(setName);
+  return !!stem && (norm === stem || norm.endsWith(stem));
 }
 
 /**
