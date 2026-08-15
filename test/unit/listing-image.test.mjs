@@ -318,6 +318,27 @@ describe('composeListingImage', { skip: SKIP }, () => {
       assert.equal(pre.contentHash, r.contentHash, 'a cache probe that disagrees with the render serves the wrong image');
     });
 
+    it('catalog singles get rounded corners; sealed keeps them square; hashes split', async () => {
+      // fakeCard's top-left is a dark blue (30,80,170) to the very edge, so a CUT corner reads as
+      // the white canvas and an uncut one as the card. Sealed product art must never be rounded —
+      // a booster box has square corners — and the flag difference must re-key the composite.
+      const meta = { setName: 'X', cardNumber: '1' };
+      const single = await compose(card, meta, { trim: false });
+      const sealedR = await compose(card, { ...meta, productType: 'sealed' }, { trim: false });
+      const l = resolveLayout(CFG, meta);
+      const corner = async (r, lay) => {
+        const left = Math.round((lay.canvas - r.card.width) / 2) + 2;
+        const top = Math.round((lay.canvas - r.card.height) / 2) + 2;
+        const px = await sharp(await sharp(r.buffer).extract({ left, top, width: 1, height: 1 }).toBuffer()).raw().toBuffer();
+        return (px[0] + px[1] + px[2]) / 3;
+      };
+      assert.ok(await corner(single, l) > 200, 'the single’s corner should be the white canvas (cut)');
+      assert.ok(await corner(sealedR, resolveLayout(CFG, { productType: 'sealed' })) < 200, 'the sealed corner must keep the art (square)');
+      assert.notEqual(single.contentHash, sealedR.contentHash);
+      const pre = await hashFor(card, meta, { cfg: CFG, trim: false });
+      assert.equal(pre.contentHash, single.contentHash, 'probe and render must agree on the corner flag');
+    });
+
     it('trim:false skips the detector and re-keys the composite — the catalog-art rule', async () => {
       // Borderless printings lose real art to the trim (The One Ring HOC, measured), so catalog
       // sources compose untrimmed. The flag changes pixels, so it must change the key — and only
