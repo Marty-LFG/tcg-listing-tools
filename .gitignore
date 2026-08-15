@@ -77,6 +77,13 @@ data/pokemon-mep.json
 # URLs only — the images are fetched lazily through data/img-cache/. A host without it degrades to
 # a number-only badge, so run the bake once on a fresh checkout.
 data/pokemon-set-symbols.json
+# Per-game set-art indexes for the rails (scripts/build-{mtg-set-logos,lorcana-set-art,
+# swu-set-art,onepiece-set-art}.mjs; '<game>-set-art' refresh bakes). Same deal: URLs + printed
+# totals only, absence degrades to the game-logo fallback, run the bakes once on a fresh checkout.
+data/mtg-set-art.json
+data/lorcana-set-art.json
+data/swu-set-art.json
+data/onepiece-set-art.json
 
 # Runtime-editable config the settings dashboard writes at runtime — SERVER-OWNED so its live edits
 # never collide with git pulls (tracking it did: it had to be skip-worktree'd on the server, which

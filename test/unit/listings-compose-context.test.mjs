@@ -8,7 +8,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber, isBlackStarPromoSet } from '../../lib/listings.mjs';
+import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber, isBlackStarPromoSet, splitSetIdent, gameCardNumber } from '../../lib/listings.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
 import { isRailDrawable, PROMO_STAR_URL } from '../../lib/listing-image-config.mjs';
 
@@ -205,16 +205,20 @@ describe('composeMetaFor', () => {
         const m = composeMetaFor({ game: 'lorcana', name: 'Ariel - Ethereal Voice', set_name: 'Whispers in the Well', set_code, number: '241' });
         assert.doesNotMatch(m.setSymbolUrl || '', /pokemontcg\.io|bulbagarden/, `set_code ${set_code} borrowed Pokémon art`);
         assert.doesNotMatch(m.setLogoUrl || '', /pokemontcg\.io|bulbagarden/, `set_code ${set_code} borrowed a Pokémon logo`);
-        assert.equal(m.cardNumber, '241', `set_code ${set_code} invented a denominator`);
+        // A denominator may appear now, but only LORCANA's own (the set-art bake) — 241 is chase
+        // numbering, which Lorcana prints over the base total (241/204), never a Pokémon-derived
+        // figure. On an unbaked host the number stays verbatim.
+        assert.match(m.cardNumber, /^241(\/\d{3})?$/, `set_code ${set_code} mangled the number`);
       }
     });
-    it('Lorcana gets NO set art at all — Lorcast publishes neither a symbol nor a wordmark', () => {
-      // Deliberate, and the reason the branch exists at all rather than resolving art: constructing
-      // a symbol URL from the set code is the images.scrydex.com placeholder trap (AGENTS.md 19).
-      // The masthead falls back to the set name, exactly as it does for Magic's missing wordmark.
+    it('Lorcana gets NO symbol ever, and the wordmark slot degrades wiki → game logo', () => {
+      // No Lorcana card prints a set symbol — the badge is the number alone, and constructing a
+      // symbol URL from the set code is the images.scrydex.com placeholder trap (AGENTS.md 19).
+      // The LEFT slot has a real chain now: the set's wiki wordmark where the bake found one,
+      // else the game logo (rail-only asset).
       const m = composeMetaFor({ game: 'lorcana', set_name: 'Whispers in the Well', set_code: '10', number: '241' });
       assert.equal(m.setSymbolUrl, '');
-      assert.equal(m.setLogoUrl, '');
+      if (!m.setLogoUrl) assert.equal(m.setLogoAsset, 'logos/rail/lorcana.png', 'no wordmark must still dress the rail');
       assert.equal(m.setName, 'Whispers in the Well', 'the owner’s own name still reaches the rail');
     });
     it('a promo-shaped Lorcana set is not mistaken for a Pokémon Black Star promo', () => {
@@ -228,6 +232,75 @@ describe('composeMetaFor', () => {
     it('every Lorcana meta value is still a string — the rail renderer takes no nulls', () => {
       const m = composeMetaFor({ game: 'lorcana', set_name: 'Whispers in the Well', set_code: '10', number: '241' });
       for (const [k, v] of Object.entries(m)) assert.equal(typeof v, 'string', `${k} is ${typeof v}`);
+    });
+  });
+
+  describe('per-game set art: every game dresses its rails', () => {
+    const baked = (game) => fs.existsSync(path.join(ROOT, 'data', `${game}-set-art.json`));
+
+    it('splitSetIdent recovers the "(CODE)" identity the builders store, single-char codes included', () => {
+      assert.deepEqual(splitSetIdent('Origins (OGN)'), { name: 'Origins', code: 'OGN' });
+      assert.deepEqual(splitSetIdent('The First Chapter (1)'), { name: 'The First Chapter', code: '1' });
+      assert.deepEqual(splitSetIdent('Romance Dawn (OP-01)'), { name: 'Romance Dawn', code: 'OP-01' });
+      assert.deepEqual(splitSetIdent('Ariel (Alternate Art)', ''), { name: 'Ariel (Alternate Art)', code: '' }, 'a parenthetical that is not a code stays in the name');
+      assert.deepEqual(splitSetIdent('Base Set', 'BS'), { name: 'Base Set', code: 'BS' }, 'an explicit set_code always wins');
+    });
+
+    it('gameCardNumber joins only what the card actually prints', () => {
+      assert.equal(gameCardNumber('lorcana', '42', 204), '42/204', 'Lorcana: unpadded numerator');
+      assert.equal(gameCardNumber('swu', '10', 252), '010/252', 'SWU: three-wide numerator');
+      assert.equal(gameCardNumber('swu', '010/252', 252), '010/252', 'already printed passes through');
+      assert.equal(gameCardNumber('onepiece', 'OP01-120', 154), 'OP01-120', 'a code identity is never joined');
+      assert.equal(gameCardNumber('lorcana', '42', null), '42', 'no denominator, no invention');
+    });
+
+    it('SWU wears the boxed code badge and, when baked, the printed denominator',
+      { skip: !baked('swu') && 'data/swu-set-art.json not built on this host' }, () => {
+        const m = composeMetaFor({ game: 'swu', name: 'Darth Vader', set_name: 'Spark of Rebellion (SOR)', number: '10', language: 'EN' });
+        assert.equal(m.setAbbrev, 'SOR');
+        assert.equal(m.cardNumber, '010/252', 'the official API cardCount is the printed total');
+        assert.equal(m.setSymbolUrl, '', 'no symbol source exists — the code IS the printed mark');
+        assert.equal(m.setLogoAsset, 'logos/rail/swu.png');
+      });
+
+    it('Riftbound wears its code badge off the baked roster, number untouched', () => {
+      const m = composeMetaFor({ game: 'riftbound', name: 'Jinx, Demolitionist', set_name: 'Origins (OGN)', number: '030/298', language: 'EN' });
+      assert.equal(m.setAbbrev, 'OGN');
+      assert.equal(m.cardNumber, '030/298');
+      assert.equal(m.setLogoAsset, 'logos/rail/riftbound.png');
+    });
+
+    it('One Piece: the card code is the whole badge, the game logo dresses the left rail', () => {
+      const m = composeMetaFor({ game: 'onepiece', name: 'Shanks', set_name: 'Romance Dawn (OP-01)', number: 'OP01-120', language: 'EN' });
+      assert.equal(m.cardNumber, 'OP01-120');
+      assert.equal(m.setAbbrev, '', 'the code is already in the number — a badge would repeat it');
+      assert.equal(m.setLogoAsset, 'logos/rail/onepiece.png');
+    });
+
+    it('Lorcana: wiki wordmark + printed denominator when baked',
+      { skip: !baked('lorcana') && 'data/lorcana-set-art.json not built on this host' }, () => {
+        const m = composeMetaFor({ game: 'lorcana', name: 'Elsa - Spirit of Winter', set_name: 'The First Chapter (1)', number: '42', language: 'EN' });
+        assert.match(m.setLogoUrl, /The_First_Chapter_logo/, 'the one wordmark the wiki carries');
+        assert.equal(m.setLogoAsset, '', 'a real wordmark beats the game logo');
+        assert.equal(m.cardNumber, '42/204');
+      });
+
+    it('MTG: an unbaked set falls back to the game logo, never an invented URL', () => {
+      const m = composeMetaFor({ game: 'mtg', name: 'Gandalf, Party Guest', set_name: 'The Hobbit Eternal (HOC)', number: '2', language: 'EN' });
+      if (!m.setLogoUrl) assert.equal(m.setLogoAsset, 'logos/rail/mtg.png');
+      assert.equal(m.setAbbrev, '', 'MTG has a real symbol — no code badge');
+    });
+
+    it('a Pokémon set with NO wordmark anywhere gets the game logo too', () => {
+      const m = composeMetaFor({ game: 'pokemon', set_name: 'No Such Set At All', number: '1/1' });
+      assert.equal(m.setLogoUrl, '');
+      assert.equal(m.setLogoAsset, 'logos/rail/pokemon.png');
+    });
+
+    it('promo sets keep the star — it always beats the game logo', () => {
+      const m = composeMetaFor({ game: 'pokemon', set_name: 'SWSH Black Star Promos', number: 'SWSH039', language: 'EN' });
+      assert.equal(m.setLogoUrl, PROMO_STAR_URL);
+      assert.equal(m.setLogoAsset, '');
     });
   });
 });
