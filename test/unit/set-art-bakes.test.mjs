@@ -144,6 +144,19 @@ describe('cleanOnepieceArt — variant-strict clean scans', () => {
   it('non-English rows never get the EN TCGplayer scan', { skip }, () => {
     assert.equal(cleanOnepieceArt({ number: 'OP01-120', variant: '', language: 'JP' }), null);
   });
+  it('digit disambiguators and printed aliases in the name are not variants', { skip }, () => {
+    // optcgapi writes "Roronoa Zoro (001)" / "Mr.3(Galdino) (056)": the digits are its own
+    // bookkeeping, and the alias is the PRINTED card name (TCGplayer's base product is plain
+    // "Mr. 3", tag ''). Both must resolve the BASE printing — they previously failed closed and
+    // kept the SAMPLE watermark on exactly these cards. A variant WORD in the name still counts.
+    const zoro = cleanOnepieceArt({ number: 'OP01-001', variant: '', name: 'Roronoa Zoro (001)' });
+    assert.ok(zoro, 'the digit tail must not block the base match');
+    assert.equal(zoro, cleanOnepieceArt({ number: 'OP01-001', variant: '' }));
+    assert.match(cleanOnepieceArt({ number: 'OP01-056', variant: '', name: 'Mr.3(Galdino) (056)' }) || '', /tcgplayer-cdn/,
+      'a printed alias must fall through to the base printing');
+    assert.equal(cleanOnepieceArt({ number: 'OP01-120', variant: '', name: 'Shanks (Alternate Art)' }),
+      cleanOnepieceArt({ number: 'OP01-120', variant: 'Parallel' }), 'a variant WORD in the name still reaches the alt printing');
+  });
   it('canonPrintingTag is the ONE vocabulary both writer and reader share', () => {
     assert.equal(canonPrintingTag('Alternate Art'), 'parallel');
     assert.equal(canonPrintingTag('Base Art'), '');
