@@ -514,3 +514,60 @@ describe('static pages served', () => {
     });
   }
 });
+
+// "Start labels at AAF-020" in the batch runner. Two halves on purpose: a read-only preview that
+// answers while you type, and a seed that runs once at publish — because the series moves forward
+// and never back, so a number typed and then reconsidered must not have cost a label.
+//
+// LAST in the file deliberately: seeding the counter changes the SKU every later inventory write
+// would be handed.
+describe('stock label series — previewing and setting where a run starts', () => {
+  it('previews a run from a label the counter has not reached', async () => {
+    const { status, json } = await get('/api/inventory/labels?peek=3&from=AAF-020');
+    assert.equal(status, 200);
+    assert.deepEqual(json.upcoming, ['AAF-020', 'AAF-021', 'AAF-022']);
+    assert.equal(json.next, 'AAF-020');
+    assert.equal(json.fromRefused, false);
+    assert.equal(json.fromInvalid, false);
+  });
+
+  it('the preview moves nothing', async () => {
+    const before = (await get('/api/inventory/labels')).json;
+    await get('/api/inventory/labels?peek=50&from=AAF-020');
+    assert.deepEqual((await get('/api/inventory/labels')).json.seq, before.seq);
+  });
+
+  it('says so when the label is off-scheme, rather than silently ignoring it', async () => {
+    const { json } = await get('/api/inventory/labels?peek=3&from=NOT-A-LABEL');
+    assert.equal(json.fromInvalid, true);
+  });
+
+  it('startAt makes that label the NEXT one out — not the last one spent', async () => {
+    const r = await post('/api/inventory/labels/seed', { startAt: 'AAF-020' });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.next, 'AAF-020');
+    assert.equal((await get('/api/inventory/labels')).json.next, 'AAF-020');
+  });
+
+  // The rule that matters more than the format: a retired number stays retired. Refusing LOUDLY is
+  // the point — a silent fall-forward would have the operator writing one number on the sleeve
+  // while eBay carried another.
+  it('refuses to rewind, and says it refused', async () => {
+    const r = await post('/api/inventory/labels/seed', { startAt: 'AAB-005' });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.rewindRefused, true);
+    assert.equal(r.json.next, 'AAF-020', 'still where it was');
+  });
+
+  it('the preview refuses a backwards start too, so the page can block before publishing', async () => {
+    const { json } = await get('/api/inventory/labels?peek=2&from=AAB-005');
+    assert.equal(json.fromRefused, true);
+    assert.equal(json.upcoming[0], 'AAF-020', 'and shows the truth instead');
+  });
+
+  it('an off-scheme label is a 400 on the seed, not a moved counter', async () => {
+    const r = await post('/api/inventory/labels/seed', { startAt: 'BK-PKM-000010' });
+    assert.equal(r.status, 400);
+    assert.equal((await get('/api/inventory/labels')).json.next, 'AAF-020');
+  });
+});

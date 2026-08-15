@@ -16,6 +16,7 @@ import path from 'node:path';
 import { openDbAt } from '../../lib/db.mjs';
 import { runPublish } from '../../lib/listings.mjs';
 import { isProvisionalSku, nextProvisionalSku, peekStockLabel, upcomingStockLabels, commitStockLabel, seedStockLabels, stockLabelState } from '../../lib/inventory.mjs';
+import { seqForLabel } from '../../lib/sku-labels.mjs';
 import { testEbayConfig } from '../helpers/ebay-config.mjs';
 
 const ENV = { EBAY_REFRESH_TOKEN: 'fake', EBAY_CERT_ID: 'c' };
@@ -159,6 +160,60 @@ describe('upcomingStockLabels — a peek for a whole batch', () => {
     assert.equal(upcomingStockLabels(db, 100000).length, 500);
     assert.equal(upcomingStockLabels(db, 0).length, 1);
     assert.equal(upcomingStockLabels(db, -3).length, 1);
+  });
+});
+
+// "Start labels at AAF-020" in the batch runner. The preview has to answer BEFORE anything moves,
+// because the series can go forward and never back — so a number typed and then reconsidered must
+// not have cost a label.
+describe('upcomingStockLabels(from) — previewing a run that starts somewhere else', () => {
+  // seqForLabel('AAF-020') - 1, i.e. "make AAF-020 the next one out".
+  const startAt = (label) => seqForLabel(label) - 1;
+
+  it('previews from where it was asked to, not from the counter', () => {
+    assert.deepEqual(upcomingStockLabels(db, 3, startAt('AAF-020')), ['AAF-020', 'AAF-021', 'AAF-022']);
+  });
+
+  it('still moves NOTHING — this is the whole reason it is separate from seeding', () => {
+    const before = counterSeq();
+    upcomingStockLabels(db, 50, startAt('AAF-020'));
+    assert.equal(counterSeq(), before);
+  });
+
+  it('still skips a label that is already spoken for', () => {
+    db.prepare(`INSERT INTO inventory_items (sku, game, name, status) VALUES ('AAF-021','pokemon','On a shelf','in_stock')`).run();
+    assert.deepEqual(upcomingStockLabels(db, 3, startAt('AAF-020')), ['AAF-020', 'AAF-022', 'AAF-023']);
+  });
+
+  it('rolls the block at 099, exactly as the normal walk does', () => {
+    assert.deepEqual(upcomingStockLabels(db, 2, startAt('AAF-099')), ['AAF-099', 'AAG-001']);
+  });
+
+  // An unseeded series normally yields nothing, because AAA-001 is already on a shelf somewhere.
+  // An EXPLICIT start is the operator telling us where the shelf actually is, so it answers.
+  it('answers for an unseeded series when the start is explicit', () => {
+    db.exec('DELETE FROM sku_counter');
+    assert.deepEqual(upcomingStockLabels(db, 5), []);
+    assert.deepEqual(upcomingStockLabels(db, 2, startAt('AAF-020')), ['AAF-020', 'AAF-021']);
+  });
+});
+
+// The seed is the half that MUTATES, and the invariant it protects is the one rule sku-labels.mjs
+// says matters more than the format: a number is never reused.
+describe('seedStockLabels via startAt — forward only', () => {
+  it('makes the named label the NEXT one out, not the last one spent', () => {
+    seedStockLabels(db, seqForLabel('AAF-020') - 1);
+    assert.equal(stockLabelState(db).next, 'AAF-020');
+    assert.equal(upcomingStockLabels(db, 1)[0], 'AAF-020');
+  });
+
+  it('refuses to rewind, and the caller can tell that it did', () => {
+    seedStockLabels(db, seqForLabel('AAF-020') - 1);
+    const before = stockLabelState(db);
+    const wanted = seqForLabel('AAB-005') - 1;
+    const after = seedStockLabels(db, wanted);
+    assert.equal(after.seq, before.seq, 'the counter did not move backwards');
+    assert.ok(before.seq != null && wanted < before.seq, 'and the caller can see the ask was behind');
   });
 });
 

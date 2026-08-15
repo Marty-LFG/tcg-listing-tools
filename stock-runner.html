@@ -279,6 +279,8 @@
           <input type="checkbox" id="composeEnable"> Branded rails on every image
         </label>
         <div class="muted" id="composeHint" style="margin-top:5px;">checking…</div>
+        <label for="startLabel" style="margin-top:14px;">Start labels at <span class="muted" id="startLabelHint" style="text-transform:none;letter-spacing:0;"></span></label>
+        <input id="startLabel" autocomplete="off" placeholder="continue the series" style="width:100%;">
       </div>
       <div>
         <label>Store department <span id="storeCount" class="muted"></span></label>
@@ -391,6 +393,7 @@ const IDX_KEY = 'tcg_runner_idx3:';           // + game + ':' + dataLang + ':' +
 const Q_KEY = 'tcg_runner_queue2';            // + ':' + game  (v1 = the pre-switcher Pokémon queue)
 const Q_KEY_V1 = 'tcg_runner_queue1';
 const STORE_KEY = 'tcg_runner_store';         // + ':' + game
+const COMPOSE_KEY = 'tcg_runner_compose';     // the operator's own answer, which beats the default
 // Shared with the single uploader exactly as GAME_KEY is, so the two pages agree about what you are
 // working on. Its OWN key rather than a field on the game one: language and game change
 // independently, and a combined value would have to be migrated the first time either moved.
@@ -482,12 +485,63 @@ function renderMirrorBar() {
 // shelf or a live listing, which is why this is asked for rather than counted up from `next`.
 async function loadLabelState() {
   try {
-    const j = await fetch('/api/inventory/labels?peek=' + LABEL_PEEK).then((r) => r.json());
+    const from = startLabelValue();
+    const j = await fetch('/api/inventory/labels?peek=' + LABEL_PEEK + (from ? '&from=' + encodeURIComponent(from) : '')).then((r) => r.json());
     labelSeeded = !!j.seeded;
     // An older server has no `upcoming`; fall back to the single `next` so the first row is still
     // right and the rest read '…' rather than repeating it (GR7: degrade visibly, never guess).
     labelUpcoming = Array.isArray(j.upcoming) && j.upcoming.length ? j.upcoming : (j.next ? [j.next] : []);
+    paintStartLabel(j);
   } catch (e) { /* GR7: a missing label series never blocks entry */ }
+}
+
+// ---- where this run's shelf labels start ------------------------------------------------------
+// The single uploader has the same field for ONE card; here it names the FIRST of the run and the
+// rest follow it. Typing only previews — the series is seeded once, at publish, because it can be
+// moved forward but never back, and a number typed then thought better of must not cost a label.
+const startLabelValue = () => $('startLabel').value.trim().toUpperCase();
+let START_LABEL_OK = true;
+function paintStartLabel(j) {
+  const hint = $('startLabelHint'), v = startLabelValue();
+  START_LABEL_OK = true;
+  if (!v) {
+    hint.style.color = '';
+    hint.textContent = labelSeeded ? '— next is ' + (labelUpcoming[0] || '…') + ', leave blank to continue'
+      : '— series not seeded, so these get BK-… skus (fix in Settings)';
+    return;
+  }
+  if (j && j.fromInvalid) { START_LABEL_OK = false; hint.style.color = 'var(--red)'; hint.textContent = '— needs the AAA-001 shape'; return; }
+  // The one answer that matters. Falling back to the real next label would have the operator writing
+  // one number on the sleeve while eBay carries another — labels are never reused, by design.
+  if (j && j.fromRefused) {
+    START_LABEL_OK = false; hint.style.color = 'var(--red)';
+    hint.textContent = '— the series is already past ' + esc(v) + ' (at ' + esc(j.current || '?') + '); labels are never reused';
+    return;
+  }
+  hint.style.color = 'var(--green)';
+  hint.textContent = '— this run starts at ' + esc(labelUpcoming[0] || v);
+}
+$('startLabel').addEventListener('input', () => {
+  clearTimeout(window._slT);
+  window._slT = setTimeout(async () => { await loadLabelState(); refresh(); }, 350);
+});
+// Move the series, once, immediately before the run. Returns false to abort — a refused seed must
+// stop the publish, not proceed under numbers the operator did not choose.
+async function applyStartLabel() {
+  const v = startLabelValue();
+  if (!v) return true;
+  try {
+    const j = await fetch('/api/inventory/labels/seed', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ startAt: v }),
+    }).then((r) => r.json());
+    if (j && j.error) { stat($('runStatus'), 'err', 'Could not set the starting label: ' + esc(j.error)); return false; }
+    if (j && j.rewindRefused) {
+      stat($('runStatus'), 'err', 'The label series is already past ' + esc(v) + ' — labels are never reused, so the run was not started.');
+      return false;
+    }
+    await loadLabelState(); refresh();
+    return true;
+  } catch (e) { stat($('runStatus'), 'err', 'Could not set the starting label: ' + esc(String(e && e.message || e))); return false; }
 }
 
 // ---------------------------------------------------------------------------
@@ -1251,7 +1305,9 @@ function refreshNow() {
   $('canaryBtn').disabled = !staged.length || !connected || !acctReady;
   $('stageBtn').disabled = !ticked.length;
   $('stageBtn').textContent = ticked.length ? 'Stage ' + ticked.length + ' to inventory' : 'Stage to inventory';
-  $('pubBtn').disabled = !staged.length || !connected || !acctReady;
+  // A bad starting label blocks the run rather than being ignored at publish time: the whole point
+  // of naming one is that the sleeves are already written.
+  $('pubBtn').disabled = !staged.length || !connected || !acctReady || !START_LABEL_OK;
   $('pubBtn').textContent = staged.length ? 'Publish ' + staged.length : 'Publish';
   syncHdr();
   applyVisibility();
@@ -1691,11 +1747,23 @@ async function loadComposeState() {
 
   COMPOSE_READY = j;
   $('composeEnable').disabled = false;
-  $('composeEnable').checked = !!j.config.enabled;
+  // ON BY DEFAULT for a batch, which is the opposite of the single uploader's behaviour and
+  // deliberate: eBay crops every gallery thumbnail square, a portrait card letterboxes inside it,
+  // and on a run of sixty that is sixty listings handing eBay two columns of dead space. The single
+  // uploader is a considered, one-card decision; a batch is not, so the useful default is the one
+  // you would have ticked. `config.enabled` is the SERVER-side default for callers that send no
+  // flag — composeFlag() sends an explicit one on every publish from here, so this overrides it for
+  // this page rather than fighting it. A remembered choice wins, so unticking sticks.
+  let want = true;
+  try { const s = localStorage.getItem(COMPOSE_KEY); if (s === '0' || s === '1') want = s === '1'; } catch (e) {}
+  $('composeEnable').checked = want;
   $('composeHint').textContent = (!st.font || !st.font.ok)
     ? 'rails will render without the metadata line — ' + ((st.font && st.font.reason) || 'no font')
-    : 'Fills the square eBay crops to, instead of letting it letterbox the card. Tune it in the Listing Image Lab.';
+    : 'On by default for a batch — fills the square eBay crops to, instead of letting it letterbox the card. Tune it in the Listing Image Lab.';
 }
+$('composeEnable').addEventListener('change', () => {
+  try { localStorage.setItem(COMPOSE_KEY, $('composeEnable').checked ? '1' : '0'); } catch (e) {}
+});
 function composeFlag() { return COMPOSE_READY ? $('composeEnable').checked : null; }
 
 function bestOffer() {
@@ -1920,6 +1988,7 @@ $('pubBtn').addEventListener('click', async () => {
   // Best Offer in DOLLARS, at both ends of the batch. resolveBestOffer works from percentages, so a
   // single wrong number here auto-accepts every lowball in the run at once — a percentage on its own
   // is not something you can sanity-check.
+  const labelRun = labelUpcoming.slice(0, go.length);
   const bo = bestOffer();
   const boLine = bo.enabled
     ? 'auto-accept from <b>' + money((cheapest ? cheapest.askAud : 0) * bo.autoAcceptPct / 100) + '</b> (cheapest) to <b>'
@@ -1933,6 +2002,12 @@ $('pubBtn').addEventListener('click', async () => {
     + '<div class="kv"><span>Total ask</span><span class="mono">' + money(total) + '</span></div>'
     + '<div class="kv"><span>Dearest single</span><span class="mono">' + money(dearest ? dearest.askAud : 0) + ' — ' + esc(dearest ? nameOf(dearest) : '—') + '</span></div>'
     + '<div class="kv"><span>Store department</span><span>' + depts + '</span></div>'
+    // Named here as well as at staging, because THIS is where they are actually spent — and if the
+    // operator set a starting label, this is the confirmation that it took.
+    + '<div class="kv"><span>Shelf labels</span><span class="mono">' + (labelSeeded && labelRun.length
+      ? esc(labelRun.length > 1 ? labelRun[0] + ' … ' + labelRun[labelRun.length - 1] : labelRun[0])
+        + (startLabelValue() ? ' (starting where you asked)' : '')
+      : 'series not seeded — these get BK-… labels') + '</span></div>'
     + '<div class="kv"><span>Best Offer</span><span>' + boLine + '</span></div>'
     + (blocked.length ? '<div class="kv"><span style="color:var(--red)">Held by the server</span><span class="mono">' + blocked.length + ' will not be sent</span></div>' : '')
     + '<p class="muted" style="margin-top:12px;">Type <b>' + go.length + '</b> to confirm. The server publishes one card at a time and re-checks every rule as it goes. '
@@ -1942,7 +2017,14 @@ $('pubBtn').addEventListener('click', async () => {
   const inp = $('mConfirm'); inp.focus();
   inp.addEventListener('input', () => { $('mGo').disabled = inp.value.trim() !== String(go.length); });
   $('mCancel').addEventListener('click', closeModal);
-  $('mGo').addEventListener('click', () => { closeModal(); runPublish(go); });
+  // The starting label is applied HERE and nowhere else — this is the last moment before numbers are
+  // spent, and the series only moves forward. A refused seed aborts the run rather than letting it
+  // proceed under labels the operator did not choose and would then write on the wrong sleeves.
+  $('mGo').addEventListener('click', async () => {
+    closeModal();
+    if (!(await applyStartLabel())) return;
+    runPublish(go);
+  });
 });
 
 // The per-row aspect overrides the server merges over the stored inventory row. The per-game half

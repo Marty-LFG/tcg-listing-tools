@@ -832,8 +832,11 @@ additionally skips any label already present in `inventory_items.sku`.
 **Seeding is required before first use.** The counter starts absent, not at zero, and while it is
 absent `nextSku()` falls back to the old `BK-<GAME>-######` form. That is deliberate: an unseeded
 counter would issue `AAA-001`, which is already on a shelf. Seed it with
-`POST /api/inventory/labels/seed {"label":"AAC-084"}` (or `{"seq":282}`); read the current position
-with `GET /api/inventory/labels`. Because the pre-existing labels live only on eBay and not in our
+`POST /api/inventory/labels/seed {"label":"AAC-084"}` (the last one SPENT), `{"startAt":"AAC-085"}`
+(the next one to ISSUE — what the batch runner sends) or `{"seq":282}`; read the current position
+with `GET /api/inventory/labels`, optionally `?from=<label>` for a read-only preview of a run
+starting elsewhere. Every one of them moves the series FORWARD only, and says `rewindRefused` /
+`fromRefused` when asked to go back. Because the pre-existing labels live only on eBay and not in our
 DB, the true maximum has to come from the owner or from a read of their live listings.
 
 **What uses it:** singles, i.e. `nextSku()` — the uploader's `POST /api/inventory/items` and the
@@ -1190,6 +1193,25 @@ Insights (real SOLD prices) soft-403s often, and the fallback to asking prices i
 drop, so the footer says **"N of M priced from asking listings, not sold prices"** out loud, and a
 row with asking-only comps AND no market figure — nothing corroborating it at all — is flagged
 `unverified`.
+
+**Branded rails are ON by default here, and only here.** eBay crops every gallery thumbnail square,
+so a portrait card letterboxes and hands eBay two columns of dead space — once is a judgement call,
+sixty times is not, which is why the single uploader stays off and the batch defaults on. The
+checkbox sends an EXPLICIT flag on every publish (`composeFlag()`), so this is a page default rather
+than a fight with `listing-image.config.json` `enabled` (which remains the default for callers that
+send nothing). The operator's own answer is remembered in `tcg_runner_compose` and beats the default.
+
+**"Start labels at" — where this run's shelf numbers begin.** The single uploader has the same field
+for one card; here it names the FIRST of the run and the rest follow. Two halves, deliberately:
+`GET /api/inventory/labels?peek=N&from=<label>` is a READ-ONLY preview that answers while you type
+(`upcomingStockLabels(db, want, fromSeq)`), and `POST /api/inventory/labels/seed {startAt}` is the
+one mutation, applied once at the publish confirm. They are separate because the series moves
+forward and **never back**, so a number typed and then reconsidered must not have cost a label.
+`startAt` is the operator's intent — "this run begins at AAF-020" — and the −1 against the counter
+happens server-side so no caller has to know how the counter relates to the label it issues.
+A backwards ask is **refused loudly** at both ends (`fromRefused` on the preview, `rewindRefused` on
+the seed): it blocks the publish button and aborts the run, because falling forward silently would
+have the operator writing one number on the sleeve while eBay carried another.
 
 **Stage uses `POST /api/inventory/items` with `batch_id` NULL, NOT `/batches`.** Pinned by
 `test/integration/runner-stage.test.mjs`, because it is easy to "tidy" into the wrong one:
