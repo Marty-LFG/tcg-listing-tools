@@ -84,6 +84,9 @@ data/mtg-set-art.json
 data/lorcana-set-art.json
 data/swu-set-art.json
 data/onepiece-set-art.json
+# Clean One Piece art map (scripts/build-onepiece-tcgimages.mjs; 'onepiece-tcg-images' bake) —
+# card code → TCGplayer productId per printing. Absent = listings keep the watermarked optcgapi art.
+data/onepiece-tcg-images.json
 
 # Runtime-editable config the settings dashboard writes at runtime — SERVER-OWNED so its live edits
 # never collide with git pulls (tracking it did: it had to be skip-worktree'd on the server, which

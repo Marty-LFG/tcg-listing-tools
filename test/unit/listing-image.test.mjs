@@ -318,6 +318,54 @@ describe('composeListingImage', { skip: SKIP }, () => {
       assert.equal(pre.contentHash, r.contentHash, 'a cache probe that disagrees with the render serves the wrong image');
     });
 
+    describe('the boxed code badge (setAbbrev)', () => {
+      const meta = { cardName: 'Darth Vader', setName: 'Spark of Rebellion', cardNumber: '010/252', setAbbrev: 'SOR' };
+      it('draws when no symbol exists, and folds into the hash', async () => {
+        const r = await compose(card, meta);
+        assert.equal(r.badge.abbrev, 'SOR');
+        assert.equal(r.badge.number, '010/252', 'the number still renders under the code');
+        const bare = await compose(card, { ...meta, setAbbrev: '' });
+        assert.equal(bare.badge.abbrev, '');
+        assert.notEqual(r.contentHash, bare.contentHash, 'the code is pixels — it must re-key the composite');
+      });
+      it('hashFor stays in lockstep with the code badge', async () => {
+        const pre = await hashFor(card, meta, { cfg: CFG });
+        const r = await compose(card, meta);
+        assert.equal(pre.contentHash, r.contentHash);
+      });
+      it('an unreachable symbol URL still lets the code badge draw — never an empty slot', async () => {
+        const r = await compose(card, { ...meta, setSymbolUrl: 'https://unreachable.invalid/sym.png' });
+        assert.equal(r.badge.symbol, false);
+        assert.equal(r.badge.abbrev, 'SOR');
+      });
+    });
+
+    describe('the rail-only game logo (setLogoAsset)', () => {
+      it('a logos/rail asset composites and folds into the hash', async () => {
+        // The real asset the invariant test pins — not a fixture, deliberately: this is the file
+        // production meta points at.
+        const meta = { cardName: 'X', setName: 'Y', cardNumber: '1', setLogoAsset: 'logos/rail/swu.png' };
+        const r = await compose(card, meta);
+        assert.equal(r.badge.logo, true, 'the asset did not draw');
+        const bare = await compose(card, { ...meta, setLogoAsset: '' });
+        assert.notEqual(r.contentHash, bare.contentHash);
+        const pre = await hashFor(card, meta, { cfg: CFG });
+        assert.equal(pre.contentHash, r.contentHash);
+      });
+      it('a real wordmark URL wins over the asset', async () => {
+        // Both set: the URL is unreachable so NOTHING draws — the asset must not sneak in as a
+        // fallback at render time, because the hash was keyed on the URL identity.
+        const r = await compose(card, { cardNumber: '1', setLogoUrl: 'https://unreachable.invalid/logo.png', setLogoAsset: 'logos/rail/swu.png' });
+        assert.equal(r.badge.logo, false);
+      });
+      it('traversals and non-logo paths never load', async () => {
+        for (const bad of ['logos/../../x.png', 'rails/default/left.png', 'C:/x.png', 'logos/rail/missing.png']) {
+          const r = await compose(card, { cardNumber: '1', setLogoAsset: bad });
+          assert.equal(r.badge.logo, false, `${bad} must not draw`);
+        }
+      });
+    });
+
     describe('the promo star (inverted treatment)', () => {
       // Needs the real star bytes — cached on any box that has composed a promo listing; skipped,
       // never failed, on a host that cannot fetch it (same absence-tolerance the compositor has).
