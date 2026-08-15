@@ -18,6 +18,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["exec", "vite", "--port", "5405", "--strictPort"],
       "port": 5405
+    },
+    {
+      "name": "tcg-tools-alt3",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["exec", "vite", "--port", "5408", "--strictPort"],
+      "port": 5408
     }
   ]
 }

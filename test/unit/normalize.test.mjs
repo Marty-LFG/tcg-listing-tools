@@ -91,6 +91,16 @@ describe('mapPrice: lorcana (lorcast)', () => {
   it('enchanted (foil-only): base variant falls through to usd_foil', () => {
     assert.equal(mapPrice('lorcana', { prices: { usd: null, usd_foil: '5' } }, '').market, 5);
   });
+  it('a chase variant takes usd_foil FIRST, not by falling through', () => {
+    // Enchanted / Epic / Iconic contain neither "foil" nor "holo", so a bare /foil/ test reads them
+    // as non-foil and reaches for `usd`. Today that lands on the right number anyway because their
+    // `usd` is null — but only by luck. Given both prices, the chase variant must still take the
+    // foil one, or one upstream change has an Iconic quoting a base-card price.
+    for (const v of ['Enchanted', 'Epic', 'Iconic']) {
+      assert.equal(mapPrice('lorcana', j, v).market, 2, v + ' must read usd_foil');
+    }
+    assert.equal(mapPrice('lorcana', j, 'Cold Foil').market, 2, 'and Cold Foil contains "foil" already');
+  });
 });
 
 describe('lookupPath (collector re-fetch keys)', () => {

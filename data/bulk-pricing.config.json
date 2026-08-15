@@ -8,7 +8,7 @@
     "default": 2.0
   },
   "tiers": {
-    "_comment": "tiers[game][rarityClass][finishClass] AUD floor. rarityClass: common|uncommon|rare|default. finishClass: Base|Holo|Reverse Holo|Foil|Enchanted|default.",
+    "_comment": "tiers[game][rarityClass][finishClass] AUD floor. rarityClass: common|uncommon|rare|default. finishClass: Base|Holo|Reverse Holo|Foil|Enchanted|Epic|Iconic|Cold Foil|Surge Foil|Etched Foil|default. An unlisted finishClass falls to the rarity's 'default' on purpose, so a new finish is under-priced rather than un-priced.",
     "pokemon": {
       "common":   { "Base": 0.49, "Reverse Holo": 1.49, "Holo": 1.99, "default": 0.99 },
       "uncommon": { "Base": 0.69, "Reverse Holo": 1.49, "Holo": 1.99, "default": 0.99 },
@@ -16,10 +16,11 @@
       "default":  { "Base": 0.99, "default": 1.99 }
     },
     "lorcana": {
+      "_comment": "rarityClass collapses Legendary, Enchanted, Epic, Iconic and Promo all into 'default', so the three foil-only chase finishes need their own floors there or a US$3,632 Iconic inherits the A$1.99 catch-all. Floors are anchored BELOW the observed minimum of each rarity (counted 2026-08-14, docs/DATA_SOURCES.md): Enchanted min US$21.15 (~A$32) -> 19.99; Iconic min US$966 (~A$1464) -> 499.00; Epic min US$1.08 with a p10 of US$1.71 (~A$2.59), which straddles the A$2 market threshold, so 1.99 is the honest floor there. Conservative owner floors, never market claims (GR4) -- raise them to taste. 'Cold Foil' is deliberately absent: it is operator-chosen with no market source, so it inherits the rarity default.",
       "common":   { "Base": 0.49, "Foil": 1.49, "default": 0.99 },
       "uncommon": { "Base": 0.69, "Foil": 1.49, "default": 0.99 },
       "rare":     { "Base": 0.99, "Foil": 1.99, "default": 1.99 },
-      "default":  { "Base": 0.99, "default": 1.99 }
+      "default":  { "Base": 0.99, "Foil": 1.99, "Enchanted": 19.99, "Epic": 1.99, "Iconic": 499.00, "default": 1.99 }
     },
     "riftbound": {
       "_comment": "Riftbound finish is rarity-driven (Epic/Showcase/Overnumbered = Foil). The 'default' rarityClass catches Epic + Showcase (alt-art) chase cards.",

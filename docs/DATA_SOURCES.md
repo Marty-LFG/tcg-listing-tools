@@ -298,11 +298,63 @@ cert number, tries to auto-fill the card identity + grade.
   object (numbered `1`–`12` + the known promo codes) is only the offline/`/sets`-unreachable fallback.
 - **Auth:** none (keyless). HTTPS only, ~10 req/s; **prices refresh once daily**.
 - Fields used: `name`, `version`, `collector_number`, `rarity` (`Super_rare` → "Super Rare"),
-  `ink`, `type[]`, `classifications[]`, `cost`, `strength`, `willpower`, `lore`,
+  `ink`/`inks[]`, `type[]`, `classifications[]`, `cost`, `strength`, `willpower`, `lore`,
+  `illustrators[]`, `layout`, `tcgplayer_id`,
   `image_uris.digital.{small,normal,large}` (**AVIF**), `prices.{usd, usd_foil}` (USD strings;
   `usd` is `null` for foil-only Enchanted/promo printings → builder auto-selects the Foil finish).
 - **Graded ladder:** layered on via `pcEnrich` → `/api/pc/lookup` (the game-agnostic PriceCharting
   scraper) using `name + version`, `collector_number`, and the set name. eBay AUD comps as usual.
+
+### The counted vocabulary (3,192 cards across all 22 sets, 2026-08-14)
+
+Counted, not assumed — the same way Magic's finish ladder was written. Re-run the count before
+changing any finish, rarity or aspect rule here.
+
+**Rarity (9 values).** `Common` 943 · `Uncommon` 704 · `Rare` 630 · `Super_rare` 238 ·
+`Enchanted` 224 · `Promo` 193 · `Legendary` 160 · `Epic` 90 · `Iconic` 10.
+
+**`prices` shape × rarity — this is the finish axis.** Enchanted, Epic and Iconic are
+**foil-only**: across all 324 of them, not one carries a `usd` price. Everything else is
+overwhelmingly `usd` + `usd_foil` together, with a handful of one-sided stragglers.
+
+| rarity | both | usd only | foil only | neither |
+|---|---|---|---|---|
+| Common | 927 | 13 | 3 | 0 |
+| Uncommon | 692 | 10 | 2 | 0 |
+| Rare | 625 | 2 | 3 | 0 |
+| Super_rare | 235 | 1 | 2 | 0 |
+| Legendary | 155 | 1 | 4 | 0 |
+| **Enchanted** | **0** | **0** | **223** | 1 |
+| **Epic** | **0** | **0** | **89** | 1 |
+| **Iconic** | **0** | **0** | **10** | 0 |
+| Promo | 6 | 12 | 109 | 66 |
+
+`Promo` is the one genuinely mixed rarity and **must not** be treated as foil-only: 12 are non-foil
+and 66 carry no price at all (those list with a manual price, GR7). The printing matrix is therefore
+driven by the PRICE KEYS, with the special rarity naming the foil row — never by rarity alone.
+
+**Collector numbers do not discriminate.** Epic occupies 205–225, Iconic 241–245, but Enchanted
+spans 24–243 and overlaps the base run. Rarity is the only reliable signal.
+
+**Ink — read BOTH fields.** `ink` (string) and `inks[]` (array) are inconsistently populated:
+*Jolly Roger* has `ink:null, inks:["Ruby"]` while *Never Land* has `ink:"Amber", inks:null`. Reading
+either alone loses 160 cards. `inks[] || [ink]` covers all 3,192. **187 cards are dual-ink**
+(`Amethyst+Sapphire`), concentrated in the promo sets.
+
+**Card type — 174 cards carry two.** Always `Action+Song`, so the aspect needs a priority the way
+`MTG_TYPE_PRIORITY` does. Values: `Character` 2453 · `Action` 406 · `Item` 227 · `Song` 174 ·
+`Location` 106.
+
+**`name` never contains `" - "`** (0 of 3192). Lorcast keeps `name` (`Elsa`) and `version`
+(`Spirit of Winter`) separate; the builder joins them. So the eBay **Character** aspect is `name`
+verbatim — no splitting. 633 cards have no `version` (mostly Actions, Items and Songs).
+
+**`illustrators[]` is always exactly one** entry. **`layout: 'landscape'`** is 106 cards and maps
+1:1 onto type `Location` — same image URLs, just wider than tall.
+
+**Cold foil is not in the data.** TCGplayer sells Normal / Cold Foil / Holofoil, but no keyless
+source labels cold foil per card. It is an operator-chosen finish priced `null` (the surge-foil
+precedent), never derived.
 
 ## Riftbound — three sources (default keyless)
 

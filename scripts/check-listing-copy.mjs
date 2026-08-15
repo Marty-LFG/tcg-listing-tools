@@ -185,6 +185,14 @@ console.log('\n[lorcana builder parity]');
   const fixtures = [
     { f_name: 'Elsa - Spirit of Winter', f_num: '207/204', f_set: 'The First Chapter (TFC)', f_rarity: 'Enchanted', f_variant: 'Foil', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Character', f_ink: 'Amethyst', f_class: 'Storyborn, Hero, Queen, Sorcerer', f_cost: '8', f_strength: '4', f_willpower: '6', f_lore: '3' },
     { f_name: 'Mickey Mouse - Brave Little Tailor', f_num: '12/204', f_set: 'Rise of the Floodborn (ROF)', f_rarity: 'Common', f_variant: 'Standard', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Character', f_ink: 'Ruby', f_class: 'Dreamborn, Hero', f_cost: '2', f_strength: '2', f_willpower: '3', f_lore: '1' },
+    // The two rarities the ladder did not know until 2026-08. Both are foil-only and both are
+    // chase: this Iconic trades at US$1,344 and there are only ten Iconics in the whole game. With
+    // no abbreviation of their own they returned '' and the title said nothing about the rarity.
+    { f_name: 'Ariel - Ethereal Voice', f_num: '241/242', f_set: 'Whispers in the Well (WitW)', f_rarity: 'Iconic', f_variant: 'Iconic', f_lang: 'English', f_cond: 'Ungraded, Near Mint', f_type: 'Character', f_ink: 'Amber', f_class: 'Storyborn, Hero, Princess', f_cost: '5', f_strength: '3', f_willpower: '4', f_lore: '2' },
+    { f_name: 'Aladdin - Barreling Through', f_num: '216/242', f_set: 'Whispers in the Well (WitW)', f_rarity: 'Epic', f_variant: 'Epic', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Character', f_ink: 'Emerald', f_class: 'Storyborn, Hero', f_cost: '4', f_strength: '3', f_willpower: '3', f_lore: '2' },
+    // Lorcast hands back "Super_rare" verbatim. '_' is a word character, so \brare\b finds no
+    // boundary inside it and an un-prettified value used to lose its token entirely.
+    { f_name: 'Tinker Bell - Giant Fairy', f_num: '58/204', f_set: 'Rise of the Floodborn (ROF)', f_rarity: 'Super_rare', f_variant: 'Foil', f_lang: 'English', f_cond: 'Near Mint', f_type: 'Character', f_ink: 'Sapphire', f_class: 'Dreamborn, Ally, Fairy', f_cost: '6', f_strength: '3', f_willpower: '5', f_lore: '2' },
   ];
   for (const [fi, fx] of fixtures.entries()) {
     const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
@@ -460,6 +468,18 @@ console.log('\n[bulk additions]');
     check('variantToken negation ' + JSON.stringify(f), LC.variantToken(null, f), want);
   }
   check('variantToken 1stEd non-holo', LC.variantToken('1st Edition', 'Non-holo'), '1st Edition');
+  // Lorcana's foil-only chase finishes. "Cold Foil" contains "foil" for the same reason "Surge
+  // Foil" does, so it has to be tested above the generic branch; Enchanted/Epic/Iconic contain
+  // neither "foil" nor "holo" and used to fall all the way through to 'Base' — which would have
+  // seated a US$3,632 Iconic on the SAME UNIQUE(game, identity_key, variant) row as the plain
+  // printing of the same card (GR5).
+  for (const [f, want] of [['Enchanted', 'Enchanted'], ['Iconic', 'Iconic'], ['Epic', 'Epic'],
+    ['Cold Foil', 'Cold Foil'], ['cold foil', 'Cold Foil'], ['Foil', 'Foil']]) {
+    check('variantToken lorcana ' + JSON.stringify(f), LC.variantToken(null, f), want);
+  }
+  // finishClass (lib/pricing.mjs) and ebayFinish (lib/channels/ebay-map.mjs) carry the SAME ladder
+  // and are pinned against this one in test/unit/lorcana-finish.test.mjs — they are lib-to-lib, not
+  // builder-to-lib, so they do not belong in this harness.
   // GR5 in the TITLE: doLookup auto-selects "Non-holo" for any non-holo rarity, so an unguarded
   // ladder shipped an eBay title claiming Holo on a plain card (INAD risk).
   const nh = { name: 'Bastiodon', num: '91/98', set: 'Abyss Eye', rarity: 'Illustration Rare', lang: 'English', cond: 'Near Mint' };

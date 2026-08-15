@@ -277,7 +277,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/pkm` | `api.pokemontcg.io/v2` | Optional `X-Api-Key` from `POKEMONTCG_API_KEY` (keyless works, lower limit). |
 | `/api/mtg` | `api.scryfall.com` | Adds `User-Agent` + `Accept`. No key. |
 | `/api/swu` | swu-db API | No key. |
-| `/api/lorcana` | `api.lorcast.com/v0` | Keyless Disney Lorcana API. One call returns image + gameplay + `prices.{usd,usd_foil}` (USD, daily). No key. |
+| `/api/lorcana` | `api.lorcast.com/v0` | Keyless Disney Lorcana API. One call returns image + gameplay + `prices.{usd,usd_foil}` (USD, daily). No key. `GET /sets` (cached, `lib/lorcana-sets-cache.mjs`), `GET /set/:id/cards` (whole set in one request, untrimmed) and `GET /cards/:set/:num` are served from disk by plugins; anything else falls through to Lorcast. |
 | `/api/rb`  | `api.scrydex.com/riftbound/v1` | Injects `X-Api-Key` + `X-Team-ID` from `.env`. **Optional, and currently `402 SUBSCRIPTION_INACTIVE`** — the subscription lapsed, so this serves nothing. Still the `lookupPath()` target for the card RECORD (name/images). Prices moved to `/api/riftbound/prices`. |
 | `/api/rbs` | `riftscribe.gg/api` | Keyless community Riftbound card API (live alternative to Scrydex). No key. |
 | `/api/riftbound/prices/:key` | (middleware, `lib/riftbound-prices.mjs`) | **Keyless Riftbound market prices** from the baked `data/riftbound-prices.json` (TCGplayer public search API). The collector's `pricePath()` target — replaced Scrydex after its 402. NOT named `/api/rbp`: the `/api/rb` proxy prefix-matches and would swallow it. 200 priced · 404 no price yet · 503 index never baked. |
@@ -892,7 +892,7 @@ That `ShippingDetails` omission is **why the repricer cannot move a listing betw
 
 Sold and unsold history reaches back about 90 days, so the mirror is complete for active listings and partial for history. Migrating the hand-made listings into the Inventory model (`bulkMigrateListing`) would collapse this into one population, but it is **one-way** — Trading `Revise*` is permanently blocked afterwards — so it is a deliberate decision, not a default.
 
-## 17. eBay stock uploader (Sell Inventory API) — Pokémon and Magic
+## 17. eBay stock uploader (Sell Inventory API) — Pokémon, Magic and Lorcana
 
 Brings the listing builders and the eBay inventory together: pick a card + qty → verify price +
 Best-Offer → one button → the card is **created live on eBay**, and local stock stays in sync as it
@@ -977,9 +977,16 @@ tokens, the rarity classes, `normalizeCard` → `invRowFrom` (the inventory row 
 them back — one source, so the pages' ↗ links cannot drift from the search the price came from.
 
 `STOCK_GAME_IDS` is deliberately a SUBSET of `GAMES`: a game only belongs here once its eBay aspects
-have been checked against the live Taxonomy, which so far is Pokémon and Magic alone.
+have been checked against the live Taxonomy, which so far is Pokémon, Magic and Lorcana.
 
-Three things that are load-bearing rather than cosmetic:
+That gate is not ceremony. Lorcana's run (2026-08-14) found that the `Game` aspect had been sending
+`Disney Lorcana` since the game landed, where the enum member is `Disney Lorcana TCG` — and because
+`Game` is FREE_TEXT, the near-miss never failed a publish, it just silently earned no facet on the
+one aspect eBay marks required. Riftbound was in the same state (`Riftbound: League of Legends TCG`).
+Run `node scripts/check-ebay-aspects.mjs --game "<name>"` before adding a game, and again if a game
+starts looking under-faceted.
+
+Six things that are load-bearing rather than cosmetic:
 
 - **The Pokémon sets-cache key is the literal `tcg_uploader_pkm_sets`.** Templating it would orphan
   every browser's cached set list, and that cache is the only thing between a flaky pokemontcg.io and
@@ -991,6 +998,20 @@ Three things that are load-bearing rather than cosmetic:
 - **MTG `card_facts` key names are fixed by `buildRowIn`.** It falls back to `item.colour` /
   `card_type` / `treatment` / `promo_note` / `full_art` / `promo` when `resolveMtgCard` comes back
   empty (a cold Scryfall cache after a restart). Rename one and the fallback silently drops an aspect.
+  The same is true of Lorcana's `character` / `ink` / `classifications` / `cost` / `strength` /
+  `willpower` / `lore` against `resolveLorcanaCard`.
+- **An aspect derived on the export path must be read off `rowIn`, not off `item`.** `buildRowIn`
+  is where re-resolution puts its answers; a `put()` that reads `item` only works for a row that
+  still has its facts attached, so it passes every test that hands the facts in as overrides and
+  then vanishes on the DB round trip. Lorcana lost `Character` and the ink aspect exactly this way.
+- **Lorcana's numbered set codes are NOT catch-line tokens.** Its sets are called `1`…`13`, which
+  are also ordinary collector numbers, so `setsFrom` blanks `code` on them — otherwise typing `13`
+  for card 13 parses as a set switch and silently adds nothing. The promo codes (`P1`, `D23`, `cp`,
+  `C2`, `DIS`, `PD1`, `Coconut`) cannot be read as a number and keep theirs.
+- **Enchanted / Epic / Iconic are foil-only and contain neither "foil" nor "holo".** Every finish
+  ladder in the Lorcana path has to name them or the best cards in the game read as plain printings:
+  `variantToken` (identity), `finishClass` (tier floor), `ebayFinish` (the aspect),
+  `lorcanaPrintingsFor` (the matrix) and `MAPPERS.lorcana` (the price).
 
 **Roadmap:** Phases 0–4 BUILT + tested (Phase 2 `/price` + the Phase-3 lookup/price flow live-verified
 against eBay AU). **Remaining:** an auto-scheduler for `reconcileListings`; the first real publish smoke
