@@ -23,6 +23,12 @@
   input,select{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line);border-radius:9px;color:var(--text);font-size:14px;outline:none;font-family:inherit;}
   input:focus,select:focus{border-color:var(--gold);}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  /* The language chip sits beside Game and only exists for Pokémon. Flex rather than .row2 so that
+     with it hidden the Game select is full width — exactly as it looked before languages existed. */
+  .gamerow{display:flex;gap:10px;align-items:flex-end;margin-bottom:12px;}
+  .gamerow>div:first-child{flex:1;min-width:0;}
+  .gamerow>#langWrap{flex:0 0 150px;}
+  .gamerow label{margin-bottom:5px;}
   .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
   .setrow{margin-bottom:12px;position:relative;}
   .lookup{display:flex;gap:10px;margin:10px 0 6px;}
@@ -104,8 +110,10 @@
     <div>
       <div class="card">
         <h3>1 · Pick the card</h3>
-        <label for="gameSel">Game</label>
-        <select id="gameSel" style="margin-bottom:12px;"></select>
+        <div class="gamerow">
+          <div><label for="gameSel">Game</label><select id="gameSel"></select></div>
+          <div id="langWrap" style="display:none;"><label for="langSel">Language</label><select id="langSel"></select></div>
+        </div>
         <div class="setrow"><label>Set <span id="setStatus" class="muted">loading…</span></label>
           <input id="setCode" autocomplete="off" placeholder="set name or code, e.g. PAR or Paradox Rift">
           <div id="setMenu" class="setmenu"></div>
@@ -162,6 +170,7 @@
           <button class="ghost" onclick="loadPrice()">↻ Re-check comps</button>
           <a class="ghost" id="ebayActive" data-comps="bin" href="#" target="_blank" rel="noopener">Active BIN ↗</a>
           <a class="ghost" id="ebaySold" data-comps="sold" href="#" target="_blank" rel="noopener">Sold ↗</a>
+          <a class="ghost" id="pcLink" href="#" target="_blank" rel="noopener" style="display:none;">PriceCharting ↗</a>
         </div>
       </div>
 
@@ -248,7 +257,20 @@ const $=id=>document.getElementById(id);
 // which need global scope), so it cannot import, and a module runs after the document is parsed.
 let GAME='pokemon', GA=null;
 const GAME_KEY='tcg_stock_game';       // shared with stock-runner.html, so the two pages agree
+// The active PRINT LANGUAGE, as a stored 2-letter code (EN/JP/CN/TW/KO). Shared with the batch
+// runner exactly as GAME_KEY is, so the two pages agree about what you are working on — but its own
+// key, because language and game change independently. Only Pokémon has more than one lane, so the
+// control hides itself for every other game.
+let LANG='EN';
+const LANG_KEY='tcg_stock_lang';
+let PKM_INTL=null, DEX_EN=null;
+const INTL_CACHE_KEY='pkm_intl_sets_v1';   // shared with pokemon-listing-builder.html
+const DEX_CACHE_KEY='pkm_dex_en_v3';       // shared with pokemon-listing-builder.html
 let SETS=[], setObj=null, card=null, priceInfo=null, savedItemId=null, savedKey='', photos=[], acctReady=false, connected=false;
+// The intl helpers, handed over by the module shim at the bottom (this script is classic).
+const PI=()=>window.TCG.pokemonIntl;
+const isIntl=()=>!!(GA&&GA.langs)&&PI().dataLangOf(LANG)!=='en';
+const dataLang=()=>PI().dataLangOf(LANG);
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
 function stat(el,cls,msg){el.className='status '+cls;el.textContent=msg;}
 function money(a){return a==null?'—':'A$'+(Math.round(a*100)/100).toFixed(2);}
@@ -270,12 +292,39 @@ function banner(html){ const b=$('setupBanner'); b.innerHTML=html; b.style.displ
 // and a half-swapped page is how a Magic number gets looked up against a Pokémon set.
 function applyGameChrome(){
   document.title='eBay Stock Uploader — '+GA.label;
-  $('gameTag').textContent=GA.tag;
+  $('gameTag').textContent=GA.tag+(isIntl()?' · '+PI().labelFromLang(LANG):'');
   // Off the adapter, not a ternary on GAME: these were the last hardcoded game literals in the page.
   const ex=GA.catchExample||{};
-  $('setCode').placeholder=ex.setHint||'set name or code';
+  // A language-scoped hint: the intl picker searches a printed code (M5) or a set name in any of the
+  // languages that set goes under, which is a different instruction from the English one.
+  $('setCode').placeholder=isIntl()?PI().setPlaceholder(dataLang()):(ex.setHint||'set name or code');
   $('num').placeholder=ex.numHint||'e.g. 25';
   $('finish').innerHTML=GA.finishOptions.map(o=>'<option>'+esc(o)+'</option>').join('');
+  // Only Pokémon has more than one catalogue lane. For every other game the control is absent, not
+  // disabled — a language list with one entry is a question with one answer.
+  const wrap=$('langWrap');
+  if(GA.langs){ wrap.style.display=''; $('langSel').value=LANG; }
+  else wrap.style.display='none';
+}
+// Switching language re-scopes the whole picker and drops the picked card, for exactly the reason
+// switching GAME does: the set list belongs to the other catalogue, and a half-swapped page is how a
+// Japanese number gets looked up against an English set that happens to share its printed code.
+async function selectLang(l){
+  if(!GA.langs) return;
+  LANG=(GA.langs.some(x=>x.code===l)?l:'EN');
+  try{ localStorage.setItem(LANG_KEY,LANG); }catch(e){}
+  $('langSel').value=LANG;
+  applyGameChrome();
+  // priceInfo too: compsQuery() prefers the server's echoed query, so a stale one would keep the
+  // ↗ links pointing at the previous language's search after the card behind it had gone.
+  card=null; setObj=null; SETS=[]; savedItemId=null; photos=[]; priceInfo=null;
+  $('setCode').value=''; $('num').value='';
+  $('cardview').style.display='none'; $('stockBox').style.display='none';
+  for(const id of ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard']) $(id).style.display='none';
+  $('previewCard').style.display='none';
+  stat($('status'),'load','Pick a set, type a number, hit Look up.');
+  await loadSets();
+  syncEbayLinks();
 }
 async function selectGame(g,opts){
   opts=opts||{};
@@ -284,6 +333,9 @@ async function selectGame(g,opts){
   GA=TCG.stockGames.adapterFor(GAME);
   try{ localStorage.setItem(GAME_KEY,GAME); }catch(e){}
   $('gameSel').value=GAME;
+  // A game with no language lanes IS English — leaving a remembered 'JP' set on a Magic row would
+  // stamp the wrong Language aspect on every listing, and the control that could fix it is hidden.
+  if(!GA.langs||!GA.langs.some(x=>x.code===LANG)) LANG='EN';
   applyGameChrome();
   card=null; setObj=null; SETS=[]; savedItemId=null; photos=[];
   $('setCode').value=''; $('num').value='';
@@ -335,8 +387,24 @@ function withOverlay(list){
   return live?list:[mep].concat(list);
 }
 
+// The non-English set list is not an endpoint — it is the baked TCGdex index
+// (data/pokemon-intl-sets.json), the same file and the same localStorage key the card builder uses,
+// rebaked daily by lib/refresh.mjs. Cached copy paints first, fetch refreshes behind it (GR7).
+async function loadIntlSets(){
+  if(!PKM_INTL){ try{ const raw=localStorage.getItem(INTL_CACHE_KEY); if(raw){ const o=JSON.parse(raw); if(o&&typeof o==='object') PKM_INTL=o; } }catch(e){} }
+  try{ const r=await fetch(GA.intlSetsUrl()); if(r.ok){ const o=await r.json(); if(o&&typeof o==='object'){ PKM_INTL=o; try{ localStorage.setItem(INTL_CACHE_KEY,JSON.stringify(o)); }catch(e){} } } }catch(e){}
+  return PKM_INTL||{};
+}
+// national-dex # -> English name, so a TCGdex card in native script can be titled in English.
+// Same file and key as the builder; a miss just means the operator types the name (GR7).
+async function loadDexMap(){
+  if(!DEX_EN){ try{ const raw=localStorage.getItem(DEX_CACHE_KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.dex) DEX_EN=o; } }catch(e){} }
+  try{ const r=await fetch('/data/pokemon-dex-en.json'); if(r.ok){ const o=await r.json(); if(o&&o.dex){ DEX_EN=o; try{ localStorage.setItem(DEX_CACHE_KEY,JSON.stringify(o)); }catch(e){} } } }catch(e){}
+  return DEX_EN||{};
+}
 async function loadSets(){
-  const cacheKey=GA.setsCacheKey;
+  if(isIntl()) return loadSetsIntl();
+  const cacheKey=GA.setsCacheKeyFor?GA.setsCacheKeyFor('en'):GA.setsCacheKey;
   if(GAME==='pokemon') loadMep();   // fire-and-forget: the cached copy lands immediately, the fetch refreshes behind it
   // Cache sets in localStorage (like the builder) so a flaky source moment doesn't leave the
   // picker empty — show the cache immediately, then refresh in the background.
@@ -354,6 +422,16 @@ async function loadSets(){
     else if(!SETS.length){ $('setStatus').textContent='no sets (source flaky) — retry'; }
   }catch(e){ if(!SETS.length) $('setStatus').textContent='sets failed (source down) — retry'; }
 }
+async function loadSetsIntl(){
+  loadDexMap();                       // fire-and-forget; only the card NAME needs it
+  const bake=await loadIntlSets();
+  SETS=PI().intlSetsFrom(bake,dataLang());
+  const suspect=SETS.filter(s=>s.suspect).length;
+  $('setStatus').textContent=SETS.length
+    ? SETS.length+' sets'+(suspect?' · '+suspect+' with an unverified name':'')
+    : 'no '+PI().labelFromLang(LANG)+' sets — is data/pokemon-intl-sets.json baked?';
+  wireSetCombobox();
+}
 
 // ---- card lookup ----
 async function doLookup(opts){
@@ -361,10 +439,15 @@ async function doLookup(opts){
   opts=opts||{};
   const code=$('setCode').value.trim(), num=$('num').value.trim();
   if(!setObj){ // let the user type a raw set id
-    setObj=SETS.find(s=>s.code===code.toUpperCase()||s.label.toLowerCase()===code.toLowerCase());
+    // The intl matcher knows the five names a set goes under — the printed code, its TCGdex id, its
+    // native name, its romanised name and the English set it corresponds to — so M5, アビスアイ,
+    // Abyss Eye and Pitch Black all land on the same set.
+    if(isIntl()){ const hit=PI().resolveIntlSet(SETS.map(s=>s.raw),code); setObj=hit?SETS.find(s=>s.raw===hit):null; }
+    else setObj=SETS.find(s=>s.code===code.toUpperCase()||s.label.toLowerCase()===code.toLowerCase());
   }
   if(!setObj||!num){ stat($('status'),'warn','Pick a set and enter a card number.'); return; }
   if(GAME!=='pokemon') return doLookupGeneric(setObj,num,opts);
+  if(isIntl()) return doLookupIntl(setObj,num);
   if(setObj.mep) return doLookupMep(setObj,num);
   const act=TCG.activity?TCG.activity('Looking up '+setObj.value+'-'+num):null;
   stat($('status'),'load','Looking up…');
@@ -419,6 +502,92 @@ async function doLookupGeneric(setObj,num,opts){
     afterLookup({fromRarity:false});
     act&&act.done(GA.sourceName);
     stat($('status'),'ok','Found. Verify the details, price and offers below.');
+  }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
+}
+
+// ── Japanese / Chinese / Korean ─────────────────────────────────────────────────────────────────
+// TWO sources, merged, mirroring pokemon-listing-builder.html doLookupIntl(). Neither is enough on
+// its own:
+//   PriceCharting  English card name + real full-res JPEG art, and the ONLY coverage of sets TCGdex
+//                  has not ingested (M5 Abyss Eye landed here months before TCGdex had it). Carries
+//                  no rarity, stage, type, illustrator, HP or dexId at all.
+//   TCGdex         all of those, plus the `variants` printing matrix and the native card name.
+// So a PriceCharting hit is still enriched from TCGdex — skip that and a Japanese listing ships
+// with no Rarity, no Character and no Card Type facet while the English card beside it has all
+// three. GR7 throughout: either source missing still leaves an editable row.
+async function fetchPcConsoleRow(set,num){
+  const url=GA.pcConsoleUrl(set);
+  if(!url) return {row:null,cards:0,stale:false};
+  try{
+    const r=await fetch(url);
+    const j=r.ok?await r.json():null;
+    const cards=(j&&j.cards)||[];
+    if(!cards.length) return {row:null,cards:0,stale:false};
+    // Leading zeros are not significant on either side: the console lists 4, the operator types 004.
+    const want=String(num).replace(/\/.*$/,'').replace(/^0+(?=\d)/,'').toLowerCase();
+    const row=cards.find(c=>String(c.number).replace(/^0+(?=\d)/,'').toLowerCase()===want)||null;
+    return {row,cards:cards.length,stale:!!(j&&j.stale)};
+  }catch(e){ return {row:null,cards:0,stale:false}; }
+}
+async function fetchTcgdexCard(set,num){
+  for(const url of GA.cardUrlCandidates(set,num,LANG)){
+    try{ const r=await fetch(url); if(r.ok){ const j=await r.json(); if(j&&j.name) return j; } }catch(e){}
+  }
+  return null;
+}
+async function doLookupIntl(setRow,num){
+  const set=setRow.raw||setRow, tag=PI().dataLangOf(LANG).toUpperCase();
+  const label=PI().setEnglishName(set)||set.code||'';
+  const act=TCG.activity?TCG.activity('Looking up '+(set.code||'')+' #'+num+'…'):null;
+  stat($('status'),'load','Looking up '+(set.code||'')+' #'+num+' ('+tag+')…');
+  try{
+    if(!DEX_EN) await loadDexMap();
+    const pc=await fetchPcConsoleRow(set,num);
+    // The console loaded but does not hold this number — that is DEFINITIVE for a set PriceCharting
+    // covers, so it is reported rather than silently retried against TCGdex, which would answer for
+    // a different printing.
+    if(!pc.row&&pc.cards){
+      act&&act.fail('#'+num+' not in set');
+      stat($('status'),'warn','Card #'+esc(num)+' not found in '+esc(label)+' ('+pc.cards+' cards). Check the number.');
+      return;
+    }
+    const tc=await fetchTcgdexCard(set,pc.row?pc.row.number:num);
+    if(!pc.row&&!tc){
+      act&&act.fail('no card');
+      stat($('status'),'warn',esc(label)+' has no card data for #'+esc(num)+' in '+tag+' yet — fill the fields in by hand, the price check still works.');
+      return;
+    }
+    // One synthetic card carrying both sources, so everything downstream — here, the runner, and
+    // the adapterFor(row.game) paths that cannot know a language — sees a single shape.
+    // PriceCharting's /1600.jpg is a real JPEG; TCGdex needs a quality and an extension, and it is
+    // PNG rather than the builder's display-only .webp because this image is downloaded and pushed
+    // to eBay EPS, where webp only becomes JPEG if the compositor happens to run.
+    const c=GA.intlCard({
+      lang:LANG, set, full:tc,
+      localId:(tc&&tc.localId)||(pc.row&&pc.row.number)||num,
+      name:(pc.row&&pc.row.name)||(tc&&tc.name)||'',
+      rarity:(tc&&tc.rarity)||'',
+      image:(pc.row&&pc.row.image)?(pc.row.image+'/1600.jpg'):((tc&&tc.image)?(tc.image+'/high.png'):''),
+      source:pc.row?'pricecharting':'tcgdex',
+    });
+    const nc=GA.normalizeCard(c,set,DEX_EN);
+    card={ nc, raw:tc||pc.row, language:nc.language, intl:true, pcSlug:set.pcSlug||'',
+      id:nc.identityKey, name:nc.name, set_name:nc.setName, number:nc.number, rawNumber:nc.rawNumber,
+      rarity:nc.rarity, image:nc.image, artist:nc.illustrator };
+    // The printing comes from TCGdex's variants when there is one — DATA, not the rarity regex
+    // (GR5). With no card record it lands on the under-promising default instead.
+    // ALWAYS assigned, never left as-is: an unmatched value used to leave the select showing the
+    // previous card's finish, which is worse than a wrong default because it looks deliberate.
+    const p=(nc.printings&&nc.printings[0])||null;
+    $('finish').value=PI().intlFinishOption(p);
+    afterLookup({fromRarity:false});
+    act&&act.done(pc.row?('PriceCharting '+tag+(tc?' + TCGdex':'')):('TCGdex '+tag));
+    const bits=[];
+    if(!nc.name) bits.push('no English name for this card — type it');
+    if(PI().setNameIsCodeOnly(set)) bits.push('no romanised name for this set, so the title carries the printed code '+esc(set.code));
+    if(pc.stale) bits.push('PriceCharting is unreachable, so this is a CACHED copy');
+    if(setRow.suspect) bits.push('TCGdex returns the same name for several sets in this block — check the set is right');
+    stat($('status'),bits.length?'warn':'ok',(nc.name?'Found '+esc(nc.name):'Found #'+esc(nc.number))+' · '+tag+(bits.length?' — '+bits.join('; '):'. Verify the details, price and offers below.'));
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
 
@@ -540,9 +709,52 @@ async function loadPrice(){
       $('recBig').textContent='—';
       $('compsLine').textContent='No confident comps ('+(c.reason||'no data')+'). Set a price manually.';
     }
+    if(card.intl) $('compsLine').innerHTML+=intlPriceNote();
     refreshSummary();
   }catch(e){ $('compsLine').textContent='comps unavailable: '+(e&&e.message||e); }
   syncEbayLinks();
+  if(card.intl) loadIntlSecondOpinion();
+}
+// Non-English prints have NO TCGplayer or Cardmarket figure behind them, so the eBay AU comps above
+// are not one signal among several — they are the whole answer. Say so, rather than leaving the
+// operator to read a bare number as though it had been corroborated.
+function intlPriceNote(){
+  return '<div class="muted" style="margin-top:6px;">TCGplayer and Cardmarket don’t price '
+    +esc(PI().labelFromLang(LANG))+' printings — eBay AU is the reference here'
+    +(card.pcSlug?', with PriceCharting below as a second opinion.':'.')+'</div>';
+}
+// The one independent second opinion available for a non-English card, and only for the ~43% of
+// Japanese sets PriceCharting actually has a console for (20/65 zh-cn, 6/101 ko, and NONE of zh-tw).
+// Where there is none the line says so — an unexplained absence reads as a failed fetch, and a
+// missing second opinion is a fact the operator should price around (GR4).
+//
+// Deliberately NOT the builder's full graded/raw ladder: this page shows one number by design, and
+// a ladder here would compete with the recommendation instead of corroborating it.
+async function loadIntlSecondOpinion(){
+  const line=$('compsLine');
+  if(!card.pcSlug){
+    line.innerHTML+='<div class="muted" style="margin-top:4px;">No PriceCharting console for this set, so there is no second opinion on this price.</div>';
+    return;
+  }
+  const id=Math.random().toString(36).slice(2);
+  line.innerHTML+='<div class="muted" id="pc_'+id+'" style="margin-top:4px;">checking PriceCharting…</div>';
+  const el=()=>$('pc_'+id);
+  try{
+    const q='/api/pc/lookup?lang='+encodeURIComponent(dataLang()==='ja'?'jp':dataLang())
+      +'&name='+encodeURIComponent(card.name||'')+'&number='+encodeURIComponent(String(card.rawNumber||''))
+      +'&set='+encodeURIComponent(card.set_name||'');
+    const pc=await fetch(q).then(r=>r.json());
+    if(!pc||!pc.matched||!pc.prices||pc.prices.ungraded==null){
+      if(el()) el().textContent='No PriceCharting match for this card — eBay AU comps only.';
+      return;
+    }
+    // Integer cents in USD, converted at RENDER time and shown A$-first with the native amount
+    // beside it, like every other price in the suite.
+    const usd=pc.prices.ungraded/100;
+    const aud=(window.TCG&&TCG.toAUD)?TCG.toAUD(usd,'USD'):null;
+    const conf=pc.confidence==='medium'?' (check the match)':'';
+    if(el()) el().innerHTML='PriceCharting raw: '+(aud!=null?'A$'+aud.toFixed(2)+' · ':'')+'USD '+usd.toFixed(2)+esc(conf);
+  }catch(e){ if(el()) el().textContent='PriceCharting unreachable — eBay AU comps only.'; }
 }
 
 // ---- the custom label (eBay calls it Custom label; it is the shelf slot) ----
@@ -585,8 +797,12 @@ async function checkStock(){
   const box=$('stockBox');
   if(!card){ box.style.display='none'; return; }
   const r=cardRow();
+  // The ROW's language, not a literal. language is part of stockKey (lib/inventory.mjs), so a
+  // hardcoded 'EN' asked the shelf about the English printing of a Japanese card and came back with
+  // a clean bill for stock that may well be sitting there — and this page has produced non-English
+  // rows since Magic reached it (Scryfall serves Japanese and Dwarvish prints).
   const qs=new URLSearchParams({game:GAME,identity_key:card.id,name:card.name,variant:r.variant||'',
-    language:'EN',condition:r.condition||'',graded:graded()?'1':'0',
+    language:r.language||'EN',condition:r.condition||'',graded:graded()?'1':'0',
     grading_company:r.grading_company||'',grade:r.grade!=null?String(r.grade):''});
   try{
     stockMatch=await fetch('/api/inventory/match?'+qs).then(x=>x.json());
@@ -722,7 +938,9 @@ function compsQuery(){
   // The SAME function the server calls (lib/stock-games.mjs, re-exported by lib/listings.mjs), so
   // the link cannot drift from the search the price came from — Magic's drops the collector number.
   const cq=window.TCG&&TCG.stockGames&&TCG.stockGames.compsQueryFor;
-  return cq?cq(GAME,{name:card.name,set_name:card.set_name},card.number):'';
+  // language + set_code ride along or the fallback link searches the ENGLISH market for a Japanese
+  // card — the same query the server would build, which is the whole point of sharing the function.
+  return cq?cq(GAME,{name:card.name,set_name:card.set_name,language:card.language,set_code:(card.nc&&card.nc.setCode)||''},card.number):'';
 }
 // The URLs come from lib/ebay-links.mjs, handed to this classic script by the module shim at the
 // bottom of the page — one implementation, shared with the batch runner and the Telegram cards.
@@ -736,6 +954,18 @@ function syncEbayLinks(){
   a.title=on?'Active Buy It Now on eBay AU, Australian sellers only, cheapest first — opens in the BIN window and reuses it — "'+q+'"':'';
   s.title=on?'Sold in the last 90 days on eBay AU, Australian sellers only, most recent first — opens in the Sold window and reuses it — "'+q+'"':'';
   a.style.opacity=s.style.opacity=on?'':'.5';
+  // The native-market reference. Always offered for a non-English card, even when the inline
+  // second-opinion lookup finds nothing — the console page is browsable by hand, and for a set with
+  // no pcSlug at all it is the only PriceCharting route there is.
+  const p=$('pcLink');
+  if(p){
+    const show=!!(card&&card.intl&&window.TCG&&TCG.pokemonIntl);
+    p.style.display=show?'':'none';
+    if(show){
+      p.href=TCG.pokemonIntl.pcSearchUrl(card.name,card.number,card.set_name,LANG);
+      p.title='Search PriceCharting for the '+PI().labelFromLang(LANG)+' printing';
+    }
+  }
 }
 function setPrice(v){ $('price').value=(Math.round(v*100)/100).toFixed(2); refreshSummary(); }
 $('price').addEventListener('input',refreshSummary);
@@ -1029,9 +1259,13 @@ async function applyDeepLink(){
   const q=new URLSearchParams(location.search);
   const wantSet=q.get('set'), wantNum=q.get('num');
   if(!wantSet||!wantNum) return;
-  const s=SETS.find(x=>x.value===wantSet||x.code===wantSet.toUpperCase()||x.label.toLowerCase()===wantSet.toLowerCase());
+  // ?lang= is settled in boot(), BEFORE loadSets — the set below has to resolve against the right
+  // catalogue, and a JP set code frequently IS an English set id (SV3, SM8, XY2…).
+  const s=isIntl()
+    ? (()=>{ const hit=PI().resolveIntlSet(SETS.map(x=>x.raw),wantSet); return hit?SETS.find(x=>x.raw===hit):null; })()
+    : SETS.find(x=>x.value===wantSet||x.code===wantSet.toUpperCase()||x.label.toLowerCase()===wantSet.toLowerCase());
   if(!s){ stat($('status'),'warn','Could not find the set “'+esc(wantSet)+'” — pick it by hand.'); return; }
-  setObj=s; $('setCode').value=s.label; $('num').value=wantNum;
+  setObj=s; $('setCode').value=s.label+(isIntl()&&s.code?' ('+s.code+')':''); $('num').value=wantNum;
   // Condition before the lookup: doLookup runs checkStock(), and condition is part of stock identity.
   const c=q.get('cond'); if(c&&RAW_COND[c]){ $('condSel').value='raw'; $('gradedCond').style.display='none'; $('rawCond').style.display=''; $('rawGrade').value=RAW_COND[c]; }
   await doLookup();
@@ -1052,10 +1286,18 @@ async function boot(){
   const q=new URLSearchParams(location.search);
   $('gameSel').innerHTML=TCG.stockGames.ids.map(g=>'<option value="'+g+'">'+esc(TCG.stockGames.adapterFor(g).label)+'</option>').join('');
   $('gameSel').addEventListener('change',()=>selectGame($('gameSel').value));
+  $('langSel').addEventListener('change',()=>selectLang($('langSel').value));
   // ?game= wins over the remembered one, so the Batch Runner's handover lands in the right
   // catalogue — settled BEFORE loadSets, or the set below resolves against the wrong one.
   let g='pokemon';
   try{ const st=localStorage.getItem(GAME_KEY); if(st) g=st; }catch(e){}
+  // ?lang= likewise, and BEFORE selectGame for the same reason: selectGame calls loadSets, and the
+  // JP and English catalogues share set codes, so the wrong one resolves to the wrong card.
+  try{ const sl=localStorage.getItem(LANG_KEY); if(sl) LANG=sl; }catch(e){}
+  const ql=q.get('lang');
+  if(ql){ const row=TCG.pokemonIntl.langRow(ql); if(row) LANG=row[0]; }
+  const ga=TCG.stockGames.adapterFor(q.get('game')||g);
+  $('langSel').innerHTML=(ga.langs||[]).map(l=>'<option value="'+esc(l.code)+'">'+esc(l.label)+'</option>').join('');
   await selectGame(q.get('game')||g,{boot:true});
   await checkAccount();
   if(window.TCG&&TCG.loadFx) TCG.loadFx();
@@ -1075,10 +1317,14 @@ async function boot(){
 <script type="module">
 import { searchUrl, itemUrl } from '/lib/ebay-links.mjs';
 import { adapterFor, STOCK_GAME_IDS, compsQueryFor } from '/lib/stock-games.mjs';
+import * as pokemonIntl from '/lib/pokemon-intl.mjs';
 window.TCG = window.TCG || {};
 TCG.ebaySearchUrl = (q, sold) => searchUrl(q, { sold: !!sold });
 TCG.ebayItemUrl = (id) => itemUrl(id);
 TCG.stockGames = { adapterFor, ids: STOCK_GAME_IDS, compsQueryFor };
+// The non-English vocabulary — the same module the server publishes through and the same rules the
+// card builder mirrors inline, rather than a third copy of "what is a Japanese set called".
+TCG.pokemonIntl = pokemonIntl;
 if (window.boot) await window.boot();
 if (window.syncEbayLinks) window.syncEbayLinks();
 </script>

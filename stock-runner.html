@@ -205,8 +205,10 @@
     <h3>1 &middot; Add cards <span class="h-note" id="idxNote"></span></h3>
     <div class="srcgrid">
       <div>
-        <label for="gameSel">Game</label>
-        <select id="gameSel" style="margin-bottom:12px;"></select>
+        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:12px;">
+          <div style="flex:1;min-width:0;"><label for="gameSel">Game</label><select id="gameSel"></select></div>
+          <div id="langWrap" style="flex:0 0 150px;display:none;"><label for="langSel">Language</label><select id="langSel"></select></div>
+        </div>
         <div class="setrow">
           <label for="setCode">Set</label>
           <input id="setCode" placeholder="Type a set name or code…" autocomplete="off">
@@ -347,6 +349,9 @@ import {
 // Everything that differs between games — the catalogue URLs, the printing matrix, the row shape,
 // the comps query. Adding a game is an entry in that table, not a branch in this page.
 import { adapterFor, STOCK_GAME_IDS, STOCK_GAME_ADAPTERS, compsQueryFor } from '/lib/stock-games.mjs';
+// The non-English vocabulary — the language table, the set matcher and the English-out naming
+// rules, shared with the single uploader, the server's publish path and the card builder's mirror.
+import * as PI from '/lib/pokemon-intl.mjs';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -378,17 +383,36 @@ const ROWEL = new Map();          // uid -> <tr>, so a row is patched in place i
 // index key would serve Magic cards out of a Pokémon set's copy. The queue key is versioned rather
 // than scoped: a v1 queue predates the switcher, so it restores as Pokémon.
 const GAME_KEY = 'tcg_stock_game';            // shared with the single uploader, so the two agree
-const IDX_KEY = 'tcg_runner_idx2:';           // + game + ':' + setId
+// idx3, not idx2: the index key gained the LANGUAGE for the same reason it gained the game. TCGdex
+// uses the printed set code as its set id, and 44 of those are also pokemontcg.io set ids (SV3,
+// SM6-SM12, XY2-XY10, NEO1-NEO4) — so a Japanese SV3 index would have been served for English sv3,
+// which is the exact failure the game scoping exists to prevent, one axis over.
+const IDX_KEY = 'tcg_runner_idx3:';           // + game + ':' + dataLang + ':' + setId
 const Q_KEY = 'tcg_runner_queue2';            // + ':' + game  (v1 = the pre-switcher Pokémon queue)
 const Q_KEY_V1 = 'tcg_runner_queue1';
 const STORE_KEY = 'tcg_runner_store';         // + ':' + game
+// Shared with the single uploader exactly as GAME_KEY is, so the two pages agree about what you are
+// working on. Its OWN key rather than a field on the game one: language and game change
+// independently, and a combined value would have to be migrated the first time either moved.
+const LANG_KEY = 'tcg_stock_lang';
 
 let GAME = 'pokemon', GA = adapterFor(GAME);
+// The active PRINT LANGUAGE for the whole batch. One language per pile is the deal: the catalogue,
+// the duplicate check and the comps query are all scoped to it.
+let LANG = 'EN', PKM_INTL = null, DEX_EN = null;
+const INTL_CACHE_KEY = 'pkm_intl_sets_v1';    // shared with pokemon-listing-builder.html
+const DEX_CACHE_KEY = 'pkm_dex_en_v3';        // ditto
+const isIntl = () => !!(GA && GA.langs) && PI.dataLangOf(LANG) !== 'en';
+const dataLang = () => PI.dataLangOf(LANG);
 function readGame() {
   try { const g = localStorage.getItem(GAME_KEY); if (g && STOCK_GAME_IDS.includes(g)) return g; } catch (e) {}
   return 'pokemon';
 }
-const idxKey = (setId) => IDX_KEY + GAME + ':' + setId;
+function readLang() {
+  try { const l = localStorage.getItem(LANG_KEY); if (l && (GA.langs || []).some((x) => x.code === l)) return l; } catch (e) {}
+  return 'EN';
+}
+const idxKey = (setId) => IDX_KEY + GAME + ':' + dataLang() + ':' + setId;
 const qKey = (g) => Q_KEY + ':' + (g || GAME);
 const storeKey = () => STORE_KEY + ':' + GAME;
 
@@ -399,7 +423,7 @@ const storeKey = () => STORE_KEY + ':' + GAME;
 // and every set pick going back to the server. One sweep at boot, once.
 function dropLegacyIndexes() {
   try {
-    for (const k of Object.keys(localStorage)) if (k.startsWith('tcg_runner_idx1:')) localStorage.removeItem(k);
+    for (const k of Object.keys(localStorage)) if (k.startsWith('tcg_runner_idx1:') || k.startsWith('tcg_runner_idx2:')) localStorage.removeItem(k);
   } catch (e) { /* GR7: a browser that will not let us tidy up is not a reason to fail */ }
 }
 
@@ -475,8 +499,32 @@ function wireSetCombobox() {
     onPick: (it) => { const s = SETS.find((x) => x.value === it.value) || it; selectSet(s); },
   });
 }
+// The non-English set list is a baked file, not an endpoint (data/pokemon-intl-sets.json, rebaked
+// daily by lib/refresh.mjs) — the same file and localStorage key the card builder and the single
+// uploader read, so all three offer the same sets.
+async function loadIntlSets() {
+  if (!PKM_INTL) { try { const raw = localStorage.getItem(INTL_CACHE_KEY); if (raw) { const o = JSON.parse(raw); if (o && typeof o === 'object') PKM_INTL = o; } } catch (e) {} }
+  try { const r = await fetch(GA.intlSetsUrl()); if (r.ok) { const o = await r.json(); if (o && typeof o === 'object') { PKM_INTL = o; try { localStorage.setItem(INTL_CACHE_KEY, JSON.stringify(o)); } catch (e) {} } } } catch (e) {}
+  return PKM_INTL || {};
+}
+// national-dex # -> English name, so a TCGdex card in native script gets an English title.
+async function loadDexMap() {
+  if (!DEX_EN) { try { const raw = localStorage.getItem(DEX_CACHE_KEY); if (raw) { const o = JSON.parse(raw); if (o && o.dex) DEX_EN = o; } } catch (e) {} }
+  try { const r = await fetch('/data/pokemon-dex-en.json'); if (r.ok) { const o = await r.json(); if (o && o.dex) { DEX_EN = o; try { localStorage.setItem(DEX_CACHE_KEY, JSON.stringify(o)); } catch (e) {} } } } catch (e) {}
+  return DEX_EN || {};
+}
+async function loadSetsIntl() {
+  loadDexMap();                                  // fire-and-forget; only the card NAME needs it
+  SETS = PI.intlSetsFrom(await loadIntlSets(), dataLang());
+  const suspect = SETS.filter((s) => s.suspect).length;
+  $('setStatus').textContent = SETS.length
+    ? SETS.length + ' sets' + (suspect ? ' · ' + suspect + ' with an unverified name' : '')
+    : 'no ' + PI.labelFromLang(LANG) + ' sets — is data/pokemon-intl-sets.json baked?';
+  wireSetCombobox();
+}
 async function loadSets() {
-  const cacheKey = GA.setsCacheKey;
+  if (isIntl()) return loadSetsIntl();
+  const cacheKey = GA.setsCacheKeyFor ? GA.setsCacheKeyFor('en') : GA.setsCacheKey;
   SETS = [];
   try { const c = JSON.parse(localStorage.getItem(cacheKey) || 'null'); if (c && c.length) { SETS = c; $('setStatus').textContent = SETS.length + ' sets'; wireSetCombobox(); } } catch (e) {}
   try {
@@ -502,8 +550,15 @@ function setCodes() { return new Set(SETS.map((s) => s.code).filter(Boolean)); }
 // ---------------------------------------------------------------------------
 function applyGameChrome() {
   document.title = 'Batch Runner — ' + GA.label;
-  $('gameTag').textContent = GA.tag;
-  $('setCode').placeholder = 'Type a set name or code…';
+  $('gameTag').textContent = GA.tag + (isIntl() ? ' · ' + PI.labelFromLang(LANG) : '');
+  $('setCode').placeholder = isIntl() ? PI.setPlaceholder(dataLang()) : 'Type a set name or code…';
+  // Only Pokémon has more than one catalogue lane; for the others the control is absent rather than
+  // disabled, because a language list with one entry is a question with one answer.
+  $('langWrap').style.display = GA.langs ? '' : 'none';
+  if (GA.langs) {
+    $('langSel').innerHTML = GA.langs.map((l) => '<option value="' + esc(l.code) + '">' + esc(l.label) + '</option>').join('');
+    $('langSel').value = LANG;
+  }
   // The catch-line grammar is per game: Magic has no reverse holo, and its finish letters differ.
   const toks = Object.keys(GA.printingTokens).join(' ');
   // Off the adapter, not a ternary on GAME — this was the last hardcoded game literal in the page,
@@ -518,10 +573,35 @@ function applyGameChrome() {
   $('catch').placeholder = eg;
   // Rarity filter options come from the adapter — Magic splits mythic out, because on a set that is
   // 61% mythic "rare and up" selects most of the box.
+  //
+  // For a non-English lane the list is EMPTY, leaving only "all rarities". /api/catalog/cards
+  // returns rarity:'' for both its sources, and rarityClass('') falls through to 'rare_plus' — so
+  // "Common" would have selected nothing and "Rare and above" everything, which is a filter that
+  // lies rather than one that is missing (GR4).
   const rar = $('trar'), was = rar.value;
+  const rarOpts = GA.rarityOptionsFor ? GA.rarityOptionsFor(LANG) : GA.rarityOptions;
   rar.innerHTML = '<option value="">all rarities</option>'
-    + GA.rarityOptions.map((o) => '<option value="' + esc(o.value) + '">' + esc(o.label.toLowerCase()) + '</option>').join('');
+    + rarOpts.map((o) => '<option value="' + esc(o.value) + '">' + esc(o.label.toLowerCase()) + '</option>').join('');
   if ([...rar.options].some((o) => o.value === was)) rar.value = was;
+  $('trar').style.display = rarOpts.length ? '' : 'none';
+}
+// Switching language re-scopes the catalogue exactly as switching game does, and for the same
+// reason: set ids collide across languages, so a half-swapped page looks a Japanese number up in an
+// English set that happens to share its printed code. The QUEUE survives — every row carries its own
+// language (rowKey() already includes it), so a half-typed English pile is not destroyed by flicking
+// to Japanese to check one card.
+async function selectLang(l, { boot = false } = {}) {
+  if (!GA.langs) return;
+  if (!boot && l === LANG) return;
+  LANG = (GA.langs.some((x) => x.code === l)) ? l : 'EN';
+  try { localStorage.setItem(LANG_KEY, LANG); } catch (e) {}
+  applyGameChrome();
+  setObj = null; INDEX.clear(); SETS = []; SET_AGE.clear();
+  $('setCode').value = ''; $('catch').value = ''; $('catch').disabled = true;
+  refreshIdxNote(); renderGhost();
+  if (mode === 'set') renderTickList();
+  stat($('setStatus'), 'load', 'loading ' + esc(PI.labelFromLang(LANG)) + ' sets…');
+  await loadSets();
 }
 async function selectGame(g, { boot = false } = {}) {
   if (!boot && g === GAME) return;
@@ -529,6 +609,9 @@ async function selectGame(g, { boot = false } = {}) {
   GA = adapterFor(GAME);
   try { localStorage.setItem(GAME_KEY, GAME); } catch (e) {}
   $('gameSel').value = GAME;
+  // A game with no language lanes IS English. Leaving a remembered 'JP' on a Magic pile would stamp
+  // the wrong Language aspect on every listing in it, with the control that could fix it hidden.
+  if (!GA.langs || !GA.langs.some((x) => x.code === LANG)) LANG = 'EN';
   applyGameChrome();
   // The other game's sets and indexes are not this game's. Drop them rather than leaving a picker
   // that offers sets this catalogue has never heard of.
@@ -556,7 +639,12 @@ function buildIndex(setMeta, cards) {
   const byNum = new Map(), byName = [];
   for (const c of cards) {
     for (const k of numKeys(GA.rawNumber(c))) { if (!byNum.has(k)) byNum.set(k, []); byNum.get(k).push(c); }
-    byName.push({ q: String(c.name || '').toLowerCase(), c });
+    // A non-English card is indexed under BOTH names, because either is a reasonable thing to
+    // type: the English one is what the listing will say, the native one is what is printed on the
+    // card in your hand. So `*charizard` and `*リザードン` both find it.
+    const shown = GA.displayName ? GA.displayName(c, DEX_EN) : c.name;
+    byName.push({ q: String(shown || '').toLowerCase(), c });
+    if (c && c.__intl && c.name && c.name !== shown) byName.push({ q: String(c.name).toLowerCase(), c });
   }
   return { set: setMeta, cards, byNum, byName };
 }
@@ -593,12 +681,19 @@ async function loadSetIndex(setMeta, { refresh = false } = {}) {
   try {
     // ONE request: the server does the paging (a set over 250 cards needs several) and answers from
     // its own disk copy unless we ask it not to.
-    const r = await TCG.fetchJson(GA.setCardsUrl(setId, refresh),
+    // For a non-English lane this is /api/catalog/cards, which picks its own source (TCGdex briefs
+    // or the PriceCharting console), normalises both into the SAME envelope this already parses,
+    // and disk-caches for 24h with a last-good fallback — so the one-request-per-set property and
+    // GR7 both hold on the intl lanes without a second code path here.
+    const r = await TCG.fetchJson(GA.setCardsUrl(setId, refresh, LANG, setMeta.raw),
       { onRetry: (n) => act && act.update('retry ' + n) });
     if (!r.ok) throw new Error('http ' + r.status);
     const j = await r.json();
-    const all = Array.isArray(j.cards) ? j.cards : [];
+    let all = Array.isArray(j.cards) ? j.cards : [];
     if (!all.length) throw new Error('no cards returned');
+    // Adapt at the boundary: from here down every helper works on a card object without being told
+    // a language, including the adapterFor(row.game) calls on the mixed-pile paths.
+    if (isIntl()) all = all.map((c) => GA.intlCardFromIndex(c, setMeta.raw, LANG));
     const ix = buildIndex(setMeta, all);
     INDEX.set(setId, ix); cacheIndex(setId, all); setCacheAge(setId, Date.parse(j.cachedAt) || Date.now());
     act && act.done(all.length + ' cards');
@@ -672,6 +767,12 @@ function resolveEntry(parsed) {
 const numOf = (c) => GA.cardNumber(c);
 const numOfRow = (r) => adapterFor(r.game || GAME).cardNumber(r.card);
 const thumbOf = (g, c) => adapterFor(g || GAME).thumbUrl(c);
+// The name to SHOW and to search on, which for a non-English card is not the name on the card:
+// TCGdex hands back リザードンex and the listing will say "Charizard ex". Every other column in the
+// grid reflects what is about to be published, so this one does too — and an eBay AU buyer cannot
+// search katakana. Falls back to the native name when nothing resolved it (a Trainer with no
+// English source), because a blank cell is worse than a name in the wrong script.
+const nameOf = (r) => (r.nc && r.nc.name) || (r.card && r.card.name) || '';
 
 function printingFor(card, token) {
   const ps = GA.printingsFor(card);
@@ -684,7 +785,9 @@ function makeRow(card, ix, parsed) {
   const pk = printingFor(card, parsed.printing);
   // The canonical card, per game: identity, printed number, image, language and the facts that get
   // persisted. Held on the row so nothing downstream has to know which API the card came from.
-  const nc = GA.normalizeCard(card, ix.set);
+  // DEX_EN only matters on a non-English lane, where it turns TCGdex's native card name into the
+  // English one the eBay title is built from. Undefined on the English lane and unread there.
+  const nc = GA.normalizeCard(card, ix.set, DEX_EN);
   const r = {
     // GAME IS PART OF ROW IDENTITY. rowKey() leads with it, and set codes collide across games —
     // an unstamped row would merge a Pokémon sv3-125 and a Magic hob-125 into one listing.
@@ -824,8 +927,12 @@ async function flushDupes() {
   const keys = batch.map((r) => ({
     // r.game, not the active one: a mixed pile asks each row's own shelf. Getting this wrong reads
     // as a CLEAN duplicate check, because it confidently answers about the other game's stock.
-    game: r.game || GAME, identity_key: r.identityKey, name: r.card.name, variant: r.variant,
-    language: 'EN', condition: isNearMint(r.cond) ? 'Ungraded, Near Mint' : 'Ungraded, ' + r.cond,
+    // r.language, not a literal: language is part of stockKey (lib/inventory.mjs), so 'EN' asked
+    // the shelf about the English printing of a Japanese card and came back with a clean bill for
+    // stock that may well be sitting there. Live for Magic too, which has produced Japanese and
+    // Dwarvish rows since Scryfall reached this page.
+    game: r.game || GAME, identity_key: r.identityKey, name: nameOf(r), variant: r.variant,
+    language: r.language || 'EN', condition: isNearMint(r.cond) ? 'Ungraded, Near Mint' : 'Ungraded, ' + r.cond,
   }));
   try {
     const j = await fetch('/api/inventory/match/batch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keys }) }).then((x) => x.json());
@@ -878,7 +985,7 @@ function rowHtml(r) {
     + '<td><input type="checkbox" class="inc"></td>'
     + '<td data-c="state"></td>'
     + '<td class="c-thumb"><img loading="lazy" src="' + esc(thumbOf(r.game, c)) + '" alt=""></td>'
-    + '<td class="c-card"><div class="nm">' + esc(c.name) + '</div><div class="sm">' + esc(r.setLabel) + (c.rarity ? ' · ' + esc(c.rarity) : '') + '</div></td>'
+    + '<td class="c-card"><div class="nm">' + esc(nameOf(r)) + '</div><div class="sm">' + esc(r.setLabel) + (c.rarity ? ' · ' + esc(c.rarity) : '') + '</div></td>'
     + '<td class="mono" data-c="num">' + esc(numDisp) + '</td>'
     + '<td data-c="printing"></td>'
     + '<td data-c="cond"></td>'
@@ -934,11 +1041,19 @@ function patchRow(r) {
   // An empty MKT cell on a surge foil is a DECISION, not a gap: Scryfall reports the plain-foil
   // figure for a surge print, so using it as the disagreement cross-check would be wrong by ~4x.
   // Say so, or the blank reads as missing data.
+  //
+  // A NON-ENGLISH row has no market figure at all — TCGplayer and Cardmarket do not price these
+  // printings, and TCGdex quotes Cardmarket in euros, which this column is consumed as USD. So the
+  // disagreement detector (eBay AU vs market) simply cannot run on it, and flagsFor() raises
+  // `unverified` exactly as it should. That is a fact worth stating rather than a gap: an empty
+  // cell beside a priced English row reads as a failed fetch (GR4).
   setCell(tr, 'mkt', r.mktUsd != null
     ? '<span>US$' + r.mktUsd.toFixed(2) + '</span>' + (r.mktAud != null ? '<div class="muted mono">' + money(r.mktAud) + '</div>' : '')
     : r.mktUnreliable
       ? '<span class="chip amber" title="Scryfall reports the plain foil price for a surge foil print, which is several times off. It is not used as a cross-check here.">surge — no market</span>'
-      : '<span class="muted">—</span>');
+      : (r.language && r.language !== 'EN')
+        ? '<span class="chip dim" title="TCGplayer and Cardmarket do not price non-English printings, so there is no second opinion to cross-check the eBay AU comps against on this row.">no ' + esc(r.language) + ' market</span>'
+        : '<span class="muted">—</span>');
 
   const c = r.comps || {};
   let eb = '<span class="muted">—</span>';
@@ -982,7 +1097,12 @@ function patchRow(r) {
   // The same query lib/listings.mjs priceItem builds, from the same module — so the ↗ link opens
   // the search the price actually came from, and Magic's does not carry a collector number.
   const q = (r.priceInfo && r.priceInfo.query)
-    || compsQueryFor(r.game || GAME, { name: r.card.name, set_name: r.nc ? r.nc.setName : r.setLabel }, numOfRow(r));
+    // language + set_code ride along, or the fallback link searches the ENGLISH market for a
+    // non-English card — the same query the server builds, which is why the function is shared.
+    || compsQueryFor(r.game || GAME, {
+      name: nameOf(r), set_name: r.nc ? r.nc.setName : r.setLabel,
+      set_code: r.nc ? r.nc.setCode : r.setCode, language: r.language,
+    }, numOfRow(r));
   // What it is selling for now, and what it actually sold for — both Australian sellers only. The
   // pair stays on the row after it lists, because the first thing you want after listing a card is
   // to see where you landed against the ones you are competing with.
@@ -1116,7 +1236,7 @@ function refreshNow() {
     '<span>Cards <b>' + ticked.reduce((a, r) => a + r.qty, 0) + '</b></span>',
     '<span>Total ask <b>' + money(totalAsk) + '</b></span>',
     '<span>Median ask <b>' + money(med) + '</b></span>',
-    dearest ? '<span>Dearest <b>' + money(dearest.askAud) + '</b> ' + esc(dearest.card.name) + '</span>' : '',
+    dearest ? '<span>Dearest <b>' + money(dearest.askAud) + '</b> ' + esc(nameOf(dearest)) + '</span>' : '',
     // GR4: a batch priced off asking listings instead of real sold prices is a quiet quality drop,
     // not an error — so it has to be said, not inferred.
     askOnly ? '<span style="color:var(--amber)"><b>' + askOnly + '</b> of ' + priced.length + ' priced from asking listings, not sold prices</span>' : '',
@@ -1153,14 +1273,20 @@ function renderSanity(med) {
   const askOnly = priced.filter((r) => r.askOnly).length;
   const disagree = live.filter((r) => r.askAud > 0 && r.mktAud > 0 && (r.askAud / r.mktAud > DISAGREE_HI || r.askAud / r.mktAud < DISAGREE_LO)).length;
   const noComps = live.filter((r) => r.noComps).length;
+  // Rows with NO second opinion available at all — TCGplayer and Cardmarket do not price a
+  // non-English printing, so the disagreement detector above structurally cannot fire on them and
+  // the eBay AU cluster is the only number in the room. On a Korean or Traditional-Chinese pile
+  // that is every row, and it is a fact the operator needs BEFORE publishing, not after (GR4).
+  const noMarket = live.filter((r) => (r.language && r.language !== 'EN') && r.mktUsd == null).length;
 
   const bits = [
     '<span>Total ask <b>' + money(total) + '</b></span>',
     '<span>Median <b>' + money(med) + '</b></span>',
-    dearest && dearest.askAud ? '<span>Dearest <b>' + money(dearest.askAud) + '</b> ' + esc(dearest.card.name) + '</span>' : '',
+    dearest && dearest.askAud ? '<span>Dearest <b>' + money(dearest.askAud) + '</b> ' + esc(nameOf(dearest)) + '</span>' : '',
     priced.length ? '<span><b>' + mech + '</b> of ' + priced.length + ' at the mechanical undercut</span>' : '',
     askOnly ? '<span class="s-warn"><b>' + askOnly + '</b> priced from asking listings, not sold prices</span>' : '',
     noComps ? '<span class="s-warn"><b>' + noComps + '</b> with no confident comps</span>' : '',
+    noMarket ? '<span class="s-warn"><b>' + noMarket + '</b> with no second opinion — nothing prices non-English printings but eBay</span>' : '',
     disagree ? '<span class="s-bad"><b>' + disagree + '</b> disagree with TCGplayer by more than ' + DISAGREE_HI + '× — <button class="slink" id="sDis">' + (DISAGREE_ONLY ? 'show all' : 'show only these') + '</button></span>' : '',
   ].filter(Boolean);
   box.innerHTML = bits.join('');
@@ -1296,7 +1422,7 @@ for (const th of document.querySelectorAll('th.s')) th.addEventListener('click',
   applySort();
 });
 function sortVal(r, k) {
-  if (k === 'name') return String(r.card.name || '').toLowerCase();
+  if (k === 'name') return String(nameOf(r) || '').toLowerCase();
   if (k === 'num') { const q = numRank(r.rawNumber, r.printingKey); return q; }
   if (k === 'mkt') return r.mktAud ?? -1;
   if (k === 'ebay') return (r.comps && r.comps.recommended) ?? -1;
@@ -1337,7 +1463,7 @@ function renderGhost() {
   if (parsed.askAud != null) bits.push('@ ' + money(parsed.askAud));
   const dupWarn = pk.fromRarity ? ' <span class="chip amber">finish from rarity</span>' : (pk.all.length > 1 ? ' <span class="chip amber">' + pk.all.length + ' printings</span>' : '');
   g.innerHTML = '<img src="' + esc(thumbOf(GAME, c)) + '" alt="">'
-    + '<div><div class="g-nm">' + esc(c.name) + ' <span class="mono muted">' + esc(numOf(c)) + '</span>' + dupWarn + '</div>'
+    + '<div><div class="g-nm">' + esc(GA.displayName ? GA.displayName(c, DEX_EN) : c.name) + ' <span class="mono muted">' + esc(numOf(c)) + '</span>' + dupWarn + '</div>'
     + '<div class="g-meta">' + bits.map(esc).join(' · ') + '</div></div>';
 }
 $('catch').addEventListener('input', renderGhost);
@@ -1412,7 +1538,11 @@ async function bumpExisting(r) {
 function openInUploader(r) {
   // game rides along, or the uploader resolves this set against the wrong catalogue and reports
   // "could not find the set" for a card that is sitting right here.
-  const p = new URLSearchParams({ game: r.game || GAME, set: r.setId, num: r.rawNumber, cond: r.cond, finish: r.finish });
+  // game AND lang ride along, or the uploader resolves this set against the wrong catalogue and
+  // reports "could not find the set" for a card that is sitting right here — and for a non-English
+  // card the set code it is handed frequently IS an English set id, so it would find the WRONG set
+  // rather than none at all.
+  const p = new URLSearchParams({ game: r.game || GAME, lang: r.language || 'EN', set: r.setId, num: r.rawNumber, cond: r.cond, finish: r.finish });
   window.open('/stock-uploader.html?' + p.toString(), '_blank', 'noopener');
 }
 
@@ -1801,7 +1931,7 @@ $('pubBtn').addEventListener('click', async () => {
     + '<div class="kv"><span>Listings</span><span class="mono">' + go.length + '</span></div>'
     + '<div class="kv"><span>Cards</span><span class="mono">' + go.reduce((a, r) => a + r.qty, 0) + '</span></div>'
     + '<div class="kv"><span>Total ask</span><span class="mono">' + money(total) + '</span></div>'
-    + '<div class="kv"><span>Dearest single</span><span class="mono">' + money(dearest ? dearest.askAud : 0) + ' — ' + esc(dearest ? dearest.card.name : '—') + '</span></div>'
+    + '<div class="kv"><span>Dearest single</span><span class="mono">' + money(dearest ? dearest.askAud : 0) + ' — ' + esc(dearest ? nameOf(dearest) : '—') + '</span></div>'
     + '<div class="kv"><span>Store department</span><span>' + depts + '</span></div>'
     + '<div class="kv"><span>Best Offer</span><span>' + boLine + '</span></div>'
     + (blocked.length ? '<div class="kv"><span style="color:var(--red)">Held by the server</span><span class="mono">' + blocked.length + ' will not be sent</span></div>' : '')
@@ -1930,7 +2060,7 @@ async function consumeJob(resp, rows) {
   $('resultBox').innerHTML = '<div class="result">Published <b>' + (s.listed || 0) + '</b> of ' + rows.length + '.'
     + (s.skipped ? ' <span class="muted">' + s.skipped + ' skipped (already live).</span>' : '')
     + (s.aborted ? '<br><span style="color:var(--red)">Batch stopped: ' + esc(s.aborted) + '</span>' : '')
-    + (failures.length ? '<br><span class="muted">Held: ' + failures.map((f) => esc(f.card.name) + ' — ' + esc(f.failed)).join('<br>') + '</span>' : '') + '</div>'
+    + (failures.length ? '<br><span class="muted">Held: ' + failures.map((f) => esc(nameOf(f)) + ' — ' + esc(f.failed)).join('<br>') + '</span>' : '') + '</div>'
     + (failures.length ? failureDetail(failures.find((f) => f.lastFailure) ? failures.find((f) => f.lastFailure).lastFailure : null) : '');
   refresh();
   batchResults(rows, s);
@@ -1947,7 +2077,7 @@ function batchResults(rows, s) {
   const held = rows.filter((r) => r.failed);
   const line = (r, right) => '<div class="rrow"><span style="min-width:0;">'
     + (r.sku ? '<span class="mono" style="color:var(--gold)">' + esc(r.sku) + '</span> ' : '')
-    + esc(r.card.name) + ' <span class="muted">' + esc(numOfRow(r) || '') + '</span>'
+    + esc(nameOf(r)) + ' <span class="muted">' + esc(numOfRow(r) || '') + '</span>'
     + (r.qty > 1 ? ' <span class="muted">×' + r.qty + '</span>' : '')
     + '</span>' + right + '</div>';
 
@@ -2005,7 +2135,10 @@ function saveQueue() {
       // each card against the right catalogue.
       localStorage.setItem(qKey(), JSON.stringify({
         v: 2, at: Date.now(),
-        rows: QUEUE.map((r) => ({ uid: r.uid, game: r.game || GAME, setId: r.setId, cardId: r.cardId, printingKey: r.printingKey, cond: r.cond, condManual: !!r.condManual, qty: r.qty, askAud: r.askAud, manual: r.manual, released: r.released, inc: r.inc, itemId: r.itemId, sku: r.sku, staged: r.staged, published: r.published, listingUrl: r.listingUrl })),
+        // `lang` rides along beside `game` for the same reason: restoreQueue rebuilds a row by
+        // resolving its cardId against a set INDEX, and the intl and English indexes for one set
+        // code hold different cards.
+        rows: QUEUE.map((r) => ({ uid: r.uid, game: r.game || GAME, lang: r.language || 'EN', setId: r.setId, cardId: r.cardId, printingKey: r.printingKey, cond: r.cond, condManual: !!r.condManual, qty: r.qty, askAud: r.askAud, manual: r.manual, released: r.released, inc: r.inc, itemId: r.itemId, sku: r.sku, staged: r.staged, published: r.published, listingUrl: r.listingUrl })),
       }));
     } catch (e) {}
   }, 400);
@@ -2050,7 +2183,14 @@ function offerRestore() {
 async function restoreQueue(saved) {
   // Rows for a game that is not the active one cannot be rebuilt — their set index lives behind a
   // different catalogue. Restore what belongs to this game and say what was left.
-  const rows = saved.rows.filter((r) => (r.game || 'pokemon') === GAME);
+  //
+  // LANGUAGE is part of that, not a refinement of it: the loop below resolves each saved cardId by
+  // running the ACTIVE adapter over the ACTIVE index, and a Japanese SV3 and an English sv3 are
+  // different sets that share a code. Restored under the wrong language the identity key comes out
+  // in the wrong lane, matches nothing, and the row is DROPPED — silently, because the loop simply
+  // `continue`s. Rows in the other language are reported and left in place, exactly like the other
+  // game's, so nothing is lost and the operator knows where it went.
+  const rows = saved.rows.filter((r) => (r.game || 'pokemon') === GAME && (r.lang || 'EN') === LANG);
   const setIds = [...new Set(rows.map((r) => r.setId))];
   for (const sid of setIds) { const s = SETS.find((x) => x.value === sid); if (s) await loadSetIndex(s); }
   for (const sv of rows) {
@@ -2070,7 +2210,7 @@ async function restoreQueue(saved) {
   }
   uid = Math.max(uid, ...QUEUE.map((r) => r.uid)) + 1;
   const other = saved.rows.length - rows.length;
-  if (other) toast(other + ' row' + (other > 1 ? 's' : '') + ' from another game were left where they are — switch to it to restore them');
+  if (other) toast(other + ' row' + (other > 1 ? 's' : '') + ' from another game or language were left where they are — switch to it to restore them');
   refresh();
 }
 window.addEventListener('beforeunload', (e) => {
@@ -2095,6 +2235,12 @@ window.addEventListener('beforeunload', (e) => {
   const qp = new URLSearchParams(location.search);
   $('gameSel').innerHTML = STOCK_GAME_IDS.map((g) => '<option value="' + g + '">' + esc(STOCK_GAME_ADAPTERS[g].label) + '</option>').join('');
   $('gameSel').addEventListener('change', () => selectGame($('gameSel').value));
+  $('langSel').addEventListener('change', () => selectLang($('langSel').value));
+  // The LANGUAGE is settled before selectGame for the same reason the game is: selectGame calls
+  // loadSets, and the intl and English catalogues share set codes.
+  GA = adapterFor(qp.get('game') || readGame());
+  const ql = qp.get('lang');
+  LANG = ql ? (PI.langRow(ql)[0]) : readLang();
   await selectGame(qp.get('game') || readGame(), { boot: true });
   await checkAccount();
   await loadLabelState();

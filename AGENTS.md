@@ -222,7 +222,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `scripts/WINDOWS_SERVICE.md` | pnpm setup + NSSM / firewall instructions for Windows LAN hosting + the daily Claude analysis task. |
 | `tracker.html` | Price-tracker dashboard: opportunities / downtrends / momentum / review-queue / all-tracked, with sparklines (reuses `TCG.lineGraph`). Linked from `index.html`. |
 | `lib/db.mjs` | `node:sqlite` store — opens `data/tracker.db`, PRAGMAs + idempotent DDL (`watchlist` / `price_snapshots` / `signals` / `card_cache`, plus the inventory tables `inventory_items` / `inventory_valuations` / `grading_submissions` / `sku_counter`, §13) + an additive `image_url` migration. All DB access funnels here. |
-| `lib/normalize.mjs` | Server-side mirror of each builder's price extraction + FX math + per-game lookup paths (see Golden Rule 9). |
+| `lib/normalize.mjs` | Server-side mirror of each builder's price extraction + FX math + per-game lookup paths (see Golden Rule 9). `lookupPath`/`pricePath` return **null** for a namespaced non-English Pokémon key — pokemontcg.io has no such card and TCGdex publishes no prices (§17). |
+| `lib/pokemon-intl.mjs` | The non-English Pokémon vocabulary (§17): the `LANGS` table, the lane-namespaced `intlIdentityKey`, the five-way set matcher, `englishCardName`/`nativeInfo`, `intlPrintingsFor` (off TCGdex `variants`), `pcSearchUrl`. Pure browser-safe ESM — both stock pages import it, the server publishes through it, and `pokemon-listing-builder.html` mirrors it inline under `scripts/check-listing-copy.mjs`. |
 | `lib/pricecharting.mjs` | Keyless PriceCharting scraper (Pokémon graded/raw/pop). Parses the public card + population pages server-side; matches by exact collector number + name + fuzzy set. Powers `/api/pc` (display-only; not wired into the tracker/collector). |
 | `shipping-label.html` | Shipping Label Maker. Pastes an eBay address → cleaned, auto-fit address label as a jsPDF (50×30 / 100×50 mm); batch → multi-page PDF. Can also **print direct** to the AUSPRINT PRO: rasterises the label to a 1-bpp bitmap (reusing the jsPDF layout) and POSTs to `/api/print` (Print button + Auto-print toggle). Download path is unchanged. |
 | `pdf-print.html` | PDF Label Printer. Drops any PDF → pdf.js rasterises each page to the same 1-bpp bitmap and POSTs to `/api/print` (no backend change). Size modes: Use PDF size (native) / Fit 50×30 / 100×50 / **100×150**. One-click **🇦🇺 Australia Post 100 × 150** preset (fit 100×150, 180° flip, no dither, threshold 150) for the prepaid AP shipping label eBay hands you. **Darkness** + **Speed** steppers mirror the vendor app and post `{speed,density}` (env-seeded). |
@@ -979,6 +980,77 @@ them back — one source, so the pages' ↗ links cannot drift from the search t
 `STOCK_GAME_IDS` is deliberately a SUBSET of `GAMES`: a game only belongs here once its eBay aspects
 have been checked against the live Taxonomy, which so far is Pokémon, Magic and Lorcana.
 
+### Pokémon in five languages (`lib/pokemon-intl.mjs`)
+
+Both stock tools carry a **language** beside the game — `EN / JP / CN / TW / KO` — and it is a
+property of the BATCH, not the row: one pile, one language. Only Pokémon has more than one lane, so
+the control hides itself for every other game. **This is not a second game.** `game` stays
+`'pokemon'` (a different value silently drops every Pokémon aspect), and every language argument on
+the adapter **defaults to `'en'`**, which is what keeps the English path byte-identical — the GOLDEN
+row in `test/unit/stock-games.test.mjs` is the guard.
+
+**The identity key is namespaced with its TCGdex lane** — `ja:m5-102`, `zh-tw:sv8a-102`. Not a
+convention: TCGdex uses the printed set code as its set id, **44 of those are also pokemontcg.io set
+ids** (`SV3`, `SM6`–`SM12`, `XY2`–`XY10`, `NEO1`–`NEO4`) and **106 of 285 are shared across two or
+more intl languages**, because Korean and Traditional-Chinese sets ARE Japanese sets translated. Un-
+namespaced, a Japanese `SV3-102`, a Korean `SV3-102` and English `sv3-102` are one key — and
+`/api/inventory/match` selects on `identity_key` with **no game and no language filter**. The COLON
+is load-bearing: `SET_ID_RE` (`lib/set-cache.mjs`) disallows it, so a namespaced key can never
+become a cache filename and can never be served out of the English card cache. Pinned by
+`test/invariants/pokemon-intl-namespacing.test.mjs`, which proves the collision rather than
+asserting the rule.
+
+**Two sources, merged — neither is sufficient.** PriceCharting console is PRIMARY where the set has
+a `pcSlug` (English card names, real full-res JPEG art, and the only coverage of sets TCGdex has not
+ingested); TCGdex is the fallback AND the enrichment on top of a PriceCharting hit, because
+PriceCharting carries no rarity, stage, type, illustrator, HP or `dexId` and the eBay aspects need
+all of them. Skip the enrich and a JP listing ships visibly thinner than the English one beside it.
+
+- **`normalizeIntlCard` / `intlCard` / `intlCardFromIndex`** — a non-English card is adapted at the
+  BOUNDARY into a synthetic card carrying its own `__lang` and `__set`, so `rawNumber` /
+  `cardNumber` / `identityKey` / `thumbUrl` / `printingsFor` / `finishFallback` / `normalizeCard` /
+  `displayName` all take a bare card and no language. That matters because the mixed-pile paths call
+  them through `adapterFor(row.game)`, which cannot know one.
+- **GR10 is per source.** TCGdex's `localId` is already card-correct (`004`), so only the
+  denominator pads; PriceCharting reports a bare `4` and needs the era rule on the numerator too.
+  Either way the denominator is the JAPANESE set's count — a JP secret rare prints **102/081**, and
+  102/084 (the English total) is on no card in either language.
+- **Printings come from TCGdex `variants`** (`{firstEdition, holo, normal, reverse}`) — real DATA, so
+  an intl card gets the same GR5 treatment an English one does, and the emitted keys ARE the
+  pokemontcg.io keys, so `printingOrder` / `pickPrinting` / the catch line's `n|r|h` keep working.
+  `finishFromRarity` must **never** run for intl: its regex answers a bare `Rare` with Holo and intl
+  rarity is frequently absent entirely. The runner's per-set index is TCGdex's **briefs** endpoint
+  (no variants, no rarity), so it lands on a declared `Non-holo` default that is deliberately NOT
+  flagged `fromRarity` — it is not one.
+- **Names go out in ENGLISH.** `displayName` is the one rule: PriceCharting's name as-is, otherwise
+  `englishCardName` through `data/pokemon-dex-en.json` (dexId first, then the native-species map),
+  keeping the Latin suffix printed on the card (リザードンex → `Charizard ex`). The grid and the
+  ghost strip show it too, so what you scan cannot differ from what publishes. The set name is
+  `setEnglishName`, which for many sets is really the printed code — `setNameIsCodeOnly` flags that
+  so the operator is told, because inventing a romanisation is GR4.
+- **`compsQueryFor` gains the language word and the native set code** (`… Abyss Eye M5 Japanese`),
+  mirroring the builder's `findEbay`. Without it a JP card searched the English market and the
+  language FILTER — which keeps bilingual English titles — happily kept the English results: a
+  confident price for a card you do not own, arriving through a missing search term.
+- **No second opinion exists for a non-English printing.** TCGplayer and Cardmarket do not price
+  them, and TCGdex quotes Cardmarket in EUR where the MKT column is consumed as USD (GR3). So the
+  disagreement detector cannot fire, `flagsFor` raises `unverified` as it should, the MKT cell
+  carries a `no JP market` chip rather than an ambiguous blank, and the batch sanity strip counts
+  *"N with no second opinion"*. PriceCharting coverage, counted: **ja 116/269 · zh-cn 20/65 ·
+  ko 6/101 · zh-tw 0/98**.
+- **Storage keys.** `setsCacheKey` stays the untouched literal `tcg_uploader_pkm_sets` (see above);
+  `setsCacheKeyFor(lang)` suffixes the intl lanes, which have no history to orphan. The runner's
+  index key became **`tcg_runner_idx3:<game>:<lang>:<setId>`** for the same reason it once gained the
+  game, and `dropLegacyIndexes()` sweeps `idx1` and `idx2`. The QUEUE key stays unscoped — `rowKey()`
+  already includes language — but rows persist their `lang` and `restoreQueue` filters on it, or a
+  row restored in the wrong lane resolves to nothing and is dropped silently.
+- **`lib/pokemon-intl.mjs` is mirrored** into `pokemon-listing-builder.html`, which is a classic
+  `<script>` and cannot import. `scripts/check-listing-copy.mjs` pins the pair (`LANGS`, `langRow`,
+  `speciesKey`, `nativeInfo`, `englishCardName`, `intlNumCandidates`, `setEnglishName`,
+  `setLookupId`, `setPlaceholder`, `intlIdentityKey`). Edit one, edit the other.
+- The builder's `addInv` gate is **lifted** now the keys are safe; `addTrack` stays gated because
+  `pricePath` returns `null` for a namespaced key, so a watchlist row could never collect a price.
+
 That gate is not ceremony. Lorcana's run (2026-08-14) found that the `Game` aspect had been sending
 `Disney Lorcana` since the game landed, where the enum member is `Disney Lorcana TCG` — and because
 `Game` is FREE_TEXT, the near-miss never failed a publish, it just silently earned no facet on the
@@ -1036,6 +1108,12 @@ looks a number up in it, the set-list mode renders it as a tick list. There is n
 which is why the box break costs no extra fetch. A trimmed copy is cached per set in `localStorage`
 under `tcg_runner_idx2:<game>:<setId>` — game-scoped because set ids and set codes collide across
 games, and an unscoped key would serve Magic cards out of a Pokémon set's copy.
+
+**One language per pile.** The Runner carries the same `EN/JP/CN/TW/KO` control the uploader does
+(§17). Switching it re-scopes the catalogue exactly as switching game does, and for the same reason —
+set codes collide across languages — but the QUEUE survives, because `rowKey()` already includes
+language, so flicking to Japanese to check one card does not destroy a half-typed English pile.
+Rows in another language are reported and left in place on restore rather than silently dropped.
 
 **Both games in one pile.** The switcher changes the catalogue, not the queue: every row carries its
 own `game`, `rowKey()` leads with it, `flushDupes` asks that row's shelf, and the grid renders each

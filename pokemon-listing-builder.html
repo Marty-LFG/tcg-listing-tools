@@ -811,9 +811,29 @@ async function doLookupMep(setObj,num){
 // failure falls back to manual entry and never throws.
 // TCGdex localIds are zero-padded ("001", "025"); users type "1"/"25". Try the 3-digit form
 // first (the convention), then fall back — and pass non-numeric promo ids (TG01, SV-P) through.
+// A non-English identity key carries its TCGdex lane, because the printed set codes are NOT unique:
+// 44 of them are also pokemontcg.io set ids (SV3, SM6-SM12, XY2-XY10…) and 106 are shared across
+// two or more intl languages, since Korean and Traditional-Chinese sets ARE Japanese sets
+// translated. Un-namespaced, a Japanese SV3-102, a Korean SV3-102 and English sv3-102 are one key —
+// and /api/inventory/match selects on identity_key with no game or language filter.
+// MIRROR: lib/pokemon-intl.mjs intlIdentityKey (scripts/check-listing-copy.mjs pins the pair).
+function intlIdentityKey(dataLang,setCode,localId){
+  var l=String(dataLang||'').trim().toLowerCase();
+  var s=String(setCode||'').trim().toLowerCase();
+  var n=String(localId==null?'':localId).trim().toLowerCase();
+  if(!l||l==='en'||!s||!n)return '';
+  return l+':'+s+'-'+n;
+}
+// MIRROR: lib/pokemon-intl.mjs intlNumCandidates (scripts/check-listing-copy.mjs pins the pair).
+// The `/total` is dropped first so a pasted printed number ("102/081") works as well as a typed one.
+// A pad is only added when it LENGTHENS the number: ('0'+i).slice(-2) truncated 102 to '02', so a
+// printed 102 that missed fell through to card 2 and matched it confidently.
 function intlNumCandidates(num){
-  var n=String(num||'').trim(),out=[];
-  if(/^\d+$/.test(n)){var i=parseInt(n,10);out.push(('00'+i).slice(-3),String(i),('0'+i).slice(-2));}
+  var n=String(num==null?'':num).split('/')[0].trim(),out=[];
+  if(/^\d+$/.test(n)){var s=String(parseInt(n,10));
+    if(s.length<3)out.push(s.padStart(3,'0'));
+    out.push(s);
+    if(s.length<2)out.push(s.padStart(2,'0'));}
   else{out.push(n,n.toUpperCase());}
   return out.filter(function(v,ix,a){return v&&a.indexOf(v)===ix;});
 }
@@ -893,7 +913,11 @@ async function tryPcLookup(setObj,num,dl,enSet){
       img:card.image?card.image+'/1600.jpg':''};
     set('f_img',_intlMeta.img||'');   // expose the fetched image so it can be overridden
     set('f_pitch',genPitch(readFields()));
-    _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:card.name,variant:val('f_finish'),price:null};
+    // `language` is the STORED code and is what every downstream decision reads — the eBay Language
+    // aspect, the title token, the comps language filter, the rail variant. Without it the row would
+    // save as the 'EN' default and every one of those would be wrong.
+    _trk={game:'pokemon',identity_key:isEn?'':intlIdentityKey(dl,setLookupId(setObj),card.number),
+      _intl:!isEn,language:isEn?'EN':codeFromLang(val('f_lang')),lang:dl,name:card.name,variant:val('f_finish'),price:null};
     act&&(stale?act.fail('PriceCharting cached (stale)'):act.done('PriceCharting '+tag+(tc?' + TCGdex':'')));
     st.className=stale?'status warn':'status ok';st.textContent=(stale?'⚠ ':'✓ ')+card.name+'  #'+card.number+'  ·  '+tag+(tc&&tc.rarity?'  ('+tc.rarity+')':'')+(stale?'  · CACHED (may be out of date)':'');
     render();
@@ -963,9 +987,11 @@ async function doLookupIntl(setObj,num,dl){
     set('f_type',(c.types||[]).join(' / '));
     set('f_finish',/holo|shiny|rare|ex|special/i.test(c.rarity||'')?'Holo':'Non-holo');
     set('f_pitch',genPitch(readFields()));
-    // Listing-only for JP/CN/KO (identity_key stays blank so tracker/inventory/comps-save are gated,
-    // avoiding collisions with the pokemontcg.io id space). See addTrack/addInv.
-    _trk={game:'pokemon',identity_key:'',_intl:true,lang:dl,name:enName,variant:val('f_finish'),price:null};
+    // The identity key is NAMESPACED with the TCGdex lane, which is what makes it safe to store —
+    // it used to be left blank precisely because a bare JP set code collides with the pokemontcg.io
+    // id space. See intlIdentityKey. `language` is the stored code every downstream decision reads.
+    _trk={game:'pokemon',identity_key:intlIdentityKey(dl,setLookupId(setObj),c.localId||num),
+      _intl:true,language:codeFromLang(val('f_lang')),lang:dl,name:enName,variant:val('f_finish'),price:null};
     // Native metadata for the description: original card + set name, romaji, the English-equivalent set,
     // plus SEO extras TCGdex carries (illustrator / HP / regulation mark).
     var ni=nativeInfo(enName);
@@ -997,18 +1023,23 @@ function copy(text,msg){const done=()=>showToast(msg);
 function fb(text,cb){const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}document.body.removeChild(ta);cb&&cb();}
 let tt;function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),1400);}
 let _trk=null;
+// JP/CN/KO cards go into inventory now that their identity keys are namespaced by lane. They used
+// to be refused outright, which is why every one of them had to be listed by hand.
 async function addInv(){
-  if(_trk&&_trk._intl){showToast('JP/CN/KO cards are listing-only for now');return;}
   if(_trk&&_trk._mep){showToast('Mega Evolution Promo is listing-only — not in the price DB yet');return;}
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   if(!(window.TCG&&TCG.addToInventory)){showToast('Inventory unavailable');return;}
   const body=Object.assign({},_trk,{set_name:val('f_set')||null,number:val('f_num')||null,status:'in_stock'});
-  delete body.price;
+  delete body.price; delete body._intl; delete body.lang;
   const r=await TCG.addToInventory(body);
   showToast(r?('Added to inventory ✓ '+(r.sku||'')):'Add failed');
 }
 async function addTrack(){
-  if(_trk&&_trk._intl){showToast('JP/CN/KO cards are listing-only for now');return;}
+  // Still gated, and not for the old reason. The tracker POLLS for a price through
+  // lib/normalize.mjs pricePath, which returns null for a namespaced key because pokemontcg.io has
+  // no such card and TCGdex publishes no prices — so the row would sit in tracker.html for ever,
+  // un-priced and unfixable. A watchlist entry that can never collect is worse than none (GR4).
+  if(_trk&&_trk._intl){showToast('JP/CN/KO cards have no price feed to track — they can go in inventory, not the tracker');return;}
   if(_trk&&_trk._mep){showToast('Mega Evolution Promo is listing-only — not in the price DB yet');return;}
   if(!_trk||!_trk.identity_key){showToast('Look up a card first');return;}
   const r=await TCG.addToTracker(_trk);

@@ -120,6 +120,90 @@ describe('URLs and set lists', () => {
     assert.deepEqual(out.map((s) => s.value), ['hob', 'neo'], 'digital sets are not physical stock');
     assert.deepEqual(out[0], { value: 'hob', label: 'The Hobbit', code: 'HOB', icon: 'h.svg', releaseDate: '2023-06-23' });
   });
+
+  // ---- the non-English lanes ----
+  const P = STOCK_GAME_ADAPTERS.pokemon;
+  // The real data/pokemon-intl-sets.json record, fields included — serie and releaseDate are what
+  // formatCardNumber's era test reads, so a fixture without them pads differently from production.
+  const M5 = {
+    code: 'M5', tcgdexId: 'M5', name_en: 'Abyss Eye', name_native: 'アビスアイ', cardCount: 81,
+    serie: 'ポケモンカードゲーム MEGA', releaseDate: '2026-05-22', pcSlug: 'pokemon-japanese-abyss-eye',
+  };
+
+  // Every language argument defaults to 'en', which is what keeps every existing call site — and
+  // the GOLDEN row below — byte-identical to what it was before the lanes existed.
+  it('leaves the English lane exactly as it was when no language is passed', () => {
+    assert.equal(P.setsUrl(), '/api/pkm/sets?pageSize=500');
+    assert.equal(P.setsUrl('EN'), '/api/pkm/sets?pageSize=500');
+    assert.equal(P.setCardsUrl('sv4'), '/api/pkm/set/sv4/cards');
+    assert.equal(P.setCardsUrl('sv4', false, 'EN'), '/api/pkm/set/sv4/cards');
+    assert.equal(P.cardUrl('sv4', '25'), '/api/pkm/cards/sv4-25');
+  });
+
+  it('sends a non-English set list to the baked index, not to an endpoint', () => {
+    assert.equal(P.setsUrl('JP'), null, 'null means "read the bake"');
+    assert.equal(P.intlSetsUrl(), '/data/pokemon-intl-sets.json');
+  });
+
+  it('routes non-English cards to the catalog + TCGdex routes', () => {
+    const u = new URL(P.setCardsUrl('M5', false, 'JP', M5), 'http://x');
+    assert.equal(u.pathname, '/api/catalog/cards');
+    assert.equal(u.searchParams.get('lang'), 'ja');
+    assert.equal(u.searchParams.get('set'), 'M5');
+    assert.equal(u.searchParams.get('pcSlug'), 'pokemon-japanese-abyss-eye');
+    assert.equal(P.cardUrl('M5', '102', 'JP'), '/api/tcgdex/ja/cards/M5-102');
+    assert.equal(P.cardUrl('SV8A', '1', 'TW'), '/api/tcgdex/zh-tw/cards/SV8A-1');
+    // The zero-padding ladder TCGdex ids need — 3-pad first, and no truncating "pad" for a number
+    // that is already long enough.
+    assert.deepEqual(P.cardUrlCandidates(M5, '1', 'JP'),
+      ['/api/tcgdex/ja/cards/M5-001', '/api/tcgdex/ja/cards/M5-1', '/api/tcgdex/ja/cards/M5-01']);
+    assert.deepEqual(P.cardUrlCandidates(M5, '102', 'JP'), ['/api/tcgdex/ja/cards/M5-102']);
+    assert.deepEqual(P.cardUrlCandidates(M5, '102', 'EN'), [], 'English has no TCGdex lane');
+  });
+
+  it('offers a PriceCharting console only where the set has one', () => {
+    assert.equal(P.pcConsoleUrl(M5), '/api/pc/console?slug=pokemon-japanese-abyss-eye');
+    assert.equal(P.pcConsoleUrl({ code: 'SV8A' }), null);
+  });
+
+  // AGENTS.md §17: templating this literal orphans every browser's cached English set list, and
+  // that cache is the only thing between a flaky pokemontcg.io and an empty picker (GR7).
+  it('keeps the English sets-cache key as the untouched literal', () => {
+    assert.equal(P.setsCacheKey, 'tcg_uploader_pkm_sets');
+    assert.equal(P.setsCacheKeyFor(), 'tcg_uploader_pkm_sets');
+    assert.equal(P.setsCacheKeyFor('EN'), 'tcg_uploader_pkm_sets');
+    assert.equal(P.setsCacheKeyFor('JP'), 'tcg_uploader_pkm_sets:ja');
+  });
+
+  // The rarity filter is built before any card is in hand, so it is the one thing that needs the
+  // language rather than a card. /api/catalog/cards returns rarity:'' for both its sources.
+  it('hides the rarity filter on a lane that has no rarity to filter on', () => {
+    assert.equal(P.rarityOptionsFor('EN').length, 3);
+    assert.deepEqual(P.rarityOptionsFor('JP'), []);
+    assert.deepEqual(P.rarityOptionsFor('KO'), []);
+  });
+
+  // The synthetic card the pages build at the boundary. Every adapter method below takes a bare
+  // card and no language, including through adapterFor(row.game) on the mixed-pile paths.
+  it('reads an intl card through the same methods as an English one', () => {
+    const c = P.intlCard({ lang: 'JP', set: M5, localId: '102', name: 'トリデプス', rarity: 'Ultra Rare', image: 'i.png', source: 'tcgdex' });
+    assert.equal(P.rawNumber(c), '102');
+    assert.equal(P.cardNumber(c), '102/081');
+    assert.equal(P.identityKey(c), 'ja:m5-102');
+    assert.equal(P.thumbUrl(c), 'i.png');
+    assert.deepEqual(P.printingsFor(c), [], 'no variants on a brief');
+    assert.deepEqual(P.finishFallback(c), { finish: 'Non-holo', variant: 'Base', fromRarity: false });
+  });
+
+  // PriceCharting reports a BARE number, so the era rule still has to pad the numerator; TCGdex
+  // reports an already-padded localId and only the denominator moves. Same card, same printed
+  // number, two sources — and getting this backwards prints 4/081 on a card that reads 004/081.
+  it('pads the numerator only when the source did not', () => {
+    const pc = P.intlCard({ lang: 'JP', set: M5, localId: '4', source: 'pricecharting' });
+    const dex = P.intlCard({ lang: 'JP', set: M5, localId: '004', source: 'tcgdex' });
+    assert.equal(P.cardNumber(pc), '004/081');
+    assert.equal(P.cardNumber(dex), '004/081');
+  });
 });
 
 // ---------------------------------------------------------------------------

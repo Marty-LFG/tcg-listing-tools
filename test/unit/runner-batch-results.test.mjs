@@ -22,9 +22,13 @@ function render(rows, s = {}, queue = rows) {
   // numOfRow is the page's per-game number renderer (lib/stock-games.mjs picks the adapter). The
   // receipt only needs A number, so it is stubbed rather than importing the whole table.
   const numOfRow = (r) => String((r.card && r.card.number) || '');
-  const fn = new Function('QUEUE', 'modal', '$', 'esc', 'money', 'numOfRow', 'closeModal', 'clearQueue',
+  // nameOf is the page's display-name rule: for a non-English card the name to show is the ENGLISH
+  // one off the normalized card, not the native one printed on it. Stubbed with the same precedence
+  // the page uses, so a fixture can exercise either.
+  const nameOf = (r) => (r.nc && r.nc.name) || (r.card && r.card.name) || '';
+  const fn = new Function('QUEUE', 'modal', '$', 'esc', 'money', 'numOfRow', 'nameOf', 'closeModal', 'clearQueue',
     'return (' + extractFn(html, 'function batchResults') + ')')(
-    queue, (h) => { painted = h; }, $, esc, money, numOfRow, () => {}, () => {});
+    queue, (h) => { painted = h; }, $, esc, money, numOfRow, nameOf, () => {}, () => {});
   fn(rows, s);
   return { html: painted, wired };
 }

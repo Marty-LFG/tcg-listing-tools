@@ -496,5 +496,121 @@ console.log('\n[bulk additions]');
   }
 }
 
+// ---------------------------------------------------------------------------
+// 5. Pokémon intl vocabulary  ⇄  lib/pokemon-intl.mjs
+// ---------------------------------------------------------------------------
+// The stock uploader and the batch runner list non-English Pokémon through lib/pokemon-intl.mjs;
+// the builder is a classic <script> and keeps its own inline copies. Same mirror rule as the title
+// and description logic above — these functions decide the English name that ships in an eBay
+// title, so a drift between the two surfaces means one tool lists a card the other cannot find.
+console.log('\n[pokemon intl parity]');
+{
+  const PI = await import('../lib/pokemon-intl.mjs');
+  const src = read('pokemon-listing-builder.html');
+
+  // extractFn brace-counts from the first '{'; LANGS is an ARRAY literal, so it needs its own
+  // bracket-counting reader or the scan runs on to some unrelated object later in the file.
+  function extractArray(s, marker) {
+    const at = s.indexOf(marker);
+    if (at < 0) throw new Error('marker not found: ' + marker);
+    const open = s.indexOf('[', at);
+    let depth = 0;
+    for (let i = open; i < s.length; i++) {
+      if (s[i] === '[') depth++;
+      else if (s[i] === ']') { depth--; if (depth === 0) return s.slice(at, i + 1); }
+    }
+    throw new Error('unbalanced brackets after: ' + marker);
+  }
+
+  // A small stand-in for data/pokemon-dex-en.json. Real enough to exercise both resolution paths:
+  // Charizard has a dexId, and the ex/full-art prints that omit one fall back to the native map.
+  const DEX = {
+    dex: { 6: 'Charizard', 43: 'Oddish', 411: 'Bastiodon' },
+    ja: { 'リザードン': 'Charizard', 'ナゾノクサ': 'Oddish', 'トリデプス': 'Bastiodon' },
+    ko: { '리자몽': 'Charizard' },
+    romaji: { charizard: 'Lizardon', oddish: 'Nazonokusa', bastiodon: 'Torideps' },
+  };
+
+  // Bind the free variables the builder's copies close over: DEX_EN and the _EN2JA memo are
+  // module-level `let`s, and activeDataLang() reads the language tile out of the DOM. Same
+  // technique test/unit/runner-tick.test.mjs uses to lift functions off a page.
+  const mkCtx = (dl) => {
+    const ctx = { DEX_EN: DEX, _EN2JA: null, activeDataLang: () => dl };
+    vm.createContext(ctx);
+    for (const m of ['function speciesKey(', 'function en2ja(', 'function nativeInfo(',
+      'function englishCardName(', 'function intlNumCandidates(', 'function setEnglishName(',
+      'function setLookupId(', 'function langRow(', 'function codeFromLang(',
+      'function setPlaceholder(', 'function intlIdentityKey(']) {
+      vm.runInContext(extractFn(src, m) + ';', ctx);
+    }
+    vm.runInContext(extractArray(src, 'const LANGS=') + ';', ctx);
+    return ctx;
+  };
+  const ja = mkCtx('ja');
+
+  // The language table itself, entry for entry. The builder is the source of record for the
+  // wording; the module has to agree or the two tools offer different languages.
+  check('LANGS', JSON.stringify(PI.LANGS), JSON.stringify(vm.runInContext('LANGS', ja)));
+  for (const s of ['English', 'Japanese', 'JP', 'Chinese (Trad.)', '繁體', '简体', '', 'Klingon']) {
+    check('langRow(' + JSON.stringify(s) + ')', JSON.stringify(PI.langRow(s)), JSON.stringify(ja.langRow(s)));
+    check('codeFromLang(' + JSON.stringify(s) + ')', PI.codeFromLang(s), ja.codeFromLang(s));
+  }
+  for (const dl of ['ja', 'zh-cn', 'zh-tw', 'ko', 'en']) {
+    check('setPlaceholder(' + dl + ')', PI.setPlaceholder(dl), vm.runInContext('setPlaceholder()', mkCtx(dl)));
+  }
+
+  for (const s of ['Charizard', 'Mega Charizard ex', 'Pikachu VMAX', 'M Gardevoir EX', 'Oddish', '']) {
+    check('speciesKey(' + JSON.stringify(s) + ')', PI.speciesKey(s), ja.speciesKey(s));
+  }
+
+  // The builder returns { kana, romaji }; the module returns { native, romaji }, because the field
+  // is only kana when the lane is Japanese — the builder's copy reads DEX_EN.ja unconditionally and
+  // would answer a Korean card with Japanese script. The VALUES still have to match on the JP lane,
+  // which is the only lane the builder ever asks about.
+  for (const s of ['Charizard', 'Bastiodon', 'Oddish', 'Charizard ex', 'Boss’s Orders']) {
+    const mine = PI.nativeInfo(DEX, 'ja', s), theirs = ja.nativeInfo(s);
+    check('nativeInfo(' + JSON.stringify(s) + ').native', mine.native, theirs.kana);
+    check('nativeInfo(' + JSON.stringify(s) + ').romaji', mine.romaji, theirs.romaji);
+  }
+
+  // OUTPUT IS ENGLISH. Both resolution paths plus the Trainer that has no English source at all.
+  const cards = [
+    { name: 'リザードンex', dexId: [6] },
+    { name: 'リザードンex' },                       // no dexId — native-species fallback
+    { name: 'ナゾノクサ', dexId: [43] },
+    { name: 'トリデプス' },
+    { name: 'ボスの指令' },                         // Trainer, unmapped -> ''
+    { name: 'Iron Leaves ex', dexId: [] },
+    { name: '' },
+  ];
+  for (const c of cards) {
+    check('englishCardName(' + JSON.stringify(c.name) + ')', PI.englishCardName(c, DEX, 'ja'), ja.englishCardName(c));
+  }
+
+  for (const n of ['1', '25', '102', '102/081', '007', 'TG01', 'SV-P', '', null]) {
+    check('intlNumCandidates(' + JSON.stringify(n) + ')', JSON.stringify(PI.intlNumCandidates(n)), JSON.stringify(ja.intlNumCandidates(n)));
+  }
+
+  // The namespacing rule itself. Both sides mint the key that goes in inventory_items, so a drift
+  // here would file the builder's cards and the stock tools' cards under different identities for
+  // the same physical card — and the duplicate check would stop finding either from the other.
+  const keyVec = [['ja', 'M5', '102'], ['ja', 'SV3', '001'], ['zh-tw', 'SV8A', '102'],
+    ['ko', 'SV6', '045'], ['en', 'sv3', '25'], ['ja', '', '102'], ['ja', 'M5', ''], ['', 'M5', '102']];
+  for (const [l, s, n] of keyVec) {
+    check('intlIdentityKey(' + [l, s, n].join(',') + ')', PI.intlIdentityKey(l, s, n), ja.intlIdentityKey(l, s, n));
+  }
+
+  const sets = [
+    { code: 'M5', tcgdexId: 'M5', name_native: 'アビスアイ', name_en: 'Abyss Eye', enEquivalent: { name: 'Pitch Black' } },
+    { code: 'SV8A', tcgdexId: 'SV8A', name_native: '超電ブレイカー' },      // no romanised name at all
+    { code: 'CSV4C', tcgdexId: 'CSV4C', enEquivalent: { name: 'Paradox Rift' } },
+    { id: 'sv3', name: 'Obsidian Flames' },                                 // an English record
+  ];
+  for (const s of sets) {
+    check('setEnglishName(' + (s.code || s.id) + ')', PI.setEnglishName(s), ja.setEnglishName(s));
+    check('setLookupId(' + (s.code || s.id) + ')', PI.setLookupId(s), ja.setLookupId(s));
+  }
+}
+
 console.log(failures ? '\n' + failures + ' FAILURE(S)' : '\nALL PARITY CHECKS PASSED');
 process.exit(failures ? 1 : 0);
