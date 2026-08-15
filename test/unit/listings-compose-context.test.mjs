@@ -195,6 +195,40 @@ describe('composeMetaFor', () => {
       assert.equal(composeMetaFor({ set_name: 'Legendary Treasures', number: '1' }).setSymbolUrl,
         composeMetaFor({ game: 'pokemon', set_name: 'Legendary Treasures', number: '1' }).setSymbolUrl);
     });
+
+    // Lorcana is the worst case for this guard, because its set codes are BARE NUMBERS and single
+    // letters+digits ('1'…'13', 'P1', 'P2', 'D23') — the most collidable identifiers any game in
+    // the repo uses. Un-guarded, a Disney card could take a Pokémon symbol, a Pokémon wordmark and
+    // a fabricated 'n/total' (GR4 + GR10).
+    it('a Lorcana row never borrows Pokémon set art, whatever its code collides with', () => {
+      for (const set_code of ['1', '2', '13', 'P1', 'P2', 'D23', 'DIS', 'C2', 'cp', 'PD1']) {
+        const m = composeMetaFor({ game: 'lorcana', name: 'Ariel - Ethereal Voice', set_name: 'Whispers in the Well', set_code, number: '241' });
+        assert.doesNotMatch(m.setSymbolUrl || '', /pokemontcg\.io|bulbagarden/, `set_code ${set_code} borrowed Pokémon art`);
+        assert.doesNotMatch(m.setLogoUrl || '', /pokemontcg\.io|bulbagarden/, `set_code ${set_code} borrowed a Pokémon logo`);
+        assert.equal(m.cardNumber, '241', `set_code ${set_code} invented a denominator`);
+      }
+    });
+    it('Lorcana gets NO set art at all — Lorcast publishes neither a symbol nor a wordmark', () => {
+      // Deliberate, and the reason the branch exists at all rather than resolving art: constructing
+      // a symbol URL from the set code is the images.scrydex.com placeholder trap (AGENTS.md 19).
+      // The masthead falls back to the set name, exactly as it does for Magic's missing wordmark.
+      const m = composeMetaFor({ game: 'lorcana', set_name: 'Whispers in the Well', set_code: '10', number: '241' });
+      assert.equal(m.setSymbolUrl, '');
+      assert.equal(m.setLogoUrl, '');
+      assert.equal(m.setName, 'Whispers in the Well', 'the owner’s own name still reaches the rail');
+    });
+    it('a promo-shaped Lorcana set is not mistaken for a Pokémon Black Star promo', () => {
+      // isBlackStarPromoSet matches on the NAME, and 'Promo Set 1' is close enough to be worth
+      // pinning — a Lorcana promo must not pick up the Pokémon black star in the wordmark slot.
+      const m = composeMetaFor({ game: 'lorcana', name: 'Mickey Mouse - Brave Little Tailor', set_name: 'Promo Set 1', set_code: 'P1', number: '1' });
+      assert.equal(m.setLogoUrl, '', 'the black star belongs to Pokémon promos only');
+      assert.equal(m.setSymbolUrl, '');
+      assert.equal(m.cardNumber, '1');
+    });
+    it('every Lorcana meta value is still a string — the rail renderer takes no nulls', () => {
+      const m = composeMetaFor({ game: 'lorcana', set_name: 'Whispers in the Well', set_code: '10', number: '241' });
+      for (const [k, v] of Object.entries(m)) assert.equal(typeof v, 'string', `${k} is ${typeof v}`);
+    });
   });
 });
 
