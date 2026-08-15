@@ -318,6 +318,21 @@ describe('composeListingImage', { skip: SKIP }, () => {
       assert.equal(pre.contentHash, r.contentHash, 'a cache probe that disagrees with the render serves the wrong image');
     });
 
+    it('trim:false skips the detector and re-keys the composite — the catalog-art rule', async () => {
+      // Borderless printings lose real art to the trim (The One Ring HOC, measured), so catalog
+      // sources compose untrimmed. The flag changes pixels, so it must change the key — and only
+      // via the append-only flags segment, so default composites keep their exact hashes.
+      const photo = await cardOnBackground(400, 560);
+      const meta = { setName: 'X', cardNumber: '1' };
+      const on = await compose(photo, meta);
+      const off = await compose(photo, meta, { trim: false });
+      assert.equal(on.card.trimmed, true, 'sanity: the default path trims this input');
+      assert.equal(off.card.trimmed, false, 'trim:false must not crop');
+      assert.notEqual(on.contentHash, off.contentHash);
+      const pre = await hashFor(photo, meta, { cfg: CFG, trim: false });
+      assert.equal(pre.contentHash, off.contentHash, 'probe and render must agree on the flag');
+    });
+
     describe('the boxed code badge (setAbbrev)', () => {
       const meta = { cardName: 'Darth Vader', setName: 'Spark of Rebellion', cardNumber: '010/252', setAbbrev: 'SOR' };
       it('draws when no symbol exists, and folds into the hash', async () => {

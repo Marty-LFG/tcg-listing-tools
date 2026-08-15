@@ -83,7 +83,6 @@
       <div class="pills" id="pills"></div>
       <div class="searchrow"><input id="q" type="text" placeholder="Search name / number / set&hellip;" autocomplete="off"></div>
       <div class="meta-line" id="count"></div>
-      <label class="tog"><input type="checkbox" id="slab"> Preview as graded slab (PSA&nbsp;10)</label>
       <div class="samples" id="samples"><div class="empty">loading&hellip;</div></div>
     </div>
 
@@ -156,7 +155,6 @@
     if(selected<0) return;
     var s=samples[selected], mySeq=++seq;
     var row=JSON.parse(JSON.stringify(s.stockRow));
-    if($('slab').checked){ row.grading_company='PSA'; row.grade='10'; }
     $('who').textContent='· '+s.label;
     $('spin').className='spin show';
     fetch('/api/listing-image/preview',{method:'POST',headers:{'content-type':'application/json'},
@@ -188,7 +186,6 @@
 
   var debounce=null;
   $('q').addEventListener('input',function(){ clearTimeout(debounce); debounce=setTimeout(load,280); });
-  $('slab').addEventListener('change',compose);
   pills(); load();
 })();
 </script>

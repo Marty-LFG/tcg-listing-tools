@@ -71,9 +71,9 @@ describe('sampleFromCard — one cached card, one publish-identical stockRow', (
 describe('gameSamples — search + spread over the local caches', () => {
   // Disk-backed: on a host with cached cards these prove filtering; on a bare checkout they prove
   // the empty shape (never a crash). Neither outcome is vacuous.
-  it('every game returns the { total, samples[] } shape without throwing', () => {
+  it('every game returns the { total, samples[] } shape without throwing', async () => {
     for (const game of GAMES) {
-      const r = gameSamples(game, '', 5);
+      const r = await gameSamples(game, '', 5);
       assert.equal(typeof r.total, 'number', game);
       assert.ok(Array.isArray(r.samples), game);
       assert.ok(r.samples.length <= 5, `${game} ignored the limit`);
@@ -83,8 +83,8 @@ describe('gameSamples — search + spread over the local caches', () => {
       }
     }
   });
-  it('a query filters, and an unmatchable query returns empty rather than the spread', () => {
-    const r = gameSamples('pokemon', 'zzzz-no-such-card-zzzz', 10);
+  it('a query filters, and an unmatchable query returns empty rather than the spread', async () => {
+    const r = await gameSamples('pokemon', 'zzzz-no-such-card-zzzz', 10);
     assert.equal(r.samples.length, 0);
   });
 });
