@@ -1417,14 +1417,27 @@ border is. That also makes every frame opaque, so nothing in this subsystem need
 a PNG branch or a format switch, and **nothing is ever cropped** — a landscape card (SWU Leaders and
 Bases, MTG Battles, Lorcana Locations, Riftbound Battlefields) just contains, with no special case.
 
-**What the bands carry, and the hierarchy.** Top band: the **card name** leads, large, with the
-store mark small at the far end — it earns its place because these images also surface in search
-results and shared links, where an unbranded card could be anyone's, but it is identification, not
-a masthead. Giving it the hero spot pushed the one thing a buyer is looking for into second place.
-Bottom band: the **set mark** (the symbol printed on the card, or the boxed code for the games that
-print one instead), then set name · printed number in gold, then the language marker or the slab's
-grade + cert on the right. The set mark is not decoration — it is the information the vertical eBay
-rail has carried from the start, and the first band pass dropped it.
+**What the bands carry.** Top band: the **card name**, centred, and **never truncated** — it steps
+down through four sizes, then wraps to two lines, and only a single unbreakable token wider than the
+band can still be cut. A clipped name ("ROSA'S ENCOURAGE…") tells a buyer less than the art already
+does. Bottom band: the **set mark at BOTH ends** with the set name over the printed number centred
+between them. Mirroring the mark reads as a frame rather than as a label with something stuck on the
+front, and it survives the no-symbol cases — early Pokémon sets printed none, and Lorcana and One
+Piece have none in the bakes — because then both ends are simply empty and the block stays centred
+on the same axis. The number line carries whatever qualifies it: the language marker, or a slab's
+grade and cert.
+
+**The printed number is never rebuilt here.** It arrives from `composeMetaFor`, which runs
+`printedCardNumber` (Golden Rule 10, which rebuilds the padding pokemontcg.io strips — Base Set's
+`4/102`, Jungle's `11/64`) and `gameCardNumber` (Lorcana's `42/204`, SWU's `010/252`). A second
+formatter would be a second chance to get it wrong.
+
+**The store mark is a CHANNEL decision, not a style one** (`shopify.brandMark`, or `mark` per call).
+On our own storefront it is redundant — the page is already ours, and every tile in a collection grid
+wearing it is noise. Off-site it is the only thing saying whose stock it is: a bare scan in a Google
+Images result or somebody's hotlink could be anyone's. One picture cannot serve both, so `'none'`
+(the default) and `'share'` are two different images, distinguished in the content hash. Toggle it
+per render on `rail-previews.html`.
 
 **Every frame has a mat.** `CARD_MAT_FRACTION` (0.032 of the frame's short edge — 48px on the tile,
 the same mat the eBay square uses) keeps the card off the band's hairline. Without it the card edge

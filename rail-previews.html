@@ -89,6 +89,7 @@
     <div class="card">
       <h2>Composite <span id="who" style="text-transform:none;letter-spacing:0;color:var(--gold);"></span></h2>
       <div class="pills" id="tpills"></div>
+      <div class="pills" id="mpills"></div>
       <div class="preview" id="preview">
         <div class="hint">Pick a card on the left &mdash; the image renders through the same compositor the publish path uses (set art, badges, promo stars, clean One&nbsp;Piece scans included).</div>
         <div class="spin" id="spin">composing&hellip;</div>
@@ -110,7 +111,11 @@
     ['shopify-square','Sealed 1:1'],
     ['og-card','Social 1200×630']
   ];
-  var game='pokemon', target='ebay-square', samples=[], selected=-1, seq=0;
+  // The store mark is a CHANNEL decision: redundant on our own storefront, and the only thing
+  // saying whose stock it is once the image travels off-site (search results, a shared link, a
+  // hotlink). Same card, two images — so it is a switch here rather than a default.
+  var MARKS=[['none','No BK mark (storefront)'],['share','BK mark (shared / search)']];
+  var game='pokemon', target='ebay-square', mark='none', samples=[], selected=-1, seq=0;
   var $=function(id){return document.getElementById(id);};
 
   // Compositor readiness — same status card the lab shows, because a host without sharp or rail
@@ -136,7 +141,21 @@
     var box=$('tpills'); box.innerHTML='';
     TARGETS.forEach(function(t){
       var el=document.createElement('button'); el.className='pill'+(t[0]===target?' on':''); el.textContent=t[1];
-      el.onclick=function(){ target=t[0]; tpills(); compose(); };
+      el.onclick=function(){ target=t[0]; tpills(); mpills(); compose(); };
+      box.appendChild(el);
+    });
+  }
+
+  // Only the banded frames carry the mark as a switch: the eBay square's rails bake it into the art,
+  // and the social card is shared by definition so it always wears one.
+  function mpills(){
+    var box=$('mpills'); box.innerHTML='';
+    var banded = (target==='shopify-card' || target==='shopify-square');
+    box.style.display = banded ? '' : 'none';
+    if(!banded) return;
+    MARKS.forEach(function(m){
+      var el=document.createElement('button'); el.className='pill'+(m[0]===mark?' on':''); el.textContent=m[1];
+      el.onclick=function(){ mark=m[0]; mpills(); compose(); };
       box.appendChild(el);
     });
   }
@@ -181,7 +200,7 @@
     var ebay=(target==='ebay-square');
     var url=ebay?'/api/listing-image/preview':'/api/listing-image/build';
     var body=ebay?{url:s.art,stockRow:row}
-      :{url:s.art,stockRow:row,targets:[target],viewFor:(target==='og-card'?{'og-card':'og'}:{})};
+      :{url:s.art,stockRow:row,targets:[target],mark:mark,viewFor:(target==='og-card'?{'og-card':'og'}:{})};
     var t0=Date.now();
     fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
@@ -228,7 +247,7 @@
 
   var debounce=null;
   $('q').addEventListener('input',function(){ clearTimeout(debounce); debounce=setTimeout(load,280); });
-  pills(); tpills(); load();
+  pills(); tpills(); mpills(); load();
 })();
 </script>
 </body>

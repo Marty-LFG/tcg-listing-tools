@@ -19,44 +19,54 @@ import { fakeCard, sharpOrNull, toRaw } from '../helpers/image-diff.mjs';
 describe('bandText', () => {
   const base = { productType: 'single', cardName: 'Iono', setName: 'Paldea Evolved', cardNumber: '254/182', language: 'English' };
 
-  it('top is the card name, bottom-left is set and printed number', () => {
-    assert.deepEqual(bandText(base), { top: 'IONO', left: 'PALDEA EVOLVED · 254/182', right: '' });
+  it('splits into the card name, the set, and the printed number', () => {
+    assert.deepEqual(bandText(base), { name: 'IONO', set: 'PALDEA EVOLVED', number: '254/182' });
+  });
+
+  it('the number line carries whatever qualifies it, and nothing when nothing does', () => {
+    assert.equal(bandText({ ...base, language: 'Japanese' }).number, '254/182 · JP');
+    assert.equal(bandText({ ...base, productType: 'slab', grader: 'PSA', grade: 10, certNumber: '84512203' }).number,
+      '254/182 · PSA 10 · CERT 84512203');
+  });
+
+  it('a sealed product has no number line at all', () => {
+    assert.equal(bandText({ productType: 'sealed', cardName: 'Booster Box', setName: 'Paldea Evolved' }).number, '');
   });
 
   it('CONDITION NEVER APPEARS — an NM and an LP of one card must share a composite', () => {
     const nm = bandText({ ...base, condition: 'Near Mint' });
     const lp = bandText({ ...base, condition: 'Lightly Played' });
     assert.deepEqual(nm, lp);
-    for (const v of Object.values(nm)) assert.ok(!/MINT|PLAYED|NM|LP/.test(v), `condition leaked into "${v}"`);
+    for (const v of Object.values(nm)) assert.ok(!/MINT|PLAYED/.test(v), `condition leaked into "${v}"`);
   });
 
   it('a non-English printing gets its marker, English gets none', () => {
-    assert.equal(bandText({ ...base, language: 'Japanese' }).right, 'JP');
-    assert.equal(bandText({ ...base, language: 'Korean' }).right, 'KO');
-    assert.equal(bandText({ ...base, language: 'English' }).right, '');
-    assert.equal(bandText({ ...base, language: '' }).right, '');
+    assert.match(bandText({ ...base, language: 'Japanese' }).number, / · JP$/);
+    assert.match(bandText({ ...base, language: 'Korean' }).number, / · KO$/);
+    assert.equal(bandText({ ...base, language: 'English' }).number, '254/182');
+    assert.equal(bandText({ ...base, language: '' }).number, '254/182');
   });
 
   it('a slab carries its grade and cert instead — it is one of one, so nothing splits', () => {
     const t = bandText({ ...base, productType: 'slab', grader: 'PSA', grade: 10, certNumber: '84512203' });
-    assert.equal(t.right, 'PSA 10 · CERT 84512203');
+    assert.match(t.number, /PSA 10 · CERT 84512203$/);
   });
 
   it('a half grade keeps its decimal', () => {
-    assert.equal(bandText({ ...base, productType: 'slab', grader: 'BGS', grade: 9.5 }).right, 'BGS 9.5');
+    assert.match(bandText({ ...base, productType: 'slab', grader: 'BGS', grade: 9.5 }).number, /BGS 9\.5$/);
   });
 
   it('drops what is missing rather than printing undefined', () => {
-    assert.deepEqual(bandText({ productType: 'single' }), { top: '', left: '', right: '' });
-    assert.equal(bandText({ ...base, cardNumber: '' }).left, 'PALDEA EVOLVED');
-    assert.equal(bandText({ ...base, setName: '' }).left, '254/182');
+    assert.deepEqual(bandText({ productType: 'single' }), { name: '', set: '', number: '' });
+    assert.equal(bandText({ ...base, cardNumber: '' }).number, '');
+    assert.equal(bandText({ ...base, setName: '' }).set, '');
   });
 
   it('drops text the bundled Latin font cannot draw, rather than gambling on a substitution', () => {
     // Pango silently falls back to a SYSTEM font for a missing glyph — perfect on the Windows dev
     // box, blank boxes on a Linux server with no CJK font, and nothing reports it.
-    assert.equal(bandText({ ...base, cardName: 'スタートデッキ100' }).top, '');
-    assert.equal(bandText({ ...base, cardName: 'Pokémon Card 151' }).top, 'POKÉMON CARD 151');
+    assert.equal(bandText({ ...base, cardName: 'スタートデッキ100' }).name, '');
+    assert.equal(bandText({ ...base, cardName: 'Pokémon Card 151' }).name, 'POKÉMON CARD 151');
   });
 });
 
@@ -223,29 +233,62 @@ describe('composeBandImage', { skip: SKIP }, () => {
       /uses vertical rails/);
   });
 
-  it('an ordinary slab fits both labels whole, at full size', async () => {
+  it('an ordinary slab shows set, number, grade and cert without losing any of it', async () => {
     const slab = { ...meta, productType: 'slab', grader: 'PSA', grade: 10, certNumber: '84512203' };
     const r = await composeBandImage(await fakeCard(733, 1024), slab, { cfg, trim: false });
-    assert.equal(r.band.drawn.left, 'PALDEA EVOLVED · 254/182');
-    assert.equal(r.band.drawn.right, 'PSA 10 · CERT 84512203');
+    assert.equal(r.band.drawn.set, 'PALDEA EVOLVED');
+    assert.equal(r.band.drawn.number, '254/182 · PSA 10 · CERT 84512203');
   });
 
-  it('when they cannot both fit, the CERT survives and the set name gives way', async () => {
-    // The two labels share one line, so they share one budget. Sizing them independently let them
-    // run into each other; clipping whichever was measured second threw away the cert, which is the
-    // slab's SKU. They now scale down together first, and only then does the left give way —
-    // 48 characters of set name plus a full cert genuinely does not fit at a legible size.
-    const long = { ...meta, productType: 'slab', setName: 'Shrouded Fable Ultra Premium Collection', cardNumber: '000/000', grader: 'PSA', grade: 10, certNumber: '84512203' };
-    const r = await composeBandImage(await fakeCard(733, 1024), long, { cfg, trim: false });
-    assert.equal(r.band.drawn.right, 'PSA 10 · CERT 84512203', 'the cert must survive intact — it is the SKU');
-    assert.ok(r.band.drawn.left.startsWith('SHROUDED FABLE'), 'the set name keeps its head, not its tail');
-    assert.ok(r.band.drawn.left.endsWith('…'), 'and is visibly cut rather than silently overflowing');
+  it('THE CARD NAME IS NEVER TRUNCATED — it shrinks, then wraps to two lines', async () => {
+    // "ROSA'S ENCOURAGE…" was the failure: the one thing on this band a buyer is reading, cut off.
+    const long = { ...meta, cardName: "Rosa's Encouragement" };
+    const a = await composeBandImage(await fakeCard(733, 1024), long, { cfg, trim: false });
+    assert.equal(a.band.drawn.name, "ROSA'S ENCOURAGEMENT");
+    assert.equal(a.band.drawn.nameLines, 1, 'this one still fits on one line');
+
+    const longer = { ...meta, cardName: 'Mega Gardevoir ex Special Illustration Rare' };
+    const b = await composeBandImage(await fakeCard(733, 1024), longer, { cfg, trim: false });
+    assert.equal(b.band.drawn.name, 'MEGA GARDEVOIR EX SPECIAL ILLUSTRATION RARE');
+    assert.equal(b.band.drawn.nameLines, 2, 'too long for one line, so it wraps rather than clips');
+    assert.ok(!b.band.drawn.name.includes('…'));
   });
 
-  it('a pathological label still clips rather than overflowing the band', async () => {
-    const absurd = { ...meta, setName: 'A'.repeat(140), cardNumber: '001/999' };
+  it('even an absurd name keeps every character', async () => {
+    const absurd = { ...meta, cardName: 'A'.repeat(40) + ' ' + 'B'.repeat(40) };
     const r = await composeBandImage(await fakeCard(733, 1024), absurd, { cfg, trim: false });
-    assert.ok(r.band.drawn.left.includes('…'), 'a 140-character set name has to be cut somewhere');
+    assert.equal(r.band.drawn.name, absurd.cardName.toUpperCase());
+    assert.ok(!r.band.drawn.name.includes('…'));
+  });
+
+  it('a set with NO symbol still renders — both ends empty, block still centred', async () => {
+    // Early Pokemon sets printed no symbol, and Lorcana and One Piece have none in the bakes.
+    const r = await composeBandImage(await fakeCard(733, 1024), meta, { cfg, trim: false });
+    assert.equal(r.band.drawn.setMark, undefined);
+    assert.equal(r.band.drawn.set, 'PALDEA EVOLVED');
+    assert.equal(r.band.drawn.number, '254/182');
+  });
+
+  it('the store mark is OFF by default — our own storefront does not need telling whose it is', async () => {
+    const r = await composeBandImage(await fakeCard(733, 1024), meta, { cfg, trim: false });
+    assert.equal(r.band.mark, 'none');
+  });
+
+  it("'share' puts the mark back, and the two are DIFFERENT images", async () => {
+    // They must not collide: the storefront tile and the shareable one are the same card and the
+    // same bytes in, so only the mark distinguishes them — if it were not in the key, whichever
+    // rendered first would be served for both.
+    const bytes = await fakeCard(733, 1024);
+    const plain = await composeBandImage(bytes, meta, { cfg, trim: false });
+    const shared = await composeBandImage(bytes, meta, { cfg, trim: false, mark: 'share' });
+    assert.equal(shared.band.mark, 'share');
+    assert.notEqual(plain.contentHash, shared.contentHash);
+    assert.notEqual(Buffer.compare(plain.buffer, shared.buffer), 0);
+  });
+
+  it('an unknown mark mode falls back to the default rather than throwing', async () => {
+    const r = await composeBandImage(await fakeCard(733, 1024), meta, { cfg, trim: false, mark: 'enormous' });
+    assert.equal(r.band.mark, 'none');
   });
 
   it('the disk cache round-trips on the target extension', async () => {
