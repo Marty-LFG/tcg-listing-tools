@@ -8,10 +8,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber, isBlackStarPromoSet, splitSetIdent, gameCardNumber } from '../../lib/listings.mjs';
+import { composeMetaFor, composeContext, storePhotoOriginal, printedCardNumber, isBlackStarPromoSet, splitSetIdent, gameCardNumber, OVERRIDE_FIELDS } from '../../lib/listings.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
-import { isRailDrawable, PROMO_STAR_URL } from '../../lib/listing-image-config.mjs';
+import { isRailDrawable, PROMO_STAR_URL, railText, resolveLayout, DEFAULT_CONFIG } from '../../lib/listing-image-config.mjs';
 import { findGameSetArt } from '../../lib/set-art-data.mjs';
+import { PRODUCT_TYPES } from '../../lib/sealed.mjs';
 
 // composeContext reads the real config file, so these assertions pin the SHIPPED state: disabled.
 const shipped = (() => {
@@ -410,5 +411,57 @@ describe('storePhotoOriginal', () => {
     const a = storePhotoOriginal(Buffer.from('one ' + process.pid), 'jpg');
     const b = storePhotoOriginal(Buffer.from('two ' + process.pid), 'jpg');
     try { assert.notEqual(a, b); } finally { for (const f of [a, b]) { try { fs.rmSync(f, { force: true }); } catch {} } }
+  });
+});
+
+// --- the sealed productType derivation (Phase 9) ------------------------------------------------
+//
+// `sealed_items.product_type` holds the granular taxonomy and is NEVER the literal 'sealed', so the
+// old `=== 'sealed'` test could not be true for a row in EITHER table — the `sealed` profile and the
+// `sealed` rail art were unreachable from every DB-driven path. These pin the fix AND pin that it
+// changed nothing on the live eBay publish path.
+describe('composeMetaFor — sealed productType', () => {
+  it('a sealed_items row resolves to the sealed profile, whatever its granular type', () => {
+    for (const t of PRODUCT_TYPES) {
+      const m = composeMetaFor({ game: 'pokemon', name: 'Booster Box', set_name: 'Paldea Evolved', product_type: t });
+      assert.equal(m.productType, 'sealed', `product_type '${t}' should resolve to the sealed profile`);
+    }
+  });
+
+  it('NO-OP FOR eBAY: an inventory_items-shaped row is untouched', () => {
+    // inventory_items has no product_type column, so the value is undefined on every publish-path
+    // row. If this ever fails, every raw single in the store just changed rail art.
+    const raw = { game: 'pokemon', name: 'Iono', set_name: 'Paldea Evolved', number: '254' };
+    assert.equal(composeMetaFor(raw).productType, 'single');
+    assert.equal(composeMetaFor({ ...raw, product_type: undefined }).productType, 'single');
+    assert.equal(composeMetaFor({ ...raw, product_type: null }).productType, 'single');
+    assert.equal(composeMetaFor({ ...raw, grading_company: 'PSA', grade: 10 }).productType, 'slab');
+  });
+
+  it('product_type cannot sneak in through the override path', () => {
+    // OVERRIDE_FIELDS is the only thing merged onto a row before composeMetaFor sees it.
+    assert.ok(!OVERRIDE_FIELDS.includes('product_type'),
+      'product_type in OVERRIDE_FIELDS would let a listing override reshape the rails');
+  });
+
+  it('an explicit override wins, for callers that already know which table they read', () => {
+    const m = composeMetaFor({ game: 'pokemon', name: 'Booster Box' }, { productType: 'sealed' });
+    assert.equal(m.productType, 'sealed');
+  });
+
+  it('a slab carries its grade and cert for the bands; a raw single carries none of it', () => {
+    const slab = composeMetaFor({ game: 'pokemon', name: 'Iono', set_name: 'Paldea Evolved', grading_company: 'PSA', grade: 10, cert_number: '84512203' });
+    assert.equal(slab.grader, 'PSA');
+    assert.equal(slab.grade, 10);
+    assert.equal(slab.certNumber, '84512203');
+    const raw = composeMetaFor({ game: 'pokemon', name: 'Iono', set_name: 'Paldea Evolved' });
+    assert.equal(raw.grader, undefined);
+    assert.equal(raw.certNumber, undefined);
+  });
+
+  it('the rail text is UNCHANGED by any of this — condition and grade never reach the eBay rail', () => {
+    const slab = composeMetaFor({ game: 'pokemon', name: 'Iono', set_name: 'Paldea Evolved', number: '254/182', grading_company: 'PSA', grade: 10, cert_number: '84512203' });
+    const lines = railText(slab, resolveLayout(DEFAULT_CONFIG, slab, {}));
+    for (const l of lines) assert.ok(!/PSA|10|84512203/.test(l.replace('254/182', '')), `grade leaked onto the rail: "${l}"`);
   });
 });

@@ -1383,6 +1383,91 @@ hand eBay two columns of dead space and let eBay decide what fills them. `lib/li
 fills them ourselves: the card centred on a 1600×1600 canvas with a fixed 300px branded rail either
 side and a 48px white mat between card and rail.
 
+### The dead-axis rule (and the Shopify frames)
+
+There are now **four output frames**, and one rule generates all of them: **rails fill the frame's
+dead axis.**
+
+| frame | target id | dead axis | furniture |
+|---|---|---|---|
+| eBay 1600×1600 | `ebay-square` | left/right | vertical rails, 300px — **unchanged** |
+| Shopify 1512×2112 (63:88) | `shopify-card` | *none* — so we make one | horizontal bands, top and bottom |
+| Shopify 1600×1600 sealed | `shopify-square` | top/bottom | horizontal bands |
+| Social / OG 1200×630 | `og-card` | left/right | vertical rails, art reused |
+
+Shopify's grid is built on **63:88 — the card's own ratio** (1512 = 63×24, 2112 = 88×24, exact), so
+a trimmed scan would fill it edge to edge with nothing left over. The dead space there is *created*,
+horizontally, for two reasons: side rails would eat a portrait card's width (the eBay square only
+gets away with it because the card is already width-constrained), and horizontal type needs no
+rotation, so a band carries a full set name and printed number at readable size where a 300px
+vertical rail manages two clipped lines.
+
+**The ground is branded, not neutral.** The storefront has a light and a dark mode, and a neutral
+mat would be wrong in one of them — the original spec used that to argue for no furniture at all. A
+branded plum surround is not a mat: it is dark in both modes deliberately, the way a card's own
+border is. That also makes every frame opaque, so nothing in this subsystem needs an alpha channel,
+a PNG branch or a format switch, and **nothing is ever cropped** — a landscape card (SWU Leaders and
+Bases, MTG Battles, Lorcana Locations, Riftbound Battlefields) just contains, with no special case.
+
+**Condition never reaches any of these images.** An NM and an LP of one card are two stock rows with
+*identical source bytes*; condition on the image would split every such pair into two separately
+composed, separately stored images across the whole store. Alt text and the product title carry it
+instead. Slabs are the one exception, and legitimately so — a slab is one of one, so there is no
+pair to split, and its band carries grader, grade and cert.
+
+⚠ **`railsDigest` and `bandsDigest` must stay separate.** `railsDigest(variant)` hashes
+`left.png` + `right.png` and is an **input to the eBay content hash**. The band art lives in the same
+`rails/<variant>/` directories; folding `top.png`/`bottom.png` into that digest would re-key every
+branded image already hosted on a live eBay listing and force a full store re-upload.
+`test/unit/listing-image-hash-pin.test.mjs` pins both, separately, and pins that `railsPresent()`
+still means left+right so a missing band can never stop an eBay listing composing.
+
+**The target segment is append-only.** `targetFingerprint()` returns `''` for `ebay-square` and
+nothing else, and `composeHash` writes the segment only when it is non-empty — so every key minted
+before targets existed is byte-identical. That one function is the entire reason this change cost
+nothing, and it is pinned directly against a matrix varying every `shopify.*` setting.
+
+⚠ **The EXIF whole-frame check on the eBay path is FROZEN, and looks like a bug.** It compares the
+detected region against the **pre-rotate** dimensions, so for EXIF orientations 5–8 it never matches
+and the card takes a whole-frame `extract()` it does not need. That extract is **not** a pixel no-op:
+measured on `test/fixtures/listing-image/exif-orient-6.jpg`, dropping it changes 0.58% of pixels with
+a max channel delta of 97 (control on an unrotated source: delta 0). Hashes are unaffected either
+way, so nothing hosted moves — but a cold render would differ. `lib/listing-image-source.mjs` exposes
+both comparisons; eBay keeps `legacyFull`, the new frames use `frameFull`. Retire it at the D-023
+reset, with the Baloo 2 font change, when everything re-composes anyway.
+
+**Band type is capped at 1200 dpi, not the rails' 420.** The rail cap exists to stop a two-word set
+name rendering absurdly large down a 1600px rail. Band type is already bounded by the band's own
+thickness, so the same cap silently *binds*: a 120dpi reference render of one line is ~14px tall, so
+a 55px target needs ~470dpi and a 67px target ~574dpi — both clamped to 420, both coming out the same
+size, which made the bottom band's shared width budget compute from a width the type never had.
+
+The bottom band's two labels **share one budget and scale together**, and only then does the left
+give way. Sizing them independently let them collide; clipping whichever was measured second threw
+away the cert, which is the slab's SKU.
+
+⚠ **Catalog art resolves through `catalogArtFor()` and nowhere else** (`lib/onepiece-clean-art.mjs`).
+Bandai's keyless One Piece mirrors are SAMPLE-watermarked, and the swap to the clean TCGplayer scan
+used to be applied by hand at each call site. A surface that forgets it publishes a watermarked image
+as the product photo, silently — on Shopify that is position 1 on every One Piece product.
+`test/invariants/catalog-art-single-caller.test.mjs` pins the single caller.
+
+**Sealed:** `sealed_items.product_type` holds the granular taxonomy (`booster_box`,
+`elite_trainer_box`, `tin`, …) and is **never** the literal `'sealed'`, so the old `=== 'sealed'`
+test could not be true for a row in either table — the `sealed` profile and rail art were unreachable
+from every DB-driven path. `composeMetaFor` now derives it from `PRODUCT_TYPES`, and takes an
+explicit `{ productType }` override for callers that already know (the table you read from *is* the
+product type). Provably a no-op for eBay: `inventory_items` has no such column. There is still **no
+sealed publish route** on either channel.
+
+Frames, alt text, filenames and the manifest: `lib/listing-image-targets.mjs`,
+`lib/listing-image-bands.mjs`, `lib/listing-image-names.mjs`, `lib/listing-image-store.mjs`.
+Routes: `GET /api/listing-image/targets`, `POST /api/listing-image/build`,
+`GET /api/listing-image/file/<sha256>.<ext>[/<name>]` — all dispatched *inside* the existing
+`/api/listing-image` middleware, because connect matches by registration order, not longest prefix.
+**`rail-previews.html` is the proof surface**: pick any game, switch frames, see the alt text, the
+filename and the review flag.
+
 ```
 composeListingImage(input, meta, options?)
   -> { buffer, width, height, contentHash, composeVersion, variant, layout, textLines, card }

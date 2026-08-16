@@ -88,6 +88,7 @@
 
     <div class="card">
       <h2>Composite <span id="who" style="text-transform:none;letter-spacing:0;color:var(--gold);"></span></h2>
+      <div class="pills" id="tpills"></div>
       <div class="preview" id="preview">
         <div class="hint">Pick a card on the left &mdash; the image renders through the same compositor the publish path uses (set art, badges, promo stars, clean One&nbsp;Piece scans included).</div>
         <div class="spin" id="spin">composing&hellip;</div>
@@ -100,7 +101,16 @@
 <script>
 (function(){
   var GAMES=[['pokemon','Pokémon'],['mtg','Magic'],['lorcana','Lorcana'],['swu','Star Wars'],['onepiece','One Piece'],['riftbound','Riftbound']];
-  var game='pokemon', samples=[], selected=-1, seq=0;
+  // The output frames. eBay's square goes through /preview (the publish path's own route); the
+  // banded frames and the social card go through /build, which also writes them to the store — so
+  // clicking one here is the same code that a Shopify push runs, not a lookalike.
+  var TARGETS=[
+    ['ebay-square','eBay 1600'],
+    ['shopify-card','Shopify 63:88'],
+    ['shopify-square','Sealed 1:1'],
+    ['og-card','Social 1200×630']
+  ];
+  var game='pokemon', target='ebay-square', samples=[], selected=-1, seq=0;
   var $=function(id){return document.getElementById(id);};
 
   // Compositor readiness — same status card the lab shows, because a host without sharp or rail
@@ -118,6 +128,15 @@
     GAMES.forEach(function(g){
       var el=document.createElement('button'); el.className='pill'+(g[0]===game?' on':''); el.textContent=g[1];
       el.onclick=function(){ game=g[0]; pills(); load(); };
+      box.appendChild(el);
+    });
+  }
+
+  function tpills(){
+    var box=$('tpills'); box.innerHTML='';
+    TARGETS.forEach(function(t){
+      var el=document.createElement('button'); el.className='pill'+(t[0]===target?' on':''); el.textContent=t[1];
+      el.onclick=function(){ target=t[0]; tpills(); compose(); };
       box.appendChild(el);
     });
   }
@@ -157,27 +176,50 @@
     var row=JSON.parse(JSON.stringify(s.stockRow));
     $('who').textContent='· '+s.label;
     $('spin').className='spin show';
-    fetch('/api/listing-image/preview',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({url:s.art,stockRow:row})})
+    // The eBay square is the publish path's own route and answers with a data URL; the banded
+    // frames and the social card go through /build, which stores them and answers with a manifest.
+    var ebay=(target==='ebay-square');
+    var url=ebay?'/api/listing-image/preview':'/api/listing-image/build';
+    var body=ebay?{url:s.art,stockRow:row}
+      :{url:s.art,stockRow:row,targets:[target],viewFor:(target==='og-card'?{'og-card':'og'}:{})};
+    var t0=Date.now();
+    fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
       .then(function(res){
         if(mySeq!==seq) return;                       // a newer click superseded this render
         $('spin').className='spin';
         var p=$('preview'), facts=$('facts');
         if(!res.ok){ p.innerHTML='<div class="hint">'+((res.j&&res.j.error)||'compose failed')+'</div><div class="spin" id="spin"></div>'; facts.innerHTML=''; return; }
-        var j=res.j;
+        var j=res.j, bits;
         p.innerHTML='<div class="spin" id="spin"></div>';
-        var img=document.createElement('img'); img.src=j.dataUrl; img.alt='composed listing image';
+        var img=document.createElement('img'); img.alt='composed listing image';
+        if(ebay){
+          img.src=j.dataUrl;
+          var b=j.badge||{};
+          bits=[
+            ['variant',j.variant],
+            ['rail text',(j.textLines||[]).join(' / ')||'—'],
+            ['badge',(b.symbol?'symbol':(b.abbrev?'code '+b.abbrev:'—'))+(b.number?' · '+b.number:'')],
+            ['logo',b.logo?'yes':'—'],
+            ['render',j.ms+'ms · '+Math.round(j.bytes/1024)+'kB'],
+            ['hash',(j.contentHash||'').slice(0,12)]
+          ];
+        } else {
+          // /build returns the whole set; the social card is reported separately from the gallery.
+          var m=j.manifest||{}, im=(m.images&&m.images[0])||m.social||null;
+          if(!im){ p.innerHTML='<div class="hint">'+((j.warnings||[]).join(' · ')||'nothing rendered')+'</div><div class="spin" id="spin"></div>'; facts.innerHTML=''; return; }
+          img.src=im.url;
+          bits=[
+            ['frame',(im.width&&im.height)?im.width+'×'+im.height:(im.target||target)],
+            ['alt',m.alt||'—'],
+            ['filename',im.filename||'—'],
+            ['review',im.review?(im.review.reason+' ('+Math.round(im.review.off*1000)/10+'% off)'):'clean'],
+            ['render',(Date.now()-t0)+'ms'+(im.bytes?' · '+Math.round(im.bytes/1024)+'kB':'')],
+            ['hash',(im.contentHash||'').slice(0,12)]
+          ];
+          if((j.warnings||[]).length) bits.push(['warnings',j.warnings.join(' · ')]);
+        }
         p.insertBefore(img,p.firstChild);
-        var b=j.badge||{};
-        var bits=[
-          ['variant',j.variant],
-          ['rail text',(j.textLines||[]).join(' / ')||'—'],
-          ['badge',(b.symbol?'symbol':(b.abbrev?'code '+b.abbrev:'—'))+(b.number?' · '+b.number:'')],
-          ['logo',b.logo?'yes':'—'],
-          ['render',j.ms+'ms · '+Math.round(j.bytes/1024)+'kB'],
-          ['hash',(j.contentHash||'').slice(0,12)]
-        ];
         facts.innerHTML='';
         bits.forEach(function(kv){ var el=document.createElement('span'); el.className='fact'; el.innerHTML='<b>'+kv[0]+'</b> '; el.appendChild(document.createTextNode(kv[1])); facts.appendChild(el); });
       })
@@ -186,7 +228,7 @@
 
   var debounce=null;
   $('q').addEventListener('input',function(){ clearTimeout(debounce); debounce=setTimeout(load,280); });
-  pills(); load();
+  pills(); tpills(); load();
 })();
 </script>
 </body>

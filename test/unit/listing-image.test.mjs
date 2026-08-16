@@ -230,6 +230,9 @@ describe('composeListingImage', { skip: SKIP }, () => {
         const meta = { language: 'English', setName: 'Cached Set' };
         const first = await compose(card, meta, { cacheDir: dir });
         assert.equal(first.cached, false);
+        // The '.jpg' is LOAD-BEARING, not incidental. Every cached eBay composite on every host is
+        // at <hash>.jpg; deriving the extension from a target's format (as the Shopify frames do)
+        // must leave the eBay square landing on exactly this name or every cache goes cold.
         assert.ok(fs.existsSync(path.join(dir, first.contentHash + '.jpg')));
         const second = await compose(card, meta, { cacheDir: dir });
         assert.equal(second.cached, true);

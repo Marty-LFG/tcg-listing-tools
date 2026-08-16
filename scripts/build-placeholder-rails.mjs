@@ -5,6 +5,15 @@
 // it is ready; nothing in the pipeline needs to change, and swapping the files re-composes every
 // listing automatically (the rail bytes are hashed into the content key).
 //
+// TWO FAMILIES OF ART, and they are deliberately separate files:
+//   · left.png / right.png   — the VERTICAL rails, for eBay's square and the OG card
+//   · top.png / bottom.png   — the HORIZONTAL bands, for the Shopify 63:88 tile
+//
+// ⚠ THEIR DIGESTS MUST NOT BE MERGED. railsDigest() hashes left+right and is an INPUT to the eBay
+// content hash, so folding the bands into it would re-key every branded image already hosted on a
+// live eBay listing and force a full store re-upload. lib/listing-image-assets.mjs keeps
+// bandsDigest() separate for exactly that reason, and a test pins it.
+//
 // THE CONTRACT the real art has to meet:
 //   · One PNG per side per variant, at rails/<variant>/left.png and rails/<variant>/right.png.
 //   · Any authoring scale works — the compositor normalises to the profile's rail width ONCE at
@@ -40,6 +49,17 @@ const VARIANTS = {
 const HEIGHT = 3200;
 const LOGO_FRACTION = 0.78;   // of the rail width — leaves a margin either side at every scale
 
+// The horizontal bands, authored on the same 3200 long axis as the rails so the two families scale
+// alike. 3200 x 400 is 2x of a 1600 x 200 band.
+//
+// The bands carry the GRADIENT AND THE HAIRLINE ONLY — no store mark. The vertical rails can bake
+// theirs in because their authoring aspect matches the frame they land in; a band serves both the
+// 1512-wide card tile and the 1600-wide sealed tile, so a baked mark would stretch by a different
+// amount in each. The mark and the card's facts are composited at render time instead, the same
+// way the set badge is drawn onto the foot of the right rail rather than painted into it.
+const BAND_LENGTH = 3200;
+const BAND_THICKNESS = 400;
+
 // side: the rail's own side of the canvas. The INNER edge (the one facing the card) carries the
 // hairline, so the two rails mirror rather than repeat.
 function railSvg(side, { width, accent }) {
@@ -54,6 +74,24 @@ function railSvg(side, { width, accent }) {
   </defs>
   <rect width="${width}" height="${HEIGHT}" fill="url(#g)"/>
   <rect x="${innerX}" y="0" width="10" height="${HEIGHT}" fill="${accent}"/>
+</svg>`;
+}
+
+// side: 'top' | 'bottom'. The hairline goes on the CARD-FACING edge — the bottom of the top band,
+// the top of the bottom one — so the pair mirrors around the card exactly as left/right do.
+function bandSvg(side, { accent }) {
+  const hair = 20;                                   // 10px at 1x, matching the rails' hairline
+  const innerY = side === 'top' ? BAND_THICKNESS - hair : 0;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${BAND_LENGTH}" height="${BAND_THICKNESS}">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="${TOP}"/>
+      <stop offset="0.5" stop-color="${MID}"/>
+      <stop offset="1" stop-color="${TOP}"/>
+    </linearGradient>
+  </defs>
+  <rect width="${BAND_LENGTH}" height="${BAND_THICKNESS}" fill="url(#g)"/>
+  <rect x="0" y="${innerY}" width="${BAND_LENGTH}" height="${hair}" fill="${accent}"/>
 </svg>`;
 }
 
@@ -90,6 +128,14 @@ export async function buildPlaceholderRails({ outDir = path.join(ROOT, 'rails'),
       if (layers.length) img = img.composite(layers);
       await img.png({ compressionLevel: 9 }).toFile(file);
       written.push(`${path.relative(ROOT, file)}  ${spec.width}x${HEIGHT}${mark ? '  + mark ' + markMeta.width + 'x' + markMeta.height : ''}`);
+    }
+
+    // The horizontal bands. Gradient and hairline only — see the note by BAND_LENGTH.
+    for (const side of ['top', 'bottom']) {
+      const file = path.join(dir, side + '.png');
+      if (fs.existsSync(file) && !force) { skipped.push(path.relative(ROOT, file)); continue; }
+      await sharp(Buffer.from(bandSvg(side, spec))).png({ compressionLevel: 9 }).toFile(file);
+      written.push(`${path.relative(ROOT, file)}  ${BAND_LENGTH}x${BAND_THICKNESS}`);
     }
   }
   return { written, skipped };

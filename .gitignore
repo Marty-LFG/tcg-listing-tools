@@ -116,3 +116,4 @@ data/composed/
 # phone — so they are excluded from git for size, not because they are disposable. Worth folding
 # into data/backup.config.json if the photo library grows.
 data/photo-originals/
+data/listing-images/

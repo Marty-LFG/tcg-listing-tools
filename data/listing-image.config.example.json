@@ -12,5 +12,16 @@
   "layoutOverrides": {},
   "textOverrides": {},
   "badgeOverrides": {},
-  "variantOverrides": {}
+  "variantOverrides": {},
+  "shopify": {
+    "enabled": false,
+    "quality": 88,
+    "bandFraction": 0.093,
+    "aspectWarnPct": 8,
+    "og": {
+      "railWidth": 300,
+      "cardPaddingY": 38,
+      "cardPaddingX": 36
+    }
+  }
 }
