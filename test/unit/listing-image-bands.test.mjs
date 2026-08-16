@@ -61,11 +61,22 @@ describe('bandText', () => {
 });
 
 describe('band geometry', () => {
-  it('the default fraction gives a 196px band and a 1512x1720 card box', () => {
+  it('the default fraction gives a 196px band, a 48px mat and a 1416x1624 card box', () => {
     const frame = resolveTargetFrame(resolveTarget('shopify-card'), {});
     const g = resolveBandGeometry(frame, DEFAULT_BAND_FRACTION);
     assert.equal(g.bandH, 196);
-    assert.deepEqual(g.cardBox, { width: 1512, height: 1720 });
+    // The mat is the band's counterpart to the eBay square's cardPaddingX, and the same 48px:
+    // without it the card's edge sits hard against the band's hairline.
+    assert.equal(g.mat, 48);
+    assert.deepEqual(g.cardBox, { width: 1416, height: 1624 });
+  });
+
+  it('the card never touches a band — there is plum on all four sides', () => {
+    const frame = resolveTargetFrame(resolveTarget('shopify-card'), {});
+    const g = resolveBandGeometry(frame, DEFAULT_BAND_FRACTION);
+    assert.ok(g.mat > 0);
+    assert.equal(g.cardBox.width, frame.width - 2 * g.mat);
+    assert.equal(g.cardBox.height, frame.height - 2 * g.bandH - 2 * g.mat);
   });
 
   it('refuses a fraction that leaves no room for the card, naming the number', () => {
@@ -128,17 +139,39 @@ describe('composeBandImage', { skip: SKIP }, () => {
     assert.equal(r.band.height, 196);
   });
 
+  it('carries the SET MARK — the boxed code where a game prints one instead of a symbol', async () => {
+    // The information the eBay rail has always shown and the first band pass dropped. SWU and
+    // Riftbound print a set CODE where Pokémon prints a symbol, so the badge is the boxed code.
+    const r = await composeBandImage(await fakeCard(733, 1024), { ...meta, setAbbrev: 'SOR' }, { cfg, trim: false });
+    assert.equal(r.band.drawn.setMark, 'code SOR');
+  });
+
+  it('the set mark is part of the hash — it is pixels, so two sets cannot share a key', async () => {
+    const bytes = await fakeCard(733, 1024);
+    const plain = await composeBandImage(bytes, meta, { cfg, trim: false });
+    const sor = await composeBandImage(bytes, { ...meta, setAbbrev: 'SOR' }, { cfg, trim: false });
+    const ogn = await composeBandImage(bytes, { ...meta, setAbbrev: 'OGN' }, { cfg, trim: false });
+    assert.notEqual(plain.contentHash, sor.contentHash);
+    assert.notEqual(sor.contentHash, ogn.contentHash);
+  });
+
+  it('a card with no set art still renders — the mark is furniture, not a requirement', async () => {
+    const r = await composeBandImage(await fakeCard(733, 1024), meta, { cfg, trim: false });
+    assert.equal(r.band.drawn.setMark, undefined);
+    assert.equal(r.width, 1512);
+  });
+
   it('a card fills the width it can and sits between the bands', async () => {
     const r = await composeBandImage(await fakeCard(733, 1024), meta, { cfg, trim: false });
-    assert.equal(r.card.height, 1720, 'a 63:88 card is height-bound by the card box');
-    assert.ok(r.card.width > 1200 && r.card.width < 1512, `card came out ${r.card.width}px wide`);
+    assert.equal(r.card.height, 1624, 'a 63:88 card is height-bound by the card box');
+    assert.ok(r.card.width > 1100 && r.card.width < 1416, `card came out ${r.card.width}px wide`);
   });
 
   it('a LANDSCAPE card contains cleanly — nothing cropped, nothing flagged', async () => {
     const r = await composeBandImage(await fakeCard(1560, 1120), meta, { cfg, trim: false });
     assert.equal(r.width, 1512);
-    assert.equal(r.card.width, 1512, 'a landscape card is width-bound');
-    assert.ok(r.card.height < 1720);
+    assert.equal(r.card.width, 1416, 'a landscape card is width-bound by the matted card box');
+    assert.ok(r.card.height < 1624);
     assert.equal(r.review, null, 'a sideways card is not a bad trim and must not be flagged');
   });
 

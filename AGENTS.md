@@ -1393,7 +1393,15 @@ dead axis.**
 | eBay 1600×1600 | `ebay-square` | left/right | vertical rails, 300px — **unchanged** |
 | Shopify 1512×2112 (63:88) | `shopify-card` | *none* — so we make one | horizontal bands, top and bottom |
 | Shopify 1600×1600 sealed | `shopify-square` | top/bottom | horizontal bands |
-| Social / OG 1200×630 | `og-card` | left/right | vertical rails, art reused |
+| Social / OG 1200×630 | `og-card` | left/right | vertical rails, art reused, mark on the LEFT only |
+
+The social card is the **og:image / twitter:card** — what appears when a product URL is pasted into
+Discord, Slack, iMessage, Facebook or X. Nothing consumes it yet; it is for when the storefront's
+product pages exist and get shared. Its RIGHT rail is rebuilt from the sampled ground column rather
+than used as authored, because the rail art bakes the store mark into the top of *both* sides: that
+reads as one masthead across a 1600px square and as a duplication mistake at 1200×630. Only the
+inner hairline is lifted from the real art, so the pair still mirrors, and the set badge takes the
+right rail exactly as it does on eBay.
 
 Shopify's grid is built on **63:88 — the card's own ratio** (1512 = 63×24, 2112 = 88×24, exact), so
 a trimmed scan would fill it edge to edge with nothing left over. The dead space there is *created*,
@@ -1408,6 +1416,23 @@ branded plum surround is not a mat: it is dark in both modes deliberately, the w
 border is. That also makes every frame opaque, so nothing in this subsystem needs an alpha channel,
 a PNG branch or a format switch, and **nothing is ever cropped** — a landscape card (SWU Leaders and
 Bases, MTG Battles, Lorcana Locations, Riftbound Battlefields) just contains, with no special case.
+
+**What the bands carry, and the hierarchy.** Top band: the **card name** leads, large, with the
+store mark small at the far end — it earns its place because these images also surface in search
+results and shared links, where an unbranded card could be anyone's, but it is identification, not
+a masthead. Giving it the hero spot pushed the one thing a buyer is looking for into second place.
+Bottom band: the **set mark** (the symbol printed on the card, or the boxed code for the games that
+print one instead), then set name · printed number in gold, then the language marker or the slab's
+grade + cert on the right. The set mark is not decoration — it is the information the vertical eBay
+rail has carried from the start, and the first band pass dropped it.
+
+**Every frame has a mat.** `CARD_MAT_FRACTION` (0.032 of the frame's short edge — 48px on the tile,
+the same mat the eBay square uses) keeps the card off the band's hairline. Without it the card edge
+sits hard against the chrome, which reads as a printing error rather than a frame.
+
+**Rounded corners apply on plum, and that argument is stronger than on eBay's white.** A catalog
+scan's own white corners are invisible against a white canvas and show as four white nicks against
+the gradient, so the mask runs on the banded frames *and* the social card.
 
 **Condition never reaches any of these images.** An NM and an LP of one card are two stock rows with
 *identical source bytes*; condition on the image would split every such pair into two separately
