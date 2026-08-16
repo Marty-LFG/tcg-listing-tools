@@ -1420,12 +1420,16 @@ Bases, MTG Battles, Lorcana Locations, Riftbound Battlefields) just contains, wi
 **What the bands carry.** Top band: the **card name**, centred, and **never truncated** — it steps
 down through four sizes, then wraps to two lines, and only a single unbreakable token wider than the
 band can still be cut. A clipped name ("ROSA'S ENCOURAGE…") tells a buyer less than the art already
-does. Bottom band: the **set mark at BOTH ends** with the set name over the printed number centred
-between them. Mirroring the mark reads as a frame rather than as a label with something stuck on the
-front, and it survives the no-symbol cases — early Pokémon sets printed none, and Lorcana and One
-Piece have none in the bakes — because then both ends are simply empty and the block stays centred
-on the same axis. The number line carries whatever qualifies it: the language marker, or a slab's
-grade and cert.
+does. Bottom band: **the eBay square unrolled** — the set **WORDMARK** at the left end (foot of the left
+rail on eBay), the set **SYMBOL** at the right (foot of the right rail there), and the set name over
+the printed number centred between them. Those two are different kinds of thing and are NOT
+interchangeable: a wordmark is the set's name as type, a symbol is the little mark printed on the
+card. Mirroring the symbol to both ends threw the wordmark away entirely, which is what made the
+band carry less than the square beside it. Either may be absent — early Pokémon sets printed no
+symbol, Scryfall publishes no Magic wordmark (so it falls back to the game logo, exactly as the rail
+does) — and the centred block reserves the wider of the two on BOTH sides, so a missing one never
+shifts the text off-axis. The number line carries whatever qualifies it: the language marker, or a
+slab's grade and cert.
 
 **The printed number is never rebuilt here.** It arrives from `composeMetaFor`, which runs
 `printedCardNumber` (Golden Rule 10, which rebuilds the padding pokemontcg.io strips — Base Set's

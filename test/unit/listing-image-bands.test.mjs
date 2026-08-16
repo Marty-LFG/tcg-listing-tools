@@ -261,12 +261,42 @@ describe('composeBandImage', { skip: SKIP }, () => {
     assert.ok(!r.band.drawn.name.includes('…'));
   });
 
-  it('a set with NO symbol still renders — both ends empty, block still centred', async () => {
+  it('a set with neither wordmark nor symbol still renders — both ends empty, block still centred', async () => {
     // Early Pokemon sets printed no symbol, and Lorcana and One Piece have none in the bakes.
     const r = await composeBandImage(await fakeCard(733, 1024), meta, { cfg, trim: false });
     assert.equal(r.band.drawn.setMark, undefined);
+    assert.equal(r.band.drawn.setLogo, undefined);
     assert.equal(r.band.drawn.set, 'PALDEA EVOLVED');
     assert.equal(r.band.drawn.number, '254/182');
+  });
+
+  it('the WORDMARK and the SYMBOL are different slots — left and right, not the same art twice', async () => {
+    // The bug this pins: the symbol was mirrored to both ends, which threw the set's wordmark away
+    // entirely. They are not interchangeable — a wordmark is the set's name as type, a symbol is
+    // the mark printed on the card — and the eBay square has always shown both, one per rail foot.
+    const withArt = {
+      ...meta,
+      setLogoAsset: 'logos/rail/pokemon.png',       // stands in for the set's own wordmark
+      setAbbrev: 'SCR',                             // stands in for the printed symbol
+    };
+    const r = await composeBandImage(await fakeCard(733, 1024), withArt, { cfg, trim: false });
+    assert.equal(r.band.drawn.setLogo, 'wordmark', 'the left end must carry the wordmark');
+    assert.equal(r.band.drawn.setMark, 'code SCR', 'the right end must carry the printed mark');
+  });
+
+  it('a wordmark with no symbol still fills the left end', async () => {
+    const r = await composeBandImage(await fakeCard(733, 1024), { ...meta, setLogoAsset: 'logos/rail/mtg.png' }, { cfg, trim: false });
+    assert.equal(r.band.drawn.setLogo, 'wordmark');
+    assert.equal(r.band.drawn.setMark, undefined);
+  });
+
+  it('the wordmark is in the hash — two sets must not share a composite', async () => {
+    const bytes = await fakeCard(733, 1024);
+    const bare = await composeBandImage(bytes, meta, { cfg, trim: false });
+    const a = await composeBandImage(bytes, { ...meta, setLogoAsset: 'logos/rail/pokemon.png' }, { cfg, trim: false });
+    const b = await composeBandImage(bytes, { ...meta, setLogoAsset: 'logos/rail/mtg.png' }, { cfg, trim: false });
+    assert.notEqual(bare.contentHash, a.contentHash);
+    assert.notEqual(a.contentHash, b.contentHash);
   });
 
   it('the store mark is OFF by default — our own storefront does not need telling whose it is', async () => {
