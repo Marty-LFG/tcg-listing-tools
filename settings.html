@@ -693,6 +693,8 @@
         {p:'policies.returnPolicyId',l:'Return policy',t:'select',src:'/api/listings/account/policies',kind:'return',wide:true,
          tip:'Your hand-made listings say “No returns accepted”. Pick that same policy here so the tool’s listings match.'},
         {p:'returns.accepted',l:'Accept returns',t:'toggle',tip:'Only used when the tool has to <b>create</b> its own return policy. Off = “No returns accepted”. A policy picked above always wins over this.'},
+        {p:'payments.immediatePay',l:'Require immediate payment',t:'toggle',
+         tip:'What the payment policy above <b>should</b> say. Nothing here edits eBay — the account check warns when the live policy disagrees.<br><br><b>On:</b> the buyer pays at checkout or does not buy. Nothing is ever held against money that has not arrived.<br><b>Off:</b> a buyer can ask for a combined total and be sent one invoice with one lot of postage. The cost is that a single-quantity card can sit committed-but-unpaid for up to 4 days.<br><br>Invoice requests need this <b>off</b>: an immediate-payment listing never produces an unpaid order, so there is nothing to invoice.'},
       ]},
       {name:'Store category',fields:[
         {p:'store.defaultCategory',l:'Default store category',t:'select',src:'/api/listings/store/categories',wide:true,blank:'— none (eBay files it under “Other”) —',

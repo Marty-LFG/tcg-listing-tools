@@ -107,6 +107,9 @@
     "paymentPolicyId": "",
     "returnPolicyId": ""
   },
+  "payments": {
+    "immediatePay": true
+  },
   "store": {
     "defaultCategory": "",
     "categoryByGame": {}

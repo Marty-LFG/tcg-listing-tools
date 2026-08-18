@@ -19,9 +19,11 @@ const ALL = [{ name: 'ALL_EXCLUDING_MOTORS_VEHICLES' }];
 
 describe('paymentBody (AU managed payments)', () => {
   const b = paymentBody(CFG);
-  it('immediatePay true, NO offline paymentMethods, AU marketplace', () => {
+  it('immediatePay follows the config, NO offline paymentMethods, AU marketplace', () => {
     assert.equal(b.marketplaceId, 'EBAY_AU');
+    // Defaults to true — the store's live state — but it is the owner's choice, not an API rule.
     assert.equal(b.immediatePay, true);
+    assert.equal(paymentBody({ ...CFG, payments: { immediatePay: false } }).immediatePay, false);
     assert.equal(b.paymentMethods, undefined, 'must not send paymentMethods under managed payments');
     assert.deepEqual(b.categoryTypes, ALL);
     assert.equal(b.name, 'Pay AU');
@@ -194,10 +196,24 @@ describe('checkPolicyConstraints', () => {
     it('a correct managed-payments policy raises nothing', () => {
       assert.deepEqual(checkPolicyConstraints('payment_policy', good, CFG3), []);
     });
-    it('ERROR when immediate payment is off — the Inventory API cannot publish against it', () => {
-      const i = checkPolicyConstraints('payment_policy', { ...good, immediatePay: false }, CFG3);
-      assert.equal(sev(i, 'immediatePay'), 'error');
-      assert.match(i[0].message, /immediate payment/i);
+    // It used to be an ERROR here, asserting the Sell Inventory API cannot publish without immediate
+    // payment. That is not true — the live Account API contract defaults immediatePay to false and the
+    // only place eBay requires it is bulkMigrateListing — and the error would have blocked publishing
+    // against a policy the owner turned off deliberately to enable invoice requests.
+    it('WARNS when the live policy disagrees with the configured intent, in either direction', () => {
+      const off = checkPolicyConstraints('payment_policy', { ...good, immediatePay: false }, CFG3);
+      assert.equal(sev(off, 'immediatePay'), 'warning');
+      assert.match(off[0].message, /can sit unavailable/i, 'names the cost of leaving it off');
+
+      const wantOff = { ...CFG3, payments: { immediatePay: false } };
+      const on = checkPolicyConstraints('payment_policy', good, wantOff);
+      assert.equal(sev(on, 'immediatePay'), 'warning');
+      assert.match(on[0].message, /cannot request a combined total/i, 'names why invoice requests would do nothing');
+    });
+
+    it('raises nothing when the policy matches a deliberate immediate-pay-off intent', () => {
+      const wantOff = { ...CFG3, payments: { immediatePay: false } };
+      assert.deepEqual(checkPolicyConstraints('payment_policy', { ...good, immediatePay: false }, wantOff), []);
     });
     it('warns about leftover offline payment methods under managed payments', () => {
       const i = checkPolicyConstraints('payment_policy', { ...good, paymentMethods: [{ paymentMethodType: 'PERSONAL_CHECK' }] }, CFG3);
