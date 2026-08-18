@@ -90,14 +90,18 @@ describe('buildOfferPayload', () => {
     assert.deepEqual(o.pricingSummary.price, { value: '12.99', currency: 'AUD' });   // 1299 cents
     assert.equal(o.tax, undefined, 'no tax container on AU (GST baked into price)');
   });
-  it('best offer terms carry auto-accept / auto-decline prices when enabled', () => {
-    const o = buildOfferPayload(slabListing, CFG, { bestOffer: { enabled: true, autoAcceptCents: 485000, autoDeclineCents: 400000 } });
-    assert.equal(o.listingPolicies.bestOfferTerms.bestOfferEnabled, true);
-    assert.deepEqual(o.listingPolicies.bestOfferTerms.autoAcceptPrice, { value: '4850.00', currency: 'AUD' });
-    assert.deepEqual(o.listingPolicies.bestOfferTerms.autoDeclinePrice, { value: '4000.00', currency: 'AUD' });
-  });
-  it('no best offer container when disabled', () => {
-    assert.equal(buildOfferPayload(rawListing, CFG, { bestOffer: { enabled: false } }).listingPolicies.bestOfferTerms, undefined);
+  it('NEVER emits best offer terms, whatever it is handed', () => {
+    // The capability is absent rather than defaulted off, which is the difference between "we chose
+    // not to" and "somebody could turn it on and not notice". Best Offer went off store-wide and the
+    // shop answers a haggle with an invoice now (lib/deals.mjs).
+    for (const listing of [rawListing, slabListing]) {
+      const o = buildOfferPayload(listing, CFG);
+      assert.equal(o.listingPolicies.bestOfferTerms, undefined);
+      assert.ok(!/bestOffer/i.test(JSON.stringify(o)), 'nothing offer-shaped anywhere in the payload');
+    }
+    // A caller still passing the old third argument gets it ignored, not honoured.
+    const stale = buildOfferPayload(slabListing, CFG, { bestOffer: { enabled: true, autoAcceptCents: 485000 } });
+    assert.equal(stale.listingPolicies.bestOfferTerms, undefined);
   });
 });
 

@@ -260,19 +260,7 @@
         </select>
         <div class="muted" style="margin-top:5px;">Batch listings use the catalog image, and eBay bans stock photos on used items — so anything below Near Mint is held back and handed to the single uploader.</div>
       </div>
-      <div>
-        <label>Best Offer</label>
-        <label style="display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);cursor:pointer;">
-          <input type="checkbox" id="boEnable"> Accept offers on every listing
-        </label>
-        <div id="boFields" style="display:none;margin-top:8px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div><label for="boAcc">Auto-accept %</label><input id="boAcc" class="mono" value="95"></div>
-            <div><label for="boDec">Auto-decline %</label><input id="boDec" class="mono" value="78"></div>
-          </div>
-          <div class="muted" id="boHint" style="margin-top:6px;"></div>
-        </div>
-      </div>
+
       <div>
         <label>Listing image</label>
         <label style="display:flex;align-items:center;gap:9px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);cursor:pointer;">
@@ -1272,7 +1260,6 @@ function refreshNow() {
   const med = curMedian();
   const bands = {};
   for (const r of QUEUE) { const s = stateOf(r); bands[s] = (bands[s] || 0) + 1; }
-  paintBoHint();                 // asks moved ⇒ the resolved offer dollars moved with them
   const order = ['READY', 'CHECKED', 'PRICING', 'EYES', 'CHECK', 'HELD', 'STAGED', 'LIVE', 'FAILED'];
   $('counts').innerHTML = order.filter((k) => bands[k]).map((k) => '<span class="st ' + k + '"><span class="dot"></span>' + bands[k] + ' ' + k.toLowerCase() + '</span>').join('');
   $('qNote').textContent = QUEUE.length ? QUEUE.length + ' row' + (QUEUE.length > 1 ? 's' : '') + ' · ' + QUEUE.reduce((a, r) => a + r.qty, 0) + ' cards' : 'nothing queued yet';
@@ -1687,35 +1674,6 @@ $('defCond').addEventListener('change', () => {
   for (const r of QUEUE) if (!r.condManual && !r.staged && !r.published) { r.cond = v; r.title = titleFor(r); }
   refresh();
 });
-// The offer figures are PERCENTAGES, and a percentage on its own is not something you can sanity
-// check — 78% of what? So the hint resolves them into dollars against the live queue, and refreshNow
-// re-runs it after anything that moves a price. Editing an ask updates these on the spot; there is
-// nothing to press.
-function boHintText() {
-  if (!$('boEnable').checked) return 'Off — every offer comes to you.';
-  const bo = bestOffer();
-  const asks = QUEUE.filter((r) => !r.published && r.askAud > 0).map((r) => r.askAud);
-  // bestOffer() only carries a percentage through when it is > 0, so a blank or 0 field means there
-  // is nothing to resolve yet.
-  if (bo.autoAcceptPct == null || bo.autoDeclinePct == null) return 'Set both percentages to see what they come to in dollars.';
-  // Server-side resolveBestOffer refuses a transposed pair (eBay 25002), so say so here rather than
-  // letting the operator find out one publish at a time.
-  if (bo.autoAcceptPct < bo.autoDeclinePct) {
-    return '⚠ Auto-accept (' + bo.autoAcceptPct + '%) is below auto-decline (' + bo.autoDeclinePct + '%) — eBay rejects that. The two look the wrong way round.';
-  }
-  if (!asks.length) return 'Offers at or above the accept figure auto-accept; at or below the decline figure auto-reject. Everything between pings you.';
-  const lo = Math.min(...asks), hi = Math.max(...asks);
-  const at = (pct, v) => money(v * pct / 100);
-  const span = (pct) => lo === hi ? at(pct, lo) : at(pct, lo) + ' – ' + at(pct, hi);
-  return 'Across the ' + asks.length + ' priced row' + (asks.length === 1 ? '' : 's') + ': auto-accept from ' + span(bo.autoAcceptPct)
-    + ' · auto-decline below ' + span(bo.autoDeclinePct) + '. Anything between pings you.';
-}
-function paintBoHint() { $('boHint').innerHTML = boHintText(); }
-$('boEnable').addEventListener('change', () => {
-  $('boFields').style.display = $('boEnable').checked ? '' : 'none';
-  paintBoHint();
-});
-for (const id of ['boAcc', 'boDec']) $(id).addEventListener('input', paintBoHint);
 // ---- branded listing images (batch-level) ----
 // One tick for the whole run. COMPOSE_READY stays null until the config answers, and composeFlag()
 // then sends null so the server decides — which makes the control a LIE unless it is also disabled.
@@ -1766,14 +1724,6 @@ $('composeEnable').addEventListener('change', () => {
 });
 function composeFlag() { return COMPOSE_READY ? $('composeEnable').checked : null; }
 
-function bestOffer() {
-  if (!$('boEnable').checked) return { enabled: false };
-  const o = { enabled: true };
-  const a = parseFloat($('boAcc').value), d = parseFloat($('boDec').value);
-  if (a > 0) o.autoAcceptPct = Math.round(a);
-  if (d > 0) o.autoDeclinePct = Math.round(d);
-  return o;
-}
 async function loadStoreCats() {
   const box = $('storeCats');
   try {
@@ -1947,7 +1897,7 @@ $('canaryBtn').addEventListener('click', async () => {
   $('canaryBtn').disabled = true;
   const act = TCG.activity ? TCG.activity('Canary dry-run') : null;
   try {
-    const body = { item_ids: staged.map((r) => r.itemId), overrides_by_id: Object.fromEntries(staged.map((r) => [r.itemId, overridesFor(r)])), bestOffer: bestOffer() };
+    const body = { item_ids: staged.map((r) => r.itemId), overrides_by_id: Object.fromEntries(staged.map((r) => [r.itemId, overridesFor(r)])) };
     const j = await fetch('/api/listings/batch/preflight/canary', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json());
     if (j.error) throw new Error(j.error);
     act && (j.ok ? act.done(j.sampled + ' ok') : act.fail('eBay refused one'));
@@ -1985,16 +1935,7 @@ $('pubBtn').addEventListener('click', async () => {
   const resolved = [...new Set(go.flatMap((r) => (r.preflight && r.preflight.store_categories) || []))];
   const depts = resolved.length ? esc(resolved.join('  ·  ')) : '<span style="color:var(--red)">none resolved — every one of these lands in “Other”</span>';
 
-  // Best Offer in DOLLARS, at both ends of the batch. resolveBestOffer works from percentages, so a
-  // single wrong number here auto-accepts every lowball in the run at once — a percentage on its own
-  // is not something you can sanity-check.
   const labelRun = labelUpcoming.slice(0, go.length);
-  const bo = bestOffer();
-  const boLine = bo.enabled
-    ? 'auto-accept from <b>' + money((cheapest ? cheapest.askAud : 0) * bo.autoAcceptPct / 100) + '</b> (cheapest) to <b>'
-      + money((dearest ? dearest.askAud : 0) * bo.autoAcceptPct / 100) + '</b> (dearest) · auto-decline below '
-      + bo.autoDeclinePct + '%'
-    : 'off — every offer comes to you';
 
   modal('<h4>Publish ' + go.length + ' listing' + (go.length === 1 ? '' : 's') + ' to eBay AU</h4>'
     + '<div class="kv"><span>Listings</span><span class="mono">' + go.length + '</span></div>'
@@ -2008,7 +1949,6 @@ $('pubBtn').addEventListener('click', async () => {
       ? esc(labelRun.length > 1 ? labelRun[0] + ' … ' + labelRun[labelRun.length - 1] : labelRun[0])
         + (startLabelValue() ? ' (starting where you asked)' : '')
       : 'series not seeded — these get BK-… labels') + '</span></div>'
-    + '<div class="kv"><span>Best Offer</span><span>' + boLine + '</span></div>'
     + (blocked.length ? '<div class="kv"><span style="color:var(--red)">Held by the server</span><span class="mono">' + blocked.length + ' will not be sent</span></div>' : '')
     + '<p class="muted" style="margin-top:12px;">Type <b>' + go.length + '</b> to confirm. The server publishes one card at a time and re-checks every rule as it goes. '
       + '<b>The run continues if you close this page</b> — come back and it re-attaches. Stop halts after the card in flight; anything already listed stays listed.</p>'
@@ -2052,7 +1992,6 @@ async function runPublish(rows) {
   const body = {
     item_ids: rows.map((r) => r.itemId),
     released_ids: rows.filter((r) => r.released).map((r) => r.itemId),
-    bestOffer: bestOffer(),
     compose: composeFlag(),
     overrides_by_id: Object.fromEntries(rows.map((r) => [r.itemId, overridesFor(r)])),
   };

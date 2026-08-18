@@ -174,15 +174,6 @@
         </div>
       </div>
 
-      <div class="card" id="offerCard" style="display:none;">
-        <h3>4 · Best Offer</h3>
-        <label class="tog"><input type="checkbox" id="boEnable"><span>Accept Best Offers</span></label>
-        <div id="boFields" class="row2" style="display:none;">
-          <div><label>Auto-accept at (A$)</label><input id="boAccept" class="pricein" inputmode="decimal"></div>
-          <div><label>Auto-decline below (A$)</label><input id="boDecline" class="pricein" inputmode="decimal"></div>
-        </div>
-        <div class="muted" id="boHint" style="display:none;margin-top:6px;"></div>
-      </div>
 
       <div class="card" id="composeCard" style="display:none;">
         <h3>Listing image</h3>
@@ -320,7 +311,7 @@ async function selectLang(l){
   card=null; setObj=null; SETS=[]; savedItemId=null; photos=[]; priceInfo=null;
   $('setCode').value=''; $('num').value='';
   $('cardview').style.display='none'; $('stockBox').style.display='none';
-  for(const id of ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard']) $(id).style.display='none';
+  for(const id of ['detailsCard','priceCard','composeCard','storeCard','photoCard','listCard']) $(id).style.display='none';
   $('previewCard').style.display='none';
   stat($('status'),'load','Pick a set, type a number, hit Look up.');
   await loadSets();
@@ -340,7 +331,7 @@ async function selectGame(g,opts){
   card=null; setObj=null; SETS=[]; savedItemId=null; photos=[];
   $('setCode').value=''; $('num').value='';
   $('cardview').style.display='none'; $('stockBox').style.display='none';
-  for(const id of ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard']) $(id).style.display='none';
+  for(const id of ['detailsCard','priceCard','composeCard','storeCard','photoCard','listCard']) $(id).style.display='none';
   $('previewCard').style.display='none';
   stat($('status'),'load','Pick a set, type a number, hit Look up.');
   await loadSets();
@@ -601,7 +592,7 @@ function afterLookup(o){
     else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
   }
   renderCard();
-  ['detailsCard','priceCard','offerCard','composeCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
+  ['detailsCard','priceCard','composeCard','storeCard','photoCard','listCard'].forEach(id=>$(id).style.display='');
   loadStoreCats();
   if(COMPOSE_READY===null) loadComposeState();
   savedItemId=null; photos=[]; renderThumbs(); $('resultBox').innerHTML=''; $('previewCard').style.display='none';
@@ -971,15 +962,6 @@ function setPrice(v){ $('price').value=(Math.round(v*100)/100).toFixed(2); refre
 $('price').addEventListener('input',refreshSummary);
 $('qty').addEventListener('input',refreshSummary);
 
-// ---- best offer ----
-$('boEnable').addEventListener('change',()=>{ $('boFields').style.display=$('boEnable').checked?'':'none'; $('boHint').style.display=$('boEnable').checked?'':'none'; if($('boEnable').checked) seedOffers(); });
-function seedOffers(){
-  const p=parseFloat($('price').value)||0; if(!p) return;
-  const acc=priceInfo&&priceInfo.bo_accept_pct||95, dec=priceInfo&&priceInfo.bo_decline_pct||78;
-  if(!$('boAccept').value) $('boAccept').value=(Math.round(p*acc)/100).toFixed(2);
-  if(!$('boDecline').value) $('boDecline').value=(Math.round(p*dec)/100).toFixed(2);
-  $('boHint').textContent='Offers at/above the accept price auto-accept; at/below the decline price auto-reject. Everything between pings you.';
-}
 // ---- branded listing image ----
 // The checkbox starts from data/listing-image.config.json and then means exactly what it says for
 // THIS listing: an explicit true/false, never "whatever the config happens to be at publish time".
@@ -1101,15 +1083,6 @@ function composeZoomKey(e){ if(e.key==='Escape') closeComposeZoom(); }
 $('composeBig').addEventListener('click',openComposeZoom);
 $('composeThumb').addEventListener('click',openComposeZoom);
 
-function bestOffer(){
-  if(!$('boEnable').checked) return {enabled:false};
-  const o={enabled:true};
-  const a=parseFloat($('boAccept').value), d=parseFloat($('boDecline').value);
-  if(a>0) o.autoAcceptPct=Math.round(a/(parseFloat($('price').value)||a)*100);
-  if(d>0) o.autoDeclinePct=Math.round(d/(parseFloat($('price').value)||d)*100);
-  return o;
-}
-
 // ---- summary ----
 function refreshSummary(){
   const p=parseFloat($('price').value)||0;
@@ -1169,7 +1142,7 @@ function publishBody(itemId){
   const nc=card.nc||GA.normalizeCard(card.raw||{},setObj||{});
   return Object.assign(GA.overridesFrom(nc),{
     itemId,price_cents:Math.round((parseFloat($('price').value)||0)*100),
-    bestOffer:bestOffer(),compose:composeFlag(),finish:r.finish,
+    compose:composeFlag(),finish:r.finish,
     store_categories:storePick.slice(0,STORE_MAX),
   });
 }

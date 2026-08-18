@@ -104,20 +104,20 @@ describe('runPublish — publish a raw single end to end', () => {
     assert.ok(db.prepare("SELECT 1 FROM listing_pushes WHERE item_id=? AND action='preview'").get(itemId));
   });
 
-  it('blocks a transposed best-offer pair before the first eBay call', async () => {
-    // Lived (AAC-095, 2026-07-29): accept 602 / decline 797 went out and eBay refused it at PUBLISH —
-    // i.e. after the inventory item AND the offer had been created, leaving a half-built offer behind.
-    // The refusal has to land before any of that, so nothing reaches the account.
-    const before = db.prepare("SELECT COUNT(*) n FROM listing_pushes WHERE item_id=?").get(itemId).n;
+  it('cannot be asked to publish Best Offer terms at all, however the request is shaped', async () => {
+    // This replaces a guard against a TRANSPOSED offer pair (accept 71% / decline 94%), which eBay
+    // rejected at the PUBLISH step — after the inventory item and offer already existed, leaving a
+    // half-built offer on the account. That guard is gone because the thing it guarded is gone: the
+    // publish path emits no offer terms, so there is no pair to transpose. A request still carrying
+    // the old field is IGNORED rather than honoured, which is the property worth pinning — a stale
+    // caller must not be able to put offers back on a listing by accident.
     const out = await runPublish(ENV, db, CFG, () => {}, {
-      itemId, dryRun: false, bestOfferSpec: { enabled: true, autoAcceptPct: 71, autoDeclinePct: 94 },
+      itemId, dryRun: true, bestOfferSpec: { enabled: true, autoAcceptPct: 71, autoDeclinePct: 94 },
     });
-    assert.equal(out.ok, false);
-    assert.match(out.error, /auto-accept/);
-    assert.match(out.error, /25002/);
-    assert.match(out.error, /transposed/);
-    assert.equal(db.prepare("SELECT COUNT(*) n FROM listing_pushes WHERE item_id=?").get(itemId).n, before,
-      'refused before any eBay call, so there is no attempt to audit');
+    assert.equal(out.ok, true, 'the stale field is inert, not fatal');
+    assert.equal(out.bestOffer, undefined, 'nothing about offers comes back');
+    const offer = JSON.stringify(out.offerBody || {});
+    assert.ok(!/bestOfferTerms/i.test(offer), 'and nothing about offers goes to eBay');
   });
 
   it('allows the right way round, and allows equal', async () => {

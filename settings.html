@@ -724,9 +724,12 @@
           tip:'Storefront department for '+l+' listings. Overrides the default above. Leave it unset to use the default.'})),
       ]},
       {name:'Best Offer defaults',fields:[
-        {p:'bestOffer.enabled',l:'Best Offer on by default',t:'toggle',tip:'Prefills the Best Offer toggle on the uploader verify screen.'},
-        {p:'bestOffer.autoAcceptPct',l:'Auto-accept %',t:'number',min:1,max:100,tip:'Offers at or above this % of the list price auto-accept.'},
-        {p:'bestOffer.autoDeclinePct',l:'Auto-decline %',t:'number',min:0,max:100,tip:'Offers at or below this % of the list price auto-decline.'},
+        // Best Offer fields removed: this tool no longer publishes offer terms, so a toggle here would
+        // configure nothing. (The old 'Best Offer on by default' tip claimed it prefilled the uploader
+        // screen — it never did; neither front end has ever read config.bestOffer.) The block survives
+        // in ebay-listing.config.json as the record of the decision, and lib/status.mjs refuses to save
+        // it as true. Scaling floors on the HAND-MADE listings that still have offers on is a different
+        // setting, and it is under Repricer.
       ]},
       {name:'Generic trailing image',fields:[
         {p:'genericImage.enabled',l:'Append follow-us image',t:'toggle',tip:'Add a configurable generic image as the LAST photo on every listing (uploaded once to eBay, cached).'},
