@@ -54,6 +54,23 @@
   .pill.shipped{color:var(--green);border-color:rgba(67,214,160,.35);} .pill.unshipped{color:var(--amber);border-color:rgba(240,192,74,.35);} .pill.queued{color:var(--blue);}
   .pill.cancelled{color:var(--red);border-color:rgba(240,102,110,.4);text-decoration:line-through;}
   .pill.hold{color:#12100e;background:var(--red);border-color:var(--red);}
+  .pill.sending{color:var(--blue);border-color:rgba(106,176,255,.4);} .pill.expired{color:var(--faint);text-decoration:line-through;}
+  /* The quote breakdown. A ledger, not a form: the owner is checking arithmetic before spending money,
+     so every figure lines up in one column and the one they typed is the only thing that moves. */
+  .quote{font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:4px;}
+  .quote .qr{display:flex;justify-content:space-between;gap:12px;padding:7px 12px;border-bottom:1px solid var(--line);}
+  .quote .qr:last-child{border-bottom:0;}
+  .quote .qr.total{background:var(--ink);font-size:14.5px;}
+  .quote .qr.total b{color:var(--green);}
+  .quote .qr .k{color:var(--muted);} .quote .qr .v{white-space:nowrap;}
+  .quote .qr .why{color:var(--faint);font-size:11px;}
+  .warnrow{font-family:var(--mono);font-size:12px;color:var(--amber);padding:6px 0;}
+  .warnrow.bad{color:var(--red);}
+  .dealline{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:12.5px;}
+  .dealline .band{color:var(--faint);font-family:var(--mono);font-size:11px;}
+  input.disc{width:100%;background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);
+    font-family:var(--mono);font-size:18px;padding:10px 12px;outline:none;}
+  input.disc:focus{border-color:var(--pink);}
   .repeat{color:var(--gold);font-size:11px;font-family:var(--mono);}
   button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.15s;}
   button.act:hover{border-color:var(--pink);color:var(--text);}
@@ -114,6 +131,7 @@
   <div class="tabs" id="tabs">
     <div class="tab active" data-tab="messages">Messages <span class="n" id="n_messages"></span></div>
     <div class="tab" data-tab="orders">Orders <span class="n" id="n_orders"></span></div>
+    <div class="tab" data-tab="deals">Deals <span class="n" id="n_deals"></span></div>
     <div class="tab" data-tab="buyers">Buyers <span class="n" id="n_buyers"></span></div>
   </div>
 
@@ -157,6 +175,33 @@
   </div>
 </div>
 
+<div class="overlay" id="dealOverlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="mhead">
+      <span class="pill" id="d_status"></span>
+      <span class="who" id="d_who"></span>
+      <button class="x" id="d_close" title="Close">&times;</button>
+    </div>
+    <div class="mbody">
+      <div class="mctx" id="d_ctx"></div>
+      <label>What they asked for</label>
+      <div class="mctx" id="d_ask"></div>
+      <label>Cards</label>
+      <div id="d_lines"></div>
+      <label>Discount off the cards (A$)</label>
+      <input class="disc" id="d_disc" inputmode="decimal" placeholder="0.00" autocomplete="off">
+      <div id="d_warn"></div>
+      <div class="quote" id="d_quote"></div>
+      <div class="mctx" id="d_err" style="color:var(--red)"></div>
+    </div>
+    <div class="mfoot">
+      <span class="spacer"></span>
+      <button id="d_skip" class="warn">Skip</button>
+      <button id="d_send" class="primary">Send invoice</button>
+    </div>
+  </div>
+</div>
+
 <script src="/datetime.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -170,7 +215,7 @@ async function api(path, opts) {
   return j;
 }
 
-let STATE = { config:null, messages:[], orders:[], buyers:[], tab:'messages' };
+let STATE = { config:null, messages:[], orders:[], buyers:[], deals:[], tab:'messages' };
 
 function renderBanner() {
   const c = STATE.config; if (!c) return;
@@ -229,6 +274,28 @@ function renderOrders() {
     }).join('')
     + `</tbody></table>`;
 }
+function renderDeals() {
+  const rows = STATE.deals;
+  const on = ((STATE.config||{}).config||{}).deals || {};
+  if (!rows.length) {
+    return `<div class="empty">No deal requests yet.${on.enabled ? '' : ' <b>Deal requests are switched off</b> in Settings — nothing is being queued.'}</div>`;
+  }
+  return `<table><thead><tr><th>Status</th><th>Buyer</th><th>Asked for</th><th>Cards</th><th>Discount</th><th>Total</th><th>Seen (Sydney)</th></tr></thead><tbody>`
+    + rows.map(d => {
+      const n = (d.lines||[]).length;
+      return `<tr class="clickable" data-deal="${d.id}">
+        <td><span class="pill ${esc(d.status)}">${esc(d.status)}</span></td>
+        <td class="mono">@${esc(d.ebay_username||'—')}</td>
+        <td class="muted">${esc(d.detected_kind ? d.detected_kind.replace(/_/g,' ') : '—')}</td>
+        <td class="num">${n||'—'}</td>
+        <td class="num">${d.discount_cents ? money(d.discount_cents) : '—'}</td>
+        <td class="num">${d.total_cents ? money(d.total_cents, d.currency) : '—'}</td>
+        <td class="mono muted">${esc(when(d.created_at))}</td>
+      </tr>`;
+    }).join('')
+    + `</tbody></table>`;
+}
+
 function renderBuyers() {
   const rows = STATE.buyers;
   if (!rows.length) return `<div class="empty">No buyers yet.</div>`;
@@ -245,22 +312,28 @@ function renderBuyers() {
 
 function renderPanel() {
   const t = STATE.tab;
-  const html = t==='messages' ? renderMessages() : t==='orders' ? renderOrders() : renderBuyers();
+  const html = t==='messages' ? renderMessages() : t==='orders' ? renderOrders()
+    : t==='deals' ? renderDeals() : renderBuyers();
   $('panel').innerHTML = `<h2>${t}</h2>` + html;
   $('n_messages').textContent = STATE.messages.length ? `(${STATE.messages.length})` : '';
   $('n_orders').textContent = STATE.orders.length ? `(${STATE.orders.length})` : '';
   $('n_buyers').textContent = STATE.buyers.length ? `(${STATE.buyers.length})` : '';
+  // Only the OPEN ones are worth a count — a tab that reads (40) because forty quotes were answered
+  // last month is a number nobody can act on.
+  const open = STATE.deals.filter(d => d.status==='pending' || d.status==='awaiting_approval').length;
+  $('n_deals').textContent = open ? `(${open})` : '';
 }
 
 async function loadAll() {
   try {
-    const [config, messages, orders, buyers] = await Promise.all([
-      api('/config'), api('/messages'), api('/orders?limit=200'), api('/buyers'),
+    const [config, messages, orders, buyers, deals] = await Promise.all([
+      api('/config'), api('/messages'), api('/orders?limit=200'), api('/buyers'), api('/deals'),
     ]);
     STATE.config = config;
     STATE.messages = messages.messages || [];
     STATE.orders = orders.orders || [];
     STATE.buyers = buyers.buyers || [];
+    STATE.deals = deals.deals || [];
     renderBanner(); renderPanel();
   } catch (e) {
     $('banner').innerHTML = `<span class="chip"><span class="dot err"></span>${esc(e.message)}</span>`;
@@ -284,7 +357,9 @@ $('panel').addEventListener('click', async (e) => {
     return;
   }
   const row = e.target.closest('tr[data-msg]');
-  if (row) openMessage(+row.dataset.msg);
+  if (row) { openMessage(+row.dataset.msg); return; }
+  const deal = e.target.closest('tr[data-deal]');
+  if (deal) openDeal(+deal.dataset.deal);
 });
 
 // ---- message detail modal ----
@@ -376,6 +451,172 @@ async function diagPost(path, label) {
 }
 $('btnPoll').addEventListener('click', () => diagPost('/poll/orders', 'poll orders'));
 $('btnDigest').addEventListener('click', () => diagPost('/digest/pack', 'pack digest'));
+
+// ---- deal detail modal -----------------------------------------------------------------------
+// The one screen in this app where a person types a number that spends money, so it is built around
+// showing the arithmetic rather than around the form. Every figure comes from the SERVER's quote —
+// the same function the send path uses — so what is on screen and what goes on the wire cannot drift.
+// Nothing is worked out in the browser except the dollars→cents conversion of what was typed.
+let CURD = null;          // current deal id
+let QUOTE = null;         // the server's last answer for the typed figure
+let ARMED = false;        // Send is two-tap: an invoice cannot be undone from here
+
+function closeDeal() { $('dealOverlay').classList.remove('open'); CURD = null; QUOTE = null; disarm(); }
+$('d_close').addEventListener('click', closeDeal);
+$('dealOverlay').addEventListener('click', (e) => { if (e.target === $('dealOverlay')) closeDeal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && CURD != null) closeDeal(); });
+
+function disarm() {
+  ARMED = false;
+  const b = $('d_send');
+  b.classList.remove('warn');
+  b.textContent = (STATE.config && STATE.config.config && STATE.config.config.dry_run) ? 'Send (dry run)' : 'Send invoice';
+}
+
+// Dollars in, integer cents out, rounded exactly once (GR3). parseFloat('5.05')*100 is 504.999…, so
+// the round is doing real work rather than tidying.
+function typedCents() {
+  const v = String($('d_disc').value || '').replace(/[^0-9.]/g, '');
+  if (!v) return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+
+function renderQuote(q) {
+  const s = q && q.summary;
+  if (!s) { $('d_quote').innerHTML = ''; return; }
+  const rows = [];
+  rows.push(`<div class="qr"><span class="k">Cards (${s.lineCount})</span><span class="v">${money(s.subtotalCents)}</span></div>`);
+  if (q.discountCents) rows.push(`<div class="qr"><span class="k">Discount</span><span class="v">− ${money(q.discountCents)}</span></div>`);
+  // WHY that band, not just which. A cart of cheap commons going signature looks like a bug until you
+  // are told the order totals $280.
+  const why = s.boundBy === 'subtotal' ? `the order totals ${money(s.subtotalCents)}`
+    : s.boundBy === 'slab' ? 'a graded card never travels untracked'
+      : 'its dearest card';
+  rows.push(`<div class="qr"><span class="k">Postage — ${esc(s.bandLabel||s.bandId||'')} <span class="why">(${esc(why)})</span></span><span class="v">${money(s.postageCents)}</span></div>`);
+  if (s.postageSavedCents > 0) {
+    rows.push(`<div class="qr"><span class="k why">saves them vs one postage per card</span><span class="v why">${money(s.postageSavedCents)}</span></div>`);
+  }
+  if (q.totalCents != null) {
+    rows.push(`<div class="qr total"><span class="k">Buyer pays</span><span class="v"><b>${money(q.totalCents)}</b></span></div>`);
+  }
+  // Cost basis is shown WITH its completeness, and never turned into a profit figure: this repo models
+  // the buyer-protection fee only, so any "you still make $X" would be confidently wrong (GR4).
+  if (s.costBasisCents != null) {
+    rows.push(`<div class="qr"><span class="k why">cost basis${s.costBasisComplete ? '' : ` (${s.unknownCostLines} line(s) unknown)`}</span><span class="v why">${money(s.costBasisCents)}</span></div>`);
+  }
+  rows.push(`<div class="qr"><span class="k why">before eBay's buyer-protection fee</span><span class="v why"></span></div>`);
+  $('d_quote').innerHTML = rows.join('');
+}
+
+function renderWarnings(q) {
+  const ws = (q && q.warnings) || [];
+  const bad = q && q.ok === false;
+  const parts = [];
+  if (bad) parts.push(`<div class="warnrow bad">⛔ ${esc(q.error || q.message || 'that figure will not do')}</div>`);
+  for (const w of ws) parts.push(`<div class="warnrow">⚠ ${esc(w.message)}</div>`);
+  $('d_warn').innerHTML = parts.join('');
+}
+
+let quoteTimer = null;
+function requote() {
+  disarm();                       // any edit un-arms Send, so a figure can never be sent unseen
+  clearTimeout(quoteTimer);
+  quoteTimer = setTimeout(async () => {
+    if (CURD == null) return;
+    const cents = typedCents();
+    try {
+      const q = await api(`/deals/${CURD}/quote`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ discount_cents: cents }),
+      });
+      QUOTE = q; renderQuote(q); renderWarnings(q);
+      $('d_send').disabled = !cents;
+    } catch (e) {
+      // A refusal comes back as a 409 with the reason in the body — that IS the answer, not an outage.
+      QUOTE = e.body || null;
+      renderQuote(e.body); renderWarnings(e.body || { ok: false, error: e.message });
+      $('d_send').disabled = true;
+    }
+  }, 220);
+}
+$('d_disc').addEventListener('input', requote);
+
+async function openDeal(id) {
+  CURD = id; QUOTE = null; ARMED = false;
+  $('d_err').textContent = ''; $('d_warn').innerHTML = ''; $('d_quote').innerHTML = '';
+  // The input stays DISABLED until the row has loaded. Otherwise a fast typist can trigger a re-quote
+  // during the await below, and openDeal's continuation then overwrites their answer with the
+  // no-discount one — the figure on screen silently reverting while they are reading it.
+  $('d_disc').value = ''; $('d_disc').disabled = true; $('d_send').disabled = true;
+  $('dealOverlay').classList.add('open');
+  try {
+    const q = await api(`/deals/${id}`);
+    const d = q.deal || {};
+    const lines = q.lines || [];
+    $('d_status').className = 'pill ' + (d.status || '');
+    $('d_status').textContent = d.status || '';
+    $('d_who').textContent = '@' + (d.ebay_username || '—');
+    $('d_ctx').innerHTML = [
+      d.ebay_order_id ? `order <b>${esc(d.ebay_order_id)}</b>` : '<b>no eBay order yet</b> — the buyer has to commit to buy before an invoice exists',
+      `via ${esc(d.source || '—')}`,
+      d.expires_at ? `expires ${esc(when(d.expires_at))}` : '',
+    ].filter(Boolean).join(' · ');
+    const terms = (() => { try { return JSON.parse(d.matched_terms || '[]'); } catch { return []; } })();
+    $('d_ask').innerHTML = d.detected_kind
+      ? `<b>${esc(d.detected_kind.replace(/_/g, ' '))}</b>${terms.length ? ` <span class="why">(${esc(terms.join(', '))})</span>` : ''}`
+      : '<span class="faint">—</span>';
+    $('d_lines').innerHTML = lines.length
+      ? lines.map(l => `<div class="dealline"><span>${esc(l.title || l.sku || l.ebay_item_id || 'item')}${l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>`
+        + `<span class="mono">${money(l.unit_price_cents)}</span></div>`).join('')
+      : '<div class="faint">no lines on this quote</div>';
+    if (q.summary) { QUOTE = q; renderQuote(q); }
+    // A quote that is already decided is a record, not a form.
+    const open = d.status === 'pending' || d.status === 'awaiting_approval';
+    $('d_disc').disabled = !open; $('d_skip').disabled = !open;
+    disarm();
+    $('d_send').disabled = true;
+    if (!open) $('d_err').textContent = d.error || '';
+  } catch (e) {
+    $('d_err').textContent = e.message;
+  }
+}
+
+// TWO TAPS. An invoice cannot be undone from this screen, and the first tap is where the figure gets
+// read back in words — so the second tap is a decision about a specific amount rather than a reflex.
+$('d_send').addEventListener('click', async () => {
+  if (CURD == null || !QUOTE || QUOTE.ok === false) return;
+  const dry = !!(STATE.config && STATE.config.config && STATE.config.config.dry_run);
+  if (!ARMED) {
+    ARMED = true;
+    $('d_send').classList.add('warn');
+    $('d_send').textContent = dry ? `Confirm — dry run, nothing sent` : `⚠ Confirm — invoice ${money(QUOTE.totalCents)}`;
+    return;
+  }
+  $('d_send').disabled = true; $('d_send').textContent = 'sending…'; $('d_err').textContent = '';
+  try {
+    const r = await api(`/deals/${CURD}/send`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      // expect_total_cents is the optimistic-concurrency guard: if anything moved between the quote on
+      // screen and this tap, the server refuses rather than invoicing a different number.
+      body: JSON.stringify({ discount_cents: QUOTE.discountCents, expect_total_cents: QUOTE.totalCents }),
+    });
+    closeDeal();
+    await loadAll();
+    if (r.dry_run) alert('Dry run — nothing was sent to eBay. Turn dry_run off in Settings to send for real.');
+  } catch (e) {
+    disarm();
+    $('d_send').disabled = false;
+    $('d_err').textContent = (e.body && e.body.error) || e.message;
+  }
+});
+
+$('d_skip').addEventListener('click', async () => {
+  if (CURD == null) return;
+  $('d_skip').disabled = true;
+  try { await api(`/deals/${CURD}/skip`, { method: 'POST' }); closeDeal(); await loadAll(); }
+  catch (e) { $('d_skip').disabled = false; $('d_err').textContent = e.message; }
+});
 
 loadAll();
 setInterval(loadAll, 60000);
