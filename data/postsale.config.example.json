@@ -31,6 +31,11 @@
   "listings_sync": true,
   "fees": false,
   "cases": true,
+  "deals": {
+    "enabled": false,
+    "detect_from_messages": true,
+    "expire_hours": 72
+  },
   "hold_alerts": true,
   "hold_pin": true,
   "cancel_restock": true,
