@@ -542,7 +542,19 @@
 
   /* ---------------- settings (spec-driven, tooltips + toggles) ---------------- */
   const SPEC={
-    postsale:{ title:'Post-sale &amp; fulfilment', groups:[
+    postsale:{ title:'Post-sale &amp; fulfilment',
+      // Best Offer is off store-wide, so a template still telling buyers to "send an offer" points at
+      // a button that is not there. The shipped defaults now invite a TOTAL request instead; this
+      // catches a copy the owner had already edited, which that update could not touch.
+      warn(c){
+        const stale=/send(ing)?\s+(through\s+)?an\s+offer|make\s+an\s+offer|best\s+offer/i;
+        const hits=['fallback_body','style_notes','brand_voice'].filter(k=>stale.test(String(c[k]||'')));
+        if(!hits.length) return '';
+        return 'Your saved '+hits.join(' and ')+' still invites buyers to send an offer, but Best Offer is off store-wide '
+          +'so there is no offer button on your listings. Reword it to invite a total request instead: add to cart, ask us '
+          +'for a total, one invoice with one lot of postage.';
+      },
+      groups:[
       {name:'Order sync',fields:[
         {p:'enabled',l:'Order sync',t:'toggle',tip:'<b>Master switch.</b> When on, the server polls eBay for new paid orders and powers the Fulfilment dashboard. Off = nothing is ingested.'},
         {p:'messaging',l:'AI buyer messages',t:'toggle',tip:'When on, the AI drafts a personalised thank-you for each <b>new</b> order. Off = fulfilment only (orders, labels, pick sheet) with no buyer messaging.'},
@@ -1020,6 +1032,11 @@
         jsonBox=document.createElement('textarea'); jsonBox.value=JSON.stringify(getP(c,spec.json)??{},null,2);
         cell.querySelector('.field').appendChild(jsonBox); card.appendChild(cell);
       }
+      // A nudge, not a block. These config files are SERVER-OWNED and owner-edited, so a wording the
+      // owner changed by hand is theirs — rewriting it on their behalf would silently discard a
+      // decision. What the app can honestly do is point out when a saved template still promises
+      // something the shop no longer offers.
+      if(spec.warn){ const w=spec.warn(c); if(w) card.appendChild(el('<div style="margin-top:12px;"><span class="lock" style="color:var(--amber);border-color:rgba(240,192,74,.4);">⚠ '+esc(w)+'</span></div>')); }
       if(spec.locked) card.appendChild(el('<div style="margin-top:12px;"><span class="lock">🔒 '+esc(spec.locked)+'</span></div>'));
       const actions=el('<div class="actions"><span class="savenote"></span><button class="btn go">Save '+esc(name)+'</button></div>');
       const note=actions.querySelector('.savenote');

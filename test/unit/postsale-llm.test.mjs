@@ -534,9 +534,9 @@ describe('followUpSystemPrompt', () => {
   it('invites a FUTURE offer on both follow-ups, because repeat business is the point', () => {
     for (const kind of ['dispatch', 'delivered']) {
       const s = followUpSystemPrompt({}, kind);
-      assert.match(s, /inviting them to send an offer NEXT time/, kind);
+      assert.match(s, /inviting them to ask for a total NEXT time/, kind);
       assert.match(s, /clearly about a future order, never about this one/, kind);
-      assert.doesNotMatch(followUpSystemPrompt({ invite_offers: false }, kind), /send an offer NEXT time/, kind);
+      assert.doesNotMatch(followUpSystemPrompt({ invite_offers: false }, kind), /ask for a total NEXT time/, kind);
     }
   });
 
@@ -594,7 +594,7 @@ describe('fallbackFollowUp', () => {
   it('both follow-ups invite a future offer, and never a bundle on a parcel already sealed', () => {
     for (const [kind, postage] of [['dispatch', { label: 'Express Post', tracking: '36LB1' }], ['delivered', {}]]) {
       const d = fallbackFollowUp({ order, items, postage, kind, cfg: {} });
-      assert.match(d.body, /Next time there's something you're after, send an offer through/, kind);
+      assert.match(d.body, /Next time there's something you're after, pop it in your cart and ask us for a total/, kind);
       assert.doesNotMatch(d.body, /bundle|combin|add(ing)? to (your|this) order|anything else you'?re after/i, kind);
       // …and it reads as its own thought, not tacked onto the line above it.
       assert.match(d.body, /\n\nNext time there's/, kind);
