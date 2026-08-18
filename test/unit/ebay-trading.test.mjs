@@ -7,6 +7,7 @@ import {
   xmlEscape, centsToXmlPrice, xmlMoneyCents, compatLevel, siteId,
   buildTradingBody, buildTradingHeaders,
   buildReviseInventoryStatusInner, buildReviseFixedPriceItemInner,
+  buildSendInvoiceInner,
 } from '../../lib/ebay-trading.mjs';
 
 describe('XML parsers', () => {
@@ -116,5 +117,112 @@ describe('xmlMoneyCents — an absent money element is unknown, not zero', () =>
   it('rounds to whole cents (GR3)', () => {
     assert.equal(xmlMoneyCents('2.985'), 299);
     assert.equal(xmlMoneyCents('19.99'), 1999);
+  });
+});
+
+// --- SendInvoice: the only call in the repo that changes what a buyer is asked to pay -------------
+describe('centsToXmlPrice — negatives, which SendInvoice depends on entirely', () => {
+  it('renders a negative as a negative', () => {
+    // A discount reaches eBay as a NEGATIVE AdjustmentAmount. If this ever rendered unsigned, every
+    // deal would bill the buyer extra for asking for one.
+    assert.equal(centsToXmlPrice(-500), '-5.00');
+    assert.equal(centsToXmlPrice(-1), '-0.01');
+    assert.equal(centsToXmlPrice(-50), '-0.50');
+    assert.equal(centsToXmlPrice(-1520), '-15.20');
+    assert.equal(centsToXmlPrice('-500'), '-5.00');
+  });
+
+  it('PINS the two poison inputs, so the guard against them cannot be softened', () => {
+    // null renders as a silent A$0.00 — an invoice with no discount on it, which looks like success.
+    assert.equal(centsToXmlPrice(null), '0.00');
+    // undefined renders as the literal string "NaN", which is invalid XML.
+    assert.equal(centsToXmlPrice(undefined), 'NaN');
+    // Neither may reach the wire, so buildSendInvoiceInner refuses both rather than testing truthiness
+    // (a `!x` test would also reject a legitimate 0).
+  });
+});
+
+describe('buildSendInvoiceInner', () => {
+  const base = { orderId: '12-34-56', currency: 'AUD', shippingService: 'AU_Regular', shippingCostCents: 826, messageId: 'deal-1' };
+
+  it('THE ONE THAT MATTERS: a discount is emitted NEGATIVE', () => {
+    const xml = buildSendInvoiceInner({ ...base, discountCents: 1500 });
+    assert.ok(xml.includes('<AdjustmentAmount currencyID="AUD">-15.00</AdjustmentAmount>'));
+    assert.ok(!xml.includes('>15.00<'), 'an unsigned figure here is a surcharge, not a discount');
+  });
+
+  it('emits the WSDL sequence, not the doc page order', () => {
+    // The reference page lists fields alphabetically, which puts AdjustmentAmount FIRST. The schema
+    // puts it LAST. XML in doc order is rejected.
+    const xml = buildSendInvoiceInner({ ...base, discountCents: 1500, checkoutInstructions: 'note' });
+    const at = (t) => xml.indexOf(t);
+    assert.ok(at('<MessageID>') < at('<WarningLevel>'));
+    assert.ok(at('<WarningLevel>') < at('<OrderID>'));
+    assert.ok(at('<OrderID>') < at('<ShippingServiceOptions>'));
+    assert.ok(at('<ShippingServiceOptions>') < at('<CheckoutInstructions>'));
+    assert.ok(at('<CheckoutInstructions>') < at('<EmailCopyToSeller>'));
+    assert.ok(at('<EmailCopyToSeller>') < at('<AdjustmentAmount'));
+    assert.ok(at('<ShippingService>') < at('<ShippingServiceCost'));
+  });
+
+  it('never wraps the postage in <ShippingDetails>', () => {
+    // That wrapper is correct on AddOrder and on a listing, and wrong here — it becomes an unrecognised
+    // element, which under the default WarningLevel is accepted with Ack=Success and changes nothing.
+    const xml = buildSendInvoiceInner({ ...base, discountCents: 100 });
+    assert.ok(!xml.includes('<ShippingDetails>'));
+    assert.ok(xml.includes('<ShippingServiceOptions>'));
+    assert.ok(xml.includes('<WarningLevel>High</WarningLevel>'), 'High is what makes a wrong element an error');
+  });
+
+  it('emits ONE identity and offers no way to send a second', () => {
+    // OrderID silently causes OrderLineItemID / ItemID / TransactionID / SKU to be IGNORED, with
+    // Ack=Success — so a stale second identifier invoices a scope nobody chose, with no error.
+    const xml = buildSendInvoiceInner({ ...base, discountCents: 100, orderLineItemId: 'X-1', itemId: '999', transactionId: '888', sku: 'BK-1' });
+    assert.ok(xml.includes('<OrderID>12-34-56</OrderID>'));
+    for (const tag of ['<OrderLineItemID>', '<ItemID>', '<TransactionID>', '<SKU>']) {
+      assert.ok(!xml.includes(tag), `${tag} must never appear`);
+    }
+  });
+
+  it('never emits the blocks that do not belong to this call', () => {
+    const xml = buildSendInvoiceInner({ ...base, discountCents: 100 });
+    for (const tag of ['<SalesTax>', '<PaymentMethods>', '<InternationalShippingServiceOptions>',
+      '<ShippingServiceAdditionalCost>', '<PayPalEmailAddress>', '<InsuranceDetails>']) {
+      assert.ok(!xml.includes(tag), `${tag} must never appear`);
+    }
+  });
+
+  it('takes currencyID from the argument rather than hardcoding AUD', () => {
+    const xml = buildSendInvoiceInner({ ...base, currency: 'USD', discountCents: 100 });
+    assert.ok(xml.includes('<AdjustmentAmount currencyID="USD">'));
+    assert.ok(xml.includes('<ShippingServiceCost currencyID="USD">'));
+  });
+
+  it('omits optional blocks whole rather than emitting them empty', () => {
+    const bare = buildSendInvoiceInner({ orderId: 'A-1' });
+    assert.ok(!bare.includes('<ShippingServiceOptions>'));
+    assert.ok(!bare.includes('<CheckoutInstructions>'));
+    assert.ok(!bare.includes('<AdjustmentAmount'));
+    assert.ok(!bare.includes('<MessageID>'));
+    assert.ok(bare.includes('<OrderID>A-1</OrderID>'));
+  });
+
+  it('refuses the values that would send a silent zero or invalid XML', () => {
+    assert.throws(() => buildSendInvoiceInner({ ...base, discountCents: 0 }), /positive magnitude/);
+    assert.throws(() => buildSendInvoiceInner({ ...base, discountCents: -100 }), /positive magnitude/);
+    assert.throws(() => buildSendInvoiceInner({ ...base, discountCents: 1.5 }), /whole cents/);
+    assert.throws(() => buildSendInvoiceInner({ ...base, shippingCostCents: NaN, discountCents: 100 }), /number of cents/);
+    assert.throws(() => buildSendInvoiceInner({ orderId: null }), /orderId is required/);
+  });
+
+  it('refuses checkout instructions past eBay\'s 500-character cap', () => {
+    assert.throws(() => buildSendInvoiceInner({ ...base, discountCents: 100, checkoutInstructions: 'x'.repeat(501) }), /limit is 500/);
+    assert.ok(buildSendInvoiceInner({ ...base, discountCents: 100, checkoutInstructions: 'x'.repeat(500) }).includes('<CheckoutInstructions>'));
+  });
+
+  it('escapes everything it interpolates', () => {
+    const xml = buildSendInvoiceInner({ ...base, discountCents: 100, checkoutInstructions: 'a & b <c> "d"' });
+    assert.ok(xml.includes('a &amp; b &lt;c&gt; &quot;d&quot;'));
+    assert.ok(!xml.includes('<c>'));
   });
 });

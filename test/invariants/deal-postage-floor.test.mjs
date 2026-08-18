@@ -80,6 +80,41 @@ describe('INVARIANT: combined postage is the MAX of the lines, never less', () =
     assert.equal(r.postageCents, 900);
   });
 
+  it('THE PARCEL BOUND: combining must never buy LESS protection than buying separately', () => {
+    // The bug this clause exists for. Two $140 cards are each inside band 1, so a per-line max alone
+    // quotes $8.26 — tracked, unsigned — for a $280 parcel, while ONE $140 card bought alone would have
+    // gone signature at $15.20. A buyer who combines their order must not end up worse protected than a
+    // buyer who did not, and the value at risk in an envelope is the subtotal, not its dearest card.
+    const two = combinedPostageCents([raw(14000), raw(14000)], DEFAULT_SHIPPING);
+    assert.equal(two.postageCents, DEFAULT_BANDS[2].costCents, 'a $280 parcel is a signature parcel');
+    assert.equal(two.boundBy, 'subtotal', 'and the card should say why');
+    // The same cards alone stay where they belong, so the bound only ever adds.
+    assert.equal(combinedPostageCents([raw(14000)], DEFAULT_SHIPPING).postageCents, DEFAULT_BANDS[1].costCents);
+  });
+
+  it('the parcel bound lifts a pile of cheap cards too', () => {
+    // Three $40 commons is $120 of goods — band 1 territory — even though no single line leaves band 0.
+    const r = combinedPostageCents([raw(4000), raw(4000), raw(4000)], DEFAULT_SHIPPING);
+    assert.equal(r.postageCents, DEFAULT_BANDS[1].costCents);
+    assert.equal(r.boundBy, 'subtotal');
+  });
+
+  it('reports WHICH bound bit, so a surprising quote can be explained', () => {
+    assert.equal(combinedPostageCents([raw(300), raw(50000)], DEFAULT_SHIPPING).boundBy, 'line');
+    assert.equal(combinedPostageCents([raw(14000), raw(14000)], DEFAULT_SHIPPING).boundBy, 'subtotal');
+    const slab = combinedPostageCents([{ title: 'Blastoise PSA 8', unit_price_cents: 500, quantity: 1 }], DEFAULT_SHIPPING);
+    assert.equal(slab.postageCents, DEFAULT_BANDS[1].costCents);
+  });
+
+  it('an unreadable line still REFUSES, and the parcel bound does not paper over it', () => {
+    // The specific way this regresses: introducing Math.max over raw band indices to add the subtotal
+    // bound. Math.max(-1, 0) is 0, so the "cannot price this" answer becomes "cheapest band" — turning
+    // a refusal into a $1.70 letter for a card nobody could value.
+    const r = combinedPostageCents([raw(50000), raw(null)], DEFAULT_SHIPPING);
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'band_unresolved');
+  });
+
   it('a single-line quote is just that line, with nothing added', () => {
     for (let i = 0; i < N; i++) {
       const r = combinedPostageCents([raw(priceInBand(i))], DEFAULT_SHIPPING);

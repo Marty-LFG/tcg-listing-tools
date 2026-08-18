@@ -162,9 +162,21 @@ describe('checkDiscount — structure is refused, judgement is only flagged', ()
     assert.equal(checkDiscount(100, { subtotalCents: 0 }).code, 'no_subtotal');
   });
 
-  it('allows discounting the cards down to exactly zero, but not past it', () => {
-    assert.equal(checkDiscount(53000, s).ok, true);
+  it('refuses a discount that reaches OR passes the subtotal', () => {
+    // The boundary is >= rather than >. A discount equal to the subtotal makes the cards free and
+    // leaves the buyer paying postage only — nobody types that on purpose, it is a stray zero. eBay
+    // documents no cap of its own on AdjustmentAmount, so this client-side ceiling is the only one.
+    assert.equal(checkDiscount(52999, s).ok, true, 'one cent short is still a deal');
+    assert.equal(checkDiscount(53000, s).code, 'discount_exceeds_subtotal');
     assert.equal(checkDiscount(53001, s).code, 'discount_exceeds_subtotal');
+  });
+
+  it('warns when the cards would bring in less than the postage costs', () => {
+    // Arithmetic, so it works with no cost basis at all — unlike below_cost.
+    const r = checkDiscount(52000, s);
+    assert.equal(r.ok, true);
+    assert.ok(r.warnings.some((w) => w.code === 'postage_underwater'), r.warnings.map((w) => w.code).join());
+    assert.ok(!checkDiscount(100, s).warnings.some((w) => w.code === 'postage_underwater'));
   });
 });
 
