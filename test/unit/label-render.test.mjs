@@ -322,3 +322,49 @@ test('packing slip: a batch breaks BEFORE each sheet, never after the last', () 
   assert.doesNotMatch(html, /break-after:\s*page/)
   assert.doesNotMatch(html, /page-break-after:\s*always/)
 })
+
+// --- the DO-NOT-PACK banner ↔ holdReason() mirror -------------------------------------------------
+// The banner turns a hold REASON into a packing INSTRUCTION, and the reasons are holdReason()'s output
+// in lib/postsale.mjs. They are two files that must agree on a set of literal strings, so this walks
+// every reason holdReason can produce and asserts the sheet has something specific to say about it.
+//
+// The bug this exists to stop: the ladder used to end in "Cancelled — put these cards back" as its
+// fall-through, so a reason it did not recognise printed an instruction to restock a live order.
+const { holdReason } = await import('../../lib/postsale.mjs')
+
+const PAID = '2026-08-01T00:00:00.000Z'
+const ROWS = [
+  { paid_time: null },                                        // not paid yet
+  { paid_time: PAID, payment_state: 'pending' },              // payment not settled
+  { paid_time: PAID, payment_state: 'failed' },               // payment failed
+  { paid_time: PAID, cancel_state: 'requested' },             // cancel requested
+  { paid_time: PAID, cancel_state: 'unknown' },               // unknown eBay cancel status
+]
+
+test('every holdReason gets its own instruction on the printed sheet', () => {
+  const reasons = ROWS.map(holdReason)
+  assert.equal(new Set(reasons).size, reasons.length, 'the reasons must be distinct or the map collides')
+  for (const why of reasons) {
+    const html = LR.pickSheetHTML([], { order_count: 0, item_count: 0, unit_count: 0, holds: [{ order_id: 'A1', why }] })
+    assert.ok(html.includes(why), `the sheet should print the reason "${why}"`)
+    assert.ok(!html.includes('On hold — check it on eBay before packing'),
+      `"${why}" fell through to the generic instruction — add it to HOLD_TODO in label-render.js`)
+  }
+})
+
+test('only a genuinely cancelled order is ever restocked by the sheet', () => {
+  // The dangerous instruction. It must reach exactly one reason and never an order that is merely
+  // unpaid, because those cards belong on the shelf, still listed and still sellable.
+  const RESTOCK = 'put these cards back'
+  for (const why of ROWS.map(holdReason)) {
+    const html = LR.pickSheetHTML([], { order_count: 0, item_count: 0, unit_count: 0, holds: [{ order_id: 'A1', why }] })
+    assert.ok(!html.includes(RESTOCK), `"${why}" must not tell the packer to restock a live order`)
+  }
+  const cancelled = LR.pickSheetHTML([], { order_count: 0, item_count: 0, unit_count: 0, holds: [{ order_id: 'A1', why: 'cancelled on eBay' }] })
+  assert.ok(cancelled.includes(RESTOCK), 'a cancelled order still should be restocked')
+})
+
+test('no holds means no banner at all', () => {
+  const html = LR.pickSheetHTML([], { order_count: 0, item_count: 0, unit_count: 0, holds: [] })
+  assert.ok(!html.includes('DO NOT PACK'), 'an ordinary run must look exactly as it always has')
+})

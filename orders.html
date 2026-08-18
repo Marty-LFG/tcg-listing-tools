@@ -751,10 +751,14 @@ async function printPickSheet(){
   try {
     const ps = await api('/picksheet?ids='+encodeURIComponent(ids.join(',')));
     if (!ps.rows || !ps.rows.length){ setStatus('warn','Nothing to pick — the selected orders have no matched line items.'); return; }
-    LR.openPrintDoc(LR.pickSheetHTML(ps.groups, { order_count:ps.order_count, item_count:ps.item_count, unit_count:ps.unit_count, upgrades:ps.upgrades }));
-    const ups = (ps.upgrades||[]).length;
+    // holds is passed because the DO-NOT-PACK banner is the whole reason /picksheet returns it. Without
+    // it bannerBlock gets an empty array and returns '', so the banner has never once printed from this
+    // page — a held or unpaid order simply went missing from the sheet with nothing said about it.
+    LR.openPrintDoc(LR.pickSheetHTML(ps.groups, { order_count:ps.order_count, item_count:ps.item_count, unit_count:ps.unit_count, upgrades:ps.upgrades, holds:ps.holds }));
+    const ups = (ps.upgrades||[]).length, hld = (ps.holds||[]).length;
     setStatus('ok', ps.order_count+' order'+(ps.order_count===1?'':'s')+' · '+ps.item_count+' line'+(ps.item_count===1?'':'s')
       + (ups ? ' · '+ups+' postage upgrade'+(ups===1?'':'s')+' flagged at the top of the sheet' : '')
+      + (hld ? ' · ⛔ '+hld+' held back — see the DO NOT PACK banner' : '')
       + ' → print dialog (sorted by box). Once they\'re pulled and packed, hit “Mark picked”.');
   } catch(e){ setStatus('err','Pick sheet failed: '+e.message); }
 }

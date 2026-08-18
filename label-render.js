@@ -820,6 +820,21 @@
   // The DO-NOT-PACK banner, printed ABOVE the postage one. Cards for these orders are deliberately not
   // in the sections below — an order with a cancellation in flight, or a payment that bounced after
   // eBay said it was paid, must not be packed by muscle memory while somebody walks the shelves.
+  // Keyed on the REASON WORDS, which are holdReason()'s output in lib/postsale.mjs and nothing else.
+  // MIRROR: add a reason there, add it here. It used to key on cancel_state/payment_state with a final
+  // fall-through of "Cancelled — put these cards back", which meant any reason the ladder did not
+  // recognise printed an instruction to restock — and the two payment reasons added with the paid gate
+  // are live orders whose cards must stay exactly where they are. The default is now neutral, so an
+  // unmapped reason is merely unhelpful rather than actively wrong.
+  var HOLD_TODO = {
+    'cancel requested': 'Approve or reject it on eBay',
+    'not paid yet': 'Not paid for — leave these on the shelf',
+    'payment not settled': 'Payment still clearing — leave these on the shelf',
+    'payment failed': 'Payment failed — check it on eBay before packing',
+    'unknown eBay cancel status': 'Unrecognised eBay status — check it on eBay',
+    'cancelled on eBay': 'Cancelled — put these cards back',
+  };
+
   function holdBanner(meta) {
     var holds = (meta && meta.holds) || [];
     return bannerBlock('upg hold',
@@ -832,10 +847,7 @@
           chip: '⛔', order_id: h.order_id, sales_record_number: h.sales_record_number,
           buyer_username: h.buyer_username,
           detail: [h.why, h.cancel_reason].filter(Boolean).join(' · '),
-          todo: h.cancel_state === 'requested' ? 'Approve or reject it on eBay'
-            : h.payment_state === 'failed' ? 'Payment failed — check it on eBay before packing'
-              : h.cancel_state === 'unknown' ? 'Unrecognised eBay status — check it on eBay'
-                : 'Cancelled — put these cards back',
+          todo: HOLD_TODO[h.why] || 'On hold — check it on eBay before packing',
         };
       }));
   }

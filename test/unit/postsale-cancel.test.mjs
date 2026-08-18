@@ -13,9 +13,14 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
   cancelState, paymentState, isCancelled, isOnHold, holdReason, inQueue, needsPacking, pickable,
-  isLabelBought,
-  IN_QUEUE_SQL, NEEDS_PACKING_SQL, PICKABLE_SQL, NOT_CANCELLED_SQL, HOLD_SQL, LABEL_BOUGHT_SQL,
+  isLabelBought, isPaid,
+  IN_QUEUE_SQL, NEEDS_PACKING_SQL, PICKABLE_SQL, NOT_CANCELLED_SQL, HOLD_SQL, LABEL_BOUGHT_SQL, PAID_SQL,
 } from '../../lib/postsale.mjs';
+
+// Every row handed to holdReason/isPaid must carry paid_time, or they throw rather than guess — see
+// assertPaymentColumns. A stub that omits it is indistinguishable from an unpaid order, and guessing
+// either way is how an unpaid parcel goes out.
+const PAID_AT = '2026-08-01T00:00:00.000Z';
 
 describe('cancelState — eBay CancelStatus → the word we act on', () => {
   const at = (cancelStatus, orderStatus = 'Completed') => cancelState({ cancelStatus, orderStatus });
@@ -70,7 +75,7 @@ describe('cancelState — eBay CancelStatus → the word we act on', () => {
   it('an unmapped CancelStatus holds the order rather than packing OR deleting it', () => {
     // Fail safe in both directions: not packed by accident, not silently dropped from the queue.
     assert.equal(at('CancelSomethingEbayAddedLater'), 'unknown');
-    assert.ok(isOnHold({ cancel_state: 'unknown' }));
+    assert.ok(isOnHold({ cancel_state: 'unknown', paid_time: PAID_AT }));
     assert.ok(!isCancelled({ cancel_state: 'unknown' }));
   });
 });
@@ -99,7 +104,7 @@ describe('paymentState — a payment can fail AFTER eBay said the order was paid
 });
 
 describe('the row-level predicates', () => {
-  const unshipped = { shipped_status: 'unshipped', picked_at: null, label_bought_at: null };
+  const unshipped = { shipped_status: 'unshipped', picked_at: null, label_bought_at: null, paid_time: PAID_AT };
 
   it('a cancelled order is out of the queue entirely', () => {
     const o = { ...unshipped, cancel_state: 'cancelled' };
@@ -115,11 +120,35 @@ describe('the row-level predicates', () => {
     assert.equal(holdReason(o), 'cancel requested');
   });
 
-  it('a failed payment holds the order the same way, and says so differently', () => {
+  it('a failed payment holds the order the same way, but is NOT overridable', () => {
     const o = { ...unshipped, payment_state: 'failed' };
     assert.equal(inQueue(o), true);
     assert.equal(pickable(o), false);
     assert.equal(holdReason(o), 'payment failed');
+    // The difference from a cancellation hold: there is no human judgement that makes an unpaid order
+    // packable, so this one closes the wider per-order route too.
+    assert.equal(needsPacking(o), false);
+  });
+
+  it('an unpaid or unsettled order is in the queue, held, and unpackable by any route', () => {
+    for (const [o, why] of [
+      [{ ...unshipped, paid_time: null }, 'not paid yet'],
+      [{ ...unshipped, payment_state: 'pending' }, 'payment not settled'],
+    ]) {
+      assert.equal(inQueue(o), true, why + ': stays visible and polled');
+      assert.equal(holdReason(o), why);
+      assert.equal(isPaid(o), false);
+      assert.equal(needsPacking(o), false, why + ': no per-order override');
+      assert.equal(pickable(o), false, why + ': no bulk action');
+    }
+  });
+
+  it('a row that never SELECTed paid_time throws rather than guessing', () => {
+    // The trap this replaces: an unselected column reads as undefined, which a falsy test cannot tell
+    // apart from a genuine NULL. Silently that makes every order look unpaid, or — with the test
+    // written the other way — every order look paid.
+    assert.throws(() => holdReason({ shipped_status: 'unshipped' }), /no paid_time/);
+    assert.throws(() => isPaid({ shipped_status: 'unshipped' }), /no paid_time/);
   });
 
   it('an ordinary order is untouched by any of it', () => {
@@ -147,20 +176,30 @@ describe('the SQL predicates on an UPGRADED database', () => {
     // backfill. This is exactly the state of the live DB on the first boot after this ships.
     db.exec(`CREATE TABLE orders (
       order_id TEXT PRIMARY KEY, shipped_status TEXT NOT NULL DEFAULT 'unshipped',
-      picked_at TEXT, label_bought_at TEXT, cancel_state TEXT, payment_state TEXT)`);
-    db.exec(`INSERT INTO orders (order_id) VALUES ('legacy-1'), ('legacy-2'), ('legacy-3')`);
-    db.exec(`INSERT INTO orders (order_id, cancel_state) VALUES ('cancelled-1','cancelled')`);
-    db.exec(`INSERT INTO orders (order_id, cancel_state) VALUES ('requested-1','requested')`);
-    db.exec(`INSERT INTO orders (order_id, cancel_state) VALUES ('unknown-1','unknown')`);
-    db.exec(`INSERT INTO orders (order_id, cancel_state) VALUES ('rejected-1','rejected')`);
-    db.exec(`INSERT INTO orders (order_id, payment_state) VALUES ('badpay-1','failed')`);
-    db.exec(`INSERT INTO orders (order_id, shipped_status) VALUES ('posted-1','shipped')`);
+      picked_at TEXT, label_bought_at TEXT, cancel_state TEXT, payment_state TEXT, paid_time TEXT)`);
+    // paid_time is NOT one of the newly-added columns: it has been written at ingest since the first
+    // post-sale commit, and pollOrders has always refused to ingest an order without one. So every
+    // ordinary row here carries it, including the "legacy" ones — a NULL paid_time is not a migration
+    // artefact, it is a genuinely unpaid order, and the two must not be conflated.
+    const PAID = "'2026-08-01T00:00:00.000Z'";
+    db.exec(`INSERT INTO orders (order_id, paid_time) VALUES ('legacy-1',${PAID}), ('legacy-2',${PAID}), ('legacy-3',${PAID})`);
+    db.exec(`INSERT INTO orders (order_id, cancel_state, paid_time) VALUES ('cancelled-1','cancelled',${PAID})`);
+    db.exec(`INSERT INTO orders (order_id, cancel_state, paid_time) VALUES ('requested-1','requested',${PAID})`);
+    db.exec(`INSERT INTO orders (order_id, cancel_state, paid_time) VALUES ('unknown-1','unknown',${PAID})`);
+    db.exec(`INSERT INTO orders (order_id, cancel_state, paid_time) VALUES ('rejected-1','rejected',${PAID})`);
+    db.exec(`INSERT INTO orders (order_id, payment_state, paid_time) VALUES ('badpay-1','failed',${PAID})`);
+    db.exec(`INSERT INTO orders (order_id, shipped_status, paid_time) VALUES ('posted-1','shipped',${PAID})`);
+    // The two rows the payment gate exists for. unpaid-1 is an order nobody has paid for at all;
+    // pending-1 has a PaidTime but the money is still in flight (PayPalPaymentInProcess), which is the
+    // case a naive `paid_time IS NOT NULL` test would wave straight through.
+    db.exec(`INSERT INTO orders (order_id) VALUES ('unpaid-1')`);
+    db.exec(`INSERT INTO orders (order_id, payment_state, paid_time) VALUES ('pending-1','pending',${PAID})`);
     // eBay bought a label for this one; the cards are still on the shelf.
-    db.exec(`INSERT INTO orders (order_id, shipped_status, label_bought_at)
-             VALUES ('label-1','shipped','2026-08-02T05:07:00.000Z')`);
+    db.exec(`INSERT INTO orders (order_id, shipped_status, label_bought_at, paid_time)
+             VALUES ('label-1','shipped','2026-08-02T05:07:00.000Z',${PAID})`);
     // Same, but somebody has since packed it — label_bought_at is history now, not work.
-    db.exec(`INSERT INTO orders (order_id, shipped_status, label_bought_at, picked_at)
-             VALUES ('label-picked-1','shipped','2026-08-02T05:07:00.000Z','2026-08-02T06:00:00.000Z')`);
+    db.exec(`INSERT INTO orders (order_id, shipped_status, label_bought_at, picked_at, paid_time)
+             VALUES ('label-picked-1','shipped','2026-08-02T05:07:00.000Z','2026-08-02T06:00:00.000Z',${PAID})`);
   });
   after(() => { try { db.close(); } catch {} try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 
@@ -173,6 +212,27 @@ describe('the SQL predicates on an UPGRADED database', () => {
     for (const id of ['legacy-1', 'legacy-2', 'legacy-3']) {
       assert.ok(q.includes(id), `${id} (cancel_state NULL) must still be in the pack queue`);
     }
+  });
+
+  it('an UNPAID order stays in the queue, and that is deliberate', () => {
+    // The payment gate lives in NEEDS_PACKING_SQL, never in IN_QUEUE_SQL, and this is the test that
+    // pins the difference. The shipped tab is defined as NOT IN_QUEUE_SQL, so a payment term here
+    // would label an unpaid order SHIPPED; sweepOpenOrders' ACTIONABLE set is built from IN_QUEUE_SQL,
+    // so it would also stop polling the order and never learn the buyer had paid.
+    const q = idsWhere(IN_QUEUE_SQL);
+    assert.ok(q.includes('unpaid-1'), 'an unpaid order must stay visible and polled');
+    assert.ok(q.includes('pending-1'));
+    const shipped = idsWhere(`NOT ${IN_QUEUE_SQL} AND ${NOT_CANCELLED_SQL}`);
+    assert.ok(!shipped.includes('unpaid-1'), 'an unpaid order must never read as shipped');
+  });
+
+  it('PAID_SQL is stricter than "paid_time is set"', () => {
+    // A bounced eCheck and a card still in flight both leave PaidTime in place.
+    const paid = idsWhere(PAID_SQL);
+    assert.ok(!paid.includes('unpaid-1'));
+    assert.ok(!paid.includes('pending-1'), 'money in flight is not money received');
+    assert.ok(!paid.includes('badpay-1'), 'a payment that failed after PaidTime is not paid');
+    assert.ok(paid.includes('legacy-1'));
   });
 
   it('cancelled leaves the queue; held stays in it', () => {
@@ -189,9 +249,15 @@ describe('the SQL predicates on an UPGRADED database', () => {
     // label-1 belongs here: eBay bought its label, but the cards have not been pulled, so it is
     // exactly the work a bulk pick is for. label-picked-1 does not — it has been packed already.
     assert.deepEqual(p, ['label-1', 'legacy-1', 'legacy-2', 'legacy-3', 'rejected-1']);
-    // NEEDS_PACKING_SQL is the wider set the per-order buttons use: a human may pack a held order.
+    // NEEDS_PACKING_SQL is the wider set the per-order buttons use: a human may pack an order whose
+    // cancellation they have decided to reject. They may NOT override a payment that has not arrived —
+    // there is no judgement call to make there — so the payment terms sit in this predicate rather
+    // than only in HOLD_SQL.
     const n = idsWhere(NEEDS_PACKING_SQL);
-    assert.ok(n.includes('requested-1') && n.includes('badpay-1'));
+    assert.ok(n.includes('requested-1'), 'a rejected cancellation is a human decision to make');
+    for (const id of ['badpay-1', 'unpaid-1', 'pending-1']) {
+      assert.ok(!n.includes(id), `${id} must not be packable by any route`);
+    }
   });
 
   it('the "shipped" tab is the negation of the queue, so it must exclude cancelled explicitly', () => {
@@ -206,7 +272,7 @@ describe('the SQL predicates on an UPGRADED database', () => {
   });
 
   it('HOLD_SQL finds exactly what needs a decision', () => {
-    assert.deepEqual(idsWhere(HOLD_SQL), ['badpay-1', 'requested-1', 'unknown-1']);
+    assert.deepEqual(idsWhere(HOLD_SQL), ['badpay-1', 'pending-1', 'requested-1', 'unknown-1', 'unpaid-1']);
   });
 
   it('LABEL_BOUGHT_SQL finds the orders eBay dispatched that nobody has packed', () => {
@@ -230,10 +296,12 @@ describe('the SQL predicates on an UPGRADED database', () => {
     const sqlQueue = new Set(idsWhere(IN_QUEUE_SQL));
     const sqlPickable = new Set(idsWhere(PICKABLE_SQL));
     const sqlLabelBought = new Set(idsWhere(LABEL_BOUGHT_SQL));
+    const sqlPaid = new Set(idsWhere(PAID_SQL));
     for (const r of rows) {
       assert.equal(inQueue(r), sqlQueue.has(r.order_id), `inQueue disagrees on ${r.order_id}`);
       assert.equal(pickable(r), sqlPickable.has(r.order_id), `pickable disagrees on ${r.order_id}`);
       assert.equal(isLabelBought(r), sqlLabelBought.has(r.order_id), `isLabelBought disagrees on ${r.order_id}`);
+      assert.equal(isPaid(r), sqlPaid.has(r.order_id), `isPaid disagrees on ${r.order_id}`);
     }
   });
 });
@@ -251,7 +319,9 @@ describe('messagingBlocked — one gate, every reason', () => {
 
   const order = (id, over = {}) => {
     const buyerId = db.prepare('INSERT INTO buyers (ebay_username) VALUES (?)').run('b-' + id).lastInsertRowid;
-    const cols = { order_id: id, buyer_id: buyerId, ...over };
+    // paid_time defaults to set, because that is what every ingested order has. A test that wants an
+    // unpaid order asks for it explicitly, the same way it asks for a cancellation.
+    const cols = { order_id: id, buyer_id: buyerId, paid_time: '2026-08-01T00:00:00.000Z', ...over };
     const keys = Object.keys(cols);
     db.prepare(`INSERT INTO orders (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`).run(...keys.map((k) => cols[k]));
     return id;
@@ -275,6 +345,18 @@ describe('messagingBlocked — one gate, every reason', () => {
     assert.match(messagingBlocked(db, 'dead-1', 'dispatch'), /cancelled on eBay/);
     assert.match(messagingBlocked(db, 'held-1', 'purchase'), /cancel requested/);
     assert.match(messagingBlocked(db, 'pay-1', 'delivered'), /payment failed/);
+  });
+
+  it('an order nobody has paid for is silent on every kind', async () => {
+    const { messagingBlocked } = await import('../../lib/postsale.mjs');
+    order('nopay-1', { paid_time: null });
+    order('inflight-1', { payment_state: 'pending' });
+    // Thanking somebody for a purchase they have not completed, or telling them a parcel is coming,
+    // are both promises the shop cannot keep yet.
+    for (const kind of ['purchase', 'dispatch', 'delivered']) {
+      assert.match(messagingBlocked(db, 'nopay-1', kind), /not paid yet/, kind);
+      assert.match(messagingBlocked(db, 'inflight-1', kind), /payment not settled/, kind);
+    }
   });
 
   it('the "already in conversation" reasons stay delivered-only', async () => {
