@@ -7,6 +7,7 @@
 // the postsale modules dynamically inside before(), after the server (and its temp path) exist.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { bootServer } from '../helpers/boot-server.mjs';
 
 let srv, db, ingestOrder, loadConfig, maybeHandleReply, cfg;
@@ -239,6 +240,65 @@ describe('postsale — messaging (Phase 1, dry-run)', () => {
     assert.match(fresh.error, /dry_run/);
     assert.ok(fresh.sent_at);
     assert.equal(fresh.decided_by, 'dashboard');
+  });
+
+  // A same-day promise has a shelf life the body does not: the text is frozen at draft time and
+  // sent verbatim whenever someone taps ✅. "Packed and sent later today", approved after the post
+  // has gone, is a promise the buyer can check and we have already broken.
+  describe('a same-day promise that has expired is refused, not sent', () => {
+    // Deterministic without touching the clock: listing TODAY as a holiday makes "now" never
+    // same-day eligible, whatever hour the suite happens to run at. The draft's created_at is a
+    // fixed past Tuesday mid-morning, which is.
+    const TODAY_SYD = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const DRAFTED_AT = '2026-07-21 00:30:00';   // Tue 10:30 Sydney, stored UTC as SQLite writes it
+    const writeCfg = (over) => fs.writeFileSync(srv.configFile('postsale.config.json'),
+      JSON.stringify({ ...loadConfig(), ...over }, null, 2) + '\n');
+    // Its own buyer, deliberately: these drafts end up 'sent', and the reply-handoff tests below
+    // flip the LATEST sent message for a buyer, so sharing 'testbuyer' would silently steal theirs.
+    const stale = (id, over) => {
+      writeCfg({ same_day_dispatch: true, same_day_cutoff: '23:59', timezone: 'Australia/Sydney', holidays: [TODAY_SYD], ...over });
+      ingestOrder(db, mkOrder(id, { buyerUsername: 'samedaybuyer' }), cfg);
+      const m = db.prepare('SELECT * FROM postsale_messages WHERE order_id=?').get(id);
+      db.prepare("UPDATE postsale_messages SET status='awaiting_approval', subject='Thanks!', body='Cheers, it will be packed and sent later today. -BK', updated_at=? WHERE id=?").run(DRAFTED_AT, m.id);
+      return m;
+    };
+    after(() => writeCfg({ same_day_dispatch: false, holidays: [] }));
+
+    it('sends it back for a redraft instead of mailing a broken promise', async () => {
+      const m = stale('M-SD1');
+      const r = await post('/api/postsale/messages/' + m.id + '/approve');
+      assert.equal(r.status, 502);
+      assert.equal(r.json.error, 'stale_same_day');
+      const fresh = db.prepare('SELECT * FROM postsale_messages WHERE id=?').get(m.id);
+      assert.equal(fresh.status, 'pending');       // the poll redrafts it with correct wording
+      assert.match(fresh.error, /same-day promise expired/);
+      assert.equal(fresh.sent_at, null);
+    });
+    it('leaves a draft alone when same-day dispatch is off', async () => {
+      const m = stale('M-SD2', { same_day_dispatch: false });
+      const r = await post('/api/postsale/messages/' + m.id + '/approve');
+      assert.equal(r.status, 200);
+      assert.equal(db.prepare('SELECT status FROM postsale_messages WHERE id=?').get(m.id).status, 'sent');
+    });
+    // The re-queue bumps updated_at, so the redraft that follows is stamped after the cut-off and
+    // reads as an honest "tomorrow". Keying the guard off created_at instead would re-refuse the
+    // corrected text every time and livelock the message for the rest of the evening.
+    it('lets the redrafted message through instead of refusing it forever', async () => {
+      const m = stale('M-SD4');
+      assert.equal((await post('/api/postsale/messages/' + m.id + '/approve')).status, 502);
+      // stand in for the poll's redraft: new text, written now (which is past the cut-off)
+      db.prepare("UPDATE postsale_messages SET status='awaiting_approval', body='Cheers, it will be packed and sent tomorrow. -BK', updated_at=datetime('now') WHERE id=?").run(m.id);
+      const r = await post('/api/postsale/messages/' + m.id + '/approve');
+      assert.equal(r.status, 200, 'a redraft made after the cut-off must be sendable');
+      assert.equal(db.prepare('SELECT status FROM postsale_messages WHERE id=?').get(m.id).status, 'sent');
+    });
+    it('leaves the dispatch and delivered notes alone — they report, they do not promise', async () => {
+      const m = stale('M-SD3');
+      db.prepare("UPDATE postsale_messages SET kind='dispatch' WHERE id=?").run(m.id);
+      const r = await post('/api/postsale/messages/' + m.id + '/approve');
+      assert.equal(r.status, 200);
+      assert.equal(db.prepare('SELECT status FROM postsale_messages WHERE id=?').get(m.id).status, 'sent');
+    });
   });
 
   it('edit rejects a body that breaks eBay off-platform-contact policy', async () => {

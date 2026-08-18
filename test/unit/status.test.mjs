@@ -175,6 +175,32 @@ describe('SETTINGS validators', () => {
     assert.match(SETTINGS.postsale.validate({ ...base, postage: [] }), /postage must be an object/);
   });
 
+  it('postsale: the same-day dispatch keys are optional, but a bad one cannot be saved', () => {
+    // Same base as above: these keys are backfilled by ensureConfigSeeded, so a config written
+    // before the feature existed must still validate.
+    const base = {
+      enabled: false, mode: 'approve', dry_run: true, poll_interval_min: 10, reply_poll_interval_min: 15,
+      lookback_hours: 48, max_per_run: 10, timezone: 'Australia/Sydney', digest_hour: 9,
+      ship_timing_text: 'packed and sent {{when}}', signature: '-BK', brand_voice: '', style_notes: '',
+      invite_offers: true, alerts: true, labels: true, listings_sync: true, fees: false, cases: true,
+      quiet_hours: { enabled: true, start: '21:00', end: '08:00' }, holidays: [],
+    };
+    assert.equal(SETTINGS.postsale.validate(base), null);
+    assert.equal(SETTINGS.postsale.validate({
+      ...base, same_day_dispatch: true, same_day_cutoff: '12:00',
+      same_day_text: 'later today', different_day_wording: 'next business day',
+    }), null);
+
+    // A string here reads as "not false", so an unvalidated typo would quietly start promising
+    // same-day dispatch on every order with nothing on screen saying so.
+    assert.match(SETTINGS.postsale.validate({ ...base, same_day_dispatch: 'yes' }), /same_day_dispatch must be boolean/);
+    for (const bad of ['9am', '25:00', '9:00', '12.00', '']) {
+      assert.match(SETTINGS.postsale.validate({ ...base, same_day_cutoff: bad }), /HH:MM/, bad);
+    }
+    assert.match(SETTINGS.postsale.validate({ ...base, different_day_wording: 'nbd' }), /different_day_wording/);
+    assert.match(SETTINGS.postsale.validate({ ...base, same_day_text: 12 }), /same_day_text must be a string/);
+  });
+
   it('read-only entries are flagged and have no validators', () => {
     for (const name of ['collectr', 'grading', 'grading-companies']) {
       assert.equal(SETTINGS[name].editable, false);
