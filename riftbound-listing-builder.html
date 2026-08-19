@@ -249,6 +249,12 @@ function esc(s){return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&
 // is in finishOf's list for the SP promos, which carry no name suffix to be detected by.
 // Kept self-contained (no shared const): the parity harnesses extract these one at a time into a vm.
 function mapRarity(r){return ['Alternate Art','Overnumbered','Signature','Ultimate'].includes(r)?'Showcase':(r||'');}
+// rbMapRarity flattens Alternate Art / Overnumbered / Signature / Ultimate into ONE catalogue word,
+// 'Showcase'. That is TCGplayer's tier name, not anything printed on the card, and the treatments it
+// hides are far apart in price, so the row leads with the treatment a buyer can actually see and
+// keeps Showcase as the tier behind it. Nothing is invented (GR4): the underlying rarity of a premium
+// print is NOT recoverable, because the bake already stores 'Showcase' in its place.
+function rbRarDisplay(r,v){return v&&v!==r?(r==='Showcase'?v+' (Showcase)':r+', '+v):(r||'');}
 function variantOf(r){return ['Alternate Art','Overnumbered','Signature','Ultimate'].includes(r)?r:'';}
 function finishOf(r){return ['Epic','Showcase','Alternate Art','Overnumbered','Signature','Ultimate'].includes(r)?'Foil':'Non-foil';}
 function domainDisp(d){return (d||'').split(';').join(' / ');}
@@ -430,7 +436,7 @@ function genPitch(f, rawRarity){
 
 // MIRROR: \u21c4 lib/listing-copy.mjs buildDescription(game 'riftbound') (byte-identical; check-listing-copy.mjs).
 function buildHTML(f){
-  const rows=[['Set',f.set],['Card number',f.num],['Rarity',f.rarity+(f.variant&&f.variant!==f.rarity?', '+f.variant:'')],['Card type',f.type],['Domain',f.domain]];
+  const rows=[['Set',f.set],['Card number',f.num],['Rarity',rbRarDisplay(f.rarity,f.variant)],['Card type',f.type],['Domain',f.domain]];
   if(f.tags) rows.push(['Tags',f.tags]);
   if((f.e||f.p||f.m)&&/unit/i.test(f.type||'')) rows.push(['Energy / Power / Might',[f.e,f.p,f.m].filter(x=>x!=='').join(' / ')]);
   rows.push(['Finish',f.finish]); rows.push(['Language',f.lang]);
@@ -441,7 +447,7 @@ function buildHTML(f){
   <div style="background:#091428;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #c8aa6e;">
     <div style="color:#c8aa6e;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Riftbound &middot; League of Legends TCG</div>
     <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${vSpan}</div>
-    <div style="color:#7e8db0;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+    <div style="color:#7e8db0;font-size:14px;margin-top:4px;">${[f.num,f.set,rbRarDisplay(f.rarity,f.variant)].filter(function(x){return x!=null&&String(x).trim()!=='';}).map(esc).join(' &middot; ')}</div>
   </div>
   <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
   <div style="padding:0 24px;">

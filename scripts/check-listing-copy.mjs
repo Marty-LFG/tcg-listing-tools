@@ -232,7 +232,7 @@ console.log('\n[riftbound builder parity]');
   for (const [fi, fx] of fixtures.entries()) {
     const setName = fx.f_set.replace(/\s*\([^)]*\)\s*$/, '');
     const ctx = builderContext('riftbound-listing-builder.html',
-      ['function mapRarity(', 'function readFields()', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx,
+      ['function mapRarity(', 'function rbRarDisplay(', 'function readFields()', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx,
       { curSetName: () => setName });
     // The variant is what distinguishes the treatments once mapRarity has flattened them all to
     // 'Showcase' — mirrors buildRowFields()'s `riftboundPitch(f, f.variant || f.rarity)`.
@@ -365,7 +365,7 @@ console.log('\n[onepiece builder parity]');
   ];
   for (const [fi, fx] of fixtures.entries()) {
     const ctx = builderContext('onepiece-listing-builder.html',
-      ['function isChaseVariant(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
+      ['var OP_RAR=', 'function opRarKey(', 'function opRarName(', 'function opRarDisplay(', 'function isChaseVariant(', 'function genTitle()', 'function genPitch(', 'function buildHTML(', 'function esc('], fx);
     const f = { name: fx.f_name, num: fx.f_num, set: fx.f_set, rarity: fx.f_rarity, variant: fx.f_variant, lang: fx.f_lang, cond: fx.f_cond, type: fx.f_type, color: fx.f_color, attr: fx.f_attr, traits: fx.f_traits, cost: fx.f_cost, power: fx.f_power, counter: fx.f_counter, life: fx.f_life };
     check('genTitle ' + fx.f_name.slice(0, 20), LC.buildTitle('onepiece', f), vm.runInContext('genTitle()', ctx));
     const pitch = vm.runInContext('genPitch(' + JSON.stringify(f) + ')', ctx);

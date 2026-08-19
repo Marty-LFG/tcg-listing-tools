@@ -88,7 +88,7 @@
         <div><label>Card type</label><input id="f_type" placeholder="Leader / Character / Event / Stage"></div>
         <div><label>Colour</label><input id="f_color"></div>
         <div><label>Attribute</label><input id="f_attr" placeholder="Slash / Strike / Ranged …"></div>
-        <div><label>Type(s) / traits</label><input id="f_traits"></div>
+        <div><label>Types (traits)</label><input id="f_traits"></div>
         <div class="f-full"><label>Cost / Power / Counter / Life (blank to hide)</label>
           <div class="stat4"><input id="f_cost" placeholder="Cost"><input id="f_power" placeholder="Power"><input id="f_counter" placeholder="Counter"><input id="f_life" placeholder="Life"></div></div>
         <div><label>Language</label><input id="f_lang" value="English"></div>
@@ -149,6 +149,12 @@ function opVariantLabel(c){
   return 'Base Art';
 }
 function isChaseVariant(v){return /alt|parallel|manga|special|box topper|\bsp\b/i.test(v||'');}
+// MIRROR of lib/listing-copy.mjs. The printed rarity CODE is what optcgapi returns; buyers read words.
+// An unlisted code renders unchanged rather than being glossed with a guess (GR4).
+var OP_RAR={C:'Common',UC:'Uncommon',R:'Rare',SR:'Super Rare',SEC:'Secret Rare',L:'Leader',TR:'Treasure Rare',SP:'Special Card',P:'Promotion Card',PR:'Promotion Card'};
+function opRarKey(r){return (''+(r==null?'':r)).trim().toUpperCase().replace(/^SP CARD$/,'SP');}
+function opRarName(r){var k=opRarKey(r);return OP_RAR[k]||(r||'');}
+function opRarDisplay(r){var k=opRarKey(r);return OP_RAR[k]?OP_RAR[k]+' ('+k+')':(r||'');}
 
 function genTitle(){
   var name=val('f_name'),code=val('f_num'),setn=val('f_set'),rar=val('f_rarity'),variant=val('f_variant'),lang=val('f_lang'),cond=val('f_cond');
@@ -265,15 +271,15 @@ function genPitch(f){
   var vWord=isChaseVariant(f.variant)?(f.variant+' '):'';
   if(chase)
     return `The ${vWord}${name} ${type} from the One Piece Card Game, ${setName}. A ${f.color?f.color+' ':''}standout prized by collectors and players alike.`;
-  return `${name}, a ${f.color?f.color+' ':''}${type} from the One Piece Card Game's ${setName} set.${f.rarity?' '+f.rarity+' rarity.':''}`;
+  return `${name}, a ${f.color?f.color+' ':''}${type} from the One Piece Card Game's ${setName} set.${f.rarity?' '+opRarName(f.rarity)+' rarity.':''}`;
 }
 
 function buildHTML(f){
   const rows=[['Set',f.set],['Card code',f.num],
-    ['Rarity',f.rarity+(isChaseVariant(f.variant)&&f.variant!==f.rarity?', '+f.variant:'')],
+    ['Rarity',opRarDisplay(f.rarity)+(isChaseVariant(f.variant)&&f.variant!==f.rarity?', '+f.variant:'')],
     ['Card type',f.type],['Colour',f.color]];
   if(f.attr) rows.push(['Attribute',f.attr]);
-  if(f.traits) rows.push(['Type(s)',f.traits]);
+  if(f.traits) rows.push(['Types',f.traits]);
   const stats=[f.cost!==''?'Cost '+f.cost:'',f.power!==''?'Power '+f.power:'',f.counter!==''?'Counter '+f.counter:'',f.life!==''?'Life '+f.life:''].filter(Boolean);
   if(stats.length) rows.push(['Stats',stats.join(' · ')]);
   rows.push(['Art / variant',f.variant]); rows.push(['Language',f.lang]);
@@ -285,7 +291,7 @@ function buildHTML(f){
   <div style="background:#0b0d12;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #e23b3b;">
     <div style="color:#e23b3b;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">One Piece Card Game</div>
     <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${vSpan}</div>
-    <div style="color:#8a8f9c;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+    <div style="color:#8a8f9c;font-size:14px;margin-top:4px;">${[f.num,f.set,opRarDisplay(f.rarity)].filter(function(x){return x!=null&&String(x).trim()!=='';}).map(esc).join(' &middot; ')}</div>
   </div>
   <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
   <div style="padding:0 24px;">

@@ -93,7 +93,7 @@
           <option>Standard</option><option>Foil</option><option>Hyperspace</option>
           <option>Hyperspace Foil</option><option>Showcase</option><option>Prestige</option></select></div>
         <div><label>Card type</label><input id="f_type"></div>
-        <div><label>Aspect(s)</label><input id="f_aspect"></div>
+        <div><label>Aspects</label><input id="f_aspect"></div>
         <div><label>Arena</label><input id="f_arena" placeholder="Ground / Space / N/A"></div>
         <div><label>Traits</label><input id="f_traits"></div>
         <div class="f-full"><label>Cost / Power / HP (units &amp; leaders \u2014 blank to hide)</label>
@@ -284,7 +284,7 @@ function genPitch(f, rawRarity){
 function buildHTML(f){
   const rows=[['Set',f.set],['Card number',f.num],
     ['Rarity',f.rarity+(f.variant && f.variant!=='Standard'&&f.variant!==f.rarity?', '+f.variant:'')],
-    ['Card type',f.type],['Aspect(s)',f.aspect]];
+    ['Card type',f.type],['Aspects',f.aspect]];
   if(f.arena) rows.push(['Arena',f.arena]);
   if(f.traits) rows.push(['Traits',f.traits]);
   if(f.cost||f.power||f.hp) rows.push(['Cost / Power / HP',[f.cost,f.power,f.hp].filter(x=>x!=='').join(' / ')]);
@@ -297,7 +297,7 @@ function buildHTML(f){
   <div style="background:#0b0d12;border-radius:10px 10px 0 0;padding:22px 24px;border-bottom:3px solid #ffe81f;">
     <div style="color:#ffe81f;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Star Wars: Unlimited</div>
     <div style="color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">${esc(f.name)}${vSpan}</div>
-    <div style="color:#8a8f9c;font-size:14px;margin-top:4px;">${esc(f.num)} &middot; ${esc(f.set)} &middot; ${esc(f.rarity)}</div>
+    <div style="color:#8a8f9c;font-size:14px;margin-top:4px;">${[f.num,f.set,f.rarity].filter(function(x){return x!=null&&String(x).trim()!=='';}).map(esc).join(' &middot; ')}</div>
   </div>
   <div style="padding:20px 24px 4px;"><p style="margin:0 0 16px;">${esc(f.pitch)}</p></div>
   <div style="padding:0 24px;">
