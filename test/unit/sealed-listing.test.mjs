@@ -89,8 +89,9 @@ describe('sealedAspects', () => {
   it('emits the identity aspects and lets a configured value override', () => {
     const a = sealedAspects(POOL, CFG);
     assert.equal(a.Language, 'English');
-    assert.equal(a.Configuration, 'Booster Box');
-    assert.equal(a['Number of Packs'], '36');
+    // SELECTION_ONLY on 261044, and its enum has exactly one member. 'Booster Box' would be REJECTED.
+    assert.equal(a.Configuration, 'Box');
+    assert.ok(!('Number of Packs' in a), 'not an aspect on the boxes category');
     const over = sealedAspects(POOL, { sealed: { gameAspect: 'Pokémon', aspects: { Language: 'Japanese' } } });
     assert.equal(over.Game, 'Pokémon');
     assert.equal(over.Language, 'Japanese', 'the owner can correct a category we guessed wrong about');
@@ -216,5 +217,16 @@ describe('sealedCategoryFor — sealed is TWO categories, not one', () => {
   });
   it('config wins, so a category eBay moves needs no release', () => {
     assert.equal(sealedCategoryFor('booster_box', { sealed: { categories: { booster_box: '999' } } }), '999');
+  });
+});
+
+describe('sealedAspects — SELECTION_ONLY is a rejection, FREE_TEXT is a silent loss', () => {
+  it('a box sends Configuration Box, because that is the only member of the enum', () => {
+    assert.equal(sealedAspects({ ...POOL, product_type: 'booster_box' }, CFG).Configuration, 'Box');
+  });
+  it('a pack sends NO Configuration, because 183456 s enum has not been read yet', () => {
+    const a = sealedAspects({ ...POOL, product_type: 'booster_pack' }, CFG);
+    assert.ok(!('Configuration' in a), 'never guess a SELECTION_ONLY value: a wrong one fails the publish');
+    assert.equal(a['Number of Packs'], '36', 'packs DO carry it, boxes do not');
   });
 });
