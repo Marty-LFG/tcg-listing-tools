@@ -722,6 +722,10 @@
         ...[['pokemon','Pokémon'],['mtg','Magic: The Gathering'],['lorcana','Disney Lorcana'],['swu','Star Wars: Unlimited'],['riftbound','Riftbound']].map(([g,l])=>({
           p:`store.categoryByGame.${g}`,l,t:'select',src:'/api/listings/store/categories',wide:true,blank:'— use the default above —',
           tip:'Storefront department for '+l+' listings. Overrides the default above. Leave it unset to use the default.'})),
+        // Sealed needs its own row because categoryByGame is keyed by GAME, and a booster box and a
+        // single both answer to 'pokemon'. Without this a sealed listing files under Pokemon Singles.
+        {p:'store.sealedCategory',l:'Pokémon sealed',t:'select',src:'/api/listings/store/categories',wide:true,blank:'— use the Pokémon department above —',
+         tip:'Storefront department for SEALED Pokémon product (booster packs, bundles and boxes). Separate from the Pokémon row above, which is keyed by game and would otherwise file a booster box under Singles.'},
       ]},
       {name:'Best Offer defaults',fields:[
         // Best Offer fields removed: this tool no longer publishes offer terms, so a toggle here would
