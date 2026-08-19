@@ -77,6 +77,7 @@ Per-page `--gold` overrides in the wild — **this table is the source of truth*
 | `#e23b3b` | `onepiece-listing-builder` |
 | `#27d3c4` | `funko-listing-builder` |
 | `#c8aa6e` | `riftbound-listing-builder` |
+| `#7ea8c9` | `sealed-listing-builder` *(the card-facing hairline from `rails/sealed`)* |
 
 Most pages are the house gold, and that is the point: a deviation *means* something. The hub
 carries these as `a.tool.t-*{--accent:…}` overrides — note they must out-specify the `a.tool`

@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sealed Listing Builder — Pokémon</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  /* Vault Ledger, per DESIGN.md §4 "shared layer": this page keeps its own bespoke style block and
+     links vault.css AFTER it, which re-themes the neutrals and typography while leaving --gold alone.
+     Unified shell, per-tool accent. The accent is lifted from rails/sealed's own card-facing
+     hairline, so the page wears the colour of the furniture its listings will carry. */
+  :root{
+    --gold:#7ea8c9; --gold-soft:rgba(126,168,201,.14); --gold-dim:#3d5a6e;
+    --bg:#0a0b0f; --bg2:#0d0f15; --ink:#0b0d12; --panel:#14171f; --panel2:#1b1f2a; --field:#0b0d12;
+    --line:rgba(255,255,255,.075); --line2:rgba(255,255,255,.13);
+    --text:#e9edf6; --muted:#8b93a6; --faint:#5b6373;
+    --green:#4ad3a0; --amber:#e8b761; --red:#e06a6a;
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+    --shadow:0 18px 40px -22px rgba(0,0,0,.9);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--sans);
+    font-size:14px;padding:22px 20px 60px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1240px;margin:0 auto;}
+  a{color:var(--gold);}
+
+  /* ---- masthead + monogram (DESIGN.md §6) ---------------------------------- */
+  .mast{display:flex;gap:16px;align-items:center;margin:0 0 22px;}
+  .mono-tile{width:48px;height:48px;flex:0 0 48px;border-radius:13px;display:grid;place-items:center;
+    background:linear-gradient(160deg,#1e2432,#111420);border:1px solid var(--line2);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.07);color:var(--gold);
+    font-family:var(--serif);font-size:23px;font-weight:600;line-height:1;}
+  .mast h1{font-family:var(--serif);font-size:25px;font-weight:600;margin:0;letter-spacing:-.01em;}
+  .mast h1 em{font-style:italic;color:var(--muted);font-weight:500;}
+  .mast .sub{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:3px;letter-spacing:.04em;}
+  .mast .sub b{color:var(--muted);font-weight:500;}
+  .back{margin:0 0 14px;font-size:12px;color:var(--muted);text-decoration:none;display:inline-block;}
+  .back:hover{color:var(--gold);}
+
+  /* ---- section rule -------------------------------------------------------- */
+  .rule{display:flex;align-items:center;gap:12px;margin:0 0 13px;}
+  .rule h2{font-family:var(--serif);font-size:15px;font-weight:600;margin:0;white-space:nowrap;}
+  .rule .ln{flex:1;height:1px;background:var(--line2);}
+  .rule .n{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.1em;}
+
+  /* ---- panels -------------------------------------------------------------- */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+  @media(max-width:1000px){.grid{grid-template-columns:1fr;}}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);
+    border-radius:15px;padding:18px 18px 20px;margin:0 0 18px;box-shadow:var(--shadow);
+    animation:rise .4s ease both;animation-delay:var(--d,0s);}
+  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+
+  label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.13em;
+    margin:0 0 5px;font-weight:600;}
+  input,select,textarea{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line2);
+    border-radius:9px;color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .16s;}
+  input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  input:disabled,select:disabled{opacity:.5;cursor:not-allowed;}
+  .num,input.num,.money{font-family:var(--mono);}
+  .fld{margin:0 0 12px;}
+  .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .hint{font-size:11.5px;color:var(--faint);margin:6px 0 0;line-height:1.5;}
+
+  /* ---- language chips ------------------------------------------------------ */
+  .langs{display:flex;gap:7px;flex-wrap:wrap;}
+  .lang{padding:7px 13px;border-radius:9px;border:1px solid var(--line2);background:var(--field);
+    color:var(--muted);font-family:var(--mono);font-size:12px;font-weight:500;cursor:pointer;transition:.16s;}
+  .lang:hover{border-color:var(--gold-dim);color:var(--text);}
+  .lang[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:#08110f;font-weight:700;}
+
+  /* ---- summary tiles ------------------------------------------------------- */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:0 0 4px;}
+  @media(max-width:620px){.tiles{grid-template-columns:1fr 1fr;}}
+  .tile{position:relative;background:linear-gradient(180deg,var(--panel2),var(--bg2));
+    border:1px solid var(--line);border-radius:12px;padding:13px 13px 12px;overflow:hidden;}
+  .tile::before{content:'';position:absolute;inset:0 0 auto;height:2px;background:var(--gold);opacity:.75;}
+  .tile .k{font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .tile .v{font-family:var(--mono);font-size:19px;font-weight:600;margin-top:6px;letter-spacing:-.02em;}
+  .tile .v.sm{font-size:15px;}
+  .tile .v.pos{color:var(--green);} .tile .v.neg{color:var(--red);} .tile .v.na{color:var(--faint);}
+
+  /* ---- pills (colour is never the only signal) ----------------------------- */
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
+    font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;border:1px solid;}
+  .pill.ok{color:var(--green);border-color:rgba(74,211,160,.4);background:rgba(74,211,160,.1);}
+  .pill.warn{color:var(--amber);border-color:rgba(232,183,97,.4);background:rgba(232,183,97,.1);}
+  .pill.stop{color:var(--red);border-color:rgba(224,106,106,.4);background:rgba(224,106,106,.1);}
+  .pill.idle{color:var(--faint);border-color:var(--line2);}
+
+  /* ---- sku plate ----------------------------------------------------------- */
+  .sku{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:11px;
+    background:var(--ink);border:1px dashed var(--line2);}
+  .sku .val{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--gold);letter-spacing:.02em;
+    word-break:break-all;}
+  .sku .val.void{color:var(--faint);font-weight:400;}
+
+  /* ---- title meter --------------------------------------------------------- */
+  .titlerow{display:flex;gap:9px;align-items:stretch;}
+  .titlerow input{font-size:15px;}
+  .meter{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px;display:flex;
+    justify-content:space-between;align-items:center;}
+  .meter.over{color:var(--red);font-weight:600;}
+  .bar{height:2px;background:var(--line2);border-radius:2px;margin-top:5px;overflow:hidden;}
+  .bar i{display:block;height:100%;background:var(--gold);width:0;transition:width .2s;}
+  .bar.over i{background:var(--red);}
+
+  /* ---- buttons ------------------------------------------------------------- */
+  button{font-family:inherit;}
+  .btn{padding:9px 15px;border-radius:9px;border:1px solid var(--gold);background:var(--gold);
+    color:#08110f;font-weight:700;font-size:13px;cursor:pointer;transition:.16s;}
+  .btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none;filter:none;}
+  .btn.ghost{background:transparent;color:var(--gold);border-color:var(--gold-dim);}
+  .btn.ghost:hover{background:var(--gold-soft);}
+  .btn.wide{width:100%;padding:13px;font-size:14px;letter-spacing:.02em;}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;}
+
+  /* ---- preflight ----------------------------------------------------------- */
+  .checks{list-style:none;margin:0;padding:0;}
+  .checks li{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line);
+    font-size:12.5px;line-height:1.5;}
+  .checks li:last-child{border-bottom:0;}
+  .checks .mk{font-family:var(--mono);font-size:12px;font-weight:700;flex:0 0 16px;line-height:1.5;}
+  .checks .ok .mk{color:var(--green);} .checks .warn .mk{color:var(--amber);} .checks .stop .mk{color:var(--red);}
+  .checks .t{flex:1;}
+  .checks .t b{font-weight:600;}
+  .checks .why{color:var(--faint);font-size:11.5px;display:block;margin-top:2px;}
+
+  /* ---- preview ------------------------------------------------------------- */
+  #preview{width:100%;height:430px;border:1px solid var(--line2);border-radius:11px;background:#fff;}
+  .prevhead{display:flex;justify-content:space-between;align-items:center;margin:0 0 9px;gap:10px;}
+
+  /* ---- photos -------------------------------------------------------------- */
+  .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;}
+  .shot{aspect-ratio:1;border-radius:9px;border:1px solid var(--line2);background:var(--ink);
+    display:grid;place-items:center;overflow:hidden;position:relative;}
+  .shot img{width:100%;height:100%;object-fit:contain;}
+  .shot .tagm{position:absolute;left:4px;bottom:4px;font-family:var(--mono);font-size:8.5px;
+    padding:1px 5px;border-radius:4px;background:rgba(0,0,0,.72);color:var(--muted);letter-spacing:.06em;}
+  .shot.add{border-style:dashed;color:var(--faint);font-size:22px;cursor:pointer;}
+  .shot.add:hover{border-color:var(--gold-dim);color:var(--gold);}
+
+  /* ---- stock table --------------------------------------------------------- */
+  .stock{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .stock th{text-align:left;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+    font-weight:600;padding:0 8px 7px 0;border-bottom:1px solid var(--line2);}
+  .stock td{padding:8px 8px 8px 0;border-bottom:1px solid var(--line);vertical-align:top;}
+  .stock td.n{font-family:var(--mono);text-align:right;padding-right:0;}
+  .stock tr:last-child td{border-bottom:0;}
+  .empty{color:var(--faint);font-size:12.5px;padding:14px 0;text-align:center;}
+
+  .status{font-size:12px;padding:9px 12px;border-radius:9px;margin:10px 0 0;display:none;line-height:1.5;}
+  .status.show{display:block;}
+  .status.info{background:var(--gold-soft);color:var(--text);border:1px solid var(--gold-dim);}
+  .status.warn{background:rgba(232,183,97,.1);color:var(--amber);border:1px solid rgba(232,183,97,.35);}
+  .status.bad{background:rgba(224,106,106,.1);color:var(--red);border:1px solid rgba(224,106,106,.35);}
+
+  .toast{position:fixed;right:18px;bottom:18px;background:var(--panel2);border:1px solid var(--gold-dim);
+    color:var(--text);padding:11px 15px;border-radius:11px;font-size:13px;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;transform:translateY(6px);box-shadow:var(--shadow);z-index:50;}
+  .toast.on{opacity:1;transform:none;}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← All tools</a>
+
+  <div class="mast">
+    <div class="mono-tile" aria-hidden="true">S</div>
+    <div>
+      <h1>Sealed Listing Builder <em>Pokémon</em></h1>
+      <div class="sub"><b>ONE LISTING AT A TIME</b> · BOOSTER PACKS · BUNDLES · BOXES · EN / JP / CN</div>
+    </div>
+  </div>
+
+  <div class="tiles" style="margin-bottom:18px;">
+    <div class="tile"><div class="k">Units in stock</div><div class="v na" id="t_units">—</div></div>
+    <div class="tile"><div class="k">Cost basis / unit</div><div class="v sm na" id="t_cost">—</div></div>
+    <div class="tile"><div class="k">Market value / unit</div><div class="v sm na" id="t_value">—</div></div>
+    <div class="tile"><div class="k">Margin at ask</div><div class="v sm na" id="t_margin">—</div></div>
+  </div>
+
+  <div class="grid">
+    <!-- ============================ LEFT ============================ -->
+    <div>
+      <div class="card" style="--d:.04s">
+        <div class="rule"><h2>The product</h2><span class="ln"></span><span class="n">01</span></div>
+
+        <div class="fld">
+          <label for="langs">Language</label>
+          <div class="langs" id="langs" role="group" aria-label="Language"></div>
+          <p class="hint" id="langHint">Language is part of the product, not a translation of it. It rides in the SKU, the title and the comps query.</p>
+        </div>
+
+        <div class="fld">
+          <label for="f_set">Set</label>
+          <input id="f_set" list="setlist" placeholder="Set name or printed code, e.g. Surging Sparks or SSP" autocomplete="off">
+          <datalist id="setlist"></datalist>
+        </div>
+
+        <div class="r2">
+          <div class="fld">
+            <label for="f_setcode">Set code</label>
+            <input id="f_setcode" class="num" placeholder="SSP" autocomplete="off">
+          </div>
+          <div class="fld">
+            <label for="f_type">Product type</label>
+            <select id="f_type"></select>
+          </div>
+        </div>
+
+        <div class="fld">
+          <label for="f_name">Product name</label>
+          <input id="f_name" placeholder="Surging Sparks Booster Box" autocomplete="off">
+        </div>
+
+        <div class="r3">
+          <div class="fld">
+            <label for="f_variant">Variant <span style="text-transform:none;letter-spacing:0;">(optional)</span></label>
+            <input id="f_variant" placeholder="PC" autocomplete="off">
+          </div>
+          <div class="fld">
+            <label for="f_packs">Packs</label>
+            <input id="f_packs" class="num" inputmode="numeric" placeholder="36" autocomplete="off">
+          </div>
+          <div class="fld">
+            <label for="f_upc">UPC / JAN</label>
+            <input id="f_upc" class="num" inputmode="numeric" placeholder="820650…" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="fld" style="margin-bottom:0;">
+          <label>Pool SKU <span style="text-transform:none;letter-spacing:0;">(derived, becomes the eBay custom label)</span></label>
+          <div class="sku"><span class="val void" id="skuOut">—</span><span class="pill idle" id="skuState">incomplete</span></div>
+          <p class="hint">One SKU for the whole pool, so a restock revises the same offer instead of publishing a competing listing. Frozen once it reaches eBay: a custom label is bound for life.</p>
+        </div>
+      </div>
+
+      <div class="card" style="--d:.1s">
+        <div class="rule"><h2>Stock in this pool</h2><span class="ln"></span><span class="n">02</span></div>
+        <div id="stockBox"><p class="empty">Pick a set and a product type to match stock.</p></div>
+        <p class="hint">Quantity is summed from <span class="num">sealed_placements</span>, never the cached mirror on the row. Several acquisitions can share one pool; each keeps its own cost basis.</p>
+      </div>
+
+      <div class="card" style="--d:.16s">
+        <div class="rule"><h2>Condition &amp; postage</h2><span class="ln"></span><span class="n">03</span></div>
+        <div class="r2">
+          <div class="fld">
+            <label for="f_cond">Condition</label>
+            <select id="f_cond">
+              <option value="sealed">Factory sealed</option>
+              <option value="opened">Opened</option>
+              <option value="damaged">Damaged</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label for="f_ebaycond">eBay condition</label>
+            <input id="f_ebaycond" value="New" disabled>
+          </div>
+        </div>
+        <div class="fld" style="margin-bottom:0;">
+          <label>Postage band <span style="text-transform:none;letter-spacing:0;">(by size, not price)</span></label>
+          <div class="sku"><span class="val" id="bandOut" style="font-size:13px;">—</span><span class="pill idle" id="bandState">unset</span></div>
+          <p class="hint" id="bandHint">Sealed postage is flat-rate tracked and chosen by product size, so it never touches the price-derived band table.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================ RIGHT ============================ -->
+    <div>
+      <div class="card" style="--d:.07s">
+        <div class="rule"><h2>The listing</h2><span class="ln"></span><span class="n">04</span></div>
+
+        <div class="fld">
+          <label for="f_title">eBay title</label>
+          <div class="titlerow">
+            <input id="f_title" placeholder="Generated from the product above" autocomplete="off">
+            <button class="btn ghost" id="btnRegen" title="Rebuild from the fields">↻</button>
+          </div>
+          <div class="meter" id="titleMeter"><span id="titleCount">0 / 80</span><span id="titleShed"></span></div>
+          <div class="bar" id="titleBar"><i></i></div>
+        </div>
+
+        <div class="r3">
+          <div class="fld">
+            <label for="f_price">Ask (AUD)</label>
+            <input id="f_price" class="num" inputmode="decimal" placeholder="0.00" autocomplete="off">
+          </div>
+          <div class="fld">
+            <label for="f_qty">Quantity</label>
+            <input id="f_qty" class="num" inputmode="numeric" value="1" autocomplete="off">
+          </div>
+          <div class="fld">
+            <label>Comps median</label>
+            <input id="f_comp" class="num" disabled placeholder="—">
+          </div>
+        </div>
+        <p class="hint" id="priceHint">Every comp in this app is an <b>asking</b> price, and the bias is upward. Sealed uses the cluster median, so you sit mid-market rather than at the front of it.</p>
+      </div>
+
+      <div class="card" style="--d:.13s">
+        <div class="rule"><h2>Photos</h2><span class="ln"></span><span class="n">05</span></div>
+        <div class="shots" id="shots">
+          <div class="shot add" id="addShot" title="Add owner photo">+</div>
+        </div>
+        <p class="hint" id="photoHint">Catalog art is allowed on a genuinely factory-sealed box. Your own photos still lead where you have them: a box sells on its corners and its shrink wrap.</p>
+      </div>
+
+      <div class="card" style="--d:.19s">
+        <div class="prevhead">
+          <div class="rule" style="margin:0;flex:1;"><h2>Description</h2><span class="ln"></span><span class="n">06</span></div>
+          <div class="btnrow">
+            <button class="btn ghost" id="btnCopyTitle">Copy title</button>
+            <button class="btn ghost" id="btnCopyHtml">Copy HTML</button>
+          </div>
+        </div>
+        <iframe id="preview" title="Listing description preview"></iframe>
+      </div>
+
+      <div class="card" style="--d:.25s">
+        <div class="rule"><h2>Preflight</h2><span class="ln"></span><span class="n">07</span></div>
+        <ul class="checks" id="checks"></ul>
+        <div style="margin-top:14px;">
+          <button class="btn wide" id="btnPublish" disabled>Publish to eBay</button>
+        </div>
+        <div class="status" id="pubStatus"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<h2 class="sr-only">Sealed listing builder for Pokémon booster packs, bundles and boxes</h2>
+
+<script src="/extras.js"></script>
+<script>
+/* ===========================================================================
+   Sealed listing builder — single listing at a time.
+
+   Deliberately honest about what exists. The sealed INVENTORY API is real and is
+   used here (/api/sealed/items, /api/sealed/search, /api/sealed/console). The
+   sealed PUBLISH route is NOT built yet, and neither is the product-catalog bake
+   or the pool_sku column, so preflight NAMES each gap instead of pretending. GR7:
+   every lookup degrades to manual entry rather than blocking the page.
+   =========================================================================== */
+
+var LANGS = [
+  { code:'EN', label:'English' }, { code:'JP', label:'Japanese' }, { code:'CN', label:'Chinese (Simp.)' },
+  { code:'TW', label:'Chinese (Trad.)' }, { code:'KO', label:'Korean' }
+];
+/* v1 scope: packs, bundles, boxes. The rest exist in PRODUCT_TYPES and are offered as disabled so the
+   boundary is visible rather than mysterious. */
+var TYPES_V1 = [
+  { v:'booster_box',    t:'BOX', label:'Booster box' },
+  { v:'booster_bundle', t:'BND', label:'Booster bundle' },
+  { v:'booster_pack',   t:'PCK', label:'Booster pack' }
+];
+var TYPES_LATER = [
+  { v:'elite_trainer_box', label:'Elite trainer box' }, { v:'blister', label:'Blister' },
+  { v:'tin', label:'Tin' }, { v:'collection', label:'Collection' },
+  { v:'premium_collection', label:'Premium collection' }, { v:'booster_case', label:'Booster case' }
+];
+/* Size class drives postage (D10), not price. Packs and bundles share one satchel. */
+var BAND_BY_TYPE = {
+  booster_pack:   { id:'sealed_small', label:'Sealed small', note:'tracked satchel to 500 g' },
+  booster_bundle: { id:'sealed_small', label:'Sealed small', note:'tracked satchel to 500 g' },
+  booster_box:    { id:'sealed_box',   label:'Sealed box',   note:'tracked satchel to 3 kg' }
+};
+
+var LANG = 'EN';
+var STOCK = [];          // sealed_items rows matched to the current pool
+var SHOTS = [];          // { src, kind:'owner'|'catalog' }
+var CFG = null;          // /api/listings/config
+var _lastAutoTitle = '';
+
+var $ = function(id){ return document.getElementById(id); };
+var val = function(id){ var e = $(id); return e ? String(e.value || '').trim() : ''; };
+var esc = function(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+var money = function(c){ return '$' + ((Number(c) || 0) / 100).toFixed(2); };
+function toast(msg){ var t = $('toast'); t.textContent = msg; t.classList.add('on'); setTimeout(function(){ t.classList.remove('on'); }, 2200); }
+
+/* ---- pool SKU ------------------------------------------------------------
+   BKS-PKM-<LANG>-<SET>-<TYPE>[-VARIANT][-COND]. Derived, never counted, so the
+   same product resolves to the same string on every restock and relist. */
+function typeToken(v){ for (var i=0;i<TYPES_V1.length;i++) if (TYPES_V1[i].v === v) return TYPES_V1[i].t; return ''; }
+function skuSeg(s, max){ return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, max); }
+function poolSku(){
+  var set = skuSeg(val('f_setcode'), 8), ty = typeToken(val('f_type'));
+  if (!set || !ty) return '';
+  var out = ['BKS', 'PKM', LANG, set, ty];
+  var v = skuSeg(val('f_variant'), 6);
+  if (v && ['OPN','DMG','NFS'].indexOf(v) < 0) out.push(v);
+  var c = val('f_cond');
+  if (c === 'opened') out.push('OPN'); else if (c === 'damaged') out.push('DMG');
+  return out.join('-');
+}
+
+/* ---- title ---------------------------------------------------------------
+   Same shedding contract as the card builders: parts carry a priority, TCG.fitTitle
+   drops the lowest-priority part until it fits 80. */
+function titleParts(){
+  var ty = val('f_type'), tyWord = ({ booster_box:'Booster Box', booster_bundle:'Booster Bundle', booster_pack:'Booster Pack' })[ty] || '';
+  var setName = val('f_set').replace(/\s*\([^)]*\)\s*$/, '') || val('f_setcode');
+  var packs = val('f_packs');
+  var langWord = LANG === 'EN' ? '' : ({ JP:'Japanese', CN:'Chinese', TW:'Chinese', KO:'Korean' })[LANG] || '';
+  return [
+    { text:tyWord, prio:100 },
+    { text:setName, prio:95 },
+    { text:val('f_variant'), prio:80 },
+    { text:langWord, prio:LANG === 'EN' ? 30 : 66 },
+    { text:packs ? packs + ' Packs' : '', prio:55 },
+    { text:'Pokemon', prio:45 },
+    { text:val('f_cond') === 'sealed' ? 'Factory Sealed' : '', prio:40 }
+  ];
+}
+function genTitle(){
+  var parts = titleParts().filter(function(p){ return p.text; });
+  if (!parts.length) return '';
+  return (window.TCG && TCG.fitTitle) ? TCG.fitTitle(parts, 80)
+    : parts.map(function(p){ return p.text; }).join(' ').slice(0, 80);
+}
+function syncTitle(){
+  var el = $('f_title'), gen = genTitle();
+  if (!el.value || el.value === _lastAutoTitle) { el.value = gen; _lastAutoTitle = gen; }
+  paintTitle();
+}
+function paintTitle(){
+  var n = val('f_title').length, over = n > 80;
+  $('titleCount').textContent = n + ' / 80';
+  $('titleMeter').classList.toggle('over', over);
+  $('titleBar').classList.toggle('over', over);
+  $('titleBar').firstElementChild.style.width = Math.min(100, (n / 80) * 100) + '%';
+  var shed = titleParts().filter(function(p){ return p.text; }).length;
+  $('titleShed').textContent = shed + ' part' + (shed === 1 ? '' : 's');
+}
+
+/* ---- description ---------------------------------------------------------
+   TEMPORARY HOME. This frame belongs in lib/sealed-copy.mjs (plan Phase 3), where it can be
+   imported rather than copied and pinned by a harness like the card frames are. It lives here
+   only so the copy path is usable before that module exists; when it moves, delete this and
+   import buildSealedDescription instead. The wording still honours the house voice.
+   A sealed frame in the house voice: no em dashes, no filler, and it quotes the
+   postage amount only once the band actually resolves to a pinned policy. */
+function buildHTML(){
+  var name = val('f_name') || val('f_set') + ' ' + (({ booster_box:'Booster Box', booster_bundle:'Booster Bundle', booster_pack:'Booster Pack' })[val('f_type')] || '');
+  var rows = [
+    ['Set', val('f_set')],
+    ['Set code', val('f_setcode')],
+    ['Product', ({ booster_box:'Booster box', booster_bundle:'Booster bundle', booster_pack:'Booster pack' })[val('f_type')] || ''],
+    ['Packs per box', val('f_packs')],
+    ['Language', (LANGS.filter(function(l){ return l.code === LANG; })[0] || {}).label || ''],
+    ['Variant', val('f_variant')]
+  ].filter(function(r){ return r[1] !== '' && r[1] != null; });
+  var band = BAND_BY_TYPE[val('f_type')];
+  var postage = band && CFG ? 'Sent tracked with Australia Post anywhere in Australia, so you can follow it along.'
+    : 'Postage within Australia is shown at checkout.';
+  var tr = rows.map(function(r, i){
+    return '<tr style="' + (i % 2 === 0 ? 'background:#faf8fb;' : '') + '">'
+      + '<td style="padding:9px 12px;color:#7a6f85;width:38%;">' + esc(r[0]) + '</td>'
+      + '<td style="padding:9px 12px;color:#1b1420;font-weight:600;">' + esc(r[1]) + '</td></tr>';
+  }).join('');
+  var SERIF = "Georgia,'Iowan Old Style','Times New Roman',serif";
+  var SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  return '<div style="max-width:760px;margin:0 auto;font-family:' + SERIF + ';font-size:16px;line-height:1.6;color:#1b1420;background:#ffffff;">'
+    + '<div style="background:#160f1d;padding:26px 26px 22px;">'
+      + '<div style="font-family:' + SANS + ';font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#d4b072;font-weight:700;">Binders Keepers &middot; Pok&eacute;mon TCG</div>'
+      + '<div style="font-size:30px;color:#ffffff;margin-top:8px;font-weight:600;">' + esc(name) + '</div>'
+    + '</div>'
+    + '<div style="height:3px;background:#7ea8c9;"></div>'
+    + '<div style="padding:22px 26px 0;"><p style="margin:0 0 16px;">' + esc(genPitch()) + '</p></div>'
+    + '<div style="padding:0 26px;"><div style="font-family:' + SANS + ';font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7a6f85;font-weight:700;margin:14px 0 9px;">The product</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:14px;">' + tr + '</table></div>'
+    + '<div style="padding:20px 26px 0;"><div style="border:1px solid #ece7f0;border-radius:6px;padding:14px 16px;background:#faf8fb;">'
+      + '<div style="font-family:' + SANS + ';font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7a6f85;font-weight:700;margin-bottom:7px;">Condition</div>'
+      + '<p style="margin:0;">' + esc(condText()) + '</p></div></div>'
+    + '<div style="padding:20px 26px 26px;">'
+      + '<div style="font-family:' + SANS + ';font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:#7a6f85;font-weight:700;margin-bottom:7px;">Postage &amp; protection</div>'
+      + '<p style="margin:0;">Packed with padding so it gets to you the way it left here. ' + esc(postage) + '</p></div>'
+    + '<div style="padding:0 26px 26px;color:#7a6f85;font-size:13px;font-style:italic;">Posted from Australia. Any questions, just ask.</div>'
+  + '</div>';
+}
+function condText(){
+  var c = val('f_cond');
+  if (c === 'opened') return 'Opened, contents complete. See the photos for the box itself.';
+  if (c === 'damaged') return 'Sealed but the box is damaged. See the photos, the damage is shown.';
+  return 'Brand new and factory sealed, never opened.';
+}
+function genPitch(){
+  var setName = val('f_set').replace(/\s*\([^)]*\)\s*$/, '') || val('f_setcode');
+  var tyWord = ({ booster_box:'booster box', booster_bundle:'booster bundle', booster_pack:'booster pack' })[val('f_type')] || 'sealed product';
+  var langWord = LANG === 'EN' ? '' : ({ JP:'Japanese ', CN:'Simplified Chinese ', TW:'Traditional Chinese ', KO:'Korean ' })[LANG] || '';
+  var packs = val('f_packs');
+  return 'A ' + langWord + setName + ' ' + tyWord + ', sealed and unsearched'
+    + (packs ? ', ' + packs + ' packs inside' : '') + '. Stored away from sunlight and posted with padding.';
+}
+
+/* ---- stock matching ------------------------------------------------------- */
+function poolKey(r){
+  return [String(r.language || 'EN').toUpperCase(), String(r.set_name || '').toLowerCase().replace(/\s*\([^)]*\)\s*$/, '').trim(), r.product_type].join('|');
+}
+function wantKey(){
+  return [LANG, val('f_set').toLowerCase().replace(/\s*\([^)]*\)\s*$/, '').trim(), val('f_type')].join('|');
+}
+async function matchStock(){
+  var set = val('f_set'), ty = val('f_type');
+  if (!set || !ty) { STOCK = []; return paintStock(); }
+  try {
+    var r = await fetch('/api/sealed/items?game=pokemon&status=in_stock&q=' + encodeURIComponent(set));
+    var j = await r.json();
+    var rows = (j && (j.items || j.rows || j)) || [];
+    if (!Array.isArray(rows)) rows = [];
+    var want = wantKey();
+    STOCK = rows.filter(function(x){ return poolKey(x) === want; });
+  } catch (e) { STOCK = []; }
+  paintStock();
+}
+function unitsOf(r){
+  if (Array.isArray(r.placements) && r.placements.length) {
+    return r.placements.reduce(function(a, p){ return a + (Number(p.quantity) || 0); }, 0);
+  }
+  return Number(r.quantity) || 0;
+}
+function paintStock(){
+  var box = $('stockBox');
+  if (!STOCK.length) {
+    box.innerHTML = '<p class="empty">' + (val('f_set') && val('f_type')
+      ? 'No in-stock rows match this pool. You can still build the listing and attach stock later.'
+      : 'Pick a set and a product type to match stock.') + '</p>';
+  } else {
+    var body = STOCK.map(function(r){
+      var loc = (r.placements || []).map(function(p){ return p.location || 'unplaced'; }).join(', ');
+      return '<tr><td>' + esc(r.name || '') + '<br><span style="color:var(--faint);font-size:11px;">' + esc(loc || '—') + '</span></td>'
+        + '<td class="n">' + unitsOf(r) + '</td>'
+        + '<td class="n">' + (r.cost_cents != null ? money(r.cost_cents) : '—') + '</td></tr>';
+    }).join('');
+    box.innerHTML = '<table class="stock"><thead><tr><th>Acquisition</th><th style="text-align:right;">Units</th><th style="text-align:right;">Cost/unit</th></tr></thead><tbody>' + body + '</tbody></table>';
+  }
+  paintTiles();
+}
+function paintTiles(){
+  var units = STOCK.reduce(function(a, r){ return a + unitsOf(r); }, 0);
+  var costs = STOCK.filter(function(r){ return r.cost_cents != null; });
+  var costAvg = costs.length ? costs.reduce(function(a, r){ return a + r.cost_cents; }, 0) / costs.length : null;
+  var vals = STOCK.filter(function(r){ return r.value_cents != null; });
+  var valAvg = vals.length ? vals.reduce(function(a, r){ return a + r.value_cents; }, 0) / vals.length : null;
+  set4('t_units', units || '—', units ? '' : 'na');
+  set4('t_cost', costAvg != null ? money(costAvg) : '—', costAvg != null ? '' : 'na');
+  set4('t_value', valAvg != null ? money(valAvg) : '—', valAvg != null ? '' : 'na');
+  $('f_comp').placeholder = valAvg != null ? money(valAvg) : '—';
+  var ask = Math.round(parseFloat(val('f_price')) * 100);
+  if (ask > 0 && costAvg != null) {
+    var m = ask - costAvg;
+    set4('t_margin', money(m), m >= 0 ? 'pos' : 'neg');
+  } else set4('t_margin', '—', 'na');
+  if (units && !val('f_qty')) $('f_qty').value = units;
+}
+function set4(id, text, cls){
+  var e = $(id); e.textContent = text;
+  e.className = 'v' + (id === 't_units' ? '' : ' sm') + (cls ? ' ' + cls : '');
+}
+
+/* ---- preflight -----------------------------------------------------------
+   Refusals are NAMED. A blocked publish should never leave you guessing which
+   of seven things is missing. */
+function preflight(){
+  var out = [], sku = poolSku(), price = Math.round(parseFloat(val('f_price')) * 100);
+  var push = function(k, t, why){ out.push({ k:k, t:t, why:why }); };
+
+  push(val('f_setcode') && val('f_type') ? 'ok' : 'stop',
+    sku ? 'Pool SKU ' + sku : 'Pool SKU cannot be derived',
+    sku ? 'Frozen on first publish, then never renamed.' : 'Needs a set code and a product type.');
+
+  push(val('f_title') && val('f_title').length <= 80 ? 'ok' : 'stop',
+    val('f_title') ? 'Title fits in 80' : 'No title',
+    val('f_title').length > 80 ? 'Over by ' + (val('f_title').length - 80) + '.' : '');
+
+  push(price >= 100 ? 'ok' : 'stop', price >= 100 ? 'Ask ' + money(price) : 'Ask is under A$1.00',
+    price >= 100 ? '' : 'eBay AU rejects a sub-dollar fixed price with error 25016.');
+
+  var units = STOCK.reduce(function(a, r){ return a + unitsOf(r); }, 0);
+  push(units > 0 ? 'ok' : 'warn', units > 0 ? units + ' unit' + (units === 1 ? '' : 's') + ' in stock' : 'No stock matched',
+    units > 0 ? 'Quantity comes from placements, not the cached mirror.' : 'The listing can be built, but nothing is reserved against it.');
+
+  var sealed = val('f_cond') === 'sealed';
+  push(sealed ? 'ok' : 'stop', sealed ? 'Factory sealed, lists as New' : 'Not factory sealed',
+    sealed ? '' : 'v1 lists factory-sealed stock only. An opened or damaged box wants a hand-made listing.');
+
+  var owner = SHOTS.filter(function(s){ return s.kind === 'owner'; }).length;
+  push(sealed || owner ? 'ok' : 'stop', owner ? owner + ' owner photo' + (owner === 1 ? '' : 's') : 'Catalog art only',
+    sealed ? 'Allowed on a genuinely sealed box. Your own photos still sell it better.' : 'Owner photos are required once the box is not New.');
+
+  var band = BAND_BY_TYPE[val('f_type')];
+  var pinned = band && CFG && CFG.shipping && Array.isArray(CFG.shipping.sealedBands)
+    && CFG.shipping.sealedBands.some(function(b){ return b.id === band.id && b.policyId; });
+  push(pinned ? 'ok' : 'stop', band ? band.label + ' postage' : 'No postage band',
+    pinned ? band.note : 'No eBay policy is pinned for this size class yet. Policies are made by hand in Seller Hub.');
+
+  push('stop', 'Sealed publish route', 'POST /api/sealed/listings does not exist yet. Copy title and HTML work today.');
+
+  $('checks').innerHTML = out.map(function(c){
+    return '<li class="' + c.k + '"><span class="mk">' + (c.k === 'ok' ? '✓' : c.k === 'warn' ? '!' : '✕') + '</span>'
+      + '<span class="t"><b>' + esc(c.t) + '</b>' + (c.why ? '<span class="why">' + esc(c.why) + '</span>' : '') + '</span></li>';
+  }).join('');
+  var blocked = out.filter(function(c){ return c.k === 'stop'; }).length;
+  $('btnPublish').disabled = blocked > 0;
+  $('btnPublish').textContent = blocked ? 'Publish blocked (' + blocked + ')' : 'Publish to eBay';
+}
+
+/* ---- band ----------------------------------------------------------------- */
+function paintBand(){
+  var band = BAND_BY_TYPE[val('f_type')];
+  if (!band) { $('bandOut').textContent = '—'; $('bandState').textContent = 'unset'; $('bandState').className = 'pill idle'; return; }
+  $('bandOut').textContent = band.label + ' · ' + band.note;
+  var pinned = CFG && CFG.shipping && Array.isArray(CFG.shipping.sealedBands)
+    && CFG.shipping.sealedBands.some(function(b){ return b.id === band.id && b.policyId; });
+  $('bandState').textContent = pinned ? 'pinned' : 'no policy';
+  $('bandState').className = 'pill ' + (pinned ? 'ok' : 'warn');
+}
+
+/* ---- photos --------------------------------------------------------------- */
+function paintShots(){
+  var box = $('shots');
+  box.querySelectorAll('.shot:not(.add)').forEach(function(n){ n.remove(); });
+  SHOTS.forEach(function(s, i){
+    var d = document.createElement('div');
+    d.className = 'shot';
+    d.innerHTML = '<img src="' + esc(s.src) + '" alt=""><span class="tagm">' + (s.kind === 'owner' ? 'MINE' : 'CATALOG') + '</span>';
+    d.title = 'Remove';
+    d.onclick = function(){ SHOTS.splice(i, 1); paintShots(); preflight(); };
+    box.insertBefore(d, $('addShot'));
+  });
+}
+
+/* ---- render loop ---------------------------------------------------------- */
+function render(){
+  var sku = poolSku();
+  $('skuOut').textContent = sku || '—';
+  $('skuOut').className = 'val' + (sku ? '' : ' void');
+  $('skuState').textContent = sku ? 'derived' : 'incomplete';
+  $('skuState').className = 'pill ' + (sku ? 'ok' : 'idle');
+  syncTitle();
+  paintBand();
+  $('preview').srcdoc = buildHTML();
+  paintTiles();
+  preflight();
+}
+
+/* ---- boot ----------------------------------------------------------------- */
+(function init(){
+  // language chips
+  $('langs').innerHTML = LANGS.map(function(l){
+    return '<button type="button" class="lang" data-code="' + l.code + '" aria-pressed="' + (l.code === LANG) + '">' + l.code + '</button>';
+  }).join('');
+  $('langs').addEventListener('click', function(e){
+    var b = e.target.closest('.lang'); if (!b) return;
+    LANG = b.dataset.code;
+    Array.prototype.forEach.call($('langs').children, function(n){ n.setAttribute('aria-pressed', String(n === b)); });
+    $('langHint').textContent = LANG === 'CN'
+      ? 'Simplified Chinese is its own product line with its own set codes. It resolves no set symbol and no wordmark.'
+      : 'Language is part of the product, not a translation of it. It rides in the SKU, the title and the comps query.';
+    matchStock(); render();
+  });
+
+  // product types
+  $('f_type').innerHTML = '<option value="">Pick one</option>'
+    + TYPES_V1.map(function(t){ return '<option value="' + t.v + '">' + t.label + '</option>'; }).join('')
+    + '<optgroup label="Not in v1">' + TYPES_LATER.map(function(t){ return '<option value="' + t.v + '" disabled>' + t.label + '</option>'; }).join('') + '</optgroup>';
+
+  ['f_set','f_setcode','f_type','f_name','f_variant','f_packs','f_upc','f_cond','f_price','f_qty','f_title'].forEach(function(id){
+    $(id).addEventListener('input', function(){ if (id === 'f_title') { paintTitle(); preflight(); } else render(); });
+    $(id).addEventListener('change', function(){ if (id === 'f_set' || id === 'f_type') matchStock(); });
+  });
+
+  $('btnRegen').onclick = function(){ _lastAutoTitle = ''; $('f_title').value = ''; syncTitle(); preflight(); };
+  $('btnCopyTitle').onclick = function(){ navigator.clipboard.writeText(val('f_title')); toast('Title copied'); };
+  $('btnCopyHtml').onclick = function(){ navigator.clipboard.writeText(buildHTML()); toast('Description HTML copied'); };
+  $('addShot').onclick = function(){
+    var url = prompt('Image URL (an owner photo, or catalog art)');
+    if (!url) return;
+    SHOTS.push({ src:url, kind:/catalog|tcgplayer|pricecharting|52poke|upcitemdb/i.test(url) ? 'catalog' : 'owner' });
+    paintShots(); preflight();
+  };
+  $('btnPublish').onclick = function(){
+    var s = $('pubStatus');
+    s.className = 'status show warn';
+    s.textContent = 'Not wired yet. The sealed publish route is Phase 7 in docs/SEALED_LISTING_PLAN.md; copy the title and HTML into Seller Hub in the meantime.';
+  };
+
+  // set suggestions from stock we already hold, so the picker is useful before the catalog bake exists
+  fetch('/api/sealed/items?game=pokemon').then(function(r){ return r.json(); }).then(function(j){
+    var rows = (j && (j.items || j.rows || j)) || [];
+    if (!Array.isArray(rows)) return;
+    var seen = {}, out = [];
+    rows.forEach(function(r){ var s = r.set_name; if (s && !seen[s]) { seen[s] = 1; out.push(s); } });
+    $('setlist').innerHTML = out.map(function(s){ return '<option value="' + esc(s) + '">'; }).join('');
+  }).catch(function(){ /* GR7 */ });
+
+  fetch('/api/listings/config').then(function(r){ return r.json(); }).then(function(j){
+    CFG = (j && j.config) || j || null; paintBand(); preflight();
+  }).catch(function(){ /* GR7 */ });
+
+  render();
+})();
+</script>
+</body>
+</html>
