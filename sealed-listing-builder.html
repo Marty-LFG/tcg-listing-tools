@@ -370,11 +370,16 @@ var TYPES_LATER = [
   { v:'tin', label:'Tin' }, { v:'collection', label:'Collection' },
   { v:'premium_collection', label:'Premium collection' }, { v:'booster_case', label:'Booster case' }
 ];
-/* Size class drives postage (D10), not price. Packs and bundles share one satchel. */
+/* Size class drives postage (D10), not price. Packs and bundles share one satchel.
+   Names match the owner's real Seller Hub policies. Both are flat rate for ANY quantity: each
+   additional identical item is $0.00, which is what makes the one-listing-at-quantity-N model
+   honest, because the description can quote a single figure without it going wrong at qty 2.
+   extraCents is still read, so if a policy ever starts charging per extra item the copy changes
+   with it rather than quietly lying. */
 var BAND_BY_TYPE = {
-  booster_pack:   { id:'sealed_small', label:'Sealed small', note:'tracked satchel to 500 g' },
-  booster_bundle: { id:'sealed_small', label:'Sealed small', note:'tracked satchel to 500 g' },
-  booster_box:    { id:'sealed_box',   label:'Sealed box',   note:'tracked satchel to 3 kg' }
+  booster_pack:   { id:'sealed_small',  label:'Sealed - Small',  svc:'AusPost Flat Rate Satchel (Small)' },
+  booster_bundle: { id:'sealed_small',  label:'Sealed - Small',  svc:'AusPost Flat Rate Satchel (Small)' },
+  booster_box:    { id:'sealed_medium', label:'Sealed - Medium', svc:'AusPost Flat Rate Satchel (Medium)' }
 };
 
 var LANG = 'EN';
@@ -461,9 +466,11 @@ function buildHTML(){
     ['Language', (LANGS.filter(function(l){ return l.code === LANG; })[0] || {}).label || ''],
     ['Variant', val('f_variant')]
   ].filter(function(r){ return r[1] !== '' && r[1] != null; });
-  var band = BAND_BY_TYPE[val('f_type')];
-  var postage = band && CFG ? 'Sent tracked with Australia Post anywhere in Australia, so you can follow it along.'
-    : 'Postage within Australia is shown at checkout.';
+  var band = BAND_BY_TYPE[val('f_type')], bc = band ? sealedBandCfg(band.id) : null;
+  var postage = !bc ? 'Postage within Australia is shown at checkout.'
+    : Number(bc.extraCents) > 0
+      ? 'Postage is ' + money(bc.costCents) + ' for one anywhere in Australia, sent tracked with Australia Post so you can follow it along. More than one travels in its own satchel, so checkout shows the total.'
+      : 'Postage is ' + money(bc.costCents) + ' anywhere in Australia however many you take, sent tracked with Australia Post so you can follow it along.';
   var tr = rows.map(function(r, i){
     return '<tr style="' + (i % 2 === 0 ? 'background:#faf8fb;' : '') + '">'
       + '<td style="padding:9px 12px;color:#7a6f85;width:38%;">' + esc(r[0]) + '</td>'
@@ -599,11 +606,9 @@ function preflight(){
   push(sealed || owner ? 'ok' : 'stop', owner ? owner + ' owner photo' + (owner === 1 ? '' : 's') : 'Catalog art only',
     sealed ? 'Allowed on a genuinely sealed box. Your own photos still sell it better.' : 'Owner photos are required once the box is not New.');
 
-  var band = BAND_BY_TYPE[val('f_type')];
-  var pinned = band && CFG && CFG.shipping && Array.isArray(CFG.shipping.sealedBands)
-    && CFG.shipping.sealedBands.some(function(b){ return b.id === band.id && b.policyId; });
-  push(pinned ? 'ok' : 'stop', band ? band.label + ' postage' : 'No postage band',
-    pinned ? band.note : 'No eBay policy is pinned for this size class yet. Policies are made by hand in Seller Hub.');
+  var band = BAND_BY_TYPE[val('f_type')], bc = band ? sealedBandCfg(band.id) : null;
+  push(bc ? 'ok' : 'stop', band ? band.label + ' postage' : 'No postage band',
+    bc ? band.svc + ', policy ' + bc.policyId : 'No eBay policy is pinned for this size class yet. Policies are made by hand in Seller Hub.');
 
   push('stop', 'Sealed publish route', 'POST /api/sealed/listings does not exist yet. Copy title and HTML work today.');
 
@@ -617,14 +622,28 @@ function preflight(){
 }
 
 /* ---- band ----------------------------------------------------------------- */
+function sealedBandCfg(id){
+  var list = CFG && CFG.shipping && CFG.shipping.sealedBands;
+  if (!Array.isArray(list)) return null;
+  return list.filter(function(b){ return b.id === id && b.policyId; })[0] || null;
+}
 function paintBand(){
-  var band = BAND_BY_TYPE[val('f_type')];
-  if (!band) { $('bandOut').textContent = '—'; $('bandState').textContent = 'unset'; $('bandState').className = 'pill idle'; return; }
-  $('bandOut').textContent = band.label + ' · ' + band.note;
-  var pinned = CFG && CFG.shipping && Array.isArray(CFG.shipping.sealedBands)
-    && CFG.shipping.sealedBands.some(function(b){ return b.id === band.id && b.policyId; });
-  $('bandState').textContent = pinned ? 'pinned' : 'no policy';
-  $('bandState').className = 'pill ' + (pinned ? 'ok' : 'warn');
+  var band = BAND_BY_TYPE[val('f_type')], out = $('bandOut'), st = $('bandState');
+  if (!band) { out.textContent = '—'; st.textContent = 'unset'; st.className = 'pill idle'; return; }
+  var bc = sealedBandCfg(band.id);
+  if (!bc) {
+    out.textContent = band.label + ' · ' + band.svc;
+    st.textContent = 'no policy'; st.className = 'pill warn';
+    $('bandHint').textContent = 'No eBay policy is pinned for this size class yet. Add it under shipping.sealedBands in the eBay listing config.';
+    return;
+  }
+  var first = Number(bc.costCents) || 0, extra = Number(bc.extraCents) || 0;
+  var qty = Math.max(1, parseInt(val('f_qty'), 10) || 1);
+  out.textContent = band.label + ' · ' + money(first) + (extra ? ' + ' + money(extra) + ' each extra' : ' flat, any quantity');
+  st.textContent = 'pinned'; st.className = 'pill ok';
+  $('bandHint').textContent = extra
+    ? 'A buyer taking ' + qty + ' pays ' + money(first + extra * (qty - 1)) + ' on ' + band.svc + '.'
+    : band.svc + '. Flat rate tracked and chosen by size rather than price, so it never touches the band table singles use.';
 }
 
 /* ---- photos --------------------------------------------------------------- */
