@@ -32,7 +32,10 @@ const mkOrder = (id, over = {}) => ({
   orderId: id, buyerUsername: 'testbuyer', orderStatus: 'Completed', checkoutStatus: 'Complete',
   paidStatus: 'NoPaymentFailure', createdTime: '2026-08-01T01:00:00.000Z', paidTime: '2026-08-01T01:05:00.000Z',
   shippedTime: null, currency: 'AUD', totalCents: 4550, subtotalCents: 4200, shippingCents: 0,
-  shipService: 'AU_Regular', paid: true,
+  // AU_AusPostStandardLetter, not AU_Regular: AU_Regular is the account's $8.26 TRACKED letter
+  // (band 2). It only ever looked untracked because it matches none of the classifier's regexes,
+  // which is the bug KNOWN_SERVICES fixes. This fixture wants a genuinely plain letter.
+  shipService: 'AU_AusPostStandardLetter', paid: true,
   expedited: null, buyerSelectedShipping: null, handleByTime: null,
   etaMin: null, etaMax: null, scheduledMin: null, scheduledMax: null, deliveredTime: null,
   trackingNumber: null, carrier: null, salesRecordNumber: null, buyerNote: null,
@@ -164,7 +167,7 @@ describe('refreshOrder', () => {
     // The classification is re-derived from config on every refresh, so correcting a service in
     // settings changes what the NEXT transition decides — no re-poll of eBay needed.
     const db = freshDb();
-    const cfg = { ...CFG, postage: { ...DEFAULT_POSTAGE_CONFIG, services: { AU_Regular: { tracked: true, tier: 'tracked' } } } };
+    const cfg = { ...CFG, postage: { ...DEFAULT_POSTAGE_CONFIG, services: { AU_AusPostStandardLetter: { tracked: true, tier: 'tracked' } } } };
     ingestOrder(db, mkOrder('O1'), cfg);
     const r = refreshOrder(db, mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' }), cfg);
     assert.equal(r.labelBought, true, 'a tracked service gets a label, so hold it');
@@ -221,7 +224,7 @@ describe('refreshOrder', () => {
     const db = freshDb();
     ingestOrder(db, mkOrder('O1'), CFG);
     assert.equal(row(db, 'O1').postage_tier, 'standard');
-    const withOverride = { ...CFG, postage: { ...DEFAULT_POSTAGE_CONFIG, services: { AU_Regular: { tier: 'tracked' } } } };
+    const withOverride = { ...CFG, postage: { ...DEFAULT_POSTAGE_CONFIG, services: { AU_AusPostStandardLetter: { tier: 'tracked' } } } };
     const r = refreshOrder(db, mkOrder('O1'), withOverride);
     assert.equal(r.updated, true);
     assert.equal(row(db, 'O1').postage_tier, 'tracked');

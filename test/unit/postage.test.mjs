@@ -4,8 +4,10 @@
 // nothing at all, so every branch is pinned here. Pure: no network, no filesystem, no DB.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   classifyPostage, deliveryWindow, prettifyServiceCode, tierPhrase, tierRank, strongestTier,
+  SERVICE_LABELS, KNOWN_SERVICES, isDerivedServiceLabel, resolveServiceLabel, curateBandServices,
   isUpgrade, trackingUrl, sellerHubUrl, parseShippingServiceDetails, setServiceCatalog,
   POSTAGE_TIERS, DEFAULT_POSTAGE_CONFIG,
 } from '../../lib/postage.mjs';
@@ -14,7 +16,9 @@ const EMPTY = new Map();
 
 describe('classifyPostage — tiers', () => {
   it('a free untracked letter is standard, and gets no ink anywhere', () => {
-    const p = classifyPostage({ ship_service: 'AU_Regular', shipping_cents: 0 }, {}, EMPTY);
+    // AU_AusPostStandardLetter, not AU_Regular: the latter used to look untracked only because it
+    // matches none of the regexes, and that misreading is the bug KNOWN_SERVICES exists to fix.
+    const p = classifyPostage({ ship_service: 'AU_AusPostStandardLetter', shipping_cents: 0 }, {}, EMPTY);
     assert.equal(p.tier, 'standard');
     assert.equal(p.tracked, false);
     assert.equal(isUpgrade(p.tier), false);
@@ -131,17 +135,20 @@ describe('classifyPostage — config overrides', () => {
   });
 });
 
+// These use codes NOT in SERVICE_LABELS on purpose. The curated map deliberately outranks eBay's
+// catalog (eBay describes AU_Regular as the single word "Regular", on a band that promises tracking),
+// so a curated code could no longer prove the catalog is consulted at all.
 describe('classifyPostage — labels', () => {
   it("uses eBay's own description when the service catalog has one", () => {
-    const cat = new Map([['AU_Regular', { code: 'AU_Regular', label: 'Standard Delivery' }]]);
-    const p = classifyPostage({ ship_service: 'AU_Regular' }, {}, cat);
+    const cat = new Map([['AU_StandardDelivery', { code: 'AU_StandardDelivery', label: 'Standard Delivery' }]]);
+    const p = classifyPostage({ ship_service: 'AU_StandardDelivery' }, {}, cat);
     assert.equal(p.label, 'Standard Delivery');
     assert.equal(p.labelSource, 'ebay');
   });
 
   it('marks a label as derived when it is only a prettified code, so callers can prefer a phrase', () => {
-    const p = classifyPostage({ ship_service: 'AU_Regular' }, {}, EMPTY);
-    assert.equal(p.label, 'Regular');
+    const p = classifyPostage({ ship_service: 'AU_SomeService' }, {}, EMPTY);
+    assert.equal(p.label, 'Some Service');
     assert.equal(p.labelSource, 'derived');
     assert.equal(tierPhrase(p.tier), 'Standard delivery');
   });
@@ -247,8 +254,9 @@ describe('parseShippingServiceDetails (GeteBayDetails)', () => {
 
   it('feeds the catalog that classifyPostage reads', () => {
     const cat = setServiceCatalog(parseShippingServiceDetails(XML));
-    const p = classifyPostage({ ship_service: 'AU_Regular' }, {}, cat);
-    assert.equal(p.label, 'Standard Delivery');
+    // AU_Express rather than AU_Regular: the latter is curated now, and curated outranks the catalog.
+    const p = classifyPostage({ ship_service: 'AU_Express' }, {}, cat);
+    assert.equal(p.label, 'Express Delivery');
     assert.equal(p.labelSource, 'ebay');
     setServiceCatalog([]);   // leave the module-level catalog as we found it
   });
@@ -256,5 +264,151 @@ describe('parseShippingServiceDetails (GeteBayDetails)', () => {
   it('returns nothing rather than throwing on junk', () => {
     assert.deepEqual(parseShippingServiceDetails(''), []);
     assert.deepEqual(parseShippingServiceDetails(null), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Buyer-facing service names. A live listing rendered "AUP 500 G SATCHEL SIG" in its postage table.
+// ---------------------------------------------------------------------------
+describe('isDerivedServiceLabel — a machine label is provable, not guessed', () => {
+  it('recognises its own prettify output for every code the account actually uses', () => {
+    for (const code of Object.keys(SERVICE_LABELS)) {
+      assert.equal(isDerivedServiceLabel(code, prettifyServiceCode(code)), true, code);
+    }
+  });
+  it('recognises the exact strings sitting in the live config', () => {
+    assert.equal(isDerivedServiceLabel('AU_AusPostStandardLetter', 'Aus Post Standard Letter'), true);
+    assert.equal(isDerivedServiceLabel('AU_AusPostPriorityLetterWithTracking', 'Aus Post Priority Letter With Tracking'), true);
+    assert.equal(isDerivedServiceLabel('AU_Regular', 'Regular'), true);
+    assert.equal(isDerivedServiceLabel('AUP_500G_SATCHEL_SIG', 'AUP 500 G SATCHEL SIG'), true);
+  });
+  it('treats blank and the raw code as machine-written too', () => {
+    assert.equal(isDerivedServiceLabel('AU_Regular', ''), true);
+    assert.equal(isDerivedServiceLabel('AU_Regular', '   '), true);
+    assert.equal(isDerivedServiceLabel('AU_Regular', 'AU_Regular'), true);
+  });
+  it('leaves a name a person wrote alone', () => {
+    assert.equal(isDerivedServiceLabel('AUP_500G_SATCHEL_SIG', 'Tracked satchel, signature on delivery'), false);
+    assert.equal(isDerivedServiceLabel('AU_Regular', 'Tracked letter'), false);
+  });
+});
+
+describe('resolveServiceLabel — owner, then curated, then eBay, then prettify', () => {
+  it('heals every poisoned label in the live config to a proper name', () => {
+    const heal = (code) => resolveServiceLabel(code, prettifyServiceCode(code));
+    assert.deepEqual(heal('AU_AusPostStandardLetter'), { label: 'Regular letter', labelSource: 'curated' });
+    assert.deepEqual(heal('AU_AusPostPriorityLetterWithTracking'), { label: 'Priority letter, tracked', labelSource: 'curated' });
+    assert.deepEqual(heal('AU_Regular'), { label: 'Tracked letter', labelSource: 'curated' });
+    assert.deepEqual(heal('AUP_500G_SATCHEL_SIG'), { label: 'Tracked satchel, signature on delivery', labelSource: 'curated' });
+  });
+  it('never prints a weight tier for the satchel — Australia Post retired that name', () => {
+    const { label } = resolveServiceLabel('AUP_500G_SATCHEL_SIG', 'AUP 500 G SATCHEL SIG');
+    assert.ok(!/500\s*g/i.test(label), 'label must not name a retired product: ' + label);
+  });
+  it('a name the owner chose survives, even one that looks machine-shaped', () => {
+    assert.deepEqual(resolveServiceLabel('AU_Regular', 'Big yellow satchel'), { label: 'Big yellow satchel', labelSource: 'owner' });
+    assert.deepEqual(resolveServiceLabel('AU_Regular', 'Regular', 'owner'), { label: 'Regular', labelSource: 'owner' });
+  });
+  it('invents nothing for a code it does not know (GR4)', () => {
+    assert.deepEqual(resolveServiceLabel('AU_SomethingNew', ''), { label: 'Something New', labelSource: 'derived' });
+  });
+  it('consults eBay catalog only BELOW the curated map, because eBay calls AU_Regular "Regular"', () => {
+    const catalog = new Map([['AU_Regular', { label: 'Regular' }], ['AU_Odd', { label: 'A Real eBay Name' }]]);
+    assert.equal(resolveServiceLabel('AU_Regular', '', undefined, catalog).label, 'Tracked letter');
+    assert.deepEqual(resolveServiceLabel('AU_Odd', '', undefined, catalog), { label: 'A Real eBay Name', labelSource: 'ebay' });
+  });
+});
+
+describe('curateBandServices — heals on READ, so no bootstrap re-run is needed', () => {
+  const poisoned = [{ id: 'letter', costCents: 170, services: [
+    { code: 'AU_AusPostStandardLetter', label: 'Aus Post Standard Letter', costCents: 170, sortOrder: 1 },
+    { code: 'AUP_500G_SATCHEL_SIG', label: 'AUP 500 G SATCHEL SIG', costCents: 1520, sortOrder: 3 },
+  ] }];
+  it('replaces the codes a buyer would have read with proper names', () => {
+    const out = curateBandServices(poisoned);
+    assert.deepEqual(out[0].services.map((s) => s.label), ['Regular letter', 'Tracked satchel, signature on delivery']);
+  });
+  it('touches nothing but the label — costs and order are byte-identical', () => {
+    const out = curateBandServices(poisoned);
+    assert.deepEqual(out[0].services.map((s) => [s.code, s.costCents, s.sortOrder]),
+      poisoned[0].services.map((s) => [s.code, s.costCents, s.sortOrder]));
+    assert.equal(out[0].costCents, 170);
+  });
+  it('mutates nothing and copes with bands that have no services (GR7)', () => {
+    const before = JSON.stringify(poisoned);
+    curateBandServices(poisoned);
+    assert.equal(JSON.stringify(poisoned), before);
+    assert.deepEqual(curateBandServices([{ id: 'x' }]), [{ id: 'x' }]);
+    assert.deepEqual(curateBandServices(null), null);
+  });
+});
+
+describe('classifyPostage uses the same names, so the buyer message matches the listing', () => {
+  it('names the service properly instead of prettifying its code', () => {
+    const r = classifyPostage({ shipService: 'AUP_500G_SATCHEL_SIG', shippingCents: 1520 }, {});
+    assert.equal(r.label, 'Tracked satchel, signature on delivery');
+    assert.equal(r.labelSource, 'curated');
+  });
+  it('an owner override still wins over the curated map', () => {
+    const r = classifyPostage({ shipService: 'AU_Regular', shippingCents: 826 },
+      { services: { AU_Regular: { label: 'My own words' } } });
+    assert.equal(r.label, 'My own words');
+    assert.equal(r.labelSource, 'config');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two of the account's own service codes lie about what they are.
+// ---------------------------------------------------------------------------
+describe('KNOWN_SERVICES — the tier comes from what the service IS, not what the code says', () => {
+  it('AU_Regular is TRACKED, not a plain paid letter', () => {
+    // The $8.26 band. Its description promises "sent tracked with Australia Post", but the code
+    // matches none of the tracked patterns, so the packer was never told to buy a label.
+    const p = classifyPostage({ ship_service: 'AU_Regular', shipping_cents: 826 }, {}, EMPTY);
+    assert.equal(p.tier, 'tracked');
+    assert.equal(p.tracked, true);
+    assert.equal(isUpgrade(p.tier), true, 'a tracked order must send the packer to buy a label');
+  });
+
+  it('AU_AusPostPriorityLetterWithTracking is tracked, NOT express', () => {
+    // It matches /priorit/, so it used to read as Express Post and put a black EXPRESS block on the
+    // slip for a service that is a priority letter with tracking.
+    const p = classifyPostage({ ship_service: 'AU_AusPostPriorityLetterWithTracking', shipping_cents: 826 }, {}, EMPTY);
+    assert.equal(p.tier, 'tracked');
+    assert.equal(p.tracked, true);
+  });
+
+  it('the satchel stays tracked, and the standard letter stays out of the way', () => {
+    assert.equal(classifyPostage({ ship_service: 'AUP_500G_SATCHEL_SIG', shipping_cents: 1520 }, {}, EMPTY).tier, 'tracked');
+    const letter = classifyPostage({ ship_service: 'AU_AusPostStandardLetter', shipping_cents: 170 }, {}, EMPTY);
+    assert.equal(letter.tier, 'standard', 'the normal band must not put ink on every slip');
+    assert.equal(isUpgrade(letter.tier), false);
+  });
+
+  it('works with no config at all — the whole point, since the live config has services: {}', () => {
+    for (const cfg of [undefined, {}, { services: {} }]) {
+      assert.equal(classifyPostage({ ship_service: 'AU_Regular', shipping_cents: 826 }, cfg, EMPTY).tier, 'tracked');
+    }
+  });
+
+  it('an owner override still wins, field by field', () => {
+    const cfg = { services: { AU_Regular: { tier: 'express' } } };
+    const p = classifyPostage({ ship_service: 'AU_Regular', shipping_cents: 826 }, cfg, EMPTY);
+    assert.equal(p.tier, 'express', 'the owner overrode the tier');
+    assert.equal(p.label, 'Tracked letter', 'and kept the curated label they did not override');
+  });
+
+  it('eBay saying it chose the service still wins over everything (the hard guard)', () => {
+    const p = classifyPostage({ ship_service: 'AU_Regular', shipping_cents: 826, buyer_selected_shipping: false }, {}, EMPTY);
+    assert.equal(p.tier, 'standard');
+  });
+
+  it('agrees with the facts shipped in data/postsale.config.example.json', () => {
+    // The example config has carried these since 2026-08-14. Code and example must not drift.
+    const example = JSON.parse(fs.readFileSync(new URL('../../data/postsale.config.example.json', import.meta.url), 'utf8'));
+    for (const [code, want] of Object.entries(example.postage.services)) {
+      assert.equal(KNOWN_SERVICES[code].tier, want.tier, code + ' tier');
+      assert.equal(KNOWN_SERVICES[code].tracked, want.tracked, code + ' tracked');
+    }
   });
 });

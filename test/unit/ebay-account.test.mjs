@@ -160,12 +160,46 @@ describe('fulfillmentTerms / verifyBandPolicies — which policy is which band',
     // which one eBay puts first is eBay's call rather than ours.
     const rows = fulfillmentPolicyRows();
     rows[0].shippingOptions[0].shippingServices.push({ sortOrder: 2, shippingServiceCode: 'AU_Express', shippingCost: { value: '12.00', currency: 'AUD' } });
-    const v = verifyBandPolicies(bands, rows, 'fulfillmentPolicyId');
+    // services: [] because this test is about the POLICY's service count, not the config's service
+    // table. The stub rows declare one service each, so DEFAULT_BANDS' real three-service tables would
+    // (correctly) trip the config-drift check that has its own test below.
+    const v = verifyBandPolicies(bands.map((b) => ({ ...b, services: [] })), rows, 'fulfillmentPolicyId');
     assert.equal(v.ok, true);
     assert.deepEqual(v.warnings, [], 'a choice of services is not a problem');
     assert.match(v.notes.join(' · '), /offers 2 services/);
     assert.match(v.notes.join(' · '), /all of them are listed/);
     assert.equal(v.bands[0].serviceCount, 2);
+  });
+  it('catches a service price in the description that the policy no longer charges', () => {
+    // The options table quotes EVERY service's price from config, not just the first, and those
+    // figures are written at capture. Only band.costCents was ever checked, so a policy repriced in
+    // Seller Hub left the description quoting the old amount to buyers indefinitely.
+    const rows = fulfillmentPolicyRows();
+    rows[0].shippingOptions[0].shippingServices.push({ sortOrder: 2, shippingServiceCode: 'AU_Regular', shippingCost: { value: '9.95', currency: 'AUD' } });
+    const drifted = bands.map((b, i) => (i === 0
+      ? { ...b, services: [{ code: 'AU_Regular', label: 'Tracked letter', costCents: 826, sortOrder: 2 }] }
+      : { ...b, services: [] }));
+    const v = verifyBandPolicies(drifted, rows, 'fulfillmentPolicyId');
+    assert.equal(v.ok, false, 'a description quoting a price the checkout will not charge is an error');
+    assert.match(v.errors.join(' · '), /quotes A\$8\.26 for "Tracked letter" but its policy charges A\$9\.95/);
+    assert.match(v.errors.join(' · '), /the description would quote a price the checkout does not/);
+  });
+  it('warns when the description offers a service the policy has dropped', () => {
+    const withGone = bands.map((b, i) => (i === 0
+      ? { ...b, services: [{ code: 'AU_Gone', label: 'Retired satchel', costCents: 170, sortOrder: 2 }] }
+      : { ...b, services: [] }));
+    const v = verifyBandPolicies(withGone, fulfillmentPolicyRows(), 'fulfillmentPolicyId');
+    assert.match(v.warnings.join(' · '), /"Retired satchel" option its policy no longer offers/);
+    assert.equal(v.ok, true, 'a stale row is worth saying, but it is not a wrong price');
+  });
+  it('stays silent when config and policy agree', () => {
+    const rows = fulfillmentPolicyRows();
+    const agreed = bands.map((b, i) => ({ ...b, services: i === 0
+      ? [{ code: b.serviceCode || 'AU_AusPostStandardLetter', label: 'Regular letter', costCents: b.costCents, sortOrder: 1 }]
+      : [] }));
+    const v = verifyBandPolicies(agreed, rows, 'fulfillmentPolicyId');
+    assert.equal(v.ok, true);
+    assert.deepEqual(v.warnings, []);
   });
   it('reports whether each band combines postage, and which profile says so', () => {
     // Three DIFFERENT profile ids is the detail that matters: eBay groups a cart by discount profile,

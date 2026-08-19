@@ -32,7 +32,10 @@ const mkOrder = (id, over = {}) => ({
   orderId: id, buyerUsername: 'buyer' + id, orderStatus: 'Completed', checkoutStatus: 'Complete',
   paidStatus: 'NoPaymentFailure', createdTime: '2026-08-01T01:00:00.000Z', paidTime: '2026-08-01T01:05:00.000Z',
   shippedTime: null, currency: 'AUD', totalCents: 4550, subtotalCents: 4200, shippingCents: 0,
-  shipService: 'AU_Regular', paid: true,
+  // AU_AusPostStandardLetter, not AU_Regular: AU_Regular is the account's $8.26 TRACKED letter
+  // (band 2). It only ever looked untracked because it matches none of the classifier's regexes,
+  // which is the bug KNOWN_SERVICES fixes. This fixture wants a genuinely plain letter.
+  shipService: 'AU_AusPostStandardLetter', paid: true,
   ship: { name: 'Sam Lee', street1: '9 King St', street2: null, city: 'Sydney', state: 'NSW', postal: '2000', country: 'AU', countryName: 'Australia', phone: null },
   items: [{ orderLineItemId: id + '-1', transactionId: 't' + id, itemId: '900' + id, sku: 'AAA-00' + id, title: 'Pokemon Card ' + id, quantity: 1, unitPriceCents: 4200 }],
   ...over,
