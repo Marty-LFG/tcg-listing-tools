@@ -267,12 +267,18 @@ function findEbay(){
 function genPitch(f, rawRarity){
   const setName=SETS[curSet], name=f.name, type=(f.type||'card');
   const asp=f.aspect, v=f.variant;
+  // Aggression is an SWU aspect, so the article has to agree with whatever actually follows it:
+  // "An Aggression-aspect", "A Command-aspect". Same idiom lorcanaPitch uses for ink.
+  const aspPhrase = asp ? asp+'-aspect ' : '';
+  // "uni"/"eu" words start with a consonant SOUND: a unit, a European. Without the exception the
+  // no-aspect branch reads "an unit". SWU's card types are Leader, Base, Unit, Event, Upgrade.
+  const an = (w) => (/^[aeiou]/i.test(w) && !/^(uni|eu)/i.test(w) ? 'n' : '');
   const chaseVariant=['Hyperspace','Hyperspace Foil','Showcase','Prestige'].includes(v);
   const chaseRarity=['Legendary','Special'].includes(rawRarity);
   const vWord = chaseVariant ? v+' ' : '';
   if(chaseVariant || chaseRarity)
-    return `The ${vWord}${name} ${type} from Star Wars: Unlimited \u2014 ${setName}. A ${asp?asp+'-aspect ':''}standout chase card prized by collectors and players alike.`;
-  return `${name} \u2014 a ${asp?asp+'-aspect ':''}${type.toLowerCase()} from Star Wars: Unlimited's ${setName} set. ${rawRarity||''} rarity${v && v!=='Standard'? ', '+v.toLowerCase()+' variant':''}.`;
+    return `The ${vWord}${name} ${type} from Star Wars: Unlimited \u2014 ${setName}. A${an(aspPhrase||'standout')} ${aspPhrase}standout chase card prized by collectors and players alike.`;
+  return `${name} \u2014 a${an(aspPhrase||type)} ${aspPhrase}${type.toLowerCase()} from Star Wars: Unlimited's ${setName} set. ${rawRarity||''} rarity${v && v!=='Standard'? ', '+v.toLowerCase()+' variant':''}.`;
 }
 
 function buildHTML(f){
