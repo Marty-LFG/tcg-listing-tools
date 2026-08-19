@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import { openDbAt } from '../../lib/db.mjs';
 import {
   toSealedListing, validateSealedListing, sealedBandFor, sealedAspects, poolUnits,
-  publishSealedPool, SEALED_CONDITION_ID, BAND_FOR_TYPE,
+  publishSealedPool, SEALED_CONDITION_ID, BAND_FOR_TYPE, sealedCategoryFor, SEALED_CATEGORY,
 } from '../../lib/sealed-listing.mjs';
 
 const CFG = {
@@ -22,7 +22,7 @@ const CFG = {
       { id: 'sealed_medium', label: 'Sealed - Medium', costCents: 1600, extraCents: 0, policyId: '273398171012' },
     ],
   },
-  sealed: { categoryId: '183456' },
+  sealed: {},
 };
 const POOL = {
   pool_sku: 'BKS-PKM-EN-SSP-BOX', game: 'pokemon', language: 'EN', set_code: 'SSP',
@@ -55,7 +55,7 @@ describe('toSealedListing — the payload publishListing receives', () => {
     assert.equal(listing.conditionId, SEALED_CONDITION_ID);
     assert.equal(listing.conditionId, 1000);
     assert.equal(listing.quantity, 3, 'one offer at quantity N, not N offers');
-    assert.equal(listing.categoryId, '183456');
+    assert.equal(listing.categoryId, '261044', 'a box goes to CCG Sealed Boxes');
     assert.equal(listing.sku, 'BKS-PKM-EN-SSP-BOX');
   });
   it('stamps the sealed band, which is what keeps it off the price-banded table', () => {
@@ -110,10 +110,13 @@ describe('validateSealedListing — every refusal names its one cause', () => {
   it('passes when everything is in place', () => {
     assert.deepEqual(errsFor({}), []);
   });
-  it('refuses without a pinned category, and says where to get one', () => {
-    const e = errsFor({}, { ...CFG, sealed: {} });
-    assert.match(e.join(' '), /no sealed eBay category is pinned/);
+  it('refuses when no category resolves, and says where to get one', () => {
+    // A v1 type always resolves now, because the baked values were read live off eBay. This guard
+    // is for the types that come later: a tin has no category yet, so it refuses on BOTH counts.
+    const e = errsFor({ product_type: 'tin' });
+    assert.match(e.join(' '), /no eBay category resolves/);
     assert.match(e.join(' '), /listings\/categories/);
+    assert.match(e.join(' '), /outside v1/);
   });
   it('refuses a sub-dollar price by eBay error code', () => {
     assert.match(errsFor({ price_cents: 99 }).join(' '), /25016/);
@@ -198,5 +201,20 @@ describe('publishSealedPool — refuses before any eBay call, and audits the ref
     assert.equal(push.status, 'skipped');
     assert.match(push.error, /not factory sealed/);
     db.close(); fs.unlinkSync(p);
+  });
+});
+
+describe('sealedCategoryFor — sealed is TWO categories, not one', () => {
+  it('files a box and a pack separately, off eBay live suggestions', () => {
+    assert.equal(sealedCategoryFor('booster_box', {}), '261044');   // CCG Sealed Boxes
+    assert.equal(sealedCategoryFor('booster_pack', {}), '183456');  // CCG Sealed Packs
+    assert.notEqual(SEALED_CATEGORY.booster_box, '183454', 'never the singles category');
+  });
+  it('puts a bundle with the boxes, which is the judgement call', () => {
+    // eBay's top suggestion for "pokemon booster bundle" is Deck Boxes/Storage, which is wrong.
+    assert.equal(sealedCategoryFor('booster_bundle', {}), '261044');
+  });
+  it('config wins, so a category eBay moves needs no release', () => {
+    assert.equal(sealedCategoryFor('booster_box', { sealed: { categories: { booster_box: '999' } } }), '999');
   });
 });
