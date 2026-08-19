@@ -29,7 +29,7 @@ const deals = (db) => db.prepare('SELECT * FROM deal_requests ORDER BY id').all(
 describe('recordDealFromMessage', () => {
   it('queues a deal ask, recording the kind and which rules fired', () => {
     const db = freshDb();
-    assert.equal(recordDealFromMessage(db, msg(), ON), true);
+    assert.ok(recordDealFromMessage(db, msg(), ON) > 0, 'returns the new row id');
     const [d] = deals(db);
     assert.equal(d.source, 'message');
     assert.equal(d.message_id, 'M-1');
@@ -44,7 +44,7 @@ describe('recordDealFromMessage', () => {
     // maybeHandleReply returns false with no buyers row and no prior sent message, so before this a
     // pre-sale question from somebody who has never bought was stored and silently ignored.
     const db = freshDb();
-    assert.equal(recordDealFromMessage(db, msg({ senderId: 'never_bought_here' }), ON), true);
+    assert.ok(recordDealFromMessage(db, msg({ senderId: 'never_bought_here' }), ON) > 0);
     const [d] = deals(db);
     assert.equal(d.buyer_id, null, 'no buyer row, and that must not stop the queue');
     assert.equal(d.ebay_username, 'never_bought_here');
@@ -59,7 +59,7 @@ describe('recordDealFromMessage', () => {
 
   it('ignores an ordinary question', () => {
     const db = freshDb();
-    assert.equal(recordDealFromMessage(db, msg({ subject: '', body: 'is this card still available?' }), ON), false);
+    assert.equal(recordDealFromMessage(db, msg({ subject: '', body: 'is this card still available?' }), ON), 0);
     assert.equal(deals(db).length, 0);
   });
 
@@ -67,8 +67,8 @@ describe('recordDealFromMessage', () => {
     // The cursor overlaps deliberately and a nudge can start a run mid-window, so the same message is
     // seen again routinely. A second row would mean a second card and a second Send button for one ask.
     const db = freshDb();
-    assert.equal(recordDealFromMessage(db, msg(), ON), true);
-    assert.equal(recordDealFromMessage(db, msg(), ON), false, 'second read must change nothing');
+    assert.ok(recordDealFromMessage(db, msg(), ON) > 0, 'returns the new row id');
+    assert.equal(recordDealFromMessage(db, msg(), ON), 0, 'second read must change nothing');
     assert.equal(deals(db).length, 1);
   });
 
@@ -76,29 +76,29 @@ describe('recordDealFromMessage', () => {
     const db = freshDb();
     recordDealFromMessage(db, msg(), ON);
     db.prepare("UPDATE deal_requests SET status='sent' WHERE message_id='M-1'").run();
-    assert.equal(recordDealFromMessage(db, msg({ messageId: 'M-2' }), ON), true);
+    assert.ok(recordDealFromMessage(db, msg({ messageId: 'M-2' }), ON) > 0);
     assert.equal(deals(db).length, 2);
   });
 
   it('falls back to a synthetic id for a message eBay sent with no MessageID', () => {
     const db = freshDb();
     const m = msg({ messageId: null });
-    assert.equal(recordDealFromMessage(db, m, ON), true);
+    assert.ok(recordDealFromMessage(db, m, ON) > 0);
     assert.equal(deals(db)[0].message_id, synthMessageId(m));
   });
 
   it('SHIPS OFF — nothing is queued until the capability is switched on', () => {
     const db = freshDb();
-    assert.equal(recordDealFromMessage(db, msg(), {}), false, 'no deals config at all');
-    assert.equal(recordDealFromMessage(db, msg(), { deals: { enabled: false } }), false);
-    assert.equal(recordDealFromMessage(db, msg(), { deals: { enabled: true, detect_from_messages: false } }), false,
+    assert.equal(recordDealFromMessage(db, msg(), {}), 0, 'no deals config at all');
+    assert.equal(recordDealFromMessage(db, msg(), { deals: { enabled: false } }), 0);
+    assert.equal(recordDealFromMessage(db, msg(), { deals: { enabled: true, detect_from_messages: false } }), 0,
       'message detection has its own switch, so the push lane can run without it');
     assert.equal(deals(db).length, 0);
   });
 
   it('does not choke on an empty or malformed message', () => {
     const db = freshDb();
-    assert.equal(recordDealFromMessage(db, { messageId: 'E-1' }, ON), false);
-    assert.equal(recordDealFromMessage(db, { messageId: 'E-2', subject: null, body: null }, ON), false);
+    assert.equal(recordDealFromMessage(db, { messageId: 'E-1' }, ON), 0);
+    assert.equal(recordDealFromMessage(db, { messageId: 'E-2', subject: null, body: null }, ON), 0);
   });
 });
