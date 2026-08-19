@@ -3,7 +3,7 @@
 // would filter out) + the delivered-price cluster value. The live eBay fetch is exercised manually.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { matchesSealedType, clusterValue } from '../../lib/comps.mjs';
+import { matchesSealedType, matchesSealedLanguage, clusterValue } from '../../lib/comps.mjs';
 
 describe('matchesSealedType (sealed eBay noise filter)', () => {
   // Exact titles from a real "Mega Evolution Enhanced Booster Box" eBay search.
@@ -44,5 +44,36 @@ describe('clusterValue (densest-cluster median, not the cheapest)', () => {
   it('handles tiny samples + empty', () => {
     assert.equal(clusterValue([]), null);
     assert.equal(clusterValue([472.29, 480]).fair, 476.145);
+  });
+});
+
+describe('matchesSealedLanguage (a JP box is not an EN box)', () => {
+  it('non-English REQUIRES the language word — the whole selling point of the listing', () => {
+    assert.equal(matchesSealedLanguage('Pokemon Japanese Abyss Eye Booster Box Sealed', 'JP'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Abyss Eye Booster Box JP Sealed', 'JP'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Abyss Eye Booster Box Sealed', 'JP'), false);
+    assert.equal(matchesSealedLanguage('Pokemon Chinese Booster Box', 'CN'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Korean Booster Box', 'KO'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Booster Box', 'CN'), false);
+  });
+  it('English is the one that names NO other language', () => {
+    assert.equal(matchesSealedLanguage('Pokemon Prismatic Evolutions Booster Box Sealed', 'EN'), true);
+    assert.equal(matchesSealedLanguage('Pokemon English Prismatic Evolutions Booster Box', 'EN'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Japanese Prismatic Evolutions Booster Box', 'EN'), false);
+    assert.equal(matchesSealedLanguage('Pokemon Korean Booster Box', 'EN'), false);
+  });
+  it('Simplified vs Traditional: each denies the other qualifier, neither invents precision', () => {
+    assert.equal(matchesSealedLanguage('Pokemon Simplified Chinese Booster Box', 'CN'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Traditional Chinese Booster Box', 'CN'), false);
+    assert.equal(matchesSealedLanguage('Pokemon Traditional Chinese Booster Box', 'TW'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Simplified Chinese Booster Box', 'TW'), false);
+    // Bare "Chinese" is what most sellers actually write, so both lanes keep it.
+    assert.equal(matchesSealedLanguage('Pokemon Chinese Booster Box', 'CN'), true);
+    assert.equal(matchesSealedLanguage('Pokemon Chinese Booster Box', 'TW'), true);
+  });
+  it('a missing or unknown language is NOT a refusal (GR7)', () => {
+    assert.equal(matchesSealedLanguage('Pokemon Japanese Booster Box', null), true);
+    assert.equal(matchesSealedLanguage('Pokemon Japanese Booster Box', ''), true);
+    assert.equal(matchesSealedLanguage('Pokemon Booster Box', 'DE'), true);
   });
 });

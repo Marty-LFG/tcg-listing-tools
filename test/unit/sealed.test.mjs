@@ -3,7 +3,7 @@
 // PriceCharting console name, and title -> product_type classification. Offline / no DB.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeSealed, normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore, naturalCompare } from '../../lib/sealed.mjs';
+import { summarizeSealed, normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore, naturalCompare, ebayQueryFor } from '../../lib/sealed.mjs';
 
 describe('naturalCompare (locations)', () => {
   it('sorts numeric suffixes 1,2,…10,11 — not 1,10,11,2', () => {
@@ -219,5 +219,32 @@ describe('summarizeSealed — cost is PER UNIT, like value', () => {
   it('a manual value overrides the shared per-UPC price, still × quantity', () => {
     const s = summarizeSealed([{ ...boxes, value_manual: 1, row_value: 20000, row_cur: 'AUD' }], upcMap);
     assert.equal(s.valueByCurrency.AUD, 20000 * 14);
+  });
+});
+
+describe('ebayQueryFor (language belongs in the query, not just the filter)', () => {
+  it('appends the language word for non-English, and nothing for English', () => {
+    assert.equal(ebayQueryFor({ name: 'Abyss Eye Booster Box', set_name: 'Abyss Eye', language: 'JP' }),
+      'Abyss Eye Booster Box Japanese');
+    assert.equal(ebayQueryFor({ name: 'Prismatic Evolutions Booster Box', set_name: 'Prismatic Evolutions', language: 'EN' }),
+      'Prismatic Evolutions Booster Box');
+    assert.equal(ebayQueryFor({ name: 'CSV10C Booster Box', set_name: '', language: 'CN' }),
+      'CSV10C Booster Box Chinese');
+    assert.equal(ebayQueryFor({ name: 'Terastal Festival Booster Box', set_name: '', language: 'KO' }),
+      'Terastal Festival Booster Box Korean');
+  });
+  it('never says the language twice — the existing word dedupe covers it', () => {
+    assert.equal(ebayQueryFor({ name: 'Japanese Abyss Eye Booster Box', set_name: '', language: 'JP' }),
+      'Japanese Abyss Eye Booster Box');
+  });
+  it('an unknown or missing language degrades to the old behaviour (GR7)', () => {
+    assert.equal(ebayQueryFor({ name: 'Surging Sparks Booster Box', set_name: 'Surging Sparks' }),
+      'Surging Sparks Booster Box');
+    assert.equal(ebayQueryFor({ name: 'Surging Sparks Booster Box', set_name: '', language: 'DE' }),
+      'Surging Sparks Booster Box');
+  });
+  it('still de-duplicates set words already carried by the name', () => {
+    assert.equal(ebayQueryFor({ name: 'Surging Sparks Booster Box', set_name: 'Surging Sparks', language: 'EN' }),
+      'Surging Sparks Booster Box');
   });
 });
