@@ -224,9 +224,14 @@ describe('sealedAspects — SELECTION_ONLY is a rejection, FREE_TEXT is a silent
   it('a box sends Configuration Box, because that is the only member of the enum', () => {
     assert.equal(sealedAspects({ ...POOL, product_type: 'booster_box' }, CFG).Configuration, 'Box');
   });
-  it('a pack sends NO Configuration, because 183456 s enum has not been read yet', () => {
+  it('a pack sends Configuration Pack, the sole member of 183456 s enum', () => {
     const a = sealedAspects({ ...POOL, product_type: 'booster_pack' }, CFG);
-    assert.ok(!('Configuration' in a), 'never guess a SELECTION_ONLY value: a wrong one fails the publish');
+    assert.equal(a.Configuration, 'Pack');
     assert.equal(a['Number of Packs'], '36', 'packs DO carry it, boxes do not');
+  });
+  it('never invents a SELECTION_ONLY value for a category whose enum is unread', () => {
+    // A wrong SELECTION_ONLY value FAILS the publish, unlike FREE_TEXT which quietly earns no facet.
+    const a = sealedAspects({ ...POOL, product_type: 'tin' }, { sealed: { categories: { tin: '999999' } } });
+    assert.ok(!('Configuration' in a));
   });
 });
