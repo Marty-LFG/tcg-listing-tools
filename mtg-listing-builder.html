@@ -284,9 +284,10 @@ function findEbay(){
 }
 
 function genPitch(f){
+  const set = String(f.set || '').replace(/\s*\([^)]*\)\s*$/, '');
   const chase=/(mythic)/i.test(f.rarity)||(f.treat&&f.treat!=='Normal');
-  if(chase) return `${f.name} — ${f.treat&&f.treat!=='Normal'?f.treat+' ':''}${f.rarity} from ${f.set}. A standout pickup for collectors and players.`;
-  return `${f.name} — a ${f.colour||''} ${f.type||'card'} from ${f.set}. ${f.rarity||''}${f.finish&&f.finish!=='Nonfoil'?', '+f.finish.toLowerCase():''}.`;
+  if(chase) return `${f.name}, ${f.treat&&f.treat!=='Normal'?f.treat+' ':''}${f.rarity} from ${set}. A standout pickup for collectors and players.`;
+  return `${f.name}, a ${f.colour||''} ${f.type||'card'} from ${set}. ${f.rarity||''}${f.finish&&f.finish!=='Nonfoil'?', '+f.finish.toLowerCase():''}.`;
 }
 function buildHTML(f){
   // Card-details rows — conditional rows self-skip when empty. MIRROR: lib/listing-copy.mjs
@@ -346,7 +347,7 @@ function buildHTML(f){
   // a graded condition (PSA 10 / BGS 9.5 / …) swaps to slab-specific wording. MIRROR: isSlabCondition
   // + SLAB_/CARD_ wording in lib/listing-copy.mjs (buildDescription) — keep both sides identical.
   const slab=/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||'');
-  const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated — see photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
+  const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated. See photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
   const postageLine=esc(postageText(f,slab));
   return `<div style="max-width:760px;margin:0 auto;font-family:${SERIF_BODY};color:#1f1a13;line-height:1.6;font-size:16px;background:#ffffff;">
   <div style="background:#1a1510;padding:26px 26px 22px;">

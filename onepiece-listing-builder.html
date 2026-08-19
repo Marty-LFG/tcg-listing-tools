@@ -264,13 +264,13 @@ function genPitch(f){
   var chase=isChaseVariant(f.variant)||/^(SR|SEC|L)$/i.test(f.rarity||'');
   var vWord=isChaseVariant(f.variant)?(f.variant+' '):'';
   if(chase)
-    return `The ${vWord}${name} ${type} from the One Piece Card Game — ${setName}. A ${f.color?f.color+' ':''}standout prized by collectors and players alike.`;
-  return `${name} — a ${f.color?f.color+' ':''}${type} from the One Piece Card Game's ${setName} set.${f.rarity?' '+f.rarity+' rarity.':''}`;
+    return `The ${vWord}${name} ${type} from the One Piece Card Game, ${setName}. A ${f.color?f.color+' ':''}standout prized by collectors and players alike.`;
+  return `${name}, a ${f.color?f.color+' ':''}${type} from the One Piece Card Game's ${setName} set.${f.rarity?' '+f.rarity+' rarity.':''}`;
 }
 
 function buildHTML(f){
   const rows=[['Set',f.set],['Card code',f.num],
-    ['Rarity',f.rarity+(isChaseVariant(f.variant)?' — '+f.variant:'')],
+    ['Rarity',f.rarity+(isChaseVariant(f.variant)&&f.variant!==f.rarity?', '+f.variant:'')],
     ['Card type',f.type],['Colour',f.color]];
   if(f.attr) rows.push(['Attribute',f.attr]);
   if(f.traits) rows.push(['Type(s)',f.traits]);
@@ -278,7 +278,7 @@ function buildHTML(f){
   if(stats.length) rows.push(['Stats',stats.join(' · ')]);
   rows.push(['Art / variant',f.variant]); rows.push(['Language',f.lang]);
   let tr='';
-  rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f7f9;':'';
+  rows.filter(r=>r[1]!==''&&r[1]!=null).forEach((r,i)=>{const bg=i%2===0?'background:#f6f7f9;':'';
     tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
   const vSpan=isChaseVariant(f.variant)?` <span style="color:#f0b6b6;font-weight:600;">(${esc(f.variant)})</span>`:'';
   return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">

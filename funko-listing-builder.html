@@ -266,13 +266,13 @@ function genTitle(){
 function genPitch(f){
   var who=f.character+(f.variant?' ('+f.variant+')':'');
   var tags=[]; if(f.chase)tags.push('rare Chase variant'); if(f.exclusive)tags.push(f.exclusive+' exclusive'); if(f.vaulted)tags.push('vaulted');
-  if(tags.length) return who+(f.franchise?' from '+f.franchise:'')+' — a '+tags.join(', ')+' Funko Pop'+(f.popnum?' (#'+f.popnum+')':'')+', a standout for collectors.';
-  return who+(f.franchise?' from '+f.franchise:'')+' — Funko Pop'+(f.popnum?' #'+f.popnum:'')+(f.series&&f.series!=='Pop!'?' ('+f.series+')':'')+'.';
+  if(tags.length) return who+(f.franchise?' from '+f.franchise:'')+', a '+tags.join(', ')+' Funko Pop'+(f.popnum?' (#'+f.popnum+')':'')+', a standout for collectors.';
+  return who+(f.franchise?' from '+f.franchise:'')+', Funko Pop'+(f.popnum?' #'+f.popnum:'')+(f.series&&f.series!=='Pop!'?' ('+f.series+')':'')+'.';
 }
 
 function condText(f){
   if(f.grade) return 'Professionally graded '+f.grade+'. Sealed in the grader’s case.';
-  if(f.oob) return 'Out of box (loose) — figure only, no box.'+(f.protector?' Ships protected.':'');
+  if(f.oob) return 'Out of box (loose), figure only, no box.'+(f.protector?' Ships protected.':'');
   var s=(f.boxcond||'Near-Mint')+' box with a clean, scratch-free window.';
   var ex=[]; if(f.chase)ex.push('this is the rare CHASE variant (chase sticker present)');
   if(f.exclusive)ex.push(f.exclusive+' exclusive'); if(f.vaulted)ex.push('now vaulted/retired by Funko');
@@ -283,7 +283,7 @@ function condText(f){
 }
 // Boxed goods keep their OWN protection sentence (GR6) but share the price bands.
 function postageText(f){
-  return 'Shipped inside a protective hard case and a padded box to keep the corners sharp. '+postagePhrase(f.postageBand);
+  return 'Packed with padding to keep the corners sharp. '+postagePhrase(f.postageBand);
 }
 
 function buildHTML(f){

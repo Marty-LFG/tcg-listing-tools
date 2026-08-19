@@ -226,18 +226,18 @@ function genTitle(){
 function genPitch(f){
   var num=bareNum(f.setnum);
   if(/seal|misb/i.test(f.cond))
-    return f.name+(num?' (set '+num+')':'')+' — brand new and factory sealed. A '+(f.theme||'LEGO')+' set'+(f.pieces?' with '+f.pieces+' pieces':'')+(f.minifigs?' and '+f.minifigs+' minifigures':'')+', perfect for collectors and builders.';
-  return f.name+' — LEGO '+(f.theme?f.theme+' ':'')+'set'+(num?' '+num:'')+(f.pieces?', '+f.pieces+' pieces':'')+(f.minifigs?', '+f.minifigs+' minifigures':'')+'.';
+    return f.name+(num?' (set '+num+')':'')+', brand new and factory sealed. A '+(f.theme||'LEGO')+' set'+(f.pieces?' with '+f.pieces+' pieces':'')+(f.minifigs?' and '+f.minifigs+' minifigures':'')+', perfect for collectors and builders.';
+  return f.name+', LEGO '+(f.theme?f.theme+' ':'')+'set'+(num?' '+num:'')+(f.pieces?', '+f.pieces+' pieces':'')+(f.minifigs?', '+f.minifigs+' minifigures':'')+'.';
 }
 
 function condText(f){
   if(/seal|misb/i.test(f.cond))
-    return 'Brand new and factory sealed (MISB)'+(f.box&&f.box!=='No original box'?'. Box condition: '+f.box.toLowerCase()+'':'')+'. Never opened — seals intact.';
+    return 'Brand new and factory sealed (MISB)'+(f.box&&f.box!=='No original box'?'. Box condition: '+f.box.toLowerCase()+'':'')+'. Never opened, seals intact.';
   if(/incomplete/i.test(f.cond))
-    return 'Used — sold as-is.'+(f.missing?' Please note: '+f.missing+'.':' See the photos and notes for any missing pieces or parts.')+(f.pieces?' Originally a '+f.pieces+'-piece set.':'');
+    return 'Used, sold as-is.'+(f.missing?' Please note: '+f.missing+'.':' See the photos and notes for any missing pieces or parts.')+(f.pieces?' Originally a '+f.pieces+'-piece set.':'');
   if(/used|complete/i.test(f.cond)){
     var ins=/digital/i.test(f.instructions)?'instructions are digital only':(/missing/i.test(f.instructions)?'instructions are not included':'the original instructions are included');
-    return 'Used — complete. All '+(f.pieces?f.pieces+' ':'')+'pieces'+(f.minifigs?' and '+f.minifigs+' minifigures':'')+' are present and '+ins+'.'+(f.box&&f.box!=='No original box'?' Original box included ('+f.box.toLowerCase()+' condition).':' Sold without the original box.')+(f.stickers&&/applied/i.test(f.stickers)?' Stickers have been applied.':'');
+    return 'Used, complete. All '+(f.pieces?f.pieces+' ':'')+'pieces'+(f.minifigs?' and '+f.minifigs+' minifigures':'')+' are present and '+ins+'.'+(f.box&&f.box!=='No original box'?' Original box included ('+f.box.toLowerCase()+' condition).':' Sold without the original box.')+(f.stickers&&/applied/i.test(f.stickers)?' Stickers have been applied.':'');
   }
   return f.cond||'';
 }

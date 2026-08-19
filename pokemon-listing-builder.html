@@ -301,9 +301,10 @@ function findEbay(){
 }
 
 function genPitch(f){
+  const set = String(f.set || '').replace(/\s*\([^)]*\)\s*$/, '');
   const chase=/(illustration|special|hyper|secret|ultra|rainbow|gold|alt)/i.test(f.rarity);
-  if(chase) return `${f.name} — a sought-after ${f.rarity} from the Pokémon TCG ${f.set} set. A standout chase card for collectors.`;
-  return `${f.name} from the Pokémon TCG ${f.set} set${f.stage?', '+f.stage:''}.${f.rarity?' '+f.rarity+' rarity.':''}`;
+  if(chase) return `${f.name}, a sought-after ${f.rarity} from the Pokémon TCG ${set} set. A standout chase card for collectors.`;
+  return `${f.name} from the Pokémon TCG ${set} set${f.stage?', '+f.stage:''}.${f.rarity?' '+f.rarity+' rarity.':''}`;
 }
 function buildHTML(f){
   // Card-details rows — conditional rows self-skip when empty (English + generic prints degrade cleanly).
@@ -311,7 +312,7 @@ function buildHTML(f){
   const rows=[['Card Name',f.name]];
   if(f.nativeName) rows.push([nlab+' name',f.nativeName+(f.romaji?' '+f.romaji:'')]);
   rows.push(['Set',f.set+(f.nativeSet?' ('+f.nativeSet+')':'')]);
-  if(f.setSymbol) rows.push(['Set Symbol',f.setSymbol]);
+  if(f.setSymbol) rows.push(['Set code',f.setSymbol]);
   rows.push(['Card number',f.num]);
   rows.push(['Rarity',rarDisplay(f.rarity)]);
   if(f.poke) rows.push(['Pokémon',f.poke]);
@@ -366,7 +367,7 @@ function buildHTML(f){
   // a graded condition (PSA 10 / BGS 9.5 / …) swaps to slab-specific wording. MIRROR: isSlabCondition
   // + SLAB_/CARD_ wording in lib/listing-copy.mjs (buildDescription) — keep both sides identical.
   const slab=/\b(psa|bgs|cgc|sgc|ace|tag)\b\s*\d/i.test(f.cond||'');
-  const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated — see photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
+  const condLine=esc(f.cond)+esc(slab?'. Professionally graded and encapsulated. See photos and item specifics for the cert details.':'. Pulled straight to sleeve and stored in a toploader.');
   const postageLine=esc(postageText(f,slab));
   return `<div style="max-width:760px;margin:0 auto;font-family:${SERIF_BODY};color:#1b1420;line-height:1.6;font-size:16px;background:#ffffff;">
   <div style="background:#160f1d;padding:26px 26px 22px;">

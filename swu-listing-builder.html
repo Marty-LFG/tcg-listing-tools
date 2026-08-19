@@ -277,20 +277,20 @@ function genPitch(f, rawRarity){
   const chaseRarity=['Legendary','Special'].includes(rawRarity);
   const vWord = chaseVariant ? v+' ' : '';
   if(chaseVariant || chaseRarity)
-    return `The ${vWord}${name} ${type} from Star Wars: Unlimited \u2014 ${setName}. A${an(aspPhrase||'standout')} ${aspPhrase}standout chase card prized by collectors and players alike.`;
-  return `${name} \u2014 a${an(aspPhrase||type)} ${aspPhrase}${type.toLowerCase()} from Star Wars: Unlimited's ${setName} set. ${rawRarity||''} rarity${v && v!=='Standard'? ', '+v.toLowerCase()+' variant':''}.`;
+    return `The ${vWord}${name} ${type} from Star Wars: Unlimited, ${setName}. A${an(aspPhrase||'standout')} ${aspPhrase}standout chase card prized by collectors and players alike.`;
+  return `${name}, a${an(aspPhrase||type)} ${aspPhrase}${type.toLowerCase()} from Star Wars: Unlimited's ${setName} set. ${rawRarity||''} rarity${v && v!=='Standard'? ', '+v.toLowerCase()+' variant':''}.`;
 }
 
 function buildHTML(f){
   const rows=[['Set',f.set],['Card number',f.num],
-    ['Rarity',f.rarity+(f.variant && f.variant!=='Standard'?' \u2014 '+f.variant:'')],
+    ['Rarity',f.rarity+(f.variant && f.variant!=='Standard'&&f.variant!==f.rarity?', '+f.variant:'')],
     ['Card type',f.type],['Aspect(s)',f.aspect]];
   if(f.arena) rows.push(['Arena',f.arena]);
   if(f.traits) rows.push(['Traits',f.traits]);
   if(f.cost||f.power||f.hp) rows.push(['Cost / Power / HP',[f.cost,f.power,f.hp].filter(x=>x!=='').join(' / ')]);
   rows.push(['Finish',f.variant]); rows.push(['Language',f.lang]);
   let tr='';
-  rows.forEach((r,i)=>{const bg=i%2===0?'background:#f6f7f9;':'';
+  rows.filter(r=>r[1]!==''&&r[1]!=null).forEach((r,i)=>{const bg=i%2===0?'background:#f6f7f9;':'';
     tr+=`<tr style="${bg}"><td style="padding:9px 12px;color:#6b6b7e;width:38%;">${esc(r[0])}</td><td style="padding:9px 12px;color:#1a1a22;font-weight:600;">${esc(r[1])}</td></tr>`;});
   const vSpan=(f.variant && f.variant!=='Standard')?` <span style="color:#b6bac4;font-weight:600;">(${esc(f.variant)})</span>`:'';
   return `<div style="max-width:760px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a1a22;line-height:1.55;font-size:15px;">
