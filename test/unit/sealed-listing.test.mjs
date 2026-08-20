@@ -104,8 +104,12 @@ describe('sealedAspects', () => {
 });
 
 describe('validateSealedListing — every refusal names its one cause', () => {
-  const errsFor = (over, cfg = CFG, units = 3) => {
+  // Images are resolved by publishSealedPool, not by toSealedListing, so the builder does not set
+  // them. Supply one here so each test exercises the refusal it is actually about; the no-image
+  // refusal has its own test below.
+  const errsFor = (over, cfg = CFG, units = 3, imgs = ['https://i.ebayimg.com/x.jpg']) => {
     const { pool, listing } = build(over, cfg, units);
+    listing.imageUrls = imgs;
     return validateSealedListing(listing, pool, cfg);
   };
   it('passes when everything is in place', () => {
@@ -134,6 +138,17 @@ describe('validateSealedListing — every refusal names its one cause', () => {
   });
   it('refuses when no postage policy is pinned for the size class', () => {
     assert.match(errsFor({}, { ...CFG, shipping: { sealedBands: [] } }).join(' '), /no eBay policy is pinned/);
+  });
+  it('refuses with no image, because eBay will not publish an offer without one', () => {
+    const e = errsFor({}, CFG, 3, []);
+    assert.equal(e.length, 1, 'the ONLY thing wrong is the image: ' + e.join(' | '));
+    assert.match(e[0], /no image/);
+    assert.match(e[0], /add an owner photo or the catalog art/);
+  });
+  it('a lone generic banner must not satisfy it — that is why resolve returns [] for an empty pool', () => {
+    // If the banner were appended unconditionally this array would be length 1 and sail through,
+    // putting the store's follow-us graphic on the listing as its only picture.
+    assert.equal(errsFor({}, CFG, 3, []).length, 1);
   });
   it('refuses an over-length title', () => {
     assert.match(errsFor({ title_override: 'x'.repeat(81) }).join(' '), /title over 80/);
@@ -180,6 +195,9 @@ describe('publishSealedPool — refuses before any eBay call, and audits the ref
   it('a dry run validates the whole payload and writes a preview to the audit, with no eBay call', async () => {
     const { db, p } = freshDb();
     seed(db); addStock(db, POOL.pool_sku, 3);
+    db.prepare(`INSERT INTO sealed_pool_images (pool_sku, position, kind, ebay_url, expires_at, sha256)
+                VALUES (?,?,?,?,?,?)`).run(POOL.pool_sku, 0, 'owner', 'https://i.ebayimg.com/x.jpg',
+                new Date(Date.now() + 30 * 864e5).toISOString(), 'abc');
     const out = await publishSealedPool({}, db, CFG, { poolSku: POOL.pool_sku, dryRun: true });
     assert.equal(out.ok, true);
     assert.equal(out.dryRun, true);
