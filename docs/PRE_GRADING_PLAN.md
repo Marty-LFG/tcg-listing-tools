@@ -354,14 +354,17 @@ Plus the scanner timings and sleeve findings in §3–§4, and `pnpm verify` gre
 
 Unchecked items — none blocks use, all should be closed deliberately:
 
-- [ ] **Tomlov microscope corner shots, live.** The device was unplugged during the build. It
-  enumerates as a standard UVC `videoinput` and rides the ordinary camera path with per-kind
-  memory (§9), so no code is expected to change — but "expected" is not "verified".
+- [x] ~~**Tomlov microscope corner shots, live.**~~ **DONE 2026-08-22** — owner ran the full
+  wizard in a real browser (the in-app Browser pane hard-blocks `getUserMedia`; that is a pane
+  limitation, not a page bug). Corner shots came back tack-sharp at print-rosette level with
+  both half-edges in frame, exactly as the no-dedicated-edge-shots design assumed.
 - [ ] **The black-backing comparison shot.** White-lid behaviour is verified working with the
   documented caveats (§4); the matte-black-backing setup is recommended from the mechanism,
   not yet from a side-by-side scan.
-- [ ] **A full 12-shot AI pass** with all eight corner shots populated. The live pass ran on
-  the scan pair; the granular schema has not yet been fed a complete wizard set.
+- [x] ~~**A full 12-shot AI pass** with all eight corner shots populated.~~ **DONE 2026-08-22** —
+  report #2: all 12 images restored from the store, one call, ~9s; every granular cell filled
+  (no nulls), confidence rose 67% → 76% with full coverage, and one coordinate-pinned defect
+  (minor wear, back top edge, `imageRef: scan-back`) rendered as a pin on the annotated report.
 - [ ] **1200 dpi timing.** 300 and 600 dpi are measured (§3); 1200 is the driver ceiling and
   its duration is unknown.
 - [ ] **ALCSERVER post-deploy check.** After the pull: NSSM service restart, then

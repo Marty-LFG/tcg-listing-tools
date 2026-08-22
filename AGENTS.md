@@ -2060,13 +2060,15 @@ sleeve, not a 63×88 card) and caps outer confidence at 0.5 **by design**: a whi
 be told from a white lid. The fix is setup, not code — a matte-black backing behind the sleeve
 makes the card edge out-contrast the sleeve. Sleeved cards are fine to scan.
 
-**Open QA** (unchecked as of 2026-08-22):
+**Open QA** (as of 2026-08-22, evening):
 
-- [ ] Tomlov microscope corner shots live-tested (device was unplugged during the build; it is a
-      standard UVC videoinput on the normal camera path).
+- [x] ~~Tomlov microscope corner shots live-tested~~ DONE — owner ran the full wizard in a real
+      browser (the in-app Browser pane blocks getUserMedia; localhost in a normal browser works).
+      Corner shots resolve individual print rosettes with both half-edges in frame.
 - [ ] Black-backing vs white-lid comparison shot (white-lid path verified working, with the
       caveats above).
-- [ ] Full 12-shot AI pass with all corner shots attached.
+- [x] ~~Full 12-shot AI pass with all corner shots attached~~ DONE — every granular cell filled,
+      confidence 67%→76% with full coverage, one coordinate-pinned defect on the back scan.
 - [ ] 1200dpi timing measurement.
 - [ ] ALCSERVER post-deploy check: scan buttons must hide (no scanner there), NSSM service
       restart after pull, then `/api/status` `plugins.stale` (§20).
