@@ -166,7 +166,9 @@ describe('listing-image.config.example.json', () => {
 describe('grading.config.json (pre-grader tolerances)', () => {
   const c = cfg('grading.config.json');
   it('stays limited to companies with real tolerances (Golden Rule 4)', () => {
-    assert.deepEqual(Object.keys(c.companies).sort(), ['BGS', 'CGC', 'PSA', 'SGC', 'TAG']);
+    // SGC swapped out for PCG (Premier Card Grading, AU) 2026-08-22 — owner call: the store
+    // grades locally. SGC remains in grading-companies.json (the slab-ownership registry).
+    assert.deepEqual(Object.keys(c.companies).sort(), ['BGS', 'CGC', 'PCG', 'PSA', 'TAG']);
   });
   it('pillar weights sum to 1 per company', () => {
     for (const [code, co] of Object.entries(c.companies)) {

@@ -244,7 +244,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `scripts/wia-scan.ps1` | The WIA COM scan helper (`powershell.exe` 5.1, `-NonInteractive`). Contract: exactly ONE JSON line on stdout; BMP transfer → `ImageProcess` Convert → PNG; **resolution set before extent** (the driver's max extent scales with the DPI already set); SaveFile target pre-deleted; never `WIA.CommonDialog`. |
 | `lib/pregrade.mjs` | `pregradePlugin` → `/api/pregrade`: saved pre-grade reports — CRUD + per-shot image upload + immutable content-addressed file serving. See §21. |
 | `lib/pregrade-store.mjs` | The pregrade store: `pregrade_reports` / `pregrade_images` (`UNIQUE(report_id,shot_id)`, cascade) + the content-addressed byte store `data/pregrade-images/` (sha-named, refcounted delete). |
-| `data/grading.config.json` | The pre-grader's editable company data: tolerances, weights, grade steps, fees + turnaround. **PSA/BGS/CGC/SGC/TAG only** — narrower than `data/grading-companies.json` on purpose; don't add a company here without real tolerances (GR4). Fees `asOf` 2026-06-24 (refresh deferred). |
+| `data/grading.config.json` | The pre-grader's editable company data: tolerances, weights, grade steps, fees + turnaround. **PSA/BGS/CGC/PCG/TAG only** (SGC → PCG 2026-08-22, owner call — the store grades locally; SGC stays in the registry) — narrower than `data/grading-companies.json` on purpose; don't add a company here without real tolerances (GR4). PCG's centering bands are PUBLISHED, the one non-approximation. PSA/BGS/CGC/TAG fees `asOf` 2026-06-24 (refresh deferred); PCG fees 2026-08-22, AUD-converted. |
 | `data/pregrade-images/` | Content-addressed capture bytes for saved reports (gitignored). **NOT regenerable** — the photos exist nowhere else; backup coverage is an open decision (§21). |
 | `data/tracker.db` | SQLite price history (gitignored, WAL). Created on first server boot. |
 | `data/tracker.config.json` | Tracker cadence + signal thresholds (editable). |
@@ -1987,7 +1987,7 @@ does exactly that.
 The question the tool answers is "is this raw card worth a grading fee?". Capture the card
 (flatbed scan, microscope, camera or plain upload), measure centering **geometrically**, run an AI
 condition pass over corners/edges/surface, and get a per-company predicted grade (`grade-rules.js`
-driven by `data/grading.config.json` — PSA/BGS/CGC/SGC/TAG), a TAG-style annotated report
+driven by `data/grading.config.json` — PSA/BGS/CGC/PCG/TAG), a TAG-style annotated report
 (numbered severity-colored defect pins on the images, a per-corner grid, a /1000 breakdown
 labeled a **house approximation** — explicitly not TAG's DIG), and a PDF. Pokémon-first; other
 games work through the manual identity fields. A prediction is an ESTIMATE and is treated as one

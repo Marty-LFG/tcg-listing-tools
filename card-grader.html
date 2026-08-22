@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Card Pre-Grader — PSA / BGS / CGC / SGC / TAG</title>
+<title>Card Pre-Grader — PSA / BGS / CGC / PCG / TAG</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
@@ -131,7 +131,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">&larr; All tools</a>
-  <div class="tag">Pre-grading &middot; PSA / BGS / CGC / SGC / TAG</div>
+  <div class="tag">Pre-grading &middot; PSA / BGS / CGC / PCG / TAG</div>
   <h1>Card Pre-Grader</h1>
   <p class="sub">Flatbed scan or photograph the card, microscope the corners → measured centering + an AI condition pass → a predicted grade per company, value-at-grade, and a "worth grading?" verdict.</p>
   <div class="banner">⚠ <b>Estimate, not a grade.</b> This screens cards — it's far better at confirming a card is <i>not</i> a 10 than proving it is one. Surface flaws &amp; the back are under-seen from photos; it does <b>not</b> authenticate. Treat every number as a guide, especially at the 9-vs-10 line.</div>
@@ -248,6 +248,14 @@
   <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:1100px;gap:10px;flex-wrap:wrap;">
     <div class="colhead" id="padModalTitle" style="font-size:12px;margin:0;">Centering</div>
     <div class="ro" id="roFull" style="margin:0;font-size:13.5px;"></div>
+    <div style="display:flex;align-items:center;gap:5px;" title="Zoom onto one edge's guide pair for pixel-perfect placement; Fit shows the whole card again.">
+      <span class="colhead" style="margin:0;">Zoom</span>
+      <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="_fullPad&&_fullPad.zoomEdge('t')">T</button>
+      <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="_fullPad&&_fullPad.zoomEdge('b')">B</button>
+      <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="_fullPad&&_fullPad.zoomEdge('l')">L</button>
+      <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="_fullPad&&_fullPad.zoomEdge('r')">R</button>
+      <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="_fullPad&&_fullPad.fitView()">Fit</button>
+    </div>
     <div style="display:flex;align-items:center;gap:6px;" title="Fine-rotate the image so the card sits square under the guides. ←/→ keys work too (Shift = coarser). Done bakes the straightened image into the shot.">
       <button class="btn" style="padding:4px 9px;font-size:11px;" id="autoStraightBtn" onclick="autoStraighten()" title="Measure the card's skew from its own edges and set the exact correction — hit Done to bake it">⌖ Auto</button>
       <button class="btn" style="padding:4px 9px;font-size:11px;" onclick="fullRotBy(-0.1)">↶ 0.1°</button>
@@ -609,7 +617,8 @@ function makePad(canvasId, roId, opts){
   var maxW=opts.maxW||280, maxH=opts.maxH||400;
   var getDpi=opts.getDpi||function(){return null;};   // scans know their dpi → borders in mm
   var cv=$(canvasId), ctx=cv.getContext('2d');
-  var st={img:null,outer:null,inner:null,drag:null,source:'manual',pendingGuides:null,loading:false,angle:0};
+  var st={img:null,outer:null,inner:null,drag:null,source:'manual',pendingGuides:null,loading:false,angle:0,
+    view:{z:1,ox:0,oy:0}};   // zoom/pan over the base canvas space — guides stay in base coords
   // 'default' is a third source state, not a measurement: the seeded rectangles are perfectly
   // symmetric, so letting them measure would fabricate a flawless 50/50 for any image whose
   // guides were never touched. ratios() refuses to read them; auto-seed or a human drag
@@ -656,7 +665,10 @@ function makePad(canvasId, roId, opts){
     return { outer:up(st.outer), inner:up(st.inner), imgW:st.img.width, imgH:st.img.height, source:st.source };
   }
   function draw(){
+    ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,cv.width,cv.height);
+    var v=st.view;
+    ctx.setTransform(v.z,0,0,v.z,v.ox,v.oy);   // everything below draws in base coords, viewed through the zoom
     if(st.img){
       // fine rotation rotates the IMAGE under axis-aligned guides; Done bakes it into the shot
       ctx.save();
@@ -668,10 +680,12 @@ function makePad(canvasId, roId, opts){
     if(!st.outer) return;
     rect(st.outer,'#d9a4ff',[]); rect(st.inner,'#5aa9ff',[5,4]);
   }
-  function rect(r,color,dash){ ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.setLineDash(dash);
+  // stroke/handle sizes divide by the zoom so the overlay stays hairline-thin at any magnification
+  function rect(r,color,dash){ var z=st.view.z; ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.5/z; ctx.setLineDash(dash.map(function(d){return d/z;}));
     ctx.strokeRect(r.l,r.t,r.r-r.l,r.b-r.t);
     ctx.setLineDash([]); ctx.fillStyle=color;
-    [[ (r.l+r.r)/2, r.t],[(r.l+r.r)/2,r.b],[r.l,(r.t+r.b)/2],[r.r,(r.t+r.b)/2]].forEach(function(p){ ctx.fillRect(p[0]-3,p[1]-3,6,6); });
+    var h=6/z;
+    [[ (r.l+r.r)/2, r.t],[(r.l+r.r)/2,r.b],[r.l,(r.t+r.b)/2],[r.r,(r.t+r.b)/2]].forEach(function(p){ ctx.fillRect(p[0]-h/2,p[1]-h/2,h,h); });
     ctx.restore(); }
   function edges(){ if(!st.outer)return []; return [
     {k:'outer.l',ax:'x',v:st.outer.l,a:st.outer.t,b:st.outer.b},{k:'outer.r',ax:'x',v:st.outer.r,a:st.outer.t,b:st.outer.b},
@@ -679,8 +693,10 @@ function makePad(canvasId, roId, opts){
     {k:'inner.l',ax:'x',v:st.inner.l,a:st.inner.t,b:st.inner.b},{k:'inner.r',ax:'x',v:st.inner.r,a:st.inner.t,b:st.inner.b},
     {k:'inner.t',ax:'y',v:st.inner.t,a:st.inner.l,b:st.inner.r},{k:'inner.b',ax:'y',v:st.inner.b,a:st.inner.l,b:st.inner.r}]; }
   function pos(e){ var rc=cv.getBoundingClientRect(); var cx=(e.touches?e.touches[0].clientX:e.clientX)-rc.left; var cy=(e.touches?e.touches[0].clientY:e.clientY)-rc.top;
-    return {x:cx*(cv.width/rc.width), y:cy*(cv.height/rc.height)}; }
-  function pick(p){ var best=null,bd=10; edges().forEach(function(ed){ var d=ed.ax==='x'?Math.abs(p.x-ed.v):Math.abs(p.y-ed.v); var within=ed.ax==='x'?(p.y>=ed.a-12&&p.y<=ed.b+12):(p.x>=ed.a-12&&p.x<=ed.b+12); if(within&&d<bd){bd=d;best=ed.k;} }); return best; }
+    var v=st.view;
+    return {x:(cx*(cv.width/rc.width)-v.ox)/v.z, y:(cy*(cv.height/rc.height)-v.oy)/v.z}; }
+  // hit tolerance is in VIEW pixels (12/z base px) — zooming in makes picking proportionally finer
+  function pick(p){ var z=st.view.z,best=null,bd=12/z; edges().forEach(function(ed){ var d=ed.ax==='x'?Math.abs(p.x-ed.v):Math.abs(p.y-ed.v); var within=ed.ax==='x'?(p.y>=ed.a-12/z&&p.y<=ed.b+12/z):(p.x>=ed.a-12/z&&p.x<=ed.b+12/z); if(within&&d<bd){bd=d;best=ed.k;} }); return best; }
   function down(e){ if(!st.img)return; e.preventDefault(); st.drag=pick(pos(e)); }
   function move(e){ if(!st.drag)return; e.preventDefault(); var p=pos(e); var parts=st.drag.split('.'); var grp=st[parts[0]], side=parts[1];
     var v=(side==='l'||side==='r')?Math.max(0,Math.min(cv.width,p.x)):Math.max(0,Math.min(cv.height,p.y)); grp[side]=v; draw(); }
@@ -709,8 +725,27 @@ function makePad(canvasId, roId, opts){
   cv.addEventListener('mousedown',down); window.addEventListener('mousemove',move2); window.addEventListener('mouseup',up2);
   cv.addEventListener('touchstart',down,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',up);
   draw();
+  // Zoom the view onto one edge's guide pair (outer + inner line of that side) for pixel-precise
+  // placement. Capped at ~3 screen px per IMAGE px — beyond that there is nothing left to see.
+  function zoomEdge(edge){
+    if(!st.outer||!st.inner)return;
+    var vertical=(edge==='l'||edge==='r');
+    var a=vertical?(edge==='l'?st.outer.l:st.inner.r):(edge==='t'?st.outer.t:st.inner.b);
+    var b=vertical?(edge==='l'?st.inner.l:st.outer.r):(edge==='t'?st.inner.t:st.outer.b);
+    var lo=Math.min(a,b), hi=Math.max(a,b);
+    var m=Math.max((hi-lo)*0.6,14);
+    var span=hi-lo+2*m;
+    var zCap=st.img?Math.max(2, 3*st.img.width/cv.width):14;
+    var z=Math.max(1,Math.min(zCap, (vertical?cv.width:cv.height)/span));
+    st.view=vertical
+      ? {z:z, ox:-z*(lo-m), oy:cv.height/2*(1-z)}
+      : {z:z, ox:cv.width/2*(1-z), oy:-z*(lo-m)};
+    draw();
+  }
+  function fitView(){ st.view={z:1,ox:0,oy:0}; draw(); }
   return { setImage:setImage, ratios:ratios, setGuides:setGuides, exportGuides:exportGuides, borderMm:borderMm,
     setAngle:function(a){ st.angle=a||0; draw(); }, getAngle:function(){ return st.angle||0; },
+    zoomEdge:zoomEdge, fitView:fitView, getView:function(){ return {z:st.view.z,ox:st.view.ox,oy:st.view.oy}; },
     destroy:function(){ window.removeEventListener('mousemove',move2); window.removeEventListener('mouseup',up2); },
     reset:function(){ if(st.img){defaults();draw();updateRO();} } };
 }
@@ -866,7 +901,10 @@ function ladVal(label){ var l=_card&&_card.pc&&_card.pc.ladder; var c=l&&l[label
 function rawUSD(){ var p=_card&&_card.pc&&_card.pc.prices; if(p&&p.ungraded!=null)return p.ungraded/100; return ladVal('Ungraded'); }
 function firstNonNull(){ for(var i=0;i<arguments.length;i++){ if(arguments[i]!=null) return arguments[i]; } return null; }
 function valueAtGradeUSD(company, grade){
-  if(grade>=10){ var m={PSA:'PSA 10',BGS:'BGS 10',CGC:'CGC 10',SGC:'SGC 10',TAG:'TAG 10'};
+  // PCG has no PriceCharting ladder — it falls through to the PSA 10 → 9.5 → 9 chain, which
+  // OVERSTATES a PCG slab's realised price (AU market discounts local slabs vs PSA); the
+  // config carries a disclaimer for exactly this.
+  if(grade>=10){ var m={PSA:'PSA 10',BGS:'BGS 10',CGC:'CGC 10',PCG:'PCG 10',TAG:'TAG 10'};
     return firstNonNull(ladVal(m[company]), ladVal('PSA 10'), ladVal('Grade 9.5'), ladVal('Grade 9')); }
   if(grade>=9.5) return firstNonNull(ladVal('Grade 9.5'), ladVal('BGS 9.5'), ladVal('Grade 9'));
   if(grade>=9) return firstNonNull(ladVal('Grade 9'), ladVal('PSA 9'));

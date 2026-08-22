@@ -37,16 +37,16 @@
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
       "topLabel": "Pristine 10"
     },
-    "SGC": {
-      "label": "SGC",
-      "scale": "1-10",
+    "PCG": {
+      "label": "PCG (Premier)",
+      "scale": "1-10 (halves at 7.5+)",
       "step": 0.5,
       "has95": true,
-      "subgradesOnSlab": false,
+      "subgradesOnSlab": true,
       "lowestPlusCap": 1.5,
-      "known": "Vintage specialist; eye-appeal weighted; fast.",
-      "pillarWeights": { "centering": 0.25, "corners": 0.30, "edges": 0.20, "surface": 0.25 },
-      "topLabel": "10 Pristine"
+      "known": "AU-market local grader (NZ-registered; drop-off Good Games Parramatta). Publishes numeric centering bands. Three 10s: Gem Mint -> Pristine -> Flawless (quad-10, gold label). Resale: AU market discounts PCG slabs vs the same PSA grade (~0.4-0.7x, estimate) and they sell slower.",
+      "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
+      "topLabel": "10 Gem Mint (up to Flawless)"
     },
     "TAG": {
       "label": "TAG",
@@ -89,15 +89,17 @@
       { "grade": 7, "front": 70, "back": 95 },
       { "grade": 6, "front": 75, "back": 95 }
     ],
-    "SGC": [
-      { "grade": 10, "front": 55 },
-      { "grade": 9.5, "front": 55 },
-      { "grade": 9, "front": 60 },
-      { "grade": 8.5, "front": 63 },
-      { "grade": 8, "front": 65 },
-      { "grade": 7, "front": 70 },
-      { "grade": 6, "front": 80 }
+    "PCG": [
+      { "grade": 10, "front": 55, "back": 60 },
+      { "grade": 9, "front": 55, "back": 60 },
+      { "grade": 8.5, "front": 60, "back": 70 },
+      { "grade": 8, "front": 65, "back": 80 },
+      { "grade": 7.5, "front": 65, "back": 80 },
+      { "grade": 7, "front": 70, "back": 85 },
+      { "grade": 6, "front": 70, "back": 90 },
+      { "grade": 5, "front": 80, "back": 90 }
     ],
+    "_pcgNote": "PCG PUBLISHES these bands (premiercardgrading.com.au/pages/grading-standards, read 2026-08-22) — the one company here whose numbers are not approximations. 10/9/9.5 share 55/60 on a worst-axis model (their top-tier separation uses a one-axis-50/50 rule this model cannot express, plus the other pillars), so the 9 band is documentation, not logic; same for 7.5 vs 8. Flawless additionally requires 50/50 both axes + quad-10 subgrades.",
     "TAG": [
       { "grade": 10, "front": 55, "back": 65 },
       { "grade": 9, "front": 60, "back": 75 },
@@ -107,7 +109,7 @@
     ]
   },
   "fees": {
-    "_doc": "Base grading fee in USD per card and on-site turnaround in business days (excludes shipping transit). maxValueUsd = declared-value cap for the tier. As of 2026-06-24; verify live.",
+    "_doc": "Base grading fee in USD per card and on-site turnaround in business days (excludes shipping transit). maxValueUsd = declared-value cap for the tier. PSA/BGS/CGC/TAG as of 2026-06-24; PCG as of 2026-08-22, converted from AUD at 0.7164 (their caps are per-card insurance/liability caps, quoted AUD). Verify live.",
     "PSA": [
       { "tier": "Regular", "price": 79.99, "turnaroundDays": 25, "maxValueUsd": 1500, "note": "Cheapest tier currently accepting new submissions (Value tiers paused June 2026)." },
       { "tier": "Express", "price": 149, "turnaroundDays": 12, "maxValueUsd": 2499 },
@@ -125,11 +127,11 @@
       { "tier": "Standard", "price": 55, "turnaroundDays": 10, "maxValueUsd": 3000 },
       { "tier": "Express", "price": 100, "turnaroundDays": 5, "maxValueUsd": 10000 }
     ],
-    "SGC": [
-      { "tier": "Economy", "price": 20, "turnaroundDays": 180, "maxValueUsd": null },
-      { "tier": "Standard", "price": 25, "turnaroundDays": 50, "maxValueUsd": null },
-      { "tier": "Silver", "price": 50, "turnaroundDays": 18, "maxValueUsd": null },
-      { "tier": "Gold", "price": 75, "turnaroundDays": 8, "maxValueUsd": null }
+    "PCG": [
+      { "tier": "Standard Bulk", "price": 17.91, "turnaroundDays": 35, "maxValueUsd": 179, "note": "AUD $25 · 30-card minimum · stated 6-8 weeks." },
+      { "tier": "Standard", "price": 25.07, "turnaroundDays": 15, "maxValueUsd": 1790, "note": "AUD $35 · no minimum · subgrades included · stated 2-4 weeks." },
+      { "tier": "Express", "price": 42.98, "turnaroundDays": 5, "maxValueUsd": 7165, "note": "AUD $60." },
+      { "tier": "Premium Same Day", "price": 57.31, "turnaroundDays": 1, "maxValueUsd": 71640, "note": "AUD $80 · in-store drop-off (Parramatta NSW), Mon-Fri." }
     ],
     "TAG": [
       { "tier": "Basic", "price": 22, "turnaroundDays": 45, "maxValueUsd": 300, "note": "10-card minimum." },
@@ -144,6 +146,7 @@
     "No authentication. This tool predicts grade, not genuineness. High-value cards (e.g. Charizard secret rares) are heavily counterfeited — authenticate in hand.",
     "Lower confidence on holo / refractor / gold / chrome surfaces, and at the 9-vs-10 boundary where most of the value (and the error) lives.",
     "Centering is measured geometrically and is the most reliable signal; corners/edges/surface come from an AI vision pass and are advisory.",
-    "All prices and grading fees are point-in-time and change frequently."
+    "All prices and grading fees are point-in-time and change frequently.",
+    "PCG value-at-grade borrows PSA-slab prices (no PCG price ladder exists anywhere) — AU-market PCG slabs typically realise a substantial discount (~0.4-0.7x, estimate) vs the same PSA grade and sell slower. Treat PCG expected values as optimistic."
   ]
 }

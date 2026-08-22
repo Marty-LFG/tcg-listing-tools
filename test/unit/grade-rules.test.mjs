@@ -70,9 +70,15 @@ test('centeringGrade: back constrains only when measured and only where the band
   assert.equal(GR.centeringGrade('PSA', psa[0].front, psa[0].back + 1, cfg), psa[1].grade)
   // ...but a null back (not photographed) never constrains
   assert.equal(GR.centeringGrade('PSA', psa[0].front, null, cfg), psa[0].grade)
-  // SGC bands carry no `back` key at all -> even a terrible back is ignored
-  assert.ok(cfg.centering.SGC.every(b => b.back == null))
-  assert.equal(GR.centeringGrade('SGC', cfg.centering.SGC[0].front, 99, cfg), cfg.centering.SGC[0].grade)
+  // a band WITHOUT a `back` key ignores even a terrible back (SGC used this shape before it
+  // left the matrix for PCG, 2026-08-22; the mechanism outlives any one company's data)
+  const backless = { centering: { X: [{ grade: 10, front: 55 }, { grade: 9, front: 60 }] } }
+  assert.equal(GR.centeringGrade('X', 55, 99, backless), 10)
+  // PCG's PUBLISHED bands: 10 and 9 share 55/60 on a worst-axis model, so a 56 front skips
+  // both and lands on the 8.5 band — their top tiers separate on other pillars, not centering
+  assert.equal(GR.centeringGrade('PCG', 55, 60, cfg), 10)
+  assert.equal(GR.centeringGrade('PCG', 56, 60, cfg), 8.5)
+  assert.equal(GR.centeringGrade('PCG', 55, 61, cfg), 8.5)  // back 61 fails 10 AND 9 (both cap at 60)
 })
 
 // -------------------------------------------------------------- pillarEffective
