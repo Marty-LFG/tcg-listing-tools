@@ -117,3 +117,4 @@ data/composed/
 # into data/backup.config.json if the photo library grows.
 data/photo-originals/
 data/listing-images/
+data/pregrade-images/
