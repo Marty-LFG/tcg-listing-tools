@@ -56,6 +56,26 @@
     return roundToStep(front * 0.6 + back * 0.4, step || 0.5);
   };
 
+  // Collapse a per-corner AI reading into one pillar input (companion to the per-corner schema).
+  // Each of the four values is 1-10 or null/undefined (= not assessable in the photo). Grading
+  // companies subgrade to the WORST corner/edge, so `value` is the min of the non-null readings;
+  // `mean` is display-only context and `count` says how many were readable. All null -> null so
+  // the caller can degrade to its single-number path instead of inventing a grade.
+  function sideFromParts(parts, keys) {
+    if (!parts) return null;
+    var vals = [];
+    for (var i = 0; i < keys.length; i++) {
+      var v = parts[keys[i]];
+      if (v != null) vals.push(v);
+    }
+    if (!vals.length) return null;
+    var sum = 0;
+    for (var j = 0; j < vals.length; j++) sum += vals[j];
+    return { value: Math.min.apply(null, vals), mean: sum / vals.length, count: vals.length };
+  }
+  GR.sideFromCorners = function (c) { return sideFromParts(c, ['tl', 'tr', 'bl', 'br']); };
+  GR.sideFromEdges = function (e) { return sideFromParts(e, ['top', 'right', 'bottom', 'left']); };
+
   // BGS-style label from the final grade + the four subgrades.
   function bgsLabel(grade, subs) {
     if (grade >= 10 && subs && subs.centering >= 10 && subs.corners >= 10 && subs.edges >= 10 && subs.surface >= 10)
@@ -90,7 +110,6 @@
     for (var g = lo; g <= hi + 1e-9; g += step) {
       var gg = Math.round(g * 100) / 100;
       if (!has95 && gg > 9 && gg < 10) continue; // PSA/TAG: no 9.5
-      if (!has95 && gg % 1 === 0.5 && gg > 8.5) continue; // no half grades above 8.5 for whole-step-ish
       cands.push(gg);
     }
     if (!cands.length) cands = [roundToStep(raw, step)];
@@ -197,7 +216,7 @@
     var dist = prediction.probabilities || [];
     var ev = 0, haveAny = false;
     dist.forEach(function (d) {
-      var key = (d.grade % 1 === 0) ? String(d.grade) : String(d.grade);
+      var key = String(d.grade);
       var v = values[key];
       if (v == null && d.grade === 10) v = values['10'];
       if (v == null) return;
