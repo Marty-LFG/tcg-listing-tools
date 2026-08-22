@@ -22,9 +22,18 @@
       "has95": true,
       "subgradesOnSlab": true,
       "lowestPlusCap": 2,
-      "known": "Mandatory 4 subgrades on every slab; coveted Black Label (all four 10s).",
+      "known": "Mandatory 4 subgrades on every slab; coveted Black Label (all four 10s). The famous trio is Black 10 / Gold 10 / Gem Mint 9.5 — two 10s exist, and the 9.5 shares the gold label.",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
-      "topLabel": "Pristine 10 (Black Label)"
+      "topLabel": "Pristine 10 (Black Label)",
+      "tenTiers": [
+        { "label": "Pristine 10 · Black Label", "quadTen": true },
+        { "label": "Pristine 10 · Gold Label", "minTenSubs": 3, "minOtherSub": 9.5 }
+      ],
+      "gradeGates": [
+        { "grade": 10, "need": 3, "at": 10, "othersAt": 9.5 },
+        { "grade": 9.5, "need": 3, "at": 9.5, "othersAt": 9 }
+      ],
+      "_tenTiersNote": "Beckett's OWN words (beckett.com/grading + their 'Walking Through the BGS Process' article, read 2026-08-22): Black Label = all four subgrades 10; the ONLY difference for a gold-label Pristine 10 is ONE 9.5 among THREE 10s; Gem Mint 9.5 needs three 9.5s with the fourth no lower than 9. gradeGates enforce those combinations — a weighted average alone would award 10s Beckett's rules refuse."
     },
     "CGC": {
       "label": "CGC",
@@ -33,9 +42,14 @@
       "has95": true,
       "subgradesOnSlab": false,
       "lowestPlusCap": 1.5,
-      "known": "Price/speed/consistency; subgrades discontinued on new slabs.",
+      "known": "Price/speed/consistency; subgrades discontinued on new slabs. Two 10s: Gem Mint 10, and Pristine 10 above it (special label).",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
-      "topLabel": "Pristine 10"
+      "topLabel": "Pristine 10",
+      "tenTiers": [
+        { "label": "Pristine 10", "front": 51, "back": 60 },
+        { "label": "Gem Mint 10", "front": 55, "back": 75 }
+      ],
+      "_tenTiersNote": "CGC's published scale (cgccards.com/card-grading/grading-scale, read 2026-08-22): Pristine 10 = virtually flawless, centering 50/50; Gem Mint 10 = a 10 where one criterion falls short, centering not to exceed ~55/45 front / 75/25 back. Pristine's back tolerance is unpublished — 60 is a conservative approximation. No current subgrade mechanism is published (subgrades discontinued), so the tiers here key on centering alone."
     },
     "PCG": {
       "label": "PCG (Premier)",
@@ -46,7 +60,13 @@
       "lowestPlusCap": 1.5,
       "known": "AU-market local grader (NZ-registered; drop-off Good Games Parramatta). Publishes numeric centering bands. Three 10s: Gem Mint -> Pristine -> Flawless (quad-10, gold label). Resale: AU market discounts PCG slabs vs the same PSA grade (~0.4-0.7x, estimate) and they sell slower.",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
-      "topLabel": "10 Gem Mint (up to Flawless)"
+      "topLabel": "10 Gem Mint (up to Flawless)",
+      "tenTiers": [
+        { "label": "10 Flawless", "front": 51, "back": 51, "quadTen": true },
+        { "label": "10 Pristine", "front": 51, "back": 60 },
+        { "label": "10 Gem Mint", "front": 55, "back": 60 }
+      ],
+      "_tenTiersNote": "PUBLISHED (grading-standards page, read 2026-08-22): Flawless = 50/50 both axes front AND back + no visible defects on any subgrade (quad 10; gold metal label); Pristine = 50/50 front, 60/40-or-better back; Gem Mint = 55/45 front, 60/40 back. 51 encodes 'measures 50/50' — a real card never measures exactly 50.000, and the config already encodes BGS's 50/50 the same way."
     },
     "TAG": {
       "label": "TAG",
@@ -71,7 +91,7 @@
       { "grade": 5, "front": 85, "back": 95 }
     ],
     "BGS": [
-      { "grade": 10, "front": 51, "back": 60 },
+      { "grade": 10, "front": 51, "back": 55 },
       { "grade": 9.5, "front": 55, "back": 60 },
       { "grade": 9, "front": 57, "back": 70 },
       { "grade": 8.5, "front": 60, "back": 75 },
@@ -99,7 +119,8 @@
       { "grade": 6, "front": 70, "back": 90 },
       { "grade": 5, "front": 80, "back": 90 }
     ],
-    "_pcgNote": "PCG PUBLISHES these bands (premiercardgrading.com.au/pages/grading-standards, read 2026-08-22) — the one company here whose numbers are not approximations. 10/9/9.5 share 55/60 on a worst-axis model (their top-tier separation uses a one-axis-50/50 rule this model cannot express, plus the other pillars), so the 9 band is documentation, not logic; same for 7.5 vs 8. Flawless additionally requires 50/50 both axes + quad-10 subgrades.",
+    "_bgsNote": "Band-10 back tightened 60->55 per beckett.com/grading (the newer of Beckett's two live scale pages; the legacy /grading/scale page still says 60/40), read 2026-08-22. The published Pristine criteria are IDENTICAL for both 10s — the black/gold split is purely the subgrade combination (companies.BGS.gradeGates).",
+    "_pcgNote": "PCG PUBLISHES these bands (premiercardgrading.com.au/pages/grading-standards, read 2026-08-22) — the one company here whose numbers are not approximations. This band list answers 'what earns A 10' (Gem Mint's 55/60); WHICH 10 — Gem Mint / Pristine / Flawless — is the tenTiers list on the company entry, applied as a label refinement from the measured centering + subgrades. 10/9 share 55/60 on a worst-axis model, so the 9 band is documentation, not logic; same for 7.5 vs 8.",
     "TAG": [
       { "grade": 10, "front": 55, "back": 65 },
       { "grade": 9, "front": 60, "back": 75 },

@@ -136,10 +136,60 @@
 
   function clamp01(x) { return x == null ? 0.6 : Math.max(0, Math.min(1, x)); }
 
+  // Some companies award more than one KIND of 10 (PCG: Gem Mint -> Pristine -> Flawless).
+  // The tier is a LABEL refinement over a final grade of 10, driven by the company's published
+  // centering requirements (ctx carries the measured worst-axis %s) and, for the top tier,
+  // quad-10 subgrades. Tiers are config data (tenTiers, best first), never hardcoded here.
+  // A tier can demand centering (front/back caps — PCG publishes these), subgrades (quadTen,
+  // or minTenSubs + minOtherSub — Beckett's ladder), or both. A tier that demands a FRONT
+  // measurement nobody supplied is refused, never guessed; an unmeasured BACK is unconstrained,
+  // the same convention centeringGrade uses everywhere else.
+  function tenTierLabel(meta, grade, subgrades, ctx) {
+    if (!(grade >= 10) || !meta.tenTiers) return null;
+    for (var i = 0; i < meta.tenTiers.length; i++) {
+      var t = meta.tenTiers[i];
+      var frontOk = t.front == null || (ctx && ctx.frontWorst != null && ctx.frontWorst <= t.front + 1e-9);
+      var backOk = t.back == null || ctx == null || ctx.backWorst == null || ctx.backWorst <= t.back + 1e-9;
+      var subsOk = true;
+      if (t.quadTen || t.minTenSubs) {
+        if (!subgrades) subsOk = false;
+        else {
+          var arr = [subgrades.centering, subgrades.corners, subgrades.edges, subgrades.surface];
+          var tens = arr.filter(function (v) { return v >= 10; }).length;
+          var minSub = Math.min.apply(null, arr);
+          subsOk = t.quadTen ? tens === 4
+            : (tens >= t.minTenSubs && minSub >= (t.minOtherSub == null ? 0 : t.minOtherSub));
+        }
+      }
+      if (frontOk && backOk && subsOk) return t.label;
+    }
+    return null;
+  }
+
+  // Published subgrade-combination gates (config gradeGates): Beckett's final 10 requires
+  // three 10 subgrades with the fourth no lower than 9.5, and a Gem Mint 9.5 requires three
+  // 9.5s with the fourth no lower than 9 — a weighted average alone can award grades the
+  // company's own rules refuse. Gates run best-first so a demotion cascades honestly.
+  function applyGradeGates(meta, grade, subgrades, step) {
+    if (!meta.gradeGates || !subgrades) return grade;
+    var arr = [subgrades.centering, subgrades.corners, subgrades.edges, subgrades.surface];
+    var gates = meta.gradeGates.slice().sort(function (a, b) { return b.grade - a.grade; });
+    for (var i = 0; i < gates.length; i++) {
+      var g = gates[i];
+      if (grade < g.grade) continue;
+      var n = arr.filter(function (v) { return v >= g.at; }).length;
+      var min = Math.min.apply(null, arr);
+      if (!(n >= g.need && min >= (g.othersAt == null ? 0 : g.othersAt))) grade = roundToStep(g.grade - step, step);
+    }
+    return grade;
+  }
+
   // Per-pillar -> a single company's prediction.
   // pillars = { centering, corners, edges, surface } as numeric grades (1..10).
   // confidence 0..1 is the overall input confidence (AI + centering certainty).
-  GR.predictCompany = function (company, pillars, cfg, confidence) {
+  // ctx (optional) = { frontWorst, backWorst } — the measured centering %s, needed only by
+  // companies whose 10 has tiers (see tenTierLabel).
+  GR.predictCompany = function (company, pillars, cfg, confidence, ctx) {
     var meta = (cfg.companies || {})[company] || { step: 0.5, lowestPlusCap: 1, has95: true, pillarWeights: {} };
     var step = meta.step || 0.5;
     var w = meta.pillarWeights || { centering: 0.3, corners: 0.3, edges: 0.2, surface: 0.2 };
@@ -164,11 +214,21 @@
       // BGS final is anchored by the lowest subgrade (and rarely > lowest + 2).
       var bgsLow = Math.min(subgrades.centering, subgrades.corners, subgrades.edges, subgrades.surface);
       grade = roundToStep(Math.min(grade, bgsLow + 2), 0.5);
-      label = bgsLabel(grade, subgrades);
-    } else if (company === 'TAG') {
-      label = genericLabel(company, grade);
+      grade = applyGradeGates(meta, grade, subgrades, 0.5);
+      label = tenTierLabel(meta, grade, subgrades, ctx) || bgsLabel(grade, subgrades);
     } else {
-      label = genericLabel(company, grade);
+      // any other slab that PRINTS subgrades (PCG, TAG) gets them in the prediction too —
+      // no extra anchoring, that formula is BGS's own
+      if (meta.subgradesOnSlab) {
+        subgrades = {
+          centering: roundToStep(pillars.centering, 0.5),
+          corners: roundToStep(pillars.corners, 0.5),
+          edges: roundToStep(pillars.edges, 0.5),
+          surface: roundToStep(pillars.surface, 0.5)
+        };
+      }
+      if (subgrades) grade = applyGradeGates(meta, grade, subgrades, step);
+      label = tenTierLabel(meta, grade, subgrades, ctx) || genericLabel(company, grade);
     }
 
     var dist = distribution(raw, step, meta.has95, confidence);
@@ -215,7 +275,8 @@
         edges: GR.pillarEffective(input.edges.front, input.edges.back, step),
         surface: GR.pillarEffective(input.surface.front, input.surface.back, step)
       };
-      perCompany[co] = GR.predictCompany(co, pillars, cfg, conf);
+      perCompany[co] = GR.predictCompany(co, pillars, cfg, conf,
+        { frontWorst: input.centeringFrontWorst, backWorst: input.centeringBackWorst });
     });
     return { perCompany: perCompany };
   };

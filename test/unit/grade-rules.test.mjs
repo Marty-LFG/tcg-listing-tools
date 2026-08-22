@@ -341,4 +341,47 @@ describe('centering percentages sum to 100 (property)', () => {
     assert.equal(GR.predictAll(null, cfg), null)
     assert.equal(GR.predictAll({ centeringFrontWorst: null, corners: { front: 9 }, edges: { front: 9 }, surface: { front: 9 } }, cfg), null)
   })
+
+  test('PCG ten-tiers: the label climbs Gem Mint -> Pristine -> Flawless on published centering', () => {
+    const perfect = { centering: 10, corners: 10, edges: 10, surface: 10 }
+    const ctx = (f, b) => ({ frontWorst: f, backWorst: b })
+    // "measures 50/50" both sides + quad-10 subgrades -> the gold label
+    assert.equal(GR.predictCompany('PCG', perfect, cfg, 0.9, ctx(50.4, 50.2)).gradeLabel, '10 Flawless')
+    // 50/50 front but a 58 back: fails Flawless's 51 back, passes Pristine's 60
+    assert.equal(GR.predictCompany('PCG', perfect, cfg, 0.9, ctx(50.4, 58)).gradeLabel, '10 Pristine')
+    // 54 front: only Gem Mint's published 55 admits it
+    assert.equal(GR.predictCompany('PCG', perfect, cfg, 0.9, ctx(54, 58)).gradeLabel, '10 Gem Mint')
+    // a 9.5 subgrade blocks Flawless even at perfect centering (their no-defect-on-any-subgrade rule)
+    const nearlyPerfect = { centering: 10, corners: 9.5, edges: 10, surface: 10 }
+    const p = GR.predictCompany('PCG', nearlyPerfect, cfg, 0.9, ctx(50.2, 50.2))
+    assert.equal(p.grade, 10)                       // weighted 9.85 rounds to 10; cap 9.5+1.5 doesn't bind
+    assert.equal(p.gradeLabel, '10 Pristine')
+    // PCG and TAG slabs print subgrades — the prediction carries them (BGS keeps its own anchor)
+    assert.ok(p.subgrades && p.subgrades.corners === 9.5, 'PCG subgrades expected')
+    assert.ok(GR.predictCompany('TAG', perfect, cfg, 0.9).subgrades, 'TAG subgrades expected')
+    // without measured centering handed over, no tier is claimed — generic label, never a guess
+    assert.equal(GR.predictCompany('PCG', perfect, cfg, 0.9).gradeLabel, 'Pristine 10')
+  })
+
+  test("BGS: Beckett's published subgrade combinations gate the 10s and the 9.5", () => {
+    const ctx = { frontWorst: 50.4, backWorst: 50.4 }
+    // all four 10s -> the coveted Black Label
+    assert.equal(GR.predictCompany('BGS', { centering: 10, corners: 10, edges: 10, surface: 10 }, cfg, 0.9, ctx).gradeLabel, 'Pristine 10 · Black Label')
+    // three 10s + one 9.5 -> gold-label Pristine ("the ONLY difference", Beckett's words)
+    const gold = GR.predictCompany('BGS', { centering: 10, corners: 10, edges: 10, surface: 9.5 }, cfg, 0.9, ctx)
+    assert.equal(gold.grade, 10)
+    assert.equal(gold.gradeLabel, 'Pristine 10 · Gold Label')
+    // two 9.5 subs: the weighted average says 10 (9.8 rounds up) but Beckett's rule refuses it
+    const twoNines = GR.predictCompany('BGS', { centering: 10, corners: 10, edges: 9.5, surface: 9.5 }, cfg, 0.9, ctx)
+    assert.equal(twoNines.grade, 9.5)
+    assert.equal(twoNines.gradeLabel, 'Gem Mint')
+    // and a 9.5 needs three 9.5s with the fourth no lower than 9 — two 9.5s demotes to 9
+    assert.equal(GR.predictCompany('BGS', { centering: 9.5, corners: 9.5, edges: 9, surface: 9 }, cfg, 0.9, ctx).grade, 9)
+  })
+
+  test('CGC: two published 10s — Pristine at 50/50, Gem Mint up to 55/45 front · 75/25 back', () => {
+    const perfect = { centering: 10, corners: 10, edges: 10, surface: 10 }
+    assert.equal(GR.predictCompany('CGC', perfect, cfg, 0.9, { frontWorst: 50.5, backWorst: 55 }).gradeLabel, 'Pristine 10')
+    assert.equal(GR.predictCompany('CGC', perfect, cfg, 0.9, { frontWorst: 54, backWorst: 70 }).gradeLabel, 'Gem Mint 10')
+  })
 })
