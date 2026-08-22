@@ -2074,6 +2074,8 @@ makes the card edge out-contrast the sleeve. Sleeved cards are fine to scan.
       exposes SubTypeMax 1200; Epson Scan 2's higher modes have no CLI). Scan timeout 240s; the
       no-crop fallback re-encodes full-frame JPEG q92 (96MB PNG base64 → 4.6MB measured). Scans
       auto-rotate to portrait when the card is found sideways (180° stays a manual ⟳ per shot);
-      pads show mm border readouts and open a full-screen editor (⛶).
+      pads show mm border readouts and open a full-screen editor (⛶) with precision skew
+      rotation (±5° in 0.05° steps, baked into the shot's bytes on Done so the AI pass, pins,
+      PDF and persistence all see the straightened card).
 - [ ] ALCSERVER post-deploy check: scan buttons must hide (no scanner there), NSSM service
       restart after pull, then `/api/status` `plugins.stale` (§20).

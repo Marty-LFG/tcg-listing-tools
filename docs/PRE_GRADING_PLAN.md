@@ -359,9 +359,13 @@ every filled slot also has a ⟳ rotate button); (2) **mm border readouts** (T/B
 millimetres, derived from the scan's dpi) on the pads and in the report, matching the
 competitor's presentation; (3) a **full-screen centering editor** (⛶ on each pad) — the card at
 viewport size while the guides are confirmed, guides round-trip back to the inline pad on
-Done/Esc; (4) **1200 dpi default** (see the struck QA item below). A two-handles-per-edge
-skew-fit guide (the competitor's T1/T2-style tilted lines) is noted under "still to settle" —
-it is a pad redesign, not a bolt-on.
+Done/Esc; (4) **1200 dpi default** (see the struck QA item below); (5) **precision skew
+rotation in the full-screen editor** — a ±5° slider in 0.05° steps (buttons and ←/→ keys,
+Shift for coarser), live-previewed under the guides and **baked into the shot on Done** (every
+consumer — AI pass, pins, PDF, persistence — reads the shot's bytes, so a preview-only
+rotation would lie to all of them; rotation is about the image centre so dimensions and
+placed guides survive exactly). This answers the competitor's two-handles-per-edge tilted
+guides with a different mechanism: straighten the image once instead of tilting four lines.
 
 Unchecked items — none blocks use, all should be closed deliberately:
 
@@ -400,11 +404,10 @@ Open decisions:
    a wizard slot replaces the row but the old sha stays in the store while any report points
    at it. Documented and harmless at current volume; a sweep script is the answer if it ever
    matters.
-4. **Skew-fit guides (two handles per edge).** The competitor fits each guide as a tiltable
-   line (T1/T2), which measures a slightly-skewed scan without rotating it. Ours are
-   axis-aligned rectangles; the analyzer tolerates ~3° and notes skew rather than correcting
-   it. Adopting tilted guides is a `makePad` redesign — worth it if real scans keep arriving
-   skewed, not before.
+4. ~~**Skew-fit guides (two handles per edge).**~~ **Resolved differently, same day** — the
+   full-screen editor gained precision rotation (±5°, 0.05° steps, baked into the shot on
+   Done), so a skewed scan is straightened once instead of measured with four tilted lines.
+   Tilted guides stay off the table unless straightening proves insufficient in practice.
 5. **Cloud storage (S3) for the image store.** Owner is happy to organise a bucket when the
    local store gets heavy — at 1200 dpi a full 12-shot report runs ~15–25 MB. Local disk is
    fine today; revisit at the first multi-GB month.
