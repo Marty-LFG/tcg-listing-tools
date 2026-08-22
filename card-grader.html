@@ -6,22 +6,56 @@
 <title>Card Pre-Grader — PSA / BGS / CGC / PCG / TAG</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
-    --text:#eef1fb;--gold:#d9a4ff;--gold-dim:#5a3a86;--field:#0a1230;
-    --good:#36d399;--warn:#f0c020;--bad:#f06262;--info:#5aa9ff;}
+  /* The grader is a shared-layer page (DESIGN.md §4): these are the fallbacks that paint before
+     vault.css lands and re-themes the neutrals. --gold is ours to keep — the grader's violet is
+     what makes the tool recognisable at a glance. Semantics use the SYSTEM tokens; the older
+     --good/--warn/--bad/--info names stay as aliases so no call site has to move. */
+  :root{--ink:#0b0d12;--panel:#14171f;--panel2:#1b1f2a;--line:rgba(255,255,255,.08);
+    --line2:rgba(255,255,255,.14);--muted:#8b93a6;--faint:#5b6373;
+    --text:#e9edf6;--gold:#d9a4ff;--gold-dim:#5a3a86;--gold-soft:rgba(217,164,255,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;
+    --good:var(--green);--warn:var(--amber);--bad:var(--red);--info:var(--blue);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;}
   *{box-sizing:border-box;}
   body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
-  .wrap{max-width:1180px;margin:0 auto;}
-  a.back{display:inline-flex;align-items:center;gap:6px;margin-bottom:16px;color:var(--gold);text-decoration:none;font-size:13px;font-weight:600;opacity:.85;}
-  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
-  .tag{color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+    font-family:var(--sans);padding:20px 20px 40px;font-size:14px;}
+  .wrap{max-width:1240px;margin:0 auto;}
+  a.back{display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;color:var(--muted);text-decoration:none;font-size:12.5px;font-weight:600;transition:.16s ease;}
+  a.back:hover{color:var(--gold);}
+  h1{font-family:var(--serif);font-size:26px;margin:0;font-weight:600;letter-spacing:-.012em;line-height:1.1;}
+  h1 em{font-style:italic;color:var(--muted);font-weight:500;}
+  .tag{color:var(--gold);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;}
   .sub{color:var(--muted);font-size:13px;margin:0 0 14px;}
+  /* masthead + monogram (DESIGN.md §6) — the icon-well recipe, hairline icon inheriting --gold */
+  .masthead{display:flex;align-items:center;gap:13px;margin-bottom:14px;}
+  .mono-tile{width:48px;height:48px;flex:none;border-radius:13px;display:grid;place-items:center;color:var(--gold);
+    background:linear-gradient(160deg,#1e2432,#111420);border:1px solid var(--line2);box-shadow:inset 0 1px 0 rgba(255,255,255,.07);}
+  .mono-tile svg{width:24px;height:24px;}
+  .mhead-meta{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.06em;margin-top:3px;}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
   .banner{background:rgba(240,192,32,.08);border:1px solid rgba(240,192,32,.35);border-radius:10px;padding:10px 13px;font-size:12px;color:#f0d98a;margin-bottom:16px;line-height:1.5;}
   .grid{display:grid;grid-template-columns:1fr 1.1fr;gap:18px;align-items:start;}
   @media(max-width:980px){.grid{grid-template-columns:1fr;}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;}
-  .card h2{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 12px;}
+  .card{background:linear-gradient(180deg,var(--panel),#0d0f15);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;
+    box-shadow:0 12px 34px -14px rgba(0,0,0,.72);animation:rise .34s ease both;animation-delay:var(--d,0s);}
+  .card h2{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 12px;font-family:var(--mono);
+    display:flex;align-items:center;gap:8px;}
+  .card h2 .n{color:var(--gold);opacity:.85;}
+  .card h2 .rule{flex:1;height:1px;background:var(--line);}
+  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  /* step rail — the whole flow at a glance, and a jump target for each step */
+  .rail{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .rail a{flex:1;min-width:118px;display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:11px;text-decoration:none;
+    background:linear-gradient(180deg,var(--panel),#0d0f15);border:1px solid var(--line);transition:.16s ease;}
+  .rail a:hover{border-color:var(--line2);transform:translateY(-1px);}
+  .rail .dot{width:19px;height:19px;flex:none;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-size:10px;font-weight:600;
+    border:1px solid var(--line2);color:var(--faint);}
+  .rail a.done .dot{background:var(--gold);border-color:var(--gold);color:#160c24;}
+  .rail a.done .lbl{color:var(--text);}
+  .rail .lbl{font-size:11.5px;color:var(--muted);font-weight:600;}
+  .rail .st{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint);}
   label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
   input,select,button,textarea{font-family:inherit;}
   .fld input,.fld select{width:100%;padding:8px 10px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;outline:none;}
@@ -31,13 +65,24 @@
   .setrow{position:relative;margin-bottom:10px;}
   .lookup{display:flex;gap:8px;}
   .lookup input{flex:1;}
-  .btn{padding:8px 14px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;}
-  .btn:hover{background:var(--gold);color:#160c24;}
+  .btn{padding:8px 13px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;transition:.16s ease;font-family:var(--sans);}
+  .btn svg{width:14px;height:14px;flex:none;}
+  .btn:hover{background:var(--gold);color:#160c24;transform:translateY(-1px);}
   .btn.solid{background:var(--gold);color:#160c24;border-color:var(--gold);}
-  .btn:disabled{opacity:.45;cursor:not-allowed;}
-  .btn:disabled:hover{background:transparent;color:var(--gold);}
-  .status{font-size:12.5px;min-height:18px;margin:8px 0 0;}
+  .btn.ghost{border-color:var(--line2);color:var(--muted);}
+  .btn.ghost:hover{background:transparent;color:var(--text);border-color:var(--gold-dim);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+  .btn:disabled:hover{background:transparent;color:var(--gold);transform:none;}
+  .btn:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+  .status{font-size:12.5px;min-height:18px;margin:8px 0 0;line-height:1.5;}
   .status.ok{color:var(--good);}.status.warn{color:var(--warn);}.status.err{color:var(--bad);}.status.load{color:var(--muted);}
+  /* a long scan (80s at 1200dpi) needs to look alive, not hung — only while actually working,
+     never on the idle hint text that shares .load */
+  .status.busy::after{content:'';display:block;height:2px;margin-top:7px;border-radius:2px;
+    background:linear-gradient(90deg,transparent,var(--gold),transparent);background-size:44% 100%;background-repeat:no-repeat;
+    animation:sweep 1.5s ease-in-out infinite;opacity:.75;}
+  @keyframes sweep{0%{background-position:-46% 0;}100%{background-position:146% 0;}}
   #setMenu{display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;background:var(--panel);border:1px solid var(--line);border-radius:10px;max-height:280px;overflow:auto;box-shadow:0 12px 30px rgba(0,0,0,.45);}
   #setMenu.open{display:block;}
   .setopt{display:flex;align-items:center;gap:10px;padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--line);}
@@ -73,7 +118,7 @@
   .pad{flex:1;min-width:150px;}
   .pad canvas{border:1px solid var(--line);border-radius:8px;background:#0a0e1c;touch-action:none;max-width:100%;cursor:crosshair;}
   .pad .ro{font-size:12px;margin-top:6px;line-height:1.5;}
-  .pad .ro b{color:var(--gold);} .mono{font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .pad .ro b{color:var(--gold);} .mono{font-family:var(--mono);}   /* every number is IBM Plex Mono (DESIGN.md §3) */
   .legend{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;}
   .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-right:3px;}
   /* sliders */
@@ -84,7 +129,7 @@
   .twocol{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;}
   .colhead{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin:2px 0 4px;}
   .granular{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6;}
-  .granular b{color:var(--gold);font-family:ui-monospace,Menlo,Consolas,monospace;}
+  .granular b{color:var(--gold);font-family:var(--mono);}
   /* report */
   #report .rcard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;}
   #report h3{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 10px;}
@@ -111,7 +156,7 @@
   /* per-corner grid diagram */
   .cgrid{display:grid;grid-template-columns:44px 44px 44px;grid-template-rows:34px 34px 34px;gap:3px;}
   .cgrid .cell{display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--field);border:1px solid var(--line);
-    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:700;}
+    font-family:var(--mono);font-size:12px;font-weight:600;}
   .cgrid .cell.na{color:var(--muted);opacity:.45;font-weight:400;}
   .cgrid .cell.g10{color:var(--good);} .cgrid .cell.g9{color:var(--gold);} .cgrid .cell.g8{color:var(--warn);} .cgrid .cell.glow{color:var(--bad);}
   /* saved reports */
@@ -123,6 +168,22 @@
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#160c24;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99999;}
   .toast.show{opacity:1;}
   .empty{font-size:13px;color:var(--muted);line-height:1.6;padding:8px 2px;}
+  /* the verdict is the one thing the owner actually decides from, so it leads the report */
+  .verdict{position:relative;overflow:hidden;border-radius:14px;padding:15px 16px;margin-bottom:12px;
+    background:linear-gradient(158deg,var(--panel2),#12151d);border:1px solid var(--line2);}
+  .verdict::before{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--vc,var(--gold));}
+  .verdict .vhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .verdict .co{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+  .verdict .grade{font-family:var(--mono);font-size:34px;font-weight:600;line-height:1;color:var(--gold);letter-spacing:-.02em;}
+  .verdict .tier{font-family:var(--serif);font-size:14px;color:var(--text);}
+  .verdict .call{margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--vc,var(--gold));
+    border:1px solid currentColor;border-radius:999px;padding:3px 11px;}
+  .verdict .money{display:flex;gap:18px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px solid var(--line);}
+  .verdict .money div{font-size:11px;color:var(--muted);}
+  .verdict .money b{display:block;font-family:var(--mono);font-size:14px;color:var(--text);font-weight:600;margin-top:2px;}
+  .verdict .money b.pos{color:var(--green);} .verdict .money b.neg{color:var(--red);}
+  @media(min-width:981px){ .col-report{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto;padding-right:2px;} }
+  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -131,16 +192,30 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">&larr; All tools</a>
-  <div class="tag">Pre-grading &middot; PSA / BGS / CGC / PCG / TAG</div>
-  <h1>Card Pre-Grader</h1>
-  <p class="sub">Flatbed scan or photograph the card, microscope the corners → measured centering + an AI condition pass → a predicted grade per company, value-at-grade, and a "worth grading?" verdict.</p>
-  <div class="banner">⚠ <b>Estimate, not a grade.</b> This screens cards — it's far better at confirming a card is <i>not</i> a 10 than proving it is one. Surface flaws &amp; the back are under-seen from photos; it does <b>not</b> authenticate. Treat every number as a guide, especially at the 9-vs-10 line.</div>
+  <div class="masthead">
+    <div class="mono-tile" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.7 8.4V5.6a1.9 1.9 0 0 1 1.9-1.9h2.8"/><path d="M20.3 8.4V5.6a1.9 1.9 0 0 0-1.9-1.9h-2.8"/><circle cx="12" cy="12.9" r="4"/><path d="m14.9 15.8 3 3"/></svg>
+    </div>
+    <div>
+      <div class="tag">Pre-grading</div>
+      <h1>Card Pre-Grader <em>— before you pay the fee</em></h1>
+      <div class="mhead-meta">PSA · BGS · CGC · PCG · TAG<span id="mhScan"></span></div>
+    </div>
+  </div>
+  <p class="sub">Scan or photograph the card and microscope its corners. You get measured centering, an AI condition pass, a predicted grade at each company, the value at that grade, and a straight answer on whether it's worth sending.</p>
+  <div class="banner"><b>An estimate, not a grade.</b> This screens cards, and it's much better at telling you a card <i>isn't</i> a 10 than proving one is. Surface flaws and the back are hard to see from images, and it doesn't authenticate anything. Treat every number here as a guide, especially around the 9-vs-10 line.</div>
+  <nav class="rail" id="stepRail" aria-label="Steps">
+    <a href="#step1" data-step="1"><span class="dot">1</span><span class="lbl">Card</span><span class="st"></span></a>
+    <a href="#step2" data-step="2"><span class="dot">2</span><span class="lbl">Capture</span><span class="st"></span></a>
+    <a href="#step3" data-step="3"><span class="dot">3</span><span class="lbl">Centering</span><span class="st"></span></a>
+    <a href="#step4" data-step="4"><span class="dot">4</span><span class="lbl">Condition</span><span class="st"></span></a>
+  </nav>
 
   <div class="grid">
     <!-- LEFT: inputs -->
     <div>
-      <div class="card">
-        <h2>1 · Card identity</h2>
+      <div class="card" id="step1">
+        <h2><span class="n">01</span> Card identity<span class="rule"></span></h2>
         <div class="setrow fld"><label>Set <span id="setStatus" class="muted small" style="text-transform:none;letter-spacing:0;">loading…</span></label>
           <input id="setCode" autocomplete="off" placeholder="set name or code, e.g. ASC or Ascended Heroes">
           <div id="setMenu"></div>
@@ -157,17 +232,17 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2>2 · Capture — guided</h2>
+      <div class="card" id="step2" style="--d:.05s">
+        <h2><span class="n">02</span> Capture<span class="rule"></span></h2>
         <div class="wiz">
           <div class="cur">Next: <b id="wizLabel">Scan — front</b></div>
           <div class="acts">
             <span id="scanCtls" style="display:none;">
               <select id="scanDpi" title="Scan resolution. 600 dpi is the sweet spot; 1200 is slow."><option value="300">300 dpi</option><option value="600" selected>600 dpi</option><option value="1200">1200 dpi</option></select>
-              <button class="btn" id="scanFrontBtn" onclick="doScan('front')">🖨 Scan front</button>
-              <button class="btn" id="scanBackBtn" onclick="doScan('back')">🖨 Scan back</button>
+              <button class="btn" id="scanFrontBtn" onclick="doScan('front')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h16v4"/><path d="M3 12h18"/><path d="M4 15h16v4H4z"/></svg>Scan front</button>
+              <button class="btn ghost" id="scanBackBtn" onclick="doScan('back')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h16v4"/><path d="M3 12h18"/><path d="M4 15h16v4H4z"/></svg>Scan back</button>
             </span>
-            <button class="btn" onclick="wizSkip()" title="Skip the current step — every shot is optional except the front image">Skip →</button>
+            <button class="btn ghost" onclick="wizSkip()" title="Skip this shot. Everything except the front image is optional.">Skip</button>
           </div>
         </div>
         <div class="status load" id="scanStatus"></div>
@@ -175,7 +250,7 @@
           <div class="camrow">
             <select id="camSelect"><option value="">No camera selected</option></select>
             <button class="btn" id="camStart" onclick="toggleCam()">Start camera</button>
-            <button class="btn solid" id="camCapBtn" onclick="captureFrame()" style="display:none;">📸 Capture → <span id="camCapLabel">step</span></button>
+            <button class="btn solid" id="camCapBtn" onclick="captureFrame()" style="display:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg>Capture <span id="camCapLabel">step</span></button>
           </div>
           <video id="camVideo" autoplay playsinline muted></video>
           <div class="small muted">The Tomlov microscope shows up as a camera here (it's remembered per shot type). Camera needs a secure context — works on <span class="mono">localhost</span>; a plain LAN IP may block it. The flatbed scanner runs server-side and works from anywhere.</div>
@@ -184,22 +259,22 @@
         <input type="file" id="fileInput" accept="image/*" style="display:none;">
       </div>
 
-      <div class="card">
-        <h2>3 · Centering (drag the guides)</h2>
+      <div class="card" id="step3" style="--d:.1s">
+        <h2><span class="n">03</span> Centering<span class="rule"></span></h2>
         <div class="pads">
-          <div class="pad"><div class="colhead">Front <button class="btn" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('front')" title="Full-screen view — check the guides against the card at full size">⛶</button></div><canvas id="padFront" width="280" height="380"></canvas><div class="ro" id="roFront"><span class="muted">add a front image</span></div></div>
-          <div class="pad"><div class="colhead">Back <button class="btn" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('back')" title="Full-screen view — check the guides against the card at full size">⛶</button></div><canvas id="padBack" width="280" height="380"></canvas><div class="ro" id="roBack"><span class="muted">add a back image (optional)</span></div></div>
+          <div class="pad"><div class="colhead">Front <button class="btn ghost" aria-label="Open the full-screen centering editor for the front" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('front')" title="Open the full-screen editor to check the guides at full size"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div><canvas id="padFront" width="280" height="380" role="img" aria-label="Front centering guides. Drag the gold card-edge lines and the blue inner-frame lines to match the card. The measured result is announced below."></canvas><div class="ro" id="roFront" role="status" aria-live="polite"><span class="muted">add a front image</span></div></div>
+          <div class="pad"><div class="colhead">Back <button class="btn ghost" aria-label="Open the full-screen centering editor for the back" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('back')" title="Open the full-screen editor to check the guides at full size"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div><canvas id="padBack" width="280" height="380" role="img" aria-label="Back centering guides. Drag the gold card-edge lines and the blue inner-frame lines to match the card. The measured result is announced below."></canvas><div class="ro" id="roBack"><span class="muted">add a back image (optional)</span></div></div>
         </div>
         <div class="legend"><span class="swatch" style="background:var(--gold);"></span>card edge &nbsp; <span class="swatch" style="background:var(--info);"></span>inner frame &nbsp;·&nbsp; drag each line to match.
-          <button class="btn" style="padding:4px 9px;font-size:11px;margin-left:6px;" onclick="resetGuides()">Reset guides</button>
-          <button class="btn" style="padding:4px 9px;font-size:11px;" id="autoBtn" onclick="autoDetect()" title="Auto-detect the card edge + inner frame from the front/back images (works best on flatbed scans against a dark background)">✦ Auto-detect</button>
+          <button class="btn ghost" style="padding:4px 9px;font-size:11px;margin-left:6px;" onclick="resetGuides()">Reset</button>
+          <button class="btn" style="padding:4px 9px;font-size:11px;" id="autoBtn" onclick="autoDetect()" title="Find the card edge and inner frame automatically. Works best on a flatbed scan against a dark background.">Auto-detect</button>
         </div>
       </div>
 
-      <div class="card">
-        <h2>4 · Condition pillars</h2>
+      <div class="card" id="step4" style="--d:.15s">
+        <h2><span class="n">04</span> Condition<span class="rule"></span></h2>
         <div class="small muted" style="margin-bottom:10px;">Run the AI pass to fill these, or set them yourself. The prediction uses these values, so correct anything that looks off.</div>
-        <button class="btn solid" id="aiBtn" onclick="runAI()" style="margin-bottom:6px;">✨ Run AI condition pass</button>
+        <button class="btn solid" id="aiBtn" onclick="runAI()" style="margin-bottom:6px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 13.6 9 19 10.6 13.6 12.2 12 17.7 10.4 12.2 5 10.6 10.4 9z"/><path d="M18 16.5v3M16.5 18h3"/></svg>Run AI condition pass</button>
         <div class="status load" id="aiStatus" style="margin-bottom:10px;"></div>
         <div class="twocol">
           <div>
@@ -220,15 +295,15 @@
     </div>
 
     <!-- RIGHT: report -->
-    <div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <h2 style="margin:0;">Grading report</h2>
+    <div class="col-report">
+      <div class="card" style="--d:.08s">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <h2 style="margin:0;">Grading report<span class="rule"></span></h2>
           <div style="display:flex;gap:8px;">
-            <button class="btn" id="ebayBtn" onclick="findEbay()" title="eBay AU graded vs raw comps">🛒 eBay comps</button>
-            <button class="btn" id="saveBtn" onclick="saveReport()" title="Save this report + all captured images so it can be reopened and, once the real grade comes back, compared against it">💾 Save</button>
-            <button class="btn" id="invBtn" onclick="addToInventory()" title="Queue this card in the grading pipeline (Binders Keepers inventory)">📇 To pipeline</button>
-            <button class="btn solid" id="pdfBtn" onclick="downloadPDF()">⬇ PDF</button>
+            <button class="btn ghost" id="ebayBtn" onclick="findEbay()" title="eBay AU graded vs raw comps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Comps</button>
+            <button class="btn ghost" id="saveBtn" onclick="saveReport()" title="Save this report and every captured image, so it can be reopened and compared against the grade that comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 4v5h6V4M8 20v-6h8v6"/></svg>Save</button>
+            <button class="btn ghost" id="invBtn" onclick="addToInventory()" title="Queue this card in the grading pipeline (Binders Keepers inventory)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v13H4z"/><path d="M4 10h16M9 6V4h6v2"/></svg>Pipeline</button>
+            <button class="btn solid" id="pdfBtn" onclick="downloadPDF()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg>Report PDF</button>
           </div>
         </div>
         <div class="status load" id="saveStatus"></div>
@@ -238,7 +313,7 @@
       </div>
       <div class="card">
         <h2>Saved reports <button class="btn" style="padding:3px 9px;font-size:10.5px;margin-left:6px;" onclick="loadSavedList()">↻</button></h2>
-        <div id="savedList"><div class="empty small">Nothing saved yet. 💾 Save keeps a report (with its images) so you can reopen it and compare the prediction against the grade that actually comes back.</div></div>
+        <div id="savedList"><div class="empty small">Nothing saved yet. Save keeps a report and its images, so you can open it again later and see how the prediction compared to the grade that came back.</div></div>
       </div>
     </div>
   </div>
@@ -257,7 +332,7 @@
       <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="_fullPad&&_fullPad.fitView()">Fit</button>
     </div>
     <div style="display:flex;align-items:center;gap:6px;" title="Fine-rotate the image so the card sits square under the guides. ←/→ keys work too (Shift = coarser). Done bakes the straightened image into the shot.">
-      <button class="btn" style="padding:4px 9px;font-size:11px;" id="autoStraightBtn" onclick="autoStraighten()" title="Measure the card's skew from its own edges and set the exact correction — hit Done to bake it">⌖ Auto</button>
+      <button class="btn" style="padding:4px 9px;font-size:11px;" id="autoStraightBtn" onclick="autoStraighten()" title="Measure the tilt from the card's own edges and set the exact correction. Done bakes it in.">Auto straighten</button>
       <button class="btn" style="padding:4px 9px;font-size:11px;" onclick="fullRotBy(-0.1)">↶ 0.1°</button>
       <input type="range" id="rotSlider" min="-5" max="5" step="0.05" value="0" style="width:170px;accent-color:var(--gold);" oninput="fullRotSet(parseFloat(this.value))">
       <button class="btn" style="padding:4px 9px;font-size:11px;" onclick="fullRotBy(0.1)">0.1° ↷</button>
@@ -314,6 +389,24 @@ function esc(s){ return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'
 var tt; function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(tt); tt=setTimeout(function(){t.classList.remove('show');},1500); }
 function usd(n){ return n==null?'—':'US$'+(Math.round(n*100)/100).toFixed(2); }
 function shotDef(id){ for(var i=0;i<SHOT_DEFS.length;i++) if(SHOT_DEFS[i].id===id) return SHOT_DEFS[i]; return null; }
+
+/* ============================ step rail ============================ */
+// One glance at where the card is in the flow, and a jump link to each step. Driven by the
+// same state the report reads, so it can never claim a step is done that did not measure.
+function updateRail(){
+  var shots=Object.keys(SHOTS).length;
+  var measured=!!(_pads.front&&_pads.front.ratios());
+  var st=[
+    { done:!!val('f_name'), note:val('f_num')||'' },
+    { done:!!primaryFront(), note:shots?shots+'/12':'' },
+    { done:measured, note:measured?_pads.front.ratios().label:'' },
+    { done:!!_ai, note:_ai?'AI':'manual' }
+  ];
+  document.querySelectorAll('#stepRail a').forEach(function(a,i){
+    a.classList.toggle('done',!!st[i].done);
+    a.querySelector('.st').textContent=st[i].note;
+  });
+}
 
 /* ============================ config ============================ */
 async function loadConfig(){
@@ -553,16 +646,18 @@ function captureFrame(){
 /* ---------- flatbed scanner (server-side WIA — works from any browser on the LAN) ---------- */
 async function loadScanCapability(){
   try{ var r=await fetch('/api/scan'); _scanCap=await r.json(); }catch(e){ _scanCap={enabled:false}; }
+  var mh=$('mhScan');
   if(_scanCap&&_scanCap.enabled){
     $('scanCtls').style.display='';
     if(_scanCap.defaultDpi) $('scanDpi').value=String(_scanCap.defaultDpi);
-  }
+    if(mh&&_scanCap.device) mh.textContent=' · '+_scanCap.device.name;   // the scanner is part of the tool's identity when present
+  } else if(mh){ mh.textContent=' · no scanner on this machine'; }
 }
 async function doScan(side){
   if(!(_scanCap&&_scanCap.enabled)){ toast('No scanner detected'); return; }
   var dpi=parseInt(val('scanDpi'),10)||600;
-  var st=$('scanStatus'); st.className='status load';
-  st.textContent='Scanning '+side+' @ '+dpi+' dpi… ('+(dpi>=1200?'~85':dpi>=600?'~25':'~10')+'s — place the card near the platen corner on the black backing sheet)';
+  var st=$('scanStatus'); st.className='status load busy';
+  st.textContent='Scanning the '+side+' at '+dpi+' dpi. That takes about '+(dpi>=1200?'85':dpi>=600?'25':'10')+' seconds — the card wants to sit near the platen corner on the black backing sheet.';
   $('scanFrontBtn').disabled=true; $('scanBackBtn').disabled=true;
   try{
     var r=await fetch('/api/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({side:side,dpi:dpi,analyze:true})});
@@ -575,15 +670,20 @@ async function doScan(side){
     var img=res.image;
     var shot={ dataUrl:'data:'+img.mediaType+';base64,'+img.dataB64, b64:img.dataB64, media:img.mediaType, w:img.w, h:img.h, dpi:img.dpi, kind:'scan' };
     _cur='scan-'+side; setShot('scan-'+side, shot);
+    // The scan seeds the guides, so the very next thing to do is look at them. Offer that here
+    // instead of making the owner scroll down to step 3 and find it themselves.
+    var fixups=[res.rotated?'turned to portrait':'',res.straightened?'straightened '+res.straightened.toFixed(2)+'°':''].filter(Boolean);
+    var done='Scanned the '+side+' at '+img.dpi+' dpi'+(fixups.length?' and '+fixups.join(' and '):'')+'. ';
     if(res.analysis&&res.analysis.outer){
       seedGuides(side, res.analysis, img.w, img.h);
       st.className='status ok';
-      st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi'+(res.rotated?' (auto-rotated to portrait)':'')+(res.straightened?' (auto-straightened '+res.straightened.toFixed(2)+'°)':'')+' — centering guides auto-seeded ('+(res.analysis.inner?'edge + inner frame':'card edge only — set the inner frame by hand')+'). Confirm them in step 3.';
+      st.innerHTML=esc(done+(res.analysis.inner?'The guides are placed for you — check them before trusting the numbers.':'Only the card edge was found, so set the inner frame yourself.'))
+        +' <button class="btn" style="padding:3px 9px;font-size:11px;margin-left:4px;" onclick="openFullPad(\''+side+'\')">Check centering</button>';
     } else {
       st.className='status ok';
-      st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi.'+(res.analysis===null?'':' Auto-centering found no card — drag the guides manually.');
+      st.textContent=done+(res.analysis===null?'':'No card was found for auto-centering, so drag the guides yourself.');
     }
-  }catch(e){ st.className='status err'; st.textContent='Scan request failed (dev server running?).'; }
+  }catch(e){ st.className='status err'; st.textContent='That scan request failed. Is the dev server still running?'; }
   finally{ $('scanFrontBtn').disabled=false; $('scanBackBtn').disabled=false; }
 }
 // Auto-detect on whatever front/back images exist (uploads included) — the same analyzer the
@@ -712,7 +812,7 @@ function makePad(canvasId, roId, opts){
   function updateRO(){ var ro=$(roId); if(!ro)return; var r=ratios();
     if(!r){
       ro.innerHTML='<span class="muted">'+(st.img
-        ?'guides not set — drag them to the card (or ✦ Auto-detect) to measure'
+        ?'guides not set. Drag them onto the card, or press Auto-detect.'
         :(canvasId==='padBack'?'add a back image (optional)':'add a front image'))+'</span>';
       return; }
     var badge=st.source==='auto'?' <span class="pill medium" title="Seeded by auto-detection — confirm by eye; dragging any line marks it manual">auto — confirm</span>':'';
@@ -781,7 +881,7 @@ function fullRotBy(d){ if(_fullPad) fullRotSet((_fullPad.getAngle()||0)+d); }
 async function autoStraighten(){
   if(!(_fullPad&&_fullSide))return;
   var shot=_fullSide==='front'?primaryFront():primaryBack(); if(!shot)return;
-  var btn=$('autoStraightBtn'); btn.disabled=true; btn.textContent='⌖ measuring…';
+  var btn=$('autoStraightBtn'); btn.disabled=true; btn.textContent='measuring…';
   try{
     var r=await fetch('/api/scan/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({image:{dataB64:shot.b64,mediaType:shot.media}})});
     var res=await r.json();
@@ -793,7 +893,7 @@ async function autoStraighten(){
       toast(res&&res.error==='sharp_unavailable'?'Analyzer unavailable on this install':'Could not measure the skew — straighten by eye with the slider');
     }
   }catch(e){ toast('Skew measurement failed'); }
-  btn.disabled=false; btn.textContent='⌖ Auto';
+  btn.disabled=false; btn.textContent='Auto straighten';
 }
 function closeFullPad(commit){
   if(commit&&_fullPad&&_fullSide){
@@ -859,7 +959,7 @@ async function runAI(){
   var imgs=[], shotsCtx=[];
   var filled=SHOT_DEFS.filter(function(d){ return SHOTS[d.id]; });
   if(!filled.length){ toast('Add at least a front image'); return; }
-  var st=$('aiStatus'); st.className='status load'; st.textContent='Preparing '+filled.length+' image'+(filled.length>1?'s':'')+'…'; $('aiBtn').disabled=true;
+  var st=$('aiStatus'); st.className='status load busy'; st.textContent='Getting '+filled.length+' image'+(filled.length>1?'s':'')+' ready…'; $('aiBtn').disabled=true;
   var act=window.TCG?TCG.activity('AI condition pass…'):null;
   try{
     // Downscale every shot to 1568px for the call — originals stay in memory for report/persistence.
@@ -870,7 +970,7 @@ async function runAI(){
       imgs.push({id:d.id, mediaType:ai.media, dataB64:ai.b64});
       shotsCtx.push({id:d.id, label:d.label});
     }
-    st.textContent='Analysing '+imgs.length+' images…';
+    st.textContent='Reading '+imgs.length+' images…';
     var r=await fetch('/api/grade',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({images:imgs,context:{name:val('f_name'),set:val('f_set'),number:val('f_num'),finish:val('f_finish'),shots:shotsCtx}})});
     var res=await r.json();
     if(!res||!res.ok){ var msg=(res&&res.message)||'AI unavailable'; st.className='status warn'; st.textContent=(res&&res.error==='no_key')?'No API key set — set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env. Set the pillars manually for now.':'AI pass: '+msg; act&&act.fail('AI off'); $('aiBtn').disabled=false; return; }
@@ -879,7 +979,7 @@ async function runAI(){
     // value is already their weakest link (the server derives it), so sliders stay the master.
     PILLARS.forEach(function(p){ SIDES.forEach(function(s){ var v=res[p]&&res[p][s]; if(v!=null) setPillar(p,s,v); }); });
     renderGranularRO();
-    st.className='status ok'; st.textContent='✓ '+res.provider+' ('+res.model+') · confidence '+Math.round((res.confidence||0)*100)+'%';
+    st.className='status ok'; st.textContent='Read by '+res.provider+' ('+res.model+'), '+Math.round((res.confidence||0)*100)+'% confident.';
     act&&act.done(res.provider);
     recompute();
   }catch(e){ st.className='status err'; st.textContent='AI request failed (proxy running?). Set pillars manually.'; act&&act.fail('AI error'); }
@@ -923,8 +1023,9 @@ function cheapestTier(company){ var t=(CFG&&CFG.fees&&CFG.fees[company])||[]; re
 
 function recompute(){
   if(!CFG){ return; }
+  updateRail();
   var rf=_pads.front?_pads.front.ratios():null;
-  if(!rf){ $('report').innerHTML='<div class="empty">Add a <b>front</b> image (step 2) and set the centering guides (step 3) — a flatbed scan seeds them automatically; for photos/uploads hit <b>✦ Auto-detect</b> or drag the lines to the card. The report generates from a real measurement, never from the untouched placeholder guides.</div>'; return; }
+  if(!rf){ $('report').innerHTML='<div class="empty">Add a <b>front</b> image in step 2, then set the centering guides in step 3. A flatbed scan places them for you. For a photo or an upload, press <b>Auto-detect</b> or drag the lines onto the card yourself.<br><br>The report only ever comes from a real measurement, never from the placeholder guides sitting there untouched.</div>'; return; }
   var rb=_pads.back?_pads.back.ratios():null;
   var input={ centeringFrontWorst:rf.worst, centeringBackWorst:rb?rb.worst:null,
     corners:{front:pillarVal('corners','front'),back:primaryBack()?pillarVal('corners','back'):null},
@@ -1012,6 +1113,31 @@ function renderReport(pred, rf, rb){
   });
 
   var H='';
+  // The decision, first and biggest: which company, what grade, and whether to send it.
+  // Without pricing there is no "best" home to rank, but the prediction still leads — fall back
+  // to PSA, the reference everyone else is quoted against.
+  var heroCo=bestCo||(co.PSA?'PSA':order[0]);
+  if(heroCo){
+    var bp=pred.perCompany[heroCo], be=econ[heroCo]||{ok:false};
+    var vcol=be.ok?(be.verdict==='Submit'?'var(--green)':be.verdict==='Borderline'?'var(--amber)':'var(--red)'):'var(--muted)';
+    H+='<div class="verdict" style="--vc:'+vcol+'">';
+    H+='<div class="vhead"><span class="co">'+(bestCo?'Best home':'Predicted')+'</span>'
+      +'<span class="grade">'+esc(co[heroCo].label.split(' ')[0])+' '+gradeStr(bp.grade)+'</span>'
+      +'<span class="tier">'+esc(bp.gradeLabel)+'</span>'
+      +(be.ok?'<span class="call">'+esc(be.verdict==="Don't grade"?'Keep it raw':be.verdict)+'</span>'
+             :'<span class="call" style="--vc:var(--muted)">'+esc(bp.confidence)+' confidence</span>')+'</div>';
+    if(be.ok){
+      H+='<div class="money">'
+        +'<div>Worth at that grade<b>'+usd(valueAtGradeUSD(heroCo,bp.grade,bp.gradeLabel))+'</b></div>'
+        +'<div>Expected after fees<b>'+usd(be.expectedValue)+'</b></div>'
+        +'<div>Against selling raw<b class="'+(be.profitVsRaw>=0?'pos':'neg')+'">'+(be.profitVsRaw>=0?'+':'')+usd(be.profitVsRaw).replace('US$','$')+'</b></div>'
+        +'<div>Grading fee<b>'+usd(be.fee)+(be.tier?' · '+be.tier.turnaroundDays+'d':'')+'</b></div>'
+        +'</div>';
+    } else {
+      H+='<div class="money"><div style="max-width:44ch;">Look the card up so PriceCharting can price the grade. Until then this is a grade prediction with no money attached.</div></div>';
+    }
+    H+='</div>';
+  }
   // header
   var nm=val('f_name')||'(unnamed card)', sub=[val('f_num'),val('f_set'),val('f_rarity')].filter(Boolean).join(' · ');
   var pf=primaryFront();
@@ -1174,7 +1300,7 @@ async function loadSavedList(){
     var r=await fetch('/api/pregrade?limit=15'); if(!r.ok) return;
     var j=await r.json(); var list=j.reports||[];
     var el=$('savedList');
-    if(!list.length){ el.innerHTML='<div class="empty small">Nothing saved yet. 💾 Save keeps a report (with its images) so you can reopen it and compare the prediction against the grade that actually comes back.</div>'; return; }
+    if(!list.length){ el.innerHTML='<div class="empty small">Nothing saved yet. Save keeps a report and its images, so you can open it again later and see how the prediction compared to the grade that came back.</div>'; return; }
     el.innerHTML=list.map(function(rep){
       var pred=rep.best_company?(esc(rep.best_company)+' '+esc(rep.best_grade!=null?rep.best_grade:'?')):'—';
       var act=rep.actual_grade!=null?('<span class="pill high">actual '+esc(rep.actual_grade)+'</span>'):(rep.submission_id?'<span class="pill medium">in pipeline</span>':'');
