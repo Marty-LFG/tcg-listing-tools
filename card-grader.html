@@ -40,13 +40,16 @@
   @media(max-width:980px){.grid{grid-template-columns:1fr;}}
   .card{background:linear-gradient(180deg,var(--panel),#0d0f15);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;
     box-shadow:0 12px 34px -14px rgba(0,0,0,.72);animation:rise .34s ease both;animation-delay:var(--d,0s);}
-  .card h2{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 12px;font-family:var(--mono);
-    display:flex;align-items:center;gap:8px;}
-  .card h2 .n{color:var(--gold);opacity:.85;}
+  .card h2{font-family:var(--serif);font-size:15px;letter-spacing:-.01em;text-transform:none;color:var(--text);font-weight:600;margin:0 0 12px;
+    display:flex;align-items:baseline;gap:9px;}
+  .card h2 .n{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.1em;}
   .card h2 .rule{flex:1;height:1px;background:var(--line);}
   @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
   /* step rail — the whole flow at a glance, and a jump target for each step */
-  .rail{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .rail{display:flex;gap:6px;flex-wrap:wrap;position:sticky;top:0;z-index:30;padding:8px 0;margin:0 0 14px;
+    background:linear-gradient(180deg,var(--ink) 78%,transparent);border-bottom:1px solid var(--line);}
+  html{scroll-behavior:smooth;}
+  #step1,#step2,#step3,#step4{scroll-margin-top:76px;}
   .rail a{flex:1;min-width:118px;display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:11px;text-decoration:none;
     background:linear-gradient(180deg,var(--panel),#0d0f15);border:1px solid var(--line);transition:.16s ease;}
   .rail a:hover{border-color:var(--line2);transform:translateY(-1px);}
@@ -68,6 +71,7 @@
   .btn{padding:8px 13px;border:1px solid var(--gold-dim);background:transparent;color:var(--gold);border-radius:9px;font-size:12.5px;font-weight:600;cursor:pointer;
     display:inline-flex;align-items:center;gap:6px;transition:.16s ease;font-family:var(--sans);}
   .btn svg{width:14px;height:14px;flex:none;}
+  .btn{min-height:28px;}
   .btn:hover{background:var(--gold);color:#160c24;transform:translateY(-1px);}
   .btn.solid{background:var(--gold);color:#160c24;border-color:var(--gold);}
   .btn.ghost{border-color:var(--line2);color:var(--muted);}
@@ -105,8 +109,8 @@
   .slot.has{border-style:solid;}
   .slot .ttl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
   .slot img{max-width:100%;max-height:84px;border-radius:5px;display:block;}
-  .slot .rm{position:absolute;top:3px;right:4px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:5px;width:19px;height:19px;cursor:pointer;font-size:12px;line-height:1;z-index:2;}
-  .slot .rot{right:auto;left:4px;}
+  .slot .rm{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:13px;line-height:24px;text-align:center;z-index:2;}
+  .slot .rot{top:auto;bottom:3px;right:3px;}   /* opposite corner: the two were adjacent and easy to mis-hit */
   /* camera */
   .cam{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
   .cam video{width:100%;max-height:240px;border-radius:8px;background:#000;border:1px solid var(--line);display:none;}
@@ -116,7 +120,7 @@
   /* centering pads */
   .pads{display:flex;gap:14px;flex-wrap:wrap;}
   .pad{flex:1;min-width:150px;}
-  .pad canvas{border:1px solid var(--line);border-radius:8px;background:#0a0e1c;touch-action:none;max-width:100%;cursor:crosshair;}
+  .pad canvas{border:1px solid var(--line);border-radius:8px;background:var(--field);touch-action:none;max-width:100%;cursor:crosshair;}
   .pad .ro{font-size:12px;margin-top:6px;line-height:1.5;}
   .pad .ro b{color:var(--gold);} .mono{font-family:var(--mono);}   /* every number is IBM Plex Mono (DESIGN.md §3) */
   .legend{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;}
@@ -125,22 +129,23 @@
   .pillrow{display:grid;grid-template-columns:74px 1fr 38px;gap:8px;align-items:center;margin-bottom:7px;}
   .pillrow label{margin:0;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text);}
   .pillrow input[type=range]{width:100%;accent-color:var(--gold);}
-  .pillrow .v{font-weight:700;color:var(--gold);text-align:right;font-size:13px;}
+  .pillrow .v{font-family:var(--mono);font-weight:600;color:var(--gold);text-align:right;font-size:13px;}
   .twocol{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;}
   .colhead{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;margin:2px 0 4px;}
   .granular{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6;}
   .granular b{color:var(--gold);font-family:var(--mono);}
   /* report */
-  #report .rcard{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;}
-  #report h3{font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 10px;}
+  #report .rcard{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;
+    box-shadow:0 8px 22px -14px rgba(0,0,0,.6);}
+  #report h3{font-family:var(--serif);font-size:13px;letter-spacing:-.008em;text-transform:none;color:var(--text);font-weight:600;margin:0 0 10px;}
   .predtable{width:100%;border-collapse:collapse;font-size:13px;}
   .predtable th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);text-align:left;padding:4px 6px;font-weight:700;}
   .predtable td{padding:7px 6px;border-top:1px solid var(--line);vertical-align:middle;}
-  .gradebig{font-size:18px;font-weight:800;color:var(--gold);line-height:1;white-space:nowrap;}
+  .gradebig{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--gold);line-height:1;white-space:nowrap;}
   .fit{outline:2px solid var(--gold);outline-offset:-2px;border-radius:8px;}
   .pbar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:3px;}
   .pbar > i{display:block;height:100%;background:var(--gold);}
-  .pill{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border-radius:999px;padding:1px 7px;border:1px solid currentColor;}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;border-radius:999px;padding:1px 7px;border:1px solid currentColor;}
   .pill.high{color:var(--good);} .pill.medium{color:var(--warn);} .pill.low{color:var(--bad);}
   .disc{font-size:11.5px;color:var(--muted);line-height:1.55;}
   .disc li{margin-bottom:5px;}
@@ -164,7 +169,7 @@
   .savedrow:hover{background:rgba(217,164,255,.05);}
   .savedrow img{width:30px;height:42px;object-fit:cover;border-radius:4px;border:1px solid var(--line);flex:none;background:var(--field);}
   .savedrow .nm{font-size:12.5px;font-weight:600;} .savedrow .meta{font-size:11px;color:var(--muted);}
-  .savedrow .gr{margin-left:auto;text-align:right;font-size:12px;white-space:nowrap;}
+  .savedrow .gr{margin-left:auto;text-align:right;font-size:12px;white-space:nowrap;font-family:var(--mono);}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#160c24;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99999;}
   .toast.show{opacity:1;}
   .empty{font-size:13px;color:var(--muted);line-height:1.6;padding:8px 2px;}
@@ -222,7 +227,7 @@
         </div>
         <label>Card number</label>
         <div class="lookup fld"><input id="num" placeholder="e.g. 294  or  294/217" autocomplete="off"><button class="btn solid" onclick="doLookup()">Look up</button><button style="padding:0 12px;background:transparent;border:1px solid var(--line);color:var(--gold);border-radius:10px;font-weight:700;cursor:pointer;font-size:15px;" onclick="doLookup({refresh:true})" title="Fetch this set from its source again. Card lists are stored once and kept, so this is how a set that gained cards — or moved on price — gets pulled in.">↻</button></div>
-        <div class="status load" id="idStatus">Pick a set + number and look up, or fill the fields manually.</div>
+        <div class="status load" id="idStatus" role="status" aria-live="polite">Pick a set + number and look up, or fill the fields manually.</div>
         <div class="row2 fld" style="margin-top:12px;">
           <div style="grid-column:1/3;"><label>Card name</label><input id="f_name"></div>
           <div><label>Set</label><input id="f_set"></div>
@@ -245,7 +250,7 @@
             <button class="btn ghost" onclick="wizSkip()" title="Skip this shot. Everything except the front image is optional.">Skip</button>
           </div>
         </div>
-        <div class="status load" id="scanStatus"></div>
+        <div class="status load" id="scanStatus" role="status" aria-live="polite"></div>
         <div class="cam" id="camWrap">
           <div class="camrow">
             <select id="camSelect"><option value="">No camera selected</option></select>
@@ -263,7 +268,7 @@
         <h2><span class="n">03</span> Centering<span class="rule"></span></h2>
         <div class="pads">
           <div class="pad"><div class="colhead">Front <button class="btn ghost" aria-label="Open the full-screen centering editor for the front" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('front')" title="Open the full-screen editor to check the guides at full size"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div><canvas id="padFront" width="280" height="380" role="img" aria-label="Front centering guides. Drag the gold card-edge lines and the blue inner-frame lines to match the card. The measured result is announced below."></canvas><div class="ro" id="roFront" role="status" aria-live="polite"><span class="muted">add a front image</span></div></div>
-          <div class="pad"><div class="colhead">Back <button class="btn ghost" aria-label="Open the full-screen centering editor for the back" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('back')" title="Open the full-screen editor to check the guides at full size"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div><canvas id="padBack" width="280" height="380" role="img" aria-label="Back centering guides. Drag the gold card-edge lines and the blue inner-frame lines to match the card. The measured result is announced below."></canvas><div class="ro" id="roBack"><span class="muted">add a back image (optional)</span></div></div>
+          <div class="pad"><div class="colhead">Back <button class="btn ghost" aria-label="Open the full-screen centering editor for the back" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('back')" title="Open the full-screen editor to check the guides at full size"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div><canvas id="padBack" width="280" height="380" role="img" aria-label="Back centering guides. Drag the gold card-edge lines and the blue inner-frame lines to match the card. The measured result is announced below."></canvas><div class="ro" id="roBack" role="status" aria-live="polite"><span class="muted">add a back image (optional)</span></div></div>
         </div>
         <div class="legend"><span class="swatch" style="background:var(--gold);"></span>card edge &nbsp; <span class="swatch" style="background:var(--info);"></span>inner frame &nbsp;·&nbsp; drag each line to match.
           <button class="btn ghost" style="padding:4px 9px;font-size:11px;margin-left:6px;" onclick="resetGuides()">Reset</button>
@@ -275,7 +280,7 @@
         <h2><span class="n">04</span> Condition<span class="rule"></span></h2>
         <div class="small muted" style="margin-bottom:10px;">Run the AI pass to fill these, or set them yourself. The prediction uses these values, so correct anything that looks off.</div>
         <button class="btn solid" id="aiBtn" onclick="runAI()" style="margin-bottom:6px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 13.6 9 19 10.6 13.6 12.2 12 17.7 10.4 12.2 5 10.6 10.4 9z"/><path d="M18 16.5v3M16.5 18h3"/></svg>Run AI condition pass</button>
-        <div class="status load" id="aiStatus" style="margin-bottom:10px;"></div>
+        <div class="status load" id="aiStatus" role="status" aria-live="polite" style="margin-bottom:10px;"></div>
         <div class="twocol">
           <div>
             <div class="colhead">Front</div>
@@ -300,13 +305,14 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
           <h2 style="margin:0;">Grading report<span class="rule"></span></h2>
           <div style="display:flex;gap:8px;">
+            <button class="btn ghost" id="newBtn" onclick="newCard()" title="Clear everything and start on the next card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>New card</button>
             <button class="btn ghost" id="ebayBtn" onclick="findEbay()" title="eBay AU graded vs raw comps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Comps</button>
             <button class="btn ghost" id="saveBtn" onclick="saveReport()" title="Save this report and every captured image, so it can be reopened and compared against the grade that comes back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 4v5h6V4M8 20v-6h8v6"/></svg>Save</button>
             <button class="btn ghost" id="invBtn" onclick="addToInventory()" title="Queue this card in the grading pipeline (Binders Keepers inventory)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v13H4z"/><path d="M4 10h16M9 6V4h6v2"/></svg>Pipeline</button>
             <button class="btn solid" id="pdfBtn" onclick="downloadPDF()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg>Report PDF</button>
           </div>
         </div>
-        <div class="status load" id="saveStatus"></div>
+        <div class="status load" id="saveStatus" role="status" aria-live="polite"></div>
         <div id="report"><div class="empty">Add a front image and set the centering guides to generate a report. Look up the card to pull value-at-grade.</div></div>
         <div id="extras" style="margin-top:14px;"></div>
         <div id="ebayextras" style="margin-top:12px;"></div>
@@ -319,7 +325,7 @@
   </div>
 </div>
 <!-- full-screen centering editor: the card at viewport size while the guides are confirmed -->
-<div id="padModal" style="display:none;position:fixed;inset:0;background:rgba(6,8,20,.95);z-index:9000;padding:12px;flex-direction:column;align-items:center;gap:8px;">
+<div id="padModal" role="dialog" aria-modal="true" aria-labelledby="padModalTitle" style="display:none;position:fixed;inset:0;background:rgba(6,8,20,.95);z-index:9000;padding:12px;flex-direction:column;align-items:center;gap:8px;">
   <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:1100px;gap:10px;flex-wrap:wrap;">
     <div class="colhead" id="padModalTitle" style="font-size:12px;margin:0;">Centering</div>
     <div class="ro" id="roFull" style="margin:0;font-size:13.5px;"></div>
@@ -339,13 +345,15 @@
       <span class="mono small" id="rotVal" style="min-width:52px;text-align:right;">0.00°</span>
       <button class="btn" style="padding:4px 9px;font-size:11px;" onclick="fullRotSet(0)">Reset</button>
     </div>
-    <button class="btn solid" onclick="closeFullPad(true)">✓ Done</button>
+    <button class="btn ghost" onclick="closeFullPad(false)">Cancel</button>
+    <button class="btn solid" id="padDoneBtn" onclick="closeFullPad(true)">Done</button>
   </div>
   <canvas id="padFull" width="400" height="560" style="border:1px solid var(--line);border-radius:8px;touch-action:none;cursor:crosshair;max-width:100%;"></canvas>
 </div>
 <div class="toast" id="toast">Done</div>
 
 <script src="/vendor/jspdf.umd.min.js"></script>
+<script src="/grade-report-pdf.js"></script>
 <script src="/grade-rules.js"></script>
 <script src="/extras.js"></script>
 <script>
@@ -410,8 +418,18 @@ function updateRail(){
 
 /* ============================ config ============================ */
 async function loadConfig(){
-  try{ var r=await fetch('/data/grading.config.json'); CFG=await r.json(); }
-  catch(e){ CFG=null; }
+  try{
+    var r=await fetch('/data/grading.config.json');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    CFG=await r.json();
+  }
+  catch(e){
+    // Everything downstream (grades, fees, verdicts, even the step rail) is driven by this file.
+    // Failing quietly leaves a page that looks healthy and can never produce a report.
+    CFG=null;
+    $('report').innerHTML='<div class="empty">The grading config did not load, so there are no grades, fees or verdicts until it does. Is the dev server still running?'
+      +' <button class="btn" style="margin-top:8px;" onclick="loadConfig().then(recompute)">Try again</button></div>';
+  }
 }
 
 /* ============================ set picker ============================ */
@@ -540,10 +558,14 @@ function renderShots(){
     H+='<div class="shotgroup"><div class="colhead">'+esc(g.title)+'</div><div class="shotgrid '+g.cls+'">';
     g.ids.forEach(function(id){
       var def=shotDef(id), d=SHOTS[id];
-      H+='<div class="slot'+(def.required?' req':'')+(d?' has':'')+(id===_cur?' cur':'')+'" data-slot="'+id+'" title="'+esc(def.label)+'">';
-      if(d){ H+='<button class="rm" title="Remove" data-rm="'+id+'">×</button><button class="rm rot" title="Rotate 90°" data-rot="'+id+'">⟳</button><img src="'+d.dataUrl+'" alt="'+esc(def.short)+'">'; }
-      H+='<div class="ttl">'+esc(def.short)+'</div>';
-      H+='</div>';
+      H+='<button type="button" class="slot'+(def.required?' req':'')+(d?' has':'')+(id===_cur?' cur':'')+'" data-slot="'+id+'"'
+        +' title="'+esc(def.label)+(d?'':' — click to make this the current shot, double-click to upload a file')+'"'
+        +' aria-label="'+esc(def.label)+(d?', captured':', empty')+'"'+(id===_cur?' aria-current="step"':'')+'>';
+      if(d){ H+='<span class="rm" role="button" tabindex="0" title="Remove" aria-label="Remove '+esc(def.label)+'" data-rm="'+id+'">×</span>'
+        +'<span class="rm rot" role="button" tabindex="0" title="Rotate 90 degrees" aria-label="Rotate '+esc(def.label)+'" data-rot="'+id+'">⟳</span>'
+        +'<img src="'+d.dataUrl+'" alt="">'; }
+      H+='<span class="ttl">'+esc(def.short)+'</span>';
+      H+='</button>';
     });
     H+='</div></div>';
   });
@@ -586,9 +608,23 @@ function wireShotEvents(){
     var rm=e.target.closest('[data-rm]');
     if(rm){ e.stopPropagation(); setShot(rm.getAttribute('data-rm'),null); return; }
     var el=e.target.closest('.slot'); if(!el)return;
+    // a plain click only chooses the step (so the microscope Capture button targets it);
+    // the file picker needs a deliberate double-click, since it used to open every time
     var id=el.getAttribute('data-slot');
     _cur=id; renderShots();
-    if(!SHOTS[id]){ _pendingSlot=id; $('fileInput').click(); }
+  });
+  host.addEventListener('dblclick',function(e){
+    var el=e.target.closest('.slot'); if(!el)return;
+    var id=el.getAttribute('data-slot');
+    _cur=id; _pendingSlot=id; $('fileInput').click();
+  });
+  host.addEventListener('keydown',function(e){
+    var t=e.target.closest('[data-rm],[data-rot],.slot'); if(!t)return;
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    e.preventDefault();
+    if(t.hasAttribute('data-rot')) rotateShot(t.getAttribute('data-rot'));
+    else if(t.hasAttribute('data-rm')) setShot(t.getAttribute('data-rm'),null);
+    else { _cur=t.getAttribute('data-slot'); renderShots(); }
   });
   host.addEventListener('dragover',function(e){ var el=e.target.closest('.slot'); if(!el)return; e.preventDefault(); el.classList.add('drag'); });
   host.addEventListener('dragleave',function(e){ var el=e.target.closest('.slot'); if(el) el.classList.remove('drag'); });
@@ -691,7 +727,7 @@ async function doScan(side){
 async function autoDetect(){
   var jobs=[['front',primaryFront()],['back',primaryBack()]].filter(function(p){return !!p[1];});
   if(!jobs.length){ toast('Add a front image first'); return; }
-  var st=$('scanStatus'); st.className='status load'; st.textContent='Auto-detecting card edges…';
+  var st=$('scanStatus'); st.className='status load busy'; st.textContent='Looking for the card edges…';
   var seeded=0, why='';
   for(var i=0;i<jobs.length;i++){
     var side=jobs[i][0], shot=jobs[i][1];
@@ -714,6 +750,11 @@ function seedGuides(side, analysis, imgW, imgH){
 /* ============================ centering pads ============================ */
 function makePad(canvasId, roId, opts){
   opts=opts||{};
+  // read the palette once — the canvas used to hard-code navy literals, and its inner-frame blue
+  // had drifted away from the legend swatch beside it
+  var CS=getComputedStyle(document.documentElement);
+  var C_GOLD=(CS.getPropertyValue('--gold')||'#d9a4ff').trim(), C_BLUE=(CS.getPropertyValue('--blue')||'#6ab0ff').trim(),
+      C_FIELD=(CS.getPropertyValue('--field')||'#0b0d12').trim(), C_FAINT=(CS.getPropertyValue('--faint')||'#5b6373').trim();
   var maxW=opts.maxW||280, maxH=opts.maxH||400;
   var getDpi=opts.getDpi||function(){return null;};   // scans know their dpi → borders in mm
   var cv=$(canvasId), ctx=cv.getContext('2d');
@@ -776,9 +817,9 @@ function makePad(canvasId, roId, opts){
       ctx.drawImage(st.img,0,0,cv.width,cv.height);
       ctx.restore();
     }
-    else { ctx.fillStyle='#0a0e1c'; ctx.fillRect(0,0,cv.width,cv.height); ctx.fillStyle='#566'; ctx.font='12px sans-serif'; ctx.textAlign='center'; ctx.fillText('no image',cv.width/2,cv.height/2); }
+    else { ctx.fillStyle=C_FIELD; ctx.fillRect(0,0,cv.width,cv.height); ctx.fillStyle=C_FAINT; ctx.font='12px '+(CS.getPropertyValue('--sans')||'sans-serif'); ctx.textAlign='center'; ctx.fillText('no image',cv.width/2,cv.height/2); }
     if(!st.outer) return;
-    rect(st.outer,'#d9a4ff',[]); rect(st.inner,'#5aa9ff',[5,4]);
+    rect(st.outer,C_GOLD,[]); rect(st.inner,C_BLUE,[5,4]);
   }
   // stroke/handle sizes divide by the zoom so the overlay stays hairline-thin at any magnification
   function rect(r,color,dash){ var z=st.view.z; ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.5/z; ctx.setLineDash(dash.map(function(d){return d/z;}));
@@ -863,6 +904,7 @@ function openFullPad(side){
   $('padModalTitle').textContent='Centering — '+side;
   _fullSide=side;
   $('rotSlider').value=0; $('rotVal').textContent='0.00°';
+  _padReturnFocus=document.activeElement;
   _fullPad=makePad('padFull','roFull',{maxW:window.innerWidth-48,maxH:window.innerHeight-96,
     getDpi:function(){ return shot.dpi||null; }});
   _fullPad.setImage(shot.dataUrl);
@@ -895,6 +937,7 @@ async function autoStraighten(){
   }catch(e){ toast('Skew measurement failed'); }
   btn.disabled=false; btn.textContent='Auto straighten';
 }
+var _padReturnFocus=null;
 function closeFullPad(commit){
   if(commit&&_fullPad&&_fullSide){
     var g=_fullPad.exportGuides();
@@ -904,6 +947,7 @@ function closeFullPad(commit){
   }
   $('padModal').style.display='none';
   _fullSide=null;
+  if(_padReturnFocus&&_padReturnFocus.focus){ _padReturnFocus.focus(); _padReturnFocus=null; }
 }
 // Bake a fine-rotation into the shot itself: every consumer (AI pass, pins, PDF, persistence)
 // reads the shot's dataUrl, so a preview-only rotation would lie to all of them. Rotation is
@@ -1022,10 +1066,10 @@ function valueAtGradeUSD(company, grade, label){
 function cheapestTier(company){ var t=(CFG&&CFG.fees&&CFG.fees[company])||[]; return t.slice().sort(function(a,b){return a.price-b.price;})[0]||null; }
 
 function recompute(){
+  updateRail();                 // capture progress is real even when the config is not loaded
   if(!CFG){ return; }
-  updateRail();
   var rf=_pads.front?_pads.front.ratios():null;
-  if(!rf){ $('report').innerHTML='<div class="empty">Add a <b>front</b> image in step 2, then set the centering guides in step 3. A flatbed scan places them for you. For a photo or an upload, press <b>Auto-detect</b> or drag the lines onto the card yourself.<br><br>The report only ever comes from a real measurement, never from the placeholder guides sitting there untouched.</div>'; return; }
+  if(!rf){ setReportActions(false); $('report').innerHTML='<div class="empty">Add a <b>front</b> image in step 2, then set the centering guides in step 3. A flatbed scan places them for you. For a photo or an upload, press <b>Auto-detect</b> or drag the lines onto the card yourself.<br><br>The report only ever comes from a real measurement, never from the placeholder guides sitting there untouched.</div>'; return; }
   var rb=_pads.back?_pads.back.ratios():null;
   var input={ centeringFrontWorst:rf.worst, centeringBackWorst:rb?rb.worst:null,
     corners:{front:pillarVal('corners','front'),back:primaryBack()?pillarVal('corners','back'):null},
@@ -1037,6 +1081,13 @@ function recompute(){
 }
 
 /* ============================ report render ============================ */
+// Save / PDF / pipeline all need a report to exist. Enabled-but-inert buttons that answer with a
+// 1.5s toast read as broken to someone whose eyes are on a microscope.
+function setReportActions(on){
+  [['saveBtn','Save this report and its images'],['pdfBtn','Download the printable report'],['invBtn','Queue this card in the grading pipeline']]
+    .forEach(function(p){ var b=$(p[0]); if(!b)return; b.disabled=!on; b.title=on?p[1]:'Measure a card first — the report has to exist before you can '+(p[0]==='pdfBtn'?'print':'save')+' it.'; });
+  var eb=$('ebayBtn'); if(eb){ var named=!!val('f_name'); eb.disabled=!named; eb.title=named?'eBay AU graded vs raw comps':'Name or look up the card first.'; }
+}
 function probBars(probs){
   return probs.slice(0,3).map(function(d){ return '<div style="margin-bottom:2px;"><span class="small mono">'+gradeStr(d.grade)+' · '+Math.round(d.p*100)+'%</span><div class="pbar"><i style="width:'+Math.round(d.p*100)+'%"></i></div></div>'; }).join('');
 }
@@ -1215,10 +1266,11 @@ function renderReport(pred, rf, rb){
 
   $('report').innerHTML=H;
   window._lastPred={pred:pred, econ:econ, rf:rf, rb:rb, bestCo:bestCo};
+  setReportActions(true);
 }
 
 /* ============================ save / load reports ============================ */
-function saveStatus(cls,msg){ var e=$('saveStatus'); if(e){ e.className='status '+cls; e.textContent=msg; } }
+function saveStatus(cls,msg,busy){ var e=$('saveStatus'); if(e){ e.className='status '+cls+(busy?' busy':''); e.textContent=msg; } }
 function reportPayload(){
   var L=window._lastPred||{};
   var centering={};
@@ -1237,11 +1289,33 @@ function reportPayload(){
     config_as_of:CFG?CFG.asOf:null
   };
 }
+// Grading a stack means the identity changes under a report that is already saved. Updating
+// THAT row would quietly overwrite the previous card, so a changed name starts a new report.
+function newCard(){
+  _reportId=null; _ai=null; _card=null; window._lastPred=null; _savedName=null;
+  SHOT_DEFS.forEach(function(d){ delete SHOTS[d.id]; });
+  _cur='scan-front';
+  ['f_name','f_set','f_num','f_rarity'].forEach(function(id){ setv(id,''); });
+  setv('num',''); setv('setCode',''); selectedSet=null;
+  $('extras').innerHTML=''; $('ebayextras').innerHTML='';
+  $('idStatus').className='status load'; $('idStatus').textContent='Pick a set + number and look up, or fill the fields manually.';
+  $('scanStatus').className='status'; $('scanStatus').textContent='';
+  $('aiStatus').className='status'; $('aiStatus').textContent='';
+  saveStatus('','');
+  renderGranularRO(); renderShots(); refreshAfterImage();
+  if(history.replaceState) history.replaceState(null,'',location.pathname);
+  toast('Ready for the next card');
+}
+var _savedName=null;   // the identity report #_reportId was written under
 async function saveReport(){
   if(!window._lastPred){ toast('Generate a report first'); return; }
   var btn=$('saveBtn'); btn.disabled=true;
   try{
-    saveStatus('load','Saving report…');
+    if(_reportId&&_savedName&&val('f_name')&&val('f_name')!==_savedName){
+      _reportId=null;   // different card in the fields — never PATCH over the one already saved
+      saveStatus('load','Different card, so this saves as a new report.');
+    }
+    saveStatus('load','Saving report…',true);
     var body=reportPayload();
     var r,j;
     if(_reportId){ r=await fetch('/api/pregrade/'+_reportId,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); }
@@ -1253,12 +1327,13 @@ async function saveReport(){
     var filled=SHOT_DEFS.filter(function(d){ return SHOTS[d.id]; });
     for(var i=0;i<filled.length;i++){
       var d=filled[i], s=SHOTS[d.id];
-      saveStatus('load','Saving images… '+(i+1)+'/'+filled.length);
+      saveStatus('load','Saving images… '+(i+1)+'/'+filled.length,true);
       var ir=await fetch('/api/pregrade/'+_reportId+'/images',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({shotId:d.id,dataB64:s.b64,mediaType:s.media,w:s.w,h:s.h,dpi:s.dpi||null,kind:s.kind||'upload'})});
       if(!ir.ok){ var ij=await ir.json().catch(function(){return {};}); throw new Error('image '+d.id+': '+(ij.error||ir.status)); }
     }
-    saveStatus('ok','✓ Saved — report #'+_reportId+' ('+filled.length+' images)');
+    _savedName=val('f_name');
+    saveStatus('ok','Saved as report #'+_reportId+' with '+filled.length+' image'+(filled.length===1?'':'s')+'.');
     toast('✓ Report saved');
     recompute();
     loadSavedList();
@@ -1267,7 +1342,7 @@ async function saveReport(){
 }
 async function openReport(id){
   try{
-    saveStatus('load','Opening report #'+id+'…');
+    saveStatus('load','Opening report #'+id+'…',true);
     var r=await fetch('/api/pregrade/'+id); if(!r.ok) throw new Error('HTTP '+r.status);
     var j=await r.json(); var rep=j.report||{};
     _reportId=rep.id;
@@ -1292,12 +1367,16 @@ async function openReport(id){
     ['front','back'].forEach(function(s){ var c=cen[s]; if(c&&c.outer&&_pads[s]) _pads[s].setGuides(c.outer,c.inner||null,c.imgW,c.imgH,c.source||'manual'); });
     // re-pull pricing so value-at-grade works on a reopened report
     if(rep.identity_key&&rep.name) pcEnrich({name:rep.name,number:rep.number,set:{name:rep.set_name},id:rep.identity_key},rep.number);
-    saveStatus('ok','Opened report #'+id+' — re-run the AI pass or adjust anything, then Save to update.');
+    _savedName=rep.name;
+    saveStatus('ok','Opened report #'+id+'. Change anything you like, then Save to update it.');
   }catch(e){ saveStatus('err','Open failed: '+(e.message||e)); }
 }
 async function loadSavedList(){
   try{
-    var r=await fetch('/api/pregrade?limit=15'); if(!r.ok) return;
+    var r=await fetch('/api/pregrade?limit=15');
+    // "Nothing saved yet" is the worst possible lie for a tool whose job is keeping predictions
+    // around for weeks — an unreachable API must never be able to render it
+    if(!r.ok) throw new Error('HTTP '+r.status);
     var j=await r.json(); var list=j.reports||[];
     var el=$('savedList');
     if(!list.length){ el.innerHTML='<div class="empty small">Nothing saved yet. Save keeps a report and its images, so you can open it again later and see how the prediction compared to the grade that came back.</div>'; return; }
@@ -1309,7 +1388,12 @@ async function loadSavedList(){
         +'<div><div class="nm">'+esc(rep.name)+'</div><div class="meta">'+esc([rep.number,rep.set_name].filter(Boolean).join(' · '))+' · '+esc((rep.created_at||'').slice(0,10))+'</div></div>'
         +'<div class="gr">predicted <b style="color:var(--gold)">'+pred+'</b><br>'+act+'</div></div>';
     }).join('');
-  }catch(e){}
+  }catch(e){
+    var el=$('savedList');
+    if(el&&!el.querySelector('.savedrow')){
+      el.innerHTML='<div class="empty small">No luck reaching the saved reports. <button class="btn" style="margin-left:6px;" onclick="loadSavedList()">Try again</button></div>';
+    }
+  }
 }
 
 /* ============ Add to inventory (grading pipeline) ============ */
@@ -1346,88 +1430,31 @@ async function addToInventory(){
 }
 
 /* ============================ PDF ============================ */
-// Compose image + defect pins on an offscreen canvas → JPEG for jsPDF. JPEG q0.85 at ≤1600px
-// keeps a 3-page report under a few MB where embedding the raw PNG scans would balloon it.
-function composeAnnotated(shotId, maxDim){
-  var s=SHOTS[shotId]; if(!s) return Promise.resolve(null);
-  return new Promise(function(resolve){
-    var img=new Image();
-    img.onload=function(){ resolve(compose(img)); };
-    img.onerror=function(){ resolve(null); };
-    img.src=s.dataUrl;
-  });
-  function compose(img){
-  var sc=Math.min(1,(maxDim||1600)/Math.max(img.width,img.height));
-  var cw=Math.round(img.width*sc), ch=Math.round(img.height*sc);
-  var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
-  var ctx=cv.getContext('2d'); ctx.drawImage(img,0,0,cw,ch);
-  pinnedDefects().forEach(function(p){
-    if(!p.pinned||p.d.imageRef!==shotId) return;
-    var x=p.d.x*cw, y=p.d.y*ch, r=Math.max(9,Math.round(cw*0.014));
-    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
-    ctx.fillStyle=p.d.severity==='major'?'rgba(240,98,98,.92)':p.d.severity==='moderate'?'rgba(240,192,32,.92)':'rgba(154,166,207,.92)';
-    ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
-    ctx.fillStyle=p.d.severity==='moderate'?'#160c24':'#fff'; ctx.font='bold '+Math.round(r*1.1)+'px sans-serif';
-    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(String(p.n),x,y);
-  });
-  return { dataUrl:cv.toDataURL('image/jpeg',0.85), w:cw, h:ch };
-  }
-}
+// The report itself lives in grade-report-pdf.js — a print-designed document (ink on paper,
+// vector centering diagrams, annotated plates) rather than the text dump this used to be.
+// Everything it needs is already on screen; this just hands it over and names the file.
 async function downloadPDF(){
   if(!(window.jspdf&&window.jspdf.jsPDF)){ toast('PDF engine not loaded'); return; }
+  if(!window.GradeReportPDF){ toast('Report builder not loaded'); return; }
   if(!window._lastPred){ toast('Generate a report first'); return; }
-  var L=window._lastPred, co=CFG.companies, order=Object.keys(co);
-  var doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14, y=16;
-  function line(txt,size,style,color){ doc.setFont('helvetica',style||'normal'); doc.setFontSize(size||10); if(color)doc.setTextColor(color[0],color[1],color[2]); else doc.setTextColor(20,20,30); doc.text(txt,M,y); y+=size?size*0.52:6; }
-  function gap(n){ y+=n||3; }
-  function pageCheck(){ if(y>278){ doc.addPage(); y=16; } }
-  line('Card Pre-Grading Report',18,'bold',[60,30,90]); gap(1);
-  line((val('f_name')||'(unnamed card)'),12,'bold');
-  line([val('f_num'),val('f_set'),val('f_rarity')].filter(Boolean).join('  ·  ')||'—',9,'normal',[110,110,130]); gap(2);
-  var pf=primaryFront();
-  if(pf){ try{ doc.addImage(pf.dataUrl,pf.media==='image/png'?'PNG':'JPEG',W-M-34,12,34,47); }catch(e){} }
-  line('Measured centering',11,'bold',[60,30,90]);
-  line('Front — L/R '+L.rf.lrLabel+', T/B '+L.rf.tbLabel+' (worst '+L.rf.label+')',9);
-  line('Back  — '+(L.rb?('L/R '+L.rb.lrLabel+', T/B '+L.rb.tbLabel+' (worst '+L.rb.label+')'):'not photographed; assumed to pass'),9); gap(2);
-  line('Predicted grade by company',11,'bold',[60,30,90]);
-  order.forEach(function(c){ pageCheck(); var p=L.pred.perCompany[c], e=L.econ[c];
-    var t=co[c].label.split(' ')[0]+' '+gradeStr(p.grade)+'  ('+p.gradeLabel+')'+(p.subgrades?('  ['+gradeStr(p.subgrades.centering)+'/'+gradeStr(p.subgrades.corners)+'/'+gradeStr(p.subgrades.edges)+'/'+gradeStr(p.subgrades.surface)+']'):'');
-    line((c===L.bestCo?'★ ':'  ')+t+'   ·   '+p.confidence+' conf',9,(c===L.bestCo?'bold':'normal'));
-    if(e&&e.ok) line('     @grade '+usd(valueAtGradeUSD(c,p.grade,p.gradeLabel))+'  ·  fee '+usd(e.fee)+'/'+(e.tier?e.tier.turnaroundDays+'d':'?')+'  ·  EV '+usd(e.expectedValue)+'  ·  vs raw '+(e.profitVsRaw>=0?'+':'')+usd(e.profitVsRaw)+'  ·  '+e.verdict,8,'normal',[110,110,130]);
-  });
-  // per-corner AI grid, when the pass returned granular scores
-  var g=_ai&&_ai.granular;
-  if(g&&g.corners){
-    gap(2); pageCheck(); line('Per-corner / per-edge (AI, TL/TR/BL/BR · T/R/B/L)',11,'bold',[60,30,90]);
-    function four(o,keys){ if(!o)return '—'; return keys.map(function(k){ return o[k]==null?'·':gradeStr(o[k]); }).join('/'); }
-    line('Corners — front '+four(g.corners.front,['tl','tr','bl','br'])+(g.corners.back?'  ·  back '+four(g.corners.back,['tl','tr','bl','br']):''),9);
-    if(g.edges) line('Edges   — front '+four(g.edges.front,['top','right','bottom','left'])+(g.edges.back?'  ·  back '+four(g.edges.back,['top','right','bottom','left']):''),9);
-  }
-  gap(2); pageCheck();
-  var raw=rawUSD(); if(raw!=null) line('Raw value now: '+usd(raw),9,'bold');
-  gap(2); pageCheck(); line('Disclaimers',11,'bold',[60,30,90]);
-  (CFG.disclaimers||[]).forEach(function(d){ pageCheck(); var wrapped=doc.splitTextToSize('• '+d, W-2*M); doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(110,110,130); doc.text(wrapped,M,y); y+=wrapped.length*3.2; });
-  pageCheck(); doc.setFontSize(7); doc.text('Estimate only — not an official grade. Tolerances/fees as of '+(CFG.asOf||'')+'. Generated by tcg-listing-tools Card Pre-Grader.',M,288);
-  // annotated pages: front then back, each image scaled to the page with its defect list under it
-  var sides=['front','back'];
-  for(var si=0;si<sides.length;si++){
-    var side=sides[si];
-    var shotId='scan-'+side; if(!SHOTS[shotId]) continue;
-    var comp=await composeAnnotated(shotId,1600); if(!comp) continue;
-    doc.addPage(); y=16;
-    line('Annotated — '+side,14,'bold',[60,30,90]); gap(2);
-    var maxW=W-2*M, maxH=200;
-    var sc=Math.min(maxW/comp.w, maxH/comp.h);
-    var iw=comp.w*sc, ih=comp.h*sc;
-    try{ doc.addImage(comp.dataUrl,'JPEG',M,y,iw,ih); }catch(e){}
-    y+=ih+6;
-    pinnedDefects().forEach(function(p){
-      if(p.d.side!==side) return; pageCheck();
-      line('#'+p.n+'  '+p.d.pillar+' · '+(p.d.location||'')+' — '+(p.d.note||p.d.severity||'')+(p.d.gradeSignificant?'  [grade-significant]':''),8.5,'normal',[80,80,100]);
+  var btn=$('pdfBtn'); btn.disabled=true;
+  try{
+    var L=window._lastPred, pf=primaryFront(), pb=primaryBack();
+    var doc=await GradeReportPDF.build({
+      card:{ name:val('f_name'), number:val('f_num'), set:val('f_set'), rarity:val('f_rarity'), finish:val('f_finish'), language:'EN' },
+      cfg:CFG, pred:L.pred, econ:L.econ, bestCo:L.bestCo,
+      centering:{ front:L.rf, back:L.rb,
+        frontMm:_pads.front.borderMm(pf?pf.dpi:null),
+        backMm:L.rb?_pads.back.borderMm(pb?pb.dpi:null):null,
+        psaCap:GradeRules.centeringGrade('PSA', L.rf.worst, L.rb?L.rb.worst:null, CFG) },
+      ai:_ai, shots:SHOTS, defects:pinnedDefects(),
+      pricing:{ rawUSD:rawUSD(), valueAtGrade:valueAtGradeUSD },
+      meta:{ generatedAt:new Date(), reportId:_reportId }
     });
-  }
-  var fn=(val('f_name')||'card').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'-pregrade.pdf';
-  doc.save(fn); toast('PDF saved');
+    doc.save((val('f_name')||'card').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'-pregrade.pdf');
+    toast('PDF saved');
+  }catch(e){ toast('PDF failed: '+((e&&e.message)||e)); }
+  btn.disabled=false;
 }
 
 /* ============================ init ============================ */
@@ -1436,7 +1463,7 @@ async function downloadPDF(){
   _pads.back=makePad('padBack','roBack',{getDpi:function(){var s=primaryBack();return s?s.dpi:null;}});
   document.addEventListener('keydown',function(e){
     if($('padModal').style.display==='none') return;
-    if(e.key==='Escape'){ closeFullPad(true); return; }
+    if(e.key==='Escape'){ closeFullPad(false); return; }   // Escape backs out; Done commits
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ e.preventDefault(); fullRotBy((e.key==='ArrowLeft'?-1:1)*(e.shiftKey?0.5:0.05)); }
   });
   renderShots(); wireShotEvents(); wireSliders();
@@ -1452,7 +1479,7 @@ async function downloadPDF(){
   document.addEventListener('click',function(e){ var r=document.querySelector('.setrow'); if(r&&!r.contains(e.target)) $('setMenu').classList.remove('open'); });
   ['f_name','f_set','f_num','f_rarity','f_finish'].forEach(function(id){ $(id).addEventListener('input',recompute); });
   if(navigator.mediaDevices&&navigator.mediaDevices.enumerateDevices) listCams();
-  loadScanCapability();
+  loadScanCapability(); setReportActions(false);
   loadConfig().then(function(){
     loadSets(); recompute(); loadSavedList();
     var m=location.search.match(/[?&]report=(\d+)/); if(m) openReport(+m[1]);
