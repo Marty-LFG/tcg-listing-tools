@@ -610,8 +610,12 @@ function makePad(canvasId, roId, opts){
   var getDpi=opts.getDpi||function(){return null;};   // scans know their dpi → borders in mm
   var cv=$(canvasId), ctx=cv.getContext('2d');
   var st={img:null,outer:null,inner:null,drag:null,source:'manual',pendingGuides:null,loading:false,angle:0};
+  // 'default' is a third source state, not a measurement: the seeded rectangles are perfectly
+  // symmetric, so letting them measure would fabricate a flawless 50/50 for any image whose
+  // guides were never touched. ratios() refuses to read them; auto-seed or a human drag
+  // promotes the state and unlocks the numbers.
   function defaults(){ st.outer={l:cv.width*0.04,t:cv.height*0.04,r:cv.width*0.96,b:cv.height*0.96};
-    var ix=cv.width*0.13, iy=cv.height*0.13; st.inner={l:ix,t:iy,r:cv.width-ix,b:cv.height-iy}; st.source='manual'; }
+    var ix=cv.width*0.13, iy=cv.height*0.13; st.inner={l:ix,t:iy,r:cv.width-ix,b:cv.height-iy}; st.source='default'; }
   function setImage(dataUrl){
     if(!dataUrl){ st.img=null; st.outer=null; st.inner=null; st.pendingGuides=null; st.loading=false; st.angle=0; draw(); updateRO(); recompute(); return; }
     if(st.img&&st.img.src===dataUrl){ return; }   // same image — keep the guides where they are
@@ -624,11 +628,16 @@ function makePad(canvasId, roId, opts){
     img.src=dataUrl;
   }
   // rects arrive in IMAGE pixels (from the server analyzer or a saved report); scale to canvas.
+  // Per-axis factors: cv.height is rounded independently of cv.width, so a shared x-factor
+  // would draw the bottom guide up to ~1px off the image it overlays.
   function applyGuides(g){
-    var sc=cv.width/g.imgW;
-    st.outer={l:g.outer.l*sc,t:g.outer.t*sc,r:g.outer.r*sc,b:g.outer.b*sc};
-    if(g.inner) st.inner={l:g.inner.l*sc,t:g.inner.t*sc,r:g.inner.r*sc,b:g.inner.b*sc};
-    st.source=g.source||'auto';
+    var sx=cv.width/g.imgW, sy=cv.height/(g.imgH||g.imgW);
+    st.outer={l:g.outer.l*sx,t:g.outer.t*sy,r:g.outer.r*sx,b:g.outer.b*sy};
+    if(g.inner) st.inner={l:g.inner.l*sx,t:g.inner.t*sy,r:g.inner.r*sx,b:g.inner.b*sy};
+    // An auto-seed WITHOUT an inner frame (full-art card) leaves the placeholder inner in
+    // place — that is not a measurement, so the state stays 'default' until the human sets
+    // the inner frame by hand. The scan status already says why.
+    st.source=g.inner?(g.source||'auto'):'default';
   }
   function setGuides(outer, inner, imgW, imgH, source){
     var g={outer:outer,inner:inner,imgW:imgW,imgH:imgH,source:source};
@@ -639,8 +648,11 @@ function makePad(canvasId, roId, opts){
   }
   function exportGuides(){
     if(!st.img||!st.outer)return null;
-    var sc=st.img.width/cv.width;
-    function up(r){ return {l:Math.round(r.l*sc),t:Math.round(r.t*sc),r:Math.round(r.r*sc),b:Math.round(r.b*sc)}; }
+    var sx=st.img.width/cv.width, sy=st.img.height/cv.height;
+    // one decimal, not integers: four independent integer roundings can move a reopened
+    // report's worst by a few hundredths of a point right at the 55 boundary
+    function d1(v){ return Math.round(v*10)/10; }
+    function up(r){ return {l:d1(r.l*sx),t:d1(r.t*sy),r:d1(r.r*sx),b:d1(r.b*sy)}; }
     return { outer:up(st.outer), inner:up(st.inner), imgW:st.img.width, imgH:st.img.height, source:st.source };
   }
   function draw(){
@@ -675,18 +687,24 @@ function makePad(canvasId, roId, opts){
   function up(){ if(st.drag){ st.drag=null; st.source='manual'; updateRO(); recompute(); } }   // a human touch downgrades "auto" honestly
   // Border widths in real millimetres — only meaningful when the image's dpi is known (scans).
   function borderMm(dpi){
-    if(!dpi||!st.img||!st.outer||!st.inner)return null;
-    var sc=st.img.width/cv.width, k=sc/dpi*25.4;
-    var L=(st.inner.l-st.outer.l)*k, R=(st.outer.r-st.inner.r)*k, T=(st.inner.t-st.outer.t)*k, B=(st.outer.b-st.inner.b)*k;
+    if(!dpi||!st.img||!st.outer||!st.inner||st.source==='default')return null;
+    var kx=(st.img.width/cv.width)/dpi*25.4, ky=(st.img.height/cv.height)/dpi*25.4;
+    var L=(st.inner.l-st.outer.l)*kx, R=(st.outer.r-st.inner.r)*kx, T=(st.inner.t-st.outer.t)*ky, B=(st.outer.b-st.inner.b)*ky;
     if(L<0||R<0||T<0||B<0)return null;
     return {l:L,r:R,t:T,b:B};
   }
-  function updateRO(){ var ro=$(roId); if(!ro)return; var r=ratios(); if(!r){ ro.innerHTML='<span class="muted">'+(canvasId==='padBack'?'add a back image (optional)':'add a front image')+'</span>'; return; }
+  function updateRO(){ var ro=$(roId); if(!ro)return; var r=ratios();
+    if(!r){
+      ro.innerHTML='<span class="muted">'+(st.img
+        ?'guides not set — drag them to the card (or ✦ Auto-detect) to measure'
+        :(canvasId==='padBack'?'add a back image (optional)':'add a front image'))+'</span>';
+      return; }
     var badge=st.source==='auto'?' <span class="pill medium" title="Seeded by auto-detection — confirm by eye; dragging any line marks it manual">auto — confirm</span>':'';
     var mm=borderMm(getDpi());
     var mmLine=mm?'<br><span class="muted">T <b class="mono">'+mm.t.toFixed(1)+'</b> · B <b class="mono">'+mm.b.toFixed(1)+'</b> · L <b class="mono">'+mm.l.toFixed(1)+'</b> · R <b class="mono">'+mm.r.toFixed(1)+'</b> mm</span>':'';
-    ro.innerHTML='L/R <b class="mono">'+r.lrLabel+'</b> · T/B <b class="mono">'+r.tbLabel+'</b> · worst <b class="mono">'+r.label+'</b>'+badge+mmLine; }
-  function ratios(){ if(!st.img||!st.outer||!st.inner)return null; var L=st.inner.l-st.outer.l,R=st.outer.r-st.inner.r,T=st.inner.t-st.outer.t,B=st.outer.b-st.inner.b; if(L<0||R<0||T<0||B<0)return null; return GradeRules.centeringPct({l:L,r:R,t:T,b:B}); }
+    ro.innerHTML='L/R <b class="mono">'+r.lrLabel+'</b> · T/B <b class="mono">'+r.tbLabel+'</b> · worst <b class="mono">'+r.label+'</b> <span class="muted small">('+r.worstAxis+')</span>'+badge+mmLine; }
+  // 'default' guides never measure — the symmetric placeholders would fabricate a perfect 50/50.
+  function ratios(){ if(!st.img||!st.outer||!st.inner||st.source==='default')return null; var L=st.inner.l-st.outer.l,R=st.outer.r-st.inner.r,T=st.inner.t-st.outer.t,B=st.outer.b-st.inner.b; if(L<0||R<0||T<0||B<0)return null; return GradeRules.centeringPct({l:L,r:R,t:T,b:B}); }
   function move2(e){ move(e); } function up2(){ up(); }   // named refs so destroy() can unhook the window listeners
   cv.addEventListener('mousedown',down); window.addEventListener('mousemove',move2); window.addEventListener('mouseup',up2);
   cv.addEventListener('touchstart',down,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',up);
@@ -837,7 +855,9 @@ async function runAI(){
 function cornerShotCount(){ return SHOT_DEFS.filter(function(d){ return d.kind==='corner'&&SHOTS[d.id]; }).length; }
 function globalConfidence(){
   var c = _ai ? (_ai.confidence!=null?_ai.confidence:0.5) : 0.45;
-  if(!primaryBack()) c -= 0.12;                       // no back seen
+  // the penalty keys off the MEASUREMENT, not the photo: a back image with untouched guides
+  // is just as unmeasured as no back image at all
+  if(!(_pads.back&&_pads.back.ratios())) c -= 0.12;
   if(/holo|gold|metal|reverse/i.test(val('f_finish'))) c -= 0.08;  // holo/gold harder
   if(cornerShotCount()>=6) c += 0.05;                 // per-corner microscope coverage
   return Math.max(0.15, Math.min(0.95, c));
@@ -859,7 +879,7 @@ function cheapestTier(company){ var t=(CFG&&CFG.fees&&CFG.fees[company])||[]; re
 function recompute(){
   if(!CFG){ return; }
   var rf=_pads.front?_pads.front.ratios():null;
-  if(!rf){ $('report').innerHTML='<div class="empty">Add a <b>front</b> image (step 2 — scan or photo) and set the centering guides (step 3) — that generates the report.</div>'; return; }
+  if(!rf){ $('report').innerHTML='<div class="empty">Add a <b>front</b> image (step 2) and set the centering guides (step 3) — a flatbed scan seeds them automatically; for photos/uploads hit <b>✦ Auto-detect</b> or drag the lines to the card. The report generates from a real measurement, never from the untouched placeholder guides.</div>'; return; }
   var rb=_pads.back?_pads.back.ratios():null;
   var input={ centeringFrontWorst:rf.worst, centeringBackWorst:rb?rb.worst:null,
     corners:{front:pillarVal('corners','front'),back:primaryBack()?pillarVal('corners','back'):null},
@@ -954,13 +974,17 @@ function renderReport(pred, rf, rb){
 
   // measured centering
   H+='<div class="rcard"><h3>Measured centering</h3>';
-  H+='<div class="small">Front — L/R <b class="mono">'+rf.lrLabel+'</b>, T/B <b class="mono">'+rf.tbLabel+'</b> · worst <b class="mono" style="color:var(--gold)">'+rf.label+'</b>'+(rf.worst<=55?' <span class="pill high">10-capable</span>':rf.worst<=60?' <span class="pill medium">~9</span>':' <span class="pill low">caps below 9</span>')+'</div>';
+  // pill from the SAME bands the prediction uses (config-driven, back included) — hardcoded
+  // 55/60 literals drifted from the editable config and from BGS's stricter 51
+  var cenG=GradeRules.centeringGrade('PSA', rf.worst, rb?rb.worst:null, CFG);
+  var cenPill=cenG>=10?' <span class="pill high">PSA 10-capable</span>':cenG>=9?' <span class="pill medium">PSA ~'+gradeStr(cenG)+'</span>':' <span class="pill low">caps PSA at '+gradeStr(cenG)+'</span>';
+  H+='<div class="small">Front — L/R <b class="mono">'+rf.lrLabel+'</b>, T/B <b class="mono">'+rf.tbLabel+'</b> · worst <b class="mono" style="color:var(--gold)">'+rf.label+'</b> <span class="muted">('+rf.worstAxis+')</span>'+cenPill+'</div>';
   var mmF=_pads.front.borderMm(primaryFront()?primaryFront().dpi:null);
   if(mmF) H+='<div class="small muted" style="margin-top:2px;">Borders — T <b class="mono">'+mmF.t.toFixed(1)+'</b> · B <b class="mono">'+mmF.b.toFixed(1)+'</b> · L <b class="mono">'+mmF.l.toFixed(1)+'</b> · R <b class="mono">'+mmF.r.toFixed(1)+'</b> mm</div>';
-  if(rb) H+='<div class="small" style="margin-top:4px;">Back — L/R <b class="mono">'+rb.lrLabel+'</b>, T/B <b class="mono">'+rb.tbLabel+'</b> · worst <b class="mono">'+rb.label+'</b></div>';
+  if(rb) H+='<div class="small" style="margin-top:4px;">Back — L/R <b class="mono">'+rb.lrLabel+'</b>, T/B <b class="mono">'+rb.tbLabel+'</b> · worst <b class="mono">'+rb.label+'</b> <span class="muted">('+rb.worstAxis+')</span></div>';
   var mmB=rb?_pads.back.borderMm(primaryBack()?primaryBack().dpi:null):null;
   if(mmB) H+='<div class="small muted" style="margin-top:2px;">Borders — T <b class="mono">'+mmB.t.toFixed(1)+'</b> · B <b class="mono">'+mmB.b.toFixed(1)+'</b> · L <b class="mono">'+mmB.l.toFixed(1)+'</b> · R <b class="mono">'+mmB.r.toFixed(1)+'</b> mm</div>';
-  else H+='<div class="small muted" style="margin-top:4px;">No back image — back centering assumed to pass (confidence reduced).</div>';
+  else H+='<div class="small muted" style="margin-top:4px;">'+(primaryBack()?'Back guides not set':'No back image')+' — back centering assumed to pass (confidence reduced).</div>';
   H+='</div>';
 
   // predictions

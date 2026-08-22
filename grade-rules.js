@@ -22,22 +22,33 @@
 
   // larger-side percentage on each axis from raw border widths {l,r,t,b} (any unit).
   // Returns the worst (most off-centre) axis as `worst` — that's what caps the grade.
+  // Labels: the AXIS labels are physical order (left/top share first) so they read true against
+  // a physical T/B/L/R mm line; the WORST label is larger-side-first, the way tolerances are
+  // quoted ("55/45 or better"). One decimal everywhere — integer display rounded 54.5 and 55.4
+  // to the same "55/45" while the bands graded them differently, and the human must see the
+  // digit the decision used.
   GR.centeringPct = function (b) {
     if (!b) return null;
-    var lr = (b.l + b.r) > 0 ? (Math.max(b.l, b.r) / (b.l + b.r)) * 100 : 50;
-    var tb = (b.t + b.b) > 0 ? (Math.max(b.t, b.b) / (b.t + b.b)) * 100 : 50;
-    function fmt(x) { var hi = Math.round(x); return hi + '/' + (100 - hi); }
+    var l = Math.max(0, b.l), r = Math.max(0, b.r), t = Math.max(0, b.t), bo = Math.max(0, b.b);
+    var lr = (l + r) > 0 ? (Math.max(l, r) / (l + r)) * 100 : 50;
+    var tb = (t + bo) > 0 ? (Math.max(t, bo) / (t + bo)) * 100 : 50;
+    var lShare = (l + r) > 0 ? (l / (l + r)) * 100 : 50;
+    var tShare = (t + bo) > 0 ? (t / (t + bo)) * 100 : 50;
+    function fmt1(hi) { var h = Math.round(hi * 10) / 10; var lo = Math.round((100 - h) * 10) / 10; return h.toFixed(1) + '/' + lo.toFixed(1); }
+    var worst = Math.max(lr, tb);
     return {
-      lr: lr, tb: tb,
-      worst: Math.max(lr, tb),
-      lrLabel: fmt(lr), tbLabel: fmt(tb),
-      label: fmt(Math.max(lr, tb))
+      lr: lr, tb: tb, worst: worst,
+      lrLabel: fmt1(lShare), tbLabel: fmt1(tShare),
+      label: fmt1(worst),
+      worstAxis: lr >= tb ? 'L/R' : 'T/B'
     };
   };
 
   // Highest grade whose centering tolerance the measured worst-axis % satisfies (<= band).
   // backWorst may be null (back not photographed / SGC front-only) -> back is not constrained.
+  // frontWorst null means NO measurement — that is null out, never a passing grade.
   GR.centeringGrade = function (company, frontWorst, backWorst, cfg) {
+    if (frontWorst == null) return null;
     var bands = (cfg.centering || {})[company] || [];
     for (var i = 0; i < bands.length; i++) {
       var band = bands[i];
@@ -191,6 +202,7 @@
   //   confidence  // 0..1 overall
   // }
   GR.predictAll = function (input, cfg) {
+    if (input == null || input.centeringFrontWorst == null) return null; // measure first — a missing front is not a 10
     var conf = input.confidence == null ? 0.6 : input.confidence;
     var companies = Object.keys(cfg.companies || {});
     var perCompany = {};

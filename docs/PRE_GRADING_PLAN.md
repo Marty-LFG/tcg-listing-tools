@@ -377,6 +377,28 @@ corrected to a 0.094° residual, skew confidence rising 0.48 → 0.85 once strai
 across edges, not mean, because on a white lid one side can trace the sleeve while the others
 trace the card — one liar must not tilt the answer.
 
+**Centering-math audit (owner-requested, 2026-08-22 evening).** An adversarial audit of the
+whole centering chain confirmed the core spec — every displayed pair sums to 100 and derives
+purely from the two border thicknesses of its axis; canvas scaling, export round-trips, mm
+conversion and the analyzer's exclusive-edge bookkeeping carry **no systematic off-by-one**
+(a hypothetical 1px would be ~1.1pp on a 2mm border at 600 dpi). It also surfaced four real
+defects, all fixed the same evening: (1) integer labels rounded 54.5 and 55.4 to the same
+"55/45" while the bands graded them differently — labels are now one-decimal so the deciding
+digit is visible; (2) untouched default guides fabricated a perfect "50/50 · 10-capable" —
+guides now carry a third `default` state that refuses to measure until auto-seeded or
+human-dragged (full-art auto-seeds without an inner frame stay `default` too, and the
+back-confidence penalty keys off the measurement, not the photo); (3) the pair printed under
+"L/R"/"T/B" was max-first, pinning the fat side to the wrong letter half the time — axis
+labels are now physical order (left/top share first) while the worst quote stays
+larger-side-first with its axis named, e.g. "worst 64.1/35.9 (T/B)"; (4) the
+10-capable/~9 pills hardcoded 55/60, drifting from the editable config and BGS's 51 — they
+now derive from `GR.centeringGrade` over the same bands the prediction uses, back included.
+Also fixed from the audit's nitpicks: per-axis canvas scale factors, one-decimal guide
+export (reopen drift at the 55 boundary), negative-thickness clamp in `centeringPct`, and
+null-measurement guards (`centeringGrade`/`predictAll` return null, never a passing grade).
+A 10×10×10×10 property sweep now locks pair-sums-to-100, physical label order, and the
+boundary fix in `test/unit/grade-rules.test.mjs`.
+
 Unchecked items — none blocks use, all should be closed deliberately:
 
 - [x] ~~**Tomlov microscope corner shots, live.**~~ **DONE 2026-08-22** — owner ran the full

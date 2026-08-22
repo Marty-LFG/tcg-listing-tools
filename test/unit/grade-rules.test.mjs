@@ -25,14 +25,14 @@ test('GradeRules loaded from the classic script', () => {
 test('centeringPct: symmetric, off-centre and zero-sum borders', () => {
   const sym = GR.centeringPct({ l: 5, r: 5, t: 5, b: 5 })
   assert.equal(sym.worst, 50)
-  assert.equal(sym.label, '50/50')
+  assert.equal(sym.label, '50.0/50.0')   // one-decimal labels since the boundary audit
 
   const off = GR.centeringPct({ l: 6, r: 4, t: 5, b: 5 })
   close(off.lr, 60)
   close(off.tb, 50)
   close(off.worst, 60)             // worst axis is what caps the grade
-  assert.equal(off.lrLabel, '60/40')
-  assert.equal(off.label, '60/40')
+  assert.equal(off.lrLabel, '60.0/40.0')  // physical order: left share first
+  assert.equal(off.label, '60.0/40.0')
 
   // a zero-sum axis (border not measurable) degrades to a neutral 50, never NaN
   const zero = GR.centeringPct({ l: 0, r: 0, t: 3, b: 1 })
@@ -216,4 +216,123 @@ test('sideFromCorners / sideFromEdges: min drives value (worst corner grades), m
   assert.equal(GR.sideFromEdges({ top: null, right: null, bottom: null, left: null }), null)
   assert.deepEqual(GR.sideFromEdges({ top: 10, right: 9.5, bottom: null, left: null }), { value: 9.5, mean: 9.75, count: 2 })
   assert.deepEqual(GR.sideFromEdges({ top: 7, right: 8, bottom: 9, left: 10 }), { value: 7, mean: 8.5, count: 4 })
+})
+
+// ---------------------------------- centering percentages sum to 100 (property)
+// LOCKS the owner's spec: "centering must be a percentage adding to 100 based on the
+// thickness L/R, T/B." Numerics: each axis reports larger-side% = max/(l+r or t+b) * 100.
+// Labels (post-audit): AXIS labels are PHYSICAL order at one decimal — left/top share first,
+// so "L/R 40.0/60.0" means the left border is the thin one — while the WORST label stays
+// larger-side-first, the way tolerances are quoted ("55/45 or better").
+import { describe } from 'node:test' // hoisted by ESM — declared here to keep the file append-only
+
+describe('centering percentages sum to 100 (property)', () => {
+  const GRID = [0.5, 1, 2, 2.3, 2.5, 3.7, 5, 6.2, 9.3, 12]
+
+  const d1 = (x) => Math.round(x * 10) / 10
+
+  // "40.0/60.0" -> [40, 60]; fails loudly on anything that is not 1dp/1dp
+  function parseLabel(label, tag) {
+    const m = /^(\d+(?:\.\d)?)\/(\d+(?:\.\d)?)$/.exec(label)
+    assert.ok(m, `${tag}: label ${JSON.stringify(label)} must be one-decimal/one-decimal`)
+    return [Number(m[1]), Number(m[2])]
+  }
+
+  function checkAxis(pct, label, first, second, tag) {
+    close(pct, Math.max(first, second) / (first + second) * 100, `${tag}: pct ${pct}`)
+    assert.ok(pct >= 50, `${tag}: larger-side % ${pct} is never under 50`)
+    const [a, b] = parseLabel(label, tag)
+    assert.ok(Math.abs(a + b - 100) < 1e-9, `${tag}: label ${label} must sum to 100`)
+    // physical order: the first number is the LEFT (or TOP) border's share
+    close(a, d1(first / (first + second) * 100), `${tag}: label ${label} first number is the l/t share`)
+  }
+
+  test('sweep: every (l,r) x (t,b) grid combo yields max/sum axes and 100-sum physical labels', () => {
+    for (const l of GRID) for (const r of GRID) for (const t of GRID) for (const b of GRID) {
+      const out = GR.centeringPct({ l, r, t, b })
+      const tag = `l=${l} r=${r} t=${t} b=${b}`
+      checkAxis(out.lr, out.lrLabel, l, r, tag)
+      checkAxis(out.tb, out.tbLabel, t, b, tag)
+      assert.equal(out.worst, Math.max(out.lr, out.tb), `${tag}: worst is the max axis`)
+      // worst label is larger-side-first and belongs to the axis worstAxis names
+      const [hi, lo] = parseLabel(out.label, tag + ' worst')
+      assert.ok(Math.abs(hi + lo - 100) < 1e-9, `${tag}: worst label sums to 100`)
+      close(hi, d1(out.worst), `${tag}: worst label leads with the worst percentage`)
+      assert.equal(out.worstAxis, out.lr >= out.tb ? 'L/R' : 'T/B', `${tag}: worstAxis names the max axis`)
+    }
+  })
+
+  test('anchors: 6/4 leads left; 4/6 flips the axis label but not the worst; near-50 shows its decimal', () => {
+    const a = GR.centeringPct({ l: 6, r: 4, t: 5, b: 5 })
+    close(a.lr, 60) // exactly 60, not 60-ish
+    assert.equal(a.lrLabel, '60.0/40.0')   // left is the fat side, physical = worst-first here
+
+    const flipped = GR.centeringPct({ l: 4, r: 6, t: 5, b: 5 })
+    close(flipped.lr, 60)                  // same magnitude of off-centre…
+    assert.equal(flipped.lrLabel, '40.0/60.0') // …but the label shows WHICH side is thin
+    assert.equal(flipped.label, '60.0/40.0')   // while the worst quote stays larger-side-first
+    assert.equal(flipped.worstAxis, 'L/R')
+
+    const b = GR.centeringPct({ l: 5, r: 5, t: 2.3, b: 2.5 })
+    close(b.tb, 2.5 / 4.8 * 100) // 52.083…
+    assert.equal(b.tbLabel, '47.9/52.1')   // top share first, physical order
+
+    const c = GR.centeringPct({ l: 7.0, r: 7.1, t: 5, b: 5 })
+    close(c.lr, 7.1 / 14.1 * 100) // 50.354…
+    assert.equal(c.lrLabel, '49.6/50.4')   // one decimal keeps the not-quite-centred visible
+  })
+
+  test('degenerates: zero-sum axis is a neutral 50; one-sided is 100/0; negatives clamp to 0', () => {
+    const zz = GR.centeringPct({ l: 0, r: 0, t: 0, b: 0 })
+    close(zz.lr, 50)
+    close(zz.tb, 50)
+    assert.equal(zz.label, '50.0/50.0')
+
+    const oneSided = GR.centeringPct({ l: 0, r: 3, t: 5, b: 5 })
+    close(oneSided.lr, 100)
+    assert.equal(oneSided.lrLabel, '0.0/100.0') // physical: the LEFT border is the missing one
+    assert.equal(oneSided.label, '100.0/0.0')
+
+    // negative thickness clamps to 0 — a public-API caller can no longer coax out "125/-25"
+    const neg = GR.centeringPct({ l: -1, r: 5, t: 5, b: 5 })
+    close(neg.lr, 100)
+    assert.equal(neg.lrLabel, '0.0/100.0')
+  })
+
+  test('unit invariance: the same borders in px, mm or any consistent unit give identical percentages', () => {
+    const K = 3.7
+    for (const l of GRID) for (const r of GRID) {
+      const base = GR.centeringPct({ l, r, t: r, b: l })
+      const scaled = GR.centeringPct({ l: l * K, r: r * K, t: r * K, b: l * K })
+      const tag = `l=${l} r=${r} x${K}`
+      close(base.lr, scaled.lr, `${tag}: lr`)
+      close(base.tb, scaled.tb, `${tag}: tb`)
+      close(base.worst, scaled.worst, `${tag}: worst`)
+      assert.equal(base.label, scaled.label, `${tag}: label`)
+    }
+  })
+
+  test('rounding boundary FIXED: 54.5 and 55.4 now display differently, matching their grades', () => {
+    // Before the audit, integer labels showed BOTH of these as "55/45" while centeringGrade
+    // (which consumes the unrounded worst) put them in different bands. One-decimal labels
+    // make the digit the decision uses visible; residual divergence shrinks to the second
+    // decimal (55.04 shows "55.0" and barely fails <=55), which is beneath measurement noise.
+    const justUnder = GR.centeringPct({ l: 54.5, r: 45.5, t: 50, b: 50 }) // worst 54.5 (+IEEE dust)
+    const justOver = GR.centeringPct({ l: 55.4, r: 44.6, t: 50, b: 50 }) // worst 55.4 (-IEEE dust)
+    close(justUnder.worst, 54.5)
+    close(justOver.worst, 55.4)
+    assert.equal(justUnder.label, '54.5/45.5')
+    assert.equal(justOver.label, '55.4/44.6')
+    assert.notEqual(justUnder.label, justOver.label, 'different grades must not share a display')
+    const psa = cfg.centering.PSA
+    assert.equal(psa[0].front, 55, 'boundary anchor assumes the shipped PSA top band of 55')
+    assert.equal(GR.centeringGrade('PSA', justUnder.worst, null, cfg), psa[0].grade) // 54.5 passes 55
+    assert.equal(GR.centeringGrade('PSA', justOver.worst, null, cfg), psa[1].grade) // 55.4 falls to the next band
+  })
+
+  test('no-measurement guards: null front is null out, never a passing grade', () => {
+    assert.equal(GR.centeringGrade('PSA', null, null, cfg), null)
+    assert.equal(GR.predictAll(null, cfg), null)
+    assert.equal(GR.predictAll({ centeringFrontWorst: null, corners: { front: 9 }, edges: { front: 9 }, surface: { front: 9 } }, cfg), null)
+  })
 })
