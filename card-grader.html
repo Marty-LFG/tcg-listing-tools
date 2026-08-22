@@ -900,11 +900,18 @@ function globalConfidence(){
 function ladVal(label){ var l=_card&&_card.pc&&_card.pc.ladder; var c=l&&l[label]; return c!=null?c/100:null; }
 function rawUSD(){ var p=_card&&_card.pc&&_card.pc.prices; if(p&&p.ungraded!=null)return p.ungraded/100; return ladVal('Ungraded'); }
 function firstNonNull(){ for(var i=0;i<arguments.length;i++){ if(arguments[i]!=null) return arguments[i]; } return null; }
-function valueAtGradeUSD(company, grade){
+function valueAtGradeUSD(company, grade, label){
   // PCG has no PriceCharting ladder — it falls through to the PSA 10 → 9.5 → 9 chain, which
   // OVERSTATES a PCG slab's realised price (AU market discounts local slabs vs PSA); the
   // config carries a disclaimer for exactly this.
-  if(grade>=10){ var m={PSA:'PSA 10',BGS:'BGS 10',CGC:'CGC 10',PCG:'PCG 10',TAG:'TAG 10'};
+  if(grade>=10){
+    // the tiered 10s have their own market rows: a Black Label or CGC Pristine slab is not
+    // priced like the base 10 — use the tier's ladder row when the prediction claims the tier
+    if(label){
+      if(company==='BGS'&&label.indexOf('Black')>=0){ var vB=ladVal('BGS 10 Black'); if(vB!=null) return vB; }
+      if(company==='CGC'&&label.indexOf('Pristine')>=0){ var vP=ladVal('CGC 10 Pristine'); if(vP!=null) return vP; }
+    }
+    var m={PSA:'PSA 10',BGS:'BGS 10',CGC:'CGC 10',PCG:'PCG 10',TAG:'TAG 10'};
     return firstNonNull(ladVal(m[company]), ladVal('PSA 10'), ladVal('Grade 9.5'), ladVal('Grade 9')); }
   if(grade>=9.5) return firstNonNull(ladVal('Grade 9.5'), ladVal('BGS 9.5'), ladVal('Grade 9'));
   if(grade>=9) return firstNonNull(ladVal('Grade 9'), ladVal('PSA 9'));
@@ -996,7 +1003,9 @@ function renderReport(pred, rf, rb){
   var econ={}, bestCo=null, bestProfit=-Infinity, raw=rawUSD();
   order.forEach(function(c){
     var p=pred.perCompany[c]; var tier=cheapestTier(c); var fee=tier?tier.price:30;
-    var values={}; p.probabilities.forEach(function(d){ values[String(d.grade)]=valueAtGradeUSD(c,d.grade); });
+    // the predicted grade carries its tier label (Black Label / CGC Pristine); other grades in
+    // the distribution price at their base ladder row — the tier there is unknowable
+    var values={}; p.probabilities.forEach(function(d){ values[String(d.grade)]=valueAtGradeUSD(c,d.grade,d.grade===p.grade?p.gradeLabel:null); });
     var e=GradeRules.gradeEconomics(p, values, fee, raw, CFG.marketplaceFeePct);
     e.tier=tier; econ[c]=e;
     if(e.ok && e.profitVsRaw>bestProfit){ bestProfit=e.profitVsRaw; bestCo=c; }
@@ -1043,7 +1052,7 @@ function renderReport(pred, rf, rb){
     H+='<div class="small" style="margin-bottom:8px;">Raw now: <b>'+usd(raw)+'</b> (sell raw nets '+usd(raw*(1-(CFG.marketplaceFeePct||13)/100))+')</div>';
     H+='<table class="predtable"><tr><th>Co.</th><th>@ grade</th><th>Fee · days</th><th>Exp. value</th><th>vs raw</th><th>Verdict</th></tr>';
     order.forEach(function(c){
-      var p=pred.perCompany[c], e=econ[c]; var atVal=valueAtGradeUSD(c,p.grade);
+      var p=pred.perCompany[c], e=econ[c]; var atVal=valueAtGradeUSD(c,p.grade,p.gradeLabel);
       H+='<tr><td><b>'+esc(co[c].label.split(' ')[0])+'</b></td><td class="small">'+gradeStr(p.grade)+' → '+usd(atVal)+'</td>';
       if(e.ok){ var vc=e.verdict==='Submit'?'Submit':e.verdict==='Borderline'?'Borderline':'bad';
         H+='<td class="small mono">'+usd(e.fee)+' · '+(e.tier?e.tier.turnaroundDays+'d':'?')+'</td>';
@@ -1190,7 +1199,7 @@ async function addToInventory(){
   if(!_reportId){ await saveReport(); if(!_reportId){ toast('Save failed — not queued'); return; } }
   var co=L.bestCo||'PSA', p=L.pred&&L.pred.perCompany?L.pred.perCompany[co]:null;
   var tier=(typeof cheapestTier==='function')?cheapestTier(co):null;
-  var valUSD=(p&&typeof valueAtGradeUSD==='function')?valueAtGradeUSD(co,p.grade):null;
+  var valUSD=(p&&typeof valueAtGradeUSD==='function')?valueAtGradeUSD(co,p.grade,p.gradeLabel):null;
   var body={
     game:'pokemon', identity_key:_card.id, name:_card.name, set_name:_card.set,
     number:_card.number, variant:_card.finish||null, language:'EN',
@@ -1258,7 +1267,7 @@ async function downloadPDF(){
   order.forEach(function(c){ pageCheck(); var p=L.pred.perCompany[c], e=L.econ[c];
     var t=co[c].label.split(' ')[0]+' '+gradeStr(p.grade)+'  ('+p.gradeLabel+')'+(p.subgrades?('  ['+gradeStr(p.subgrades.centering)+'/'+gradeStr(p.subgrades.corners)+'/'+gradeStr(p.subgrades.edges)+'/'+gradeStr(p.subgrades.surface)+']'):'');
     line((c===L.bestCo?'★ ':'  ')+t+'   ·   '+p.confidence+' conf',9,(c===L.bestCo?'bold':'normal'));
-    if(e&&e.ok) line('     @grade '+usd(valueAtGradeUSD(c,p.grade))+'  ·  fee '+usd(e.fee)+'/'+(e.tier?e.tier.turnaroundDays+'d':'?')+'  ·  EV '+usd(e.expectedValue)+'  ·  vs raw '+(e.profitVsRaw>=0?'+':'')+usd(e.profitVsRaw)+'  ·  '+e.verdict,8,'normal',[110,110,130]);
+    if(e&&e.ok) line('     @grade '+usd(valueAtGradeUSD(c,p.grade,p.gradeLabel))+'  ·  fee '+usd(e.fee)+'/'+(e.tier?e.tier.turnaroundDays+'d':'?')+'  ·  EV '+usd(e.expectedValue)+'  ·  vs raw '+(e.profitVsRaw>=0?'+':'')+usd(e.profitVsRaw)+'  ·  '+e.verdict,8,'normal',[110,110,130]);
   });
   // per-corner AI grid, when the pass returned granular scores
   var g=_ai&&_ai.granular;
