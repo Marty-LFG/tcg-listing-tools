@@ -249,6 +249,7 @@
     <div class="colhead" id="padModalTitle" style="font-size:12px;margin:0;">Centering</div>
     <div class="ro" id="roFull" style="margin:0;font-size:13.5px;"></div>
     <div style="display:flex;align-items:center;gap:6px;" title="Fine-rotate the image so the card sits square under the guides. ←/→ keys work too (Shift = coarser). Done bakes the straightened image into the shot.">
+      <button class="btn" style="padding:4px 9px;font-size:11px;" id="autoStraightBtn" onclick="autoStraighten()" title="Measure the card's skew from its own edges and set the exact correction — hit Done to bake it">⌖ Auto</button>
       <button class="btn" style="padding:4px 9px;font-size:11px;" onclick="fullRotBy(-0.1)">↶ 0.1°</button>
       <input type="range" id="rotSlider" min="-5" max="5" step="0.05" value="0" style="width:170px;accent-color:var(--gold);" oninput="fullRotSet(parseFloat(this.value))">
       <button class="btn" style="padding:4px 9px;font-size:11px;" onclick="fullRotBy(0.1)">0.1° ↷</button>
@@ -569,7 +570,7 @@ async function doScan(side){
     if(res.analysis&&res.analysis.outer){
       seedGuides(side, res.analysis, img.w, img.h);
       st.className='status ok';
-      st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi'+(res.rotated?' (auto-rotated to portrait)':'')+' — centering guides auto-seeded ('+(res.analysis.inner?'edge + inner frame':'card edge only — set the inner frame by hand')+'). Confirm them in step 3.';
+      st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi'+(res.rotated?' (auto-rotated to portrait)':'')+(res.straightened?' (auto-straightened '+res.straightened.toFixed(2)+'°)':'')+' — centering guides auto-seeded ('+(res.analysis.inner?'edge + inner frame':'card edge only — set the inner frame by hand')+'). Confirm them in step 3.';
     } else {
       st.className='status ok';
       st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi.'+(res.analysis===null?'':' Auto-centering found no card — drag the guides manually.');
@@ -722,6 +723,25 @@ function fullRotSet(v){
   $('rotSlider').value=v; $('rotVal').textContent=v.toFixed(2)+'°';
 }
 function fullRotBy(d){ if(_fullPad) fullRotSet((_fullPad.getAngle()||0)+d); }
+// Ask the analyzer for the card's measured tilt and set the exact correction on the slider.
+// Nothing is baked here — the human sees the straightened preview and Done commits it.
+async function autoStraighten(){
+  if(!(_fullPad&&_fullSide))return;
+  var shot=_fullSide==='front'?primaryFront():primaryBack(); if(!shot)return;
+  var btn=$('autoStraightBtn'); btn.disabled=true; btn.textContent='⌖ measuring…';
+  try{
+    var r=await fetch('/api/scan/analyze',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({image:{dataB64:shot.b64,mediaType:shot.media}})});
+    var res=await r.json();
+    if(res&&res.ok&&res.analysis&&res.analysis.skewDeg!=null){
+      var corr=-res.analysis.skewDeg;
+      if(Math.abs(corr)<0.03){ fullRotSet(0); toast('Already square — measured '+res.analysis.skewDeg.toFixed(2)+'°'); }
+      else { fullRotSet(Math.max(-5,Math.min(5,corr))); toast('Measured '+res.analysis.skewDeg.toFixed(2)+'° skew — correction set. Done bakes it.'); }
+    } else {
+      toast(res&&res.error==='sharp_unavailable'?'Analyzer unavailable on this install':'Could not measure the skew — straighten by eye with the slider');
+    }
+  }catch(e){ toast('Skew measurement failed'); }
+  btn.disabled=false; btn.textContent='⌖ Auto';
+}
 function closeFullPad(commit){
   if(commit&&_fullPad&&_fullSide){
     var g=_fullPad.exportGuides();

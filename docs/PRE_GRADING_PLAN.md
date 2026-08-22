@@ -366,6 +366,16 @@ consumer — AI pass, pins, PDF, persistence — reads the shot's bytes, so a pr
 rotation would lie to all of them; rotation is about the image centre so dimensions and
 placed guides survive exactly). This answers the competitor's two-handles-per-edge tilted
 guides with a different mechanism: straighten the image once instead of tilting four lines.
+And (6) **the straightening measures itself**: the analyzer traces each outer edge at 16
+stations, least-squares fits a line per edge, and reports the median angle as
+`analysis.skewDeg` (visual-CW positive; rotate by −skewDeg to straighten). The scan route
+auto-deskews when 0.05° ≤ |skew| ≤ 3.5° and confidence ≥ 0.3, re-analyzes, then crops — so
+scans arrive with truly vertical sides, zero clicks. The full-screen editor's ⌖ Auto button
+runs the same measurement for uploads/reopened shots and sets the slider for the human to
+bake. Proven on the real sleeved SAR scan: +1.401° measured (2 edges agreeing within 0.05°),
+corrected to a 0.094° residual, skew confidence rising 0.48 → 0.85 once straight. Median
+across edges, not mean, because on a white lid one side can trace the sleeve while the others
+trace the card — one liar must not tilt the answer.
 
 Unchecked items — none blocks use, all should be closed deliberately:
 

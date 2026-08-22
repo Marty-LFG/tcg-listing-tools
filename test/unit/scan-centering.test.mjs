@@ -153,3 +153,45 @@ describe('analyzeCardImage', { skip: sharp ? false : 'sharp unavailable' }, () =
     assert.equal(typeof res.message, 'string');
   });
 });
+
+describe('skew measurement', { skip: sharp ? false : 'sharp unavailable' }, () => {
+  // sharp .rotate(deg > 0) is visual clockwise — the same convention skewDeg reports, so a scan
+  // rotated by +1.2° must measure skewDeg ≈ +1.2 and the caller straightens with rotate(-1.2).
+  const tilted = async (deg) => {
+    const flat = await scan({
+      w: 1400, h: 1800, bg: 0,
+      card: { left: 200, top: 200, w: 1000, h: 1397, tone: 255, art: { l: 40, t: 30, r: 24, b: 34, tone: 120 } },
+    });
+    if (!deg) return flat;
+    return sharp(flat).rotate(deg, { background: grey(0) }).png().toBuffer();
+  };
+
+  it('a square card measures ~0°', async () => {
+    const res = await callAnalyze(await tilted(0));
+    assert.equal(res.ok, true, res.ok ? '' : `${res.error}: ${res.message}`);
+    assert.notEqual(res.analysis.skewDeg, null, 'skew must be measurable on clean edges');
+    within(res.analysis.skewDeg, 0, 0.05, 'skewDeg (square)');
+  });
+
+  it('a card tilted +1.2° measures +1.2° (CW-positive convention)', async () => {
+    const res = await callAnalyze(await tilted(1.2));
+    assert.equal(res.ok, true, res.ok ? '' : `${res.error}: ${res.message}`);
+    assert.notEqual(res.analysis.skewDeg, null);
+    within(res.analysis.skewDeg, 1.2, 0.15, 'skewDeg (+1.2)');
+    assert.ok(res.analysis.skewConf > 0.4, `skewConf ${res.analysis.skewConf}`);
+    assert.match(res.analysis.note, /skew/i);
+  });
+
+  it('a card tilted −0.6° measures the sign correctly', async () => {
+    const res = await callAnalyze(await tilted(-0.6));
+    assert.equal(res.ok, true, res.ok ? '' : `${res.error}: ${res.message}`);
+    assert.notEqual(res.analysis.skewDeg, null);
+    within(res.analysis.skewDeg, -0.6, 0.15, 'skewDeg (−0.6)');
+  });
+
+  it('bgLevel reports the backing tone (rotation fill for the corrector)', async () => {
+    const res = await callAnalyze(await tilted(0));
+    assert.equal(res.ok, true);
+    assert.ok(res.analysis.bgLevel <= 20, `black backing must report a dark bgLevel, got ${res.analysis.bgLevel}`);
+  });
+});
