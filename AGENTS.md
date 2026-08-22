@@ -236,6 +236,16 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `lib/certlookup.mjs` | Multi-company cert-lookup registry powering `/api/cert`. Dispatches to a per-company provider (PSA only today) else returns `{matched:false, verifyUrl}` (official cert page) for manual entry. Reads `data/grading-companies.json`. The single extension point for adding new company lookups. |
 | `lib/psa.mjs` | PSA public cert-verification provider (`lookupCert`) used by `lib/certlookup.mjs`. Needs `PSA_API_TOKEN`; `{matched:false}` on missing token/any failure. Field mapping UNVERIFIED against a live token. |
 | `data/grading-companies.json` | Inventory-facing grading-company registry (12: PSA/BGS/CGC/SGC/TAG majors, plus ARK, TCG Grading, Card Grading Australia, PCG (Western Premier Card Grading), PCGCN (unrelated Chinese PCG, pcgcard.cn), EMC (Encapsulated Memories Company), JBH (Joyful Box House)): label, scale, cert format, official `certUrl` (nullable when no public page), `lookup` flag, region. Add a company here by appending a row — dropdowns are data-driven. **Broader** than the pre-grader's tolerance set in `grading.config.json` (which stays PSA/BGS/CGC/SGC/TAG — don't add companies there without real tolerances, Golden Rule 4). Shared by server (`certlookup.mjs`) + client (`inventory.html`). |
+| `card-grader.html` | **Pre-grading tool** ("is this raw card worth a grading fee?"). Guided 12-shot capture wizard (flatbed scan / microscope / camera / upload), centering pad with draggable guides, AI condition pass, per-company grade prediction, TAG-style annotated report (defect pins + per-corner grid) + PDF, saved reports, and the "To pipeline" handoff into §13's submissions. See §21. |
+| `grade-rules.js` | Pure, transparent grade-prediction engine (`window.GradeRules`), loaded like `extras.js`. Every tolerance/weight comes from `data/grading.config.json` — data, never hardcoded logic. `sideFromCorners`/`sideFromEdges` aggregate the v2 granular cells (min + mean; all-null → null). Config-table-driven unit tests in `test/unit/grade-rules.test.mjs`. A documented approximation, never the companies' real math (GR4). |
+| `lib/grader.mjs` | `/api/grade` AI vision condition pass (Anthropic/OpenAI dual provider). Schema v2: up to 12 labeled shots, per-corner + per-edge findings per side, defects pinned `{imageRef,x,y}`; `normalize()` still accepts the v1 flat shape (flat aggregates = MIN of the granular cells). See §21. |
+| `lib/scan.mjs` | `scanPlugin` → `/api/scan`: flatbed scanning for the pre-grader (WIA via `scripts/wia-scan.ps1`) — capability probe, busy lock, auto-centering + confidence-gated crop. See §21. |
+| `lib/scan-centering.mjs` | sharp-based centering analyzer (lazy `getSharp`): outer card edge via ring-median background + run-gated row/col profiling + a 63:88 aspect sanity check; inner frame via the strongest sustained gradient 2–12% inward over the central 60% of each edge; per-edge confidence; full-art → `inner:null`; never throws. |
+| `scripts/wia-scan.ps1` | The WIA COM scan helper (`powershell.exe` 5.1, `-NonInteractive`). Contract: exactly ONE JSON line on stdout; BMP transfer → `ImageProcess` Convert → PNG; **resolution set before extent** (the driver's max extent scales with the DPI already set); SaveFile target pre-deleted; never `WIA.CommonDialog`. |
+| `lib/pregrade.mjs` | `pregradePlugin` → `/api/pregrade`: saved pre-grade reports — CRUD + per-shot image upload + immutable content-addressed file serving. See §21. |
+| `lib/pregrade-store.mjs` | The pregrade store: `pregrade_reports` / `pregrade_images` (`UNIQUE(report_id,shot_id)`, cascade) + the content-addressed byte store `data/pregrade-images/` (sha-named, refcounted delete). |
+| `data/grading.config.json` | The pre-grader's editable company data: tolerances, weights, grade steps, fees + turnaround. **PSA/BGS/CGC/SGC/TAG only** — narrower than `data/grading-companies.json` on purpose; don't add a company here without real tolerances (GR4). Fees `asOf` 2026-06-24 (refresh deferred). |
+| `data/pregrade-images/` | Content-addressed capture bytes for saved reports (gitignored). **NOT regenerable** — the photos exist nowhere else; backup coverage is an open decision (§21). |
 | `data/tracker.db` | SQLite price history (gitignored, WAL). Created on first server boot. |
 | `data/tracker.config.json` | Tracker cadence + signal thresholds (editable). |
 | `lib/telegram.mjs` | Dependency-free Telegram Bot client (global `fetch` only): `sendMessage`+inline buttons, `editMessageText`, `answerCallbackQuery`, and a singleton HMR-guarded **long-poll loop** (NAT-friendly — no webhook). Powers the repricer's alerts + one-tap Approve/Skip. Token is `.env`-only, never reaches the browser. See §15. |
@@ -290,6 +300,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/ebay` | (middleware) | Mints+caches an **OAuth2 client-credentials** app token; injects `Bearer` + `X-EBAY-C-MARKETPLACE-ID`. Funko Browse pricing + live name search + Taxonomy item-specifics. **Production keys only** (`SBX-` sandbox keys fail the token mint with `invalid_client`; the middleware surfaces the real error instead of a blind 502). |
 | `/api/pc` | (middleware) | **Keyless** PriceCharting scrape (Pokémon graded/raw/pop) via `lib/pricecharting.mjs`. `GET /api/pc/lookup?name=&number=&set=&id=`. Display-only; always returns `{matched:false}` on failure (Golden Rule 7). Optional `PRICECHARTING_TOKEN` switches it to the official API. |
 | `/api/grade` | (middleware) | **POST-only** AI vision condition pass for `card-grader.html` (`lib/grader.mjs`, Anthropic/OpenAI). Returns `ok:false` (never 500) so the tool degrades to centering-only. |
+| `/api/scan` | `scanPlugin` (`lib/scan.mjs`) | Flatbed scanning for `card-grader.html`. `GET /` = capability probe (live WIA enumeration cached 60s, `SCANNER_ENABLED=false` kill switch, `analyzeAvailable`) — a box with no scanner answers `enabled:false`, never an error (GR7). `POST /` `{side,dpi,analyze?}` runs one scan (module-level 409 busy lock, 90s timeout, temp cleanup in `finally`, auto-centering + confidence-gated crop). `POST /analyze` = centering analysis on an image the client already holds (uploads). See §21. |
+| `/api/pregrade` | `pregradePlugin` (`lib/pregrade.mjs`) | Saved pre-grade reports. `POST /` create · `POST /:id/images` (ONE image per request, 28MB cap) · `GET /` list (LEFT-JOINs the linked submission's `submission_id` + `actual_grade`) · `GET/PATCH /:id` · `DELETE /:id` (refcounted byte unlink) · `GET /file/<sha>.<ext>` (immutable content-addressed image bytes). See §21. |
 | `/api/cert` | (middleware) | **Multi-company** graded-slab cert lookup (`lib/certlookup.mjs`) for the inventory add form. `GET /api/cert?company=PSA&cert=…` → `{matched, identity, grade, company, verifyUrl, …}`; `GET /api/cert/providers` → the company registry. PSA auto-fills (`PSA_API_TOKEN`); every other company has no public API ⇒ `{matched:false, verifyUrl}` (official page, or null) + manual entry (Golden Rule 7). |
 | `/api/inventory` | (plugin) | Graded-card **inventory** API (`lib/inventory.mjs`): `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `POST /items/:id/refresh-value` (PriceCharting graded value), `POST /items/:id/value-manual`, `POST /items/:id/fetch-image` (resolve+cache card image), `GET /items/:id/valuations`, `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote`, `GET /summary`, `GET /export`. See §13. |
 | `/api/print` | (middleware) | Streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `POST {jobs, speed?, density?}` — top-level `speed`/`density` (one per batch) are clamped and merged over config before `buildJob`. `GET` returns `{enabled,dpi,ip,page,offXmm,offYmm,speed,density}` so `shipping-label.html` / `pdf-print.html` can enable Print, pick rasterise DPI, and seed the Darkness/Speed steppers. **`offXmm`/`offYmm` are the ADDRESS-label calibration only** — `shipping-label.html` and `orders.html` both resolve it the same way (localStorage `ship_offx`/`ship_offy` wins, else this GET) and apply it to the printed raster only, never the preview or the PNG fallback; their 5mm margin absorbs the shift. `pdf-print.html` deliberately ignores it and keeps its own nudge (localStorage `pdfprint_offx`/`offy`, default 0) because dropped PDFs are often full-bleed, and its Fit modes shrink the page to reserve room so a nudge can never clip ink. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
@@ -1967,3 +1979,94 @@ that `vite.config.js` imports is a watched config dependency, so Vite restarts t
 and any in-flight test dies on a closed socket. Write a throwaway file nothing imports — invisible to
 Vite's watcher, still visible to the registry's walk. `test/integration/listing-image-lab.test.mjs`
 does exactly that.
+
+---
+
+## 21. Pre-grader (`card-grader.html`) — predict the grade before paying for one
+
+The question the tool answers is "is this raw card worth a grading fee?". Capture the card
+(flatbed scan, microscope, camera or plain upload), measure centering **geometrically**, run an AI
+condition pass over corners/edges/surface, and get a per-company predicted grade (`grade-rules.js`
+driven by `data/grading.config.json` — PSA/BGS/CGC/SGC/TAG), a TAG-style annotated report
+(numbered severity-colored defect pins on the images, a per-corner grid, a /1000 breakdown
+labeled a **house approximation** — explicitly not TAG's DIG), and a PDF. Pokémon-first; other
+games work through the manual identity fields. A prediction is an ESTIMATE and is treated as one
+everywhere (GR4): "To pipeline" creates a grading **submission** (§13), never a graded item.
+
+**The 12-shot wizard.** Twelve labeled slots in four groups — `scan-front`/`scan-back`,
+`mic-corner-{front,back}-{tl,tr,bl,br}`, `surface-front`/`surface-back` — with current-step
+highlight, skip, and auto-advance; drag-drop coexists. Corner shots are framed to include the
+**two adjacent half-edges**, so edges need no shots of their own. Scan buttons appear only when
+`GET /api/scan` says so (capability-gated, with a dpi picker); the camera choice is remembered
+**per shot kind** (`localStorage` `grader_cam_by_kind`) because the Tomlov microscope enumerates
+as an ordinary UVC videoinput — pick it once for corners and the webcam stays on surface shots.
+Resolution is split: originals keep ≤2500px (camera) or native (scans); the copies sent to the AI
+are re-downscaled to 1568.
+
+**`/api/scan` and the WIA script contract.** `scripts/wia-scan.ps1` is the only thing that talks
+to the scanner: `powershell.exe` 5.1 WIA COM (pwsh 7 untested — the pin is deliberate), emitting
+**exactly one JSON line on stdout** — the route parses nothing else. Transfer is BMP →
+`ImageProcess` Convert → PNG (direct-to-PNG transfer is not reliable across drivers), SaveFile's
+target is pre-deleted, and it never opens `WIA.CommonDialog`. **Resolution is set before extent**:
+the driver's extent `SubTypeMax` scales with the DPI already set, so setting extent first clamps
+against the wrong maximum. The route holds a module-level lock (second scan → 409
+`scanner_busy`), times out at 90s, and cleans its temp file in a `finally`. Verified live on an
+Epson Perfection V39 II: 160×220mm @ 600dpi → 3780×5197 in ~23s; 110×140mm @ 300dpi ~9s /
+600dpi ~15.7s; driver max 1200dpi.
+
+**Auto-centering + the confidence-gated crop.** The scan region defaults to **160×220mm** because
+nobody places a card at the platen's exact corner — the first real card sat ~35mm off it and a
+110×140 window cut it off. `lib/scan-centering.mjs` finds the outer edge (ring-median background
++ run-gated row/col profiling + a 63:88 aspect sanity check) and the inner frame (strongest
+sustained gradient 2–12% inward over the central 60% of each edge), reports per-edge confidence,
+and yields `inner:null` on a full-art card rather than inventing a frame. When
+`confidence.outer ≥ 0.5` the route crops to the card + 12% margin and re-encodes **JPEG q92**: a
+live 600dpi holo scan was an 11.5MB PNG vs ~1.8MB JPEG, and a 1200dpi PNG as base64 would blow
+the 28MB save-path cap. Analysis coordinates are shifted into the crop, so the client's guides
+land on the borders unchanged. On the client the seeded guides carry an **"auto — confirm"**
+badge; any drag downgrades it to manual, honestly.
+
+**AI schema v2 (v1 still accepted).** `lib/grader.mjs` sends up to 12 `{id,mediaType,dataB64}`
+images plus `context.shots [{id,label}]` so the model knows which crop is which corner, and gets
+back per-corner `{tl,tr,bl,br}` + per-edge `{top,right,bottom,left}` per side; every defect
+carries `{imageRef,x,y}` fractions — that is what the annotated pins render from. `normalize()`
+is dual-shape: a v1 flat response is still valid, and flat aggregates are derived as the **MIN**
+of the granular cells (the worst cell caps the side — mirroring `GR.sideFromCorners`/
+`sideFromEdges`), so v1 clients keep working. Token caps: Anthropic `max_tokens` 6000, OpenAI
+`max_completion_tokens` 2048. The engine itself also lost two dead branches (behavior-preservation
+swept 24,975 outputs, 0 diffs) and gained its first unit tests.
+
+**Persistence: a prediction never masquerades as a grade.** `pregrade_reports` holds the full
+report; `pregrade_images` (`UNIQUE(report_id,shot_id)`, cascade) points at content-addressed
+bytes in `data/pregrade-images/`, served immutable at `GET /api/pregrade/file/<sha>.<ext>`.
+Images upload ONE per request (28MB cap); `DELETE` refcounts before unlinking, so two reports
+sharing a sha don't lose the file when one dies. **The report stores the PREDICTION; the actual
+grade lives only on `grading_submissions.result_grade`. The saved list LEFT-JOINs the linked
+submission to show "predicted PSA 9 · actual 9" — nothing ever copies the actual back onto the
+report** (GR4: the prediction stays an honest before-the-fact record). The link is
+`grading_submissions.pregrade_id` (additive migration, in `SUB_COLS`); "To pipeline" saves the
+report FIRST, sends `pregrade_id`, then PATCHes the report to `sent`. Deep link `?report=<id>`.
+Two open tails: `data/pregrade-images/` is gitignored and **not regenerable** (backup coverage
+undecided), and a superseded shot's bytes linger until the last referencing report is deleted
+(documented; a sweep script only if it ever matters).
+
+**Dev-server-only, like everything else (GR1).** `scanPlugin` and `pregradePlugin` are Vite
+plugins in `vite.config.js`. ALCSERVER has no scanner, so its capability probe answers
+`enabled:false` and the scan buttons hide — that is the designed behavior, not a fault.
+
+**Sleeves, white lids, and the matte-black backing.** Scanning a sleeved card against the white
+lid, the analyzer locks onto the **sleeve** edge (a live measurement came back 65.6×89.7mm — a
+sleeve, not a 63×88 card) and caps outer confidence at 0.5 **by design**: a white border cannot
+be told from a white lid. The fix is setup, not code — a matte-black backing behind the sleeve
+makes the card edge out-contrast the sleeve. Sleeved cards are fine to scan.
+
+**Open QA** (unchecked as of 2026-08-22):
+
+- [ ] Tomlov microscope corner shots live-tested (device was unplugged during the build; it is a
+      standard UVC videoinput on the normal camera path).
+- [ ] Black-backing vs white-lid comparison shot (white-lid path verified working, with the
+      caveats above).
+- [ ] Full 12-shot AI pass with all corner shots attached.
+- [ ] 1200dpi timing measurement.
+- [ ] ALCSERVER post-deploy check: scan buttons must hide (no scanner there), NSSM service
+      restart after pull, then `/api/status` `plugins.stale` (§20).
