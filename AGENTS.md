@@ -2069,6 +2069,11 @@ makes the card edge out-contrast the sleeve. Sleeved cards are fine to scan.
       caveats above).
 - [x] ~~Full 12-shot AI pass with all corner shots attached~~ DONE — every granular cell filled,
       confidence 67%→76% with full coverage, one coordinate-pinned defect on the back scan.
-- [ ] 1200dpi timing measurement.
+- [x] ~~1200dpi timing measurement~~ DONE — 79–83s for 160×220mm (7559×10394px). 1200 is now the
+      DEFAULT (owner's call) and the WIA driver's ceiling (hardware claims 4800 optical, driver
+      exposes SubTypeMax 1200; Epson Scan 2's higher modes have no CLI). Scan timeout 240s; the
+      no-crop fallback re-encodes full-frame JPEG q92 (96MB PNG base64 → 4.6MB measured). Scans
+      auto-rotate to portrait when the card is found sideways (180° stays a manual ⟳ per shot);
+      pads show mm border readouts and open a full-screen editor (⛶).
 - [ ] ALCSERVER post-deploy check: scan buttons must hide (no scanner there), NSSM service
       restart after pull, then `/api/status` `plugins.stale` (§20).

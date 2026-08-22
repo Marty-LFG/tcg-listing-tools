@@ -352,6 +352,17 @@ Plus the scanner timings and sleeve findings in §3–§4, and `pnpm verify` gre
 
 ## 12. Open QA + still to settle
 
+**Same-day addendum (evening).** Owner feedback against a competitor app (Centering50) landed
+four more changes, all live-verified: (1) **orientation** — scans auto-rotate to portrait when
+the analyzer finds a landscape card (90° is geometry; 180° is not detectable from geometry, so
+every filled slot also has a ⟳ rotate button); (2) **mm border readouts** (T/B/L/R in real
+millimetres, derived from the scan's dpi) on the pads and in the report, matching the
+competitor's presentation; (3) a **full-screen centering editor** (⛶ on each pad) — the card at
+viewport size while the guides are confirmed, guides round-trip back to the inline pad on
+Done/Esc; (4) **1200 dpi default** (see the struck QA item below). A two-handles-per-edge
+skew-fit guide (the competitor's T1/T2-style tilted lines) is noted under "still to settle" —
+it is a pad redesign, not a bolt-on.
+
 Unchecked items — none blocks use, all should be closed deliberately:
 
 - [x] ~~**Tomlov microscope corner shots, live.**~~ **DONE 2026-08-22** — owner ran the full
@@ -365,8 +376,13 @@ Unchecked items — none blocks use, all should be closed deliberately:
   report #2: all 12 images restored from the store, one call, ~9s; every granular cell filled
   (no nulls), confidence rose 67% → 76% with full coverage, and one coordinate-pinned defect
   (minor wear, back top edge, `imageRef: scan-back`) rendered as a pin on the annotated report.
-- [ ] **1200 dpi timing.** 300 and 600 dpi are measured (§3); 1200 is the driver ceiling and
-  its duration is unknown.
+- [x] ~~**1200 dpi timing.**~~ **DONE 2026-08-22** — 79–83 s for the 160×220 mm region,
+  7559×10394 px. 1200 dpi is now the **default** (owner's call: max quality, storage is not a
+  constraint — an S3/cloud dump is the fallback if the store ever grows). The scan timeout went
+  90 s → 240 s accordingly, and the no-crop fallback re-encodes the full frame as JPEG q92
+  (measured: 96 MB of PNG base64 → 4.6 MB). Note the ceiling is the WIA driver's, not ours:
+  the V39 II claims 4800 dpi optical but exposes `SubTypeMax` 1200, and Epson Scan 2's higher
+  modes have no CLI.
 - [ ] **ALCSERVER post-deploy check.** After the pull: NSSM service restart, then
   `/api/status` for `plugins.stale`, and confirm the scan buttons **hide** (no scanner there —
   the capability gate should do this with zero config; watch it actually happen).
@@ -384,3 +400,11 @@ Open decisions:
    a wizard slot replaces the row but the old sha stays in the store while any report points
    at it. Documented and harmless at current volume; a sweep script is the answer if it ever
    matters.
+4. **Skew-fit guides (two handles per edge).** The competitor fits each guide as a tiltable
+   line (T1/T2), which measures a slightly-skewed scan without rotating it. Ours are
+   axis-aligned rectangles; the analyzer tolerates ~3° and notes skew rather than correcting
+   it. Adopting tilted guides is a `makePad` redesign — worth it if real scans keep arriving
+   skewed, not before.
+5. **Cloud storage (S3) for the image store.** Owner is happy to organise a bucket when the
+   local store gets heavy — at 1200 dpi a full 12-shot report runs ~15–25 MB. Local disk is
+   fine today; revisit at the first multi-GB month.

@@ -63,7 +63,8 @@ describe('GET /api/scan — capability probe', () => {
     assert.equal(json.enabled, false);
     assert.equal(json.device, null);
     assert.deepEqual(json.dpiOptions, [300, 600, 1200]);
-    assert.equal(json.defaultDpi, 600);
+    // 1200 default is the owner's call (max quality; it is also the WIA driver's ceiling)
+    assert.equal(json.defaultDpi, 1200);
     // 160×220 default: forgiving placement window, the route crops the response to the card
     assert.deepEqual(json.region, { wmm: 160, hmm: 220 });
     assert.equal(typeof json.analyzeAvailable, 'boolean');

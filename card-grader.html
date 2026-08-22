@@ -61,6 +61,7 @@
   .slot .ttl{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
   .slot img{max-width:100%;max-height:84px;border-radius:5px;display:block;}
   .slot .rm{position:absolute;top:3px;right:4px;background:rgba(0,0,0,.55);color:#fff;border:none;border-radius:5px;width:19px;height:19px;cursor:pointer;font-size:12px;line-height:1;z-index:2;}
+  .slot .rot{right:auto;left:4px;}
   /* camera */
   .cam{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
   .cam video{width:100%;max-height:240px;border-radius:8px;background:#000;border:1px solid var(--line);display:none;}
@@ -186,8 +187,8 @@
       <div class="card">
         <h2>3 · Centering (drag the guides)</h2>
         <div class="pads">
-          <div class="pad"><div class="colhead">Front</div><canvas id="padFront" width="280" height="380"></canvas><div class="ro" id="roFront"><span class="muted">add a front image</span></div></div>
-          <div class="pad"><div class="colhead">Back</div><canvas id="padBack" width="280" height="380"></canvas><div class="ro" id="roBack"><span class="muted">add a back image (optional)</span></div></div>
+          <div class="pad"><div class="colhead">Front <button class="btn" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('front')" title="Full-screen view — check the guides against the card at full size">⛶</button></div><canvas id="padFront" width="280" height="380"></canvas><div class="ro" id="roFront"><span class="muted">add a front image</span></div></div>
+          <div class="pad"><div class="colhead">Back <button class="btn" style="padding:1px 7px;font-size:11px;margin-left:4px;" onclick="openFullPad('back')" title="Full-screen view — check the guides against the card at full size">⛶</button></div><canvas id="padBack" width="280" height="380"></canvas><div class="ro" id="roBack"><span class="muted">add a back image (optional)</span></div></div>
         </div>
         <div class="legend"><span class="swatch" style="background:var(--gold);"></span>card edge &nbsp; <span class="swatch" style="background:var(--info);"></span>inner frame &nbsp;·&nbsp; drag each line to match.
           <button class="btn" style="padding:4px 9px;font-size:11px;margin-left:6px;" onclick="resetGuides()">Reset guides</button>
@@ -241,6 +242,15 @@
       </div>
     </div>
   </div>
+</div>
+<!-- full-screen centering editor: the card at viewport size while the guides are confirmed -->
+<div id="padModal" style="display:none;position:fixed;inset:0;background:rgba(6,8,20,.95);z-index:9000;padding:12px;flex-direction:column;align-items:center;gap:8px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:1100px;gap:10px;">
+    <div class="colhead" id="padModalTitle" style="font-size:12px;margin:0;">Centering</div>
+    <div class="ro" id="roFull" style="margin:0;font-size:13.5px;"></div>
+    <button class="btn solid" onclick="closeFullPad(true)">✓ Done</button>
+  </div>
+  <canvas id="padFull" width="400" height="560" style="border:1px solid var(--line);border-radius:8px;touch-action:none;cursor:crosshair;max-width:100%;"></canvas>
 </div>
 <div class="toast" id="toast">Done</div>
 
@@ -422,7 +432,7 @@ function renderShots(){
     g.ids.forEach(function(id){
       var def=shotDef(id), d=SHOTS[id];
       H+='<div class="slot'+(def.required?' req':'')+(d?' has':'')+(id===_cur?' cur':'')+'" data-slot="'+id+'" title="'+esc(def.label)+'">';
-      if(d){ H+='<button class="rm" title="Remove" data-rm="'+id+'">×</button><img src="'+d.dataUrl+'" alt="'+esc(def.short)+'">'; }
+      if(d){ H+='<button class="rm" title="Remove" data-rm="'+id+'">×</button><button class="rm rot" title="Rotate 90°" data-rot="'+id+'">⟳</button><img src="'+d.dataUrl+'" alt="'+esc(def.short)+'">'; }
       H+='<div class="ttl">'+esc(def.short)+'</div>';
       H+='</div>';
     });
@@ -462,6 +472,8 @@ function updateWiz(){
 function wireShotEvents(){
   var host=$('shots');
   host.addEventListener('click',function(e){
+    var rot=e.target.closest('[data-rot]');
+    if(rot){ e.stopPropagation(); rotateShot(rot.getAttribute('data-rot')); return; }
     var rm=e.target.closest('[data-rm]');
     if(rm){ e.stopPropagation(); setShot(rm.getAttribute('data-rm'),null); return; }
     var el=e.target.closest('.slot'); if(!el)return;
@@ -498,6 +510,21 @@ async function listCams(){
     if(cur) sel.value=cur;
   }catch(e){}
 }
+// 90° clockwise, re-encoded once. Scans arrive auto-oriented to portrait, but 180° (upside
+// down) is undetectable from geometry and camera shots can be anything — one click fixes it.
+function rotateShot(id){
+  var s=SHOTS[id]; if(!s)return;
+  var img=new Image();
+  img.onload=function(){
+    var cv=document.createElement('canvas'); cv.width=img.height; cv.height=img.width;
+    var x=cv.getContext('2d'); x.translate(cv.width/2,cv.height/2); x.rotate(Math.PI/2); x.drawImage(img,-img.width/2,-img.height/2);
+    var dataUrl=cv.toDataURL('image/jpeg',0.92);
+    SHOTS[id]={dataUrl:dataUrl,b64:dataUrl.split(',')[1],media:'image/jpeg',w:cv.width,h:cv.height,dpi:s.dpi,kind:s.kind};
+    renderShots(); refreshAfterImage();
+    toast('Rotated 90°'+(id.indexOf('scan-')===0?' — re-run Auto-detect to reseed the guides':''));
+  };
+  img.src=s.dataUrl;
+}
 function captureFrame(){
   var v=$('camVideo'); if(!v||!v.videoWidth){ toast('Camera not ready'); return; }
   var def=shotDef(_cur);
@@ -519,7 +546,7 @@ async function doScan(side){
   if(!(_scanCap&&_scanCap.enabled)){ toast('No scanner detected'); return; }
   var dpi=parseInt(val('scanDpi'),10)||600;
   var st=$('scanStatus'); st.className='status load';
-  st.textContent='Scanning '+side+' @ '+dpi+' dpi… ('+(dpi>=1200?'~40':dpi>=600?'~16':'~9')+'s — place the card near the platen corner on the black backing sheet)';
+  st.textContent='Scanning '+side+' @ '+dpi+' dpi… ('+(dpi>=1200?'~85':dpi>=600?'~25':'~10')+'s — place the card near the platen corner on the black backing sheet)';
   $('scanFrontBtn').disabled=true; $('scanBackBtn').disabled=true;
   try{
     var r=await fetch('/api/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({side:side,dpi:dpi,analyze:true})});
@@ -535,7 +562,7 @@ async function doScan(side){
     if(res.analysis&&res.analysis.outer){
       seedGuides(side, res.analysis, img.w, img.h);
       st.className='status ok';
-      st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi — centering guides auto-seeded ('+(res.analysis.inner?'edge + inner frame':'card edge only — set the inner frame by hand')+'). Confirm them in step 3.';
+      st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi'+(res.rotated?' (auto-rotated to portrait)':'')+' — centering guides auto-seeded ('+(res.analysis.inner?'edge + inner frame':'card edge only — set the inner frame by hand')+'). Confirm them in step 3.';
     } else {
       st.className='status ok';
       st.textContent='✓ Scanned '+side+' @ '+img.dpi+' dpi.'+(res.analysis===null?'':' Auto-centering found no card — drag the guides manually.');
@@ -569,7 +596,10 @@ function seedGuides(side, analysis, imgW, imgH){
 }
 
 /* ============================ centering pads ============================ */
-function makePad(canvasId, roId){
+function makePad(canvasId, roId, opts){
+  opts=opts||{};
+  var maxW=opts.maxW||280, maxH=opts.maxH||400;
+  var getDpi=opts.getDpi||function(){return null;};   // scans know their dpi → borders in mm
   var cv=$(canvasId), ctx=cv.getContext('2d');
   var st={img:null,outer:null,inner:null,drag:null,source:'manual',pendingGuides:null};
   function defaults(){ st.outer={l:cv.width*0.04,t:cv.height*0.04,r:cv.width*0.96,b:cv.height*0.96};
@@ -578,7 +608,7 @@ function makePad(canvasId, roId){
     if(!dataUrl){ st.img=null; st.outer=null; st.inner=null; st.pendingGuides=null; draw(); updateRO(); recompute(); return; }
     if(st.img&&st.img.src===dataUrl){ return; }   // same image — keep the guides where they are
     var img=new Image(); img.onload=function(){ st.img=img;
-      var maxW=280, maxH=400, sc=Math.min(maxW/img.width, maxH/img.height); cv.width=Math.round(img.width*sc); cv.height=Math.round(img.height*sc);
+      var sc=Math.min(maxW/img.width, maxH/img.height); cv.width=Math.round(img.width*sc); cv.height=Math.round(img.height*sc);
       defaults();
       if(st.pendingGuides){ applyGuides(st.pendingGuides); st.pendingGuides=null; }
       draw(); updateRO(); recompute(); };  // recompute AFTER the async load so the report regenerates
@@ -626,17 +656,55 @@ function makePad(canvasId, roId){
   function move(e){ if(!st.drag)return; e.preventDefault(); var p=pos(e); var parts=st.drag.split('.'); var grp=st[parts[0]], side=parts[1];
     var v=(side==='l'||side==='r')?Math.max(0,Math.min(cv.width,p.x)):Math.max(0,Math.min(cv.height,p.y)); grp[side]=v; draw(); }
   function up(){ if(st.drag){ st.drag=null; st.source='manual'; updateRO(); recompute(); } }   // a human touch downgrades "auto" honestly
+  // Border widths in real millimetres — only meaningful when the image's dpi is known (scans).
+  function borderMm(dpi){
+    if(!dpi||!st.img||!st.outer||!st.inner)return null;
+    var sc=st.img.width/cv.width, k=sc/dpi*25.4;
+    var L=(st.inner.l-st.outer.l)*k, R=(st.outer.r-st.inner.r)*k, T=(st.inner.t-st.outer.t)*k, B=(st.outer.b-st.inner.b)*k;
+    if(L<0||R<0||T<0||B<0)return null;
+    return {l:L,r:R,t:T,b:B};
+  }
   function updateRO(){ var ro=$(roId); if(!ro)return; var r=ratios(); if(!r){ ro.innerHTML='<span class="muted">'+(canvasId==='padBack'?'add a back image (optional)':'add a front image')+'</span>'; return; }
     var badge=st.source==='auto'?' <span class="pill medium" title="Seeded by auto-detection — confirm by eye; dragging any line marks it manual">auto — confirm</span>':'';
-    ro.innerHTML='L/R <b class="mono">'+r.lrLabel+'</b> · T/B <b class="mono">'+r.tbLabel+'</b> · worst <b class="mono">'+r.label+'</b>'+badge; }
+    var mm=borderMm(getDpi());
+    var mmLine=mm?'<br><span class="muted">T <b class="mono">'+mm.t.toFixed(1)+'</b> · B <b class="mono">'+mm.b.toFixed(1)+'</b> · L <b class="mono">'+mm.l.toFixed(1)+'</b> · R <b class="mono">'+mm.r.toFixed(1)+'</b> mm</span>':'';
+    ro.innerHTML='L/R <b class="mono">'+r.lrLabel+'</b> · T/B <b class="mono">'+r.tbLabel+'</b> · worst <b class="mono">'+r.label+'</b>'+badge+mmLine; }
   function ratios(){ if(!st.img||!st.outer||!st.inner)return null; var L=st.inner.l-st.outer.l,R=st.outer.r-st.inner.r,T=st.inner.t-st.outer.t,B=st.outer.b-st.inner.b; if(L<0||R<0||T<0||B<0)return null; return GradeRules.centeringPct({l:L,r:R,t:T,b:B}); }
-  cv.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  function move2(e){ move(e); } function up2(){ up(); }   // named refs so destroy() can unhook the window listeners
+  cv.addEventListener('mousedown',down); window.addEventListener('mousemove',move2); window.addEventListener('mouseup',up2);
   cv.addEventListener('touchstart',down,{passive:false}); cv.addEventListener('touchmove',move,{passive:false}); cv.addEventListener('touchend',up);
   draw();
-  return { setImage:setImage, ratios:ratios, setGuides:setGuides, exportGuides:exportGuides,
+  return { setImage:setImage, ratios:ratios, setGuides:setGuides, exportGuides:exportGuides, borderMm:borderMm,
+    destroy:function(){ window.removeEventListener('mousemove',move2); window.removeEventListener('mouseup',up2); },
     reset:function(){ if(st.img){defaults();draw();updateRO();} } };
 }
 function resetGuides(){ _pads.front.reset(); _pads.back.reset(); recompute(); }
+
+/* ---------- full-screen centering editor ---------- */
+var _fullPad=null,_fullSide=null;
+function openFullPad(side){
+  var shot=side==='front'?primaryFront():primaryBack();
+  if(!shot){ toast('No '+side+' image yet'); return; }
+  $('padModal').style.display='flex';
+  // a fresh canvas per open drops the previous editor with its node; destroy() unhooks its window listeners
+  var old=$('padFull'); var cv=old.cloneNode(false); old.parentNode.replaceChild(cv,old);
+  if(_fullPad&&_fullPad.destroy)_fullPad.destroy();
+  $('padModalTitle').textContent='Centering — '+side;
+  _fullSide=side;
+  _fullPad=makePad('padFull','roFull',{maxW:window.innerWidth-48,maxH:window.innerHeight-96,
+    getDpi:function(){ return shot.dpi||null; }});
+  _fullPad.setImage(shot.dataUrl);
+  var g=_pads[side].exportGuides();
+  if(g) _fullPad.setGuides(g.outer,g.inner,g.imgW,g.imgH,g.source);
+}
+function closeFullPad(commit){
+  if(commit&&_fullPad&&_fullSide){
+    var g=_fullPad.exportGuides();
+    if(g) _pads[_fullSide].setGuides(g.outer,g.inner,g.imgW,g.imgH,g.source);
+  }
+  $('padModal').style.display='none';
+  _fullSide=null;
+}
 
 /* ============================ pillar sliders ============================ */
 var PILLARS=['corners','edges','surface'], SIDES=['front','back'];
@@ -813,7 +881,11 @@ function renderReport(pred, rf, rb){
   // measured centering
   H+='<div class="rcard"><h3>Measured centering</h3>';
   H+='<div class="small">Front — L/R <b class="mono">'+rf.lrLabel+'</b>, T/B <b class="mono">'+rf.tbLabel+'</b> · worst <b class="mono" style="color:var(--gold)">'+rf.label+'</b>'+(rf.worst<=55?' <span class="pill high">10-capable</span>':rf.worst<=60?' <span class="pill medium">~9</span>':' <span class="pill low">caps below 9</span>')+'</div>';
+  var mmF=_pads.front.borderMm(primaryFront()?primaryFront().dpi:null);
+  if(mmF) H+='<div class="small muted" style="margin-top:2px;">Borders — T <b class="mono">'+mmF.t.toFixed(1)+'</b> · B <b class="mono">'+mmF.b.toFixed(1)+'</b> · L <b class="mono">'+mmF.l.toFixed(1)+'</b> · R <b class="mono">'+mmF.r.toFixed(1)+'</b> mm</div>';
   if(rb) H+='<div class="small" style="margin-top:4px;">Back — L/R <b class="mono">'+rb.lrLabel+'</b>, T/B <b class="mono">'+rb.tbLabel+'</b> · worst <b class="mono">'+rb.label+'</b></div>';
+  var mmB=rb?_pads.back.borderMm(primaryBack()?primaryBack().dpi:null):null;
+  if(mmB) H+='<div class="small muted" style="margin-top:2px;">Borders — T <b class="mono">'+mmB.t.toFixed(1)+'</b> · B <b class="mono">'+mmB.b.toFixed(1)+'</b> · L <b class="mono">'+mmB.l.toFixed(1)+'</b> · R <b class="mono">'+mmB.r.toFixed(1)+'</b> mm</div>';
   else H+='<div class="small muted" style="margin-top:4px;">No back image — back centering assumed to pass (confidence reduced).</div>';
   H+='</div>';
 
@@ -1089,8 +1161,9 @@ async function downloadPDF(){
 
 /* ============================ init ============================ */
 (function(){
-  _pads.front=makePad('padFront','roFront');
-  _pads.back=makePad('padBack','roBack');
+  _pads.front=makePad('padFront','roFront',{getDpi:function(){var s=primaryFront();return s?s.dpi:null;}});
+  _pads.back=makePad('padBack','roBack',{getDpi:function(){var s=primaryBack();return s?s.dpi:null;}});
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&$('padModal').style.display!=='none') closeFullPad(true); });
   renderShots(); wireShotEvents(); wireSliders();
   $('num').addEventListener('keydown',function(e){ if(e.key==='Enter') doLookup(); });
   var sc=$('setCode');
