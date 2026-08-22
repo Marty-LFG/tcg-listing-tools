@@ -399,6 +399,31 @@ null-measurement guards (`centeringGrade`/`predictAll` return null, never a pass
 A 10×10×10×10 property sweep now locks pair-sums-to-100, physical label order, and the
 boundary fix in `test/unit/grade-rules.test.mjs`.
 
+**Design + report pass (2026-08-23).** A full UI/UX pass against `DESIGN.md` plus an adversarial
+UX audit. The page had drifted out of its own system: a dead navy palette, off-system semantic
+colours, a hardcoded mono stack defeating the every-number-is-Plex-Mono rule at its source, no
+masthead, no motion, emoji buttons, flat report panels, and a section-rule component built
+backwards (mono heading, gold number). All fixed, plus a step rail that reports real state, the
+verdict hoisted into a hero block at the top of the report (with an honest fallback when there
+are no comps), a Check-centering button on the scan result so seeded guides are one click from
+where they were seeded, sweep bars on the long waits, and a sticky report column.
+
+The audit's most valuable find was not cosmetic: `_reportId` was never cleared, so grading a
+second card PATCHed straight over the first saved report, images and all. There is now a New
+card action and a name-changed guard that forces a new report. Other real fixes: a missing
+`grading.config.json` failed completely silently (healthy-looking page that can never produce a
+report), Escape in the rotation editor committed the bake with no cancel path anywhere, the 12
+capture slots were unreachable by keyboard and opened a file dialog every time you merely
+selected one, the status lines that narrate 85-second scans announced nothing to a screen
+reader, and an unreachable `/api/pregrade` rendered "Nothing saved yet" — the worst possible lie
+for a tool whose job is holding predictions until the real grade comes back weeks later.
+
+The PDF moved out to `grade-report-pdf.js` and became a designed document: ink on warm paper,
+jsPDF's times/helvetica/courier mapped onto the system's three type roles, vector centering
+diagrams drawn true to the measured millimetres against a 63x88mm card, likelihood bars, the
+corner/edge grid, annotated plates, and every disclaimer. Verified end to end on the real
+sleeved SAR: five pages, 2.8MB, built in 147ms.
+
 Unchecked items — none blocks use, all should be closed deliberately:
 
 - [x] ~~**Tomlov microscope corner shots, live.**~~ **DONE 2026-08-22** — owner ran the full
