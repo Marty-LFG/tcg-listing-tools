@@ -33,7 +33,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
+import fs from 'node:fs';
+import os from 'node:os';
+import { DatabaseSync } from 'node:sqlite';
 import { shopifyGraphQL, shopifyToken, resolveShop, API_VERSION, firstErrorText } from '../lib/channels/shopify-admin.mjs';
+import { DB_PATH, openDbAt } from '../lib/db.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const env = loadEnv('development', ROOT, '');
@@ -61,6 +65,102 @@ const line = (s) => console.log(s);
 async function guard(probe, fn) {
   try { return await fn(); }
   catch (e) { record(probe, 'SKIP', 'the probe itself threw — this is a harness bug, not an answer', [String(e?.message || e)]); return null; }
+}
+
+// --- probe 0: is the DEPLOYED database schema current? ------------------------------------------
+
+// Local, read-only, no network. It exists because every slice from S6 on WRITES to tables that a
+// migration created, and the failure it catches is a specific one: code and database are deployed by
+// different acts. `git pull` moves the code; the schema only moves when the dev server next calls
+// openDb(). A box running new code against an old database looks completely healthy — the status page
+// is green, the plugins register, the credentials are ready — and then the first publish throws
+// "no such table" at the exact moment a real product is half-written to a real store.
+//
+// It is DIFFERENTIAL rather than a checklist: a throwaway database is migrated from scratch by the code
+// in this working tree and the deployed file is diffed against it. So it needs no hardcoded table or
+// column list, and every future migration is covered the day it is written rather than the day someone
+// remembers to update a constant here. The third copy of a schema list is the one that goes stale.
+//
+// It opens the real database READ-ONLY, which is a deliberate refusal rather than caution: the fix for
+// a stale schema is to restart the dev server that owns it, not to have a diagnostic script quietly
+// migrate production out from under a running process. Read-only means this probe cannot mask the
+// problem it is reporting. Concurrent reads are safe — SQLite is in WAL mode and the server is writing.
+const SECOND_CHANNEL = (name) => name.startsWith('shopify_') || name === 'channel_intent' || name === 'sync_jobs';
+
+function probeSchema() {
+  if (!fs.existsSync(DB_PATH)) {
+    record('0 deployed schema', 'SKIP', 'no tracker.db on this machine — nothing deployed to check', [`looked for ${DB_PATH}`]);
+    return null;
+  }
+
+  // The reference: a fresh database migrated by THIS tree's code. Temp file, deleted below.
+  const refPath = path.join(os.tmpdir(), `bk-schema-ref-${process.pid}.db`);
+  let ref;
+  try { ref = openDbAt(refPath); }
+  catch (e) {
+    record('0 deployed schema', 'SKIP', 'could not build a reference schema — this is a harness bug', [String(e?.message || e)]);
+    return null;
+  }
+
+  try {
+    let real;
+    try { real = new DatabaseSync(DB_PATH, { readOnly: true }); }
+    catch (e) {
+      record('0 deployed schema', 'SKIP', 'tracker.db exists but could not be opened read-only', [String(e?.message || e)]);
+      return null;
+    }
+
+    const tablesOf = (db) => db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all().map((r) => r.name);
+    const indexesOf = (db) => db.prepare(`SELECT name FROM sqlite_master WHERE type='index'`).all().map((r) => r.name);
+    const colsOf = (db, t) => db.prepare(`PRAGMA table_info(${JSON.stringify(t)})`).all().map((c) => c.name);
+
+    const wantTables = tablesOf(ref).filter(SECOND_CHANNEL).sort();
+    const haveTables = new Set(tablesOf(real));
+    const wantIndexes = indexesOf(ref).filter((n) => n.startsWith('idx_shopify') || n.startsWith('idx_sync') || n.startsWith('idx_intent') || n === 'idx_inv_ebay_listing');
+    const haveIndexes = new Set(indexesOf(real));
+
+    const missingTables = wantTables.filter((t) => !haveTables.has(t));
+    const missingCols = [];
+    for (const t of wantTables) {
+      if (!haveTables.has(t)) continue;
+      const have = new Set(colsOf(real, t));
+      for (const c of colsOf(ref, t)) if (!have.has(c)) missingCols.push(`${t}.${c}`);
+    }
+    const missingIndexes = wantIndexes.filter((i) => !haveIndexes.has(i));
+
+    const ev = [
+      `database    ${DB_PATH}`,
+      `tables      ${wantTables.map((t) => (haveTables.has(t) ? t : t + ' ✗')).join(', ')}`,
+      `indexes     ${wantIndexes.length - missingIndexes.length}/${wantIndexes.length} present`,
+    ];
+    // Row counts are the sanity check on the OTHER half — a schema that is current on an empty database
+    // would mean the migration ran somewhere that is not the store's real ledger.
+    try {
+      const n = (t) => real.prepare(`SELECT count(*) n FROM ${t}`).get().n;
+      ev.push(`existing    inventory_items ${n('inventory_items')}, ebay_listings ${n('ebay_listings')}, shopify_listings ${n('shopify_listings')}`);
+    } catch { /* a missing table is already reported above; this line is a bonus, not a requirement */ }
+
+    real.close();
+
+    if (missingTables.length || missingCols.length) {
+      record('0 deployed schema', 'FAIL', 'the deployed database is BEHIND the deployed code — restart the dev server so openDb() migrates it', [
+        ...ev,
+        missingTables.length ? `MISSING TABLES  ${missingTables.join(', ')}` : null,
+        missingCols.length ? `MISSING COLUMNS ${missingCols.join(', ')}` : null,
+      ].filter(Boolean));
+      return null;
+    }
+    if (missingIndexes.length) {
+      // An index is a performance fact, not a correctness one: every query still returns the right rows.
+      record('0 deployed schema', 'PASS', 'tables and columns current; some indexes are absent (queries are correct, just slower)', [...ev, `MISSING INDEXES ${missingIndexes.join(', ')}`]);
+      return true;
+    }
+    record('0 deployed schema', 'PASS', 'the deployed database matches the schema this code expects', ev);
+    return true;
+  } finally {
+    try { ref.close(); } catch { /* already closed */ }
+    for (const suffix of ['', '-wal', '-shm']) { try { fs.rmSync(refPath + suffix, { force: true }); } catch { /* best effort */ } }
+  }
 }
 
 // --- probe 1: connection, scopes, and the shipping location -------------------------------------
@@ -466,6 +566,12 @@ async function probeProtectedCustomerData() {
 
 line('Shopify S0 probes — docs/SHOPIFY_CHANNEL_PLAN.md');
 line('DEV STORE ONLY. Probes 1 and 4 write nothing; 2 and 3 share one throwaway DRAFT product.\n');
+
+// Probe 0 first, and deliberately NOT as a gate on the rest: a stale local schema says nothing
+// about whether the dev store is reachable or what its scopes are, and on a machine with no database at
+// all the remaining probes are still the four answers the plan actually wants. It reports; it does not
+// stop the run.
+await guard('0 deployed schema', probeSchema);
 
 let fixture = null;
 // A PASS verdict with a stocked draft product left behind is not a clean run, and exiting 0 would say
