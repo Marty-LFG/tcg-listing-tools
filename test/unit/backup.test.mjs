@@ -82,3 +82,79 @@ describe('startBackups / stopBackups — HMR-guarded singleton timer', () => {
     assert.equal(getBackupState().running, false);
   });
 });
+
+describe('the pre-grade image mirror', () => {
+  // These bytes are the only unregenerable thing in data/: photographs of cards that may since have
+  // been sold. The DB snapshot beside them holds nothing but their sha256 filenames.
+  const storeWith = (files) => {
+    const dir = tmpDir('bk-store-');
+    for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body);
+    return dir;
+  };
+  const A = 'a'.repeat(64) + '.jpg', B = 'b'.repeat(64) + '.png';
+
+  it('mirrors the store once, beside the snapshots rather than inside them', async () => {
+    const { db } = makeDb();
+    const out = tmpDir('bk-out-');
+    const store = storeWith({ [A]: 'card-a-bytes', [B]: 'card-b-bytes' });
+    const rec = await runBackup({ sources: [{ name: 'tracker', db }], outDir: out, keep: 14, storeDir: store });
+
+    assert.equal(rec.images.mirrored, 2);
+    assert.equal(rec.images.total_files, 2);
+    const mirror = path.join(out, 'pregrade-images');
+    assert.equal(fs.readFileSync(path.join(mirror, A), 'utf8'), 'card-a-bytes');
+    // and NOT duplicated into the timestamped snapshot folder
+    const snap = path.join(out, snapDirs(out)[0]);
+    assert.equal(fs.existsSync(path.join(snap, 'pregrade-images')), false);
+  });
+
+  it('is content-addressed, so a second pass copies nothing again', async () => {
+    const { db } = makeDb();
+    const out = tmpDir('bk-out-');
+    const store = storeWith({ [A]: 'card-a-bytes' });
+    await runBackup({ sources: [{ name: 'tracker', db }], outDir: out, keep: 14, storeDir: store });
+    const rec2 = await runBackup({ sources: [{ name: 'tracker', db }], outDir: out, keep: 14, storeDir: store });
+    assert.equal(rec2.images.mirrored, 0, 'nothing re-copied');
+    assert.equal(rec2.images.skipped, 1);
+  });
+
+  it('re-copies an entry whose mirrored size does not match — a half-written file from a killed pass', async () => {
+    const { db } = makeDb();
+    const out = tmpDir('bk-out-');
+    const store = storeWith({ [A]: 'the-whole-file' });
+    await runBackup({ sources: [{ name: 'tracker', db }], outDir: out, keep: 14, storeDir: store });
+    const mirrored = path.join(out, 'pregrade-images', A);
+    fs.writeFileSync(mirrored, 'trunc');                       // simulate the interrupted copy
+    const rec = await runBackup({ sources: [{ name: 'tracker', db }], outDir: out, keep: 14, storeDir: store });
+    assert.equal(rec.images.repaired, 1);
+    assert.equal(fs.readFileSync(mirrored, 'utf8'), 'the-whole-file');
+  });
+
+  it('survives rotation — the one thing that must never delete these bytes', async () => {
+    const { db } = makeDb();
+    const out = tmpDir('bk-out-');
+    const store = storeWith({ [A]: 'card-a-bytes' });
+    for (let i = 0; i < 4; i++) {
+      await runBackup({ sources: [{ name: 'tracker', db }], outDir: out, keep: 1, storeDir: store,
+        now: new Date(Date.UTC(2026, 6, 13, 10, i)) });
+    }
+    assert.equal(snapDirs(out).length, 1, 'rotation kept only the newest snapshot');
+    assert.ok(fs.existsSync(path.join(out, 'pregrade-images', A)), 'the mirror outlived every rotation');
+  });
+
+  it('an absent store is not a failure, and include_images:false skips it entirely', async () => {
+    const { db } = makeDb();
+    const out = tmpDir('bk-out-');
+    const rec = await runBackup({ sources: [{ name: 'tracker', db }], outDir: out, keep: 14,
+      storeDir: path.join(tmpDir('bk-none-'), 'does-not-exist') });
+    assert.equal(rec.ok, true);
+    assert.equal(rec.images.absent, true);
+    assert.equal(rec.images.mirrored, 0);
+
+    const out2 = tmpDir('bk-out-');
+    const rec2 = await runBackup({ sources: [{ name: 'tracker', db }], outDir: out2, keep: 14,
+      includeImages: false, storeDir: storeWith({ [A]: 'x' }) });
+    assert.equal(rec2.images, null);
+    assert.equal(fs.existsSync(path.join(out2, 'pregrade-images')), false);
+  });
+});
