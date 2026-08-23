@@ -95,6 +95,7 @@
   .b-seeded{color:var(--gold);border-color:rgba(212,176,114,.32);background:rgba(212,176,114,.08);}
   .b-pc{color:var(--teal);border-color:rgba(63,220,203,.3);background:rgba(63,220,203,.08);}
   .b-warn{color:var(--red);border-color:rgba(240,102,110,.35);background:rgba(240,102,110,.08);}
+  .b-gap{color:var(--ink);background:var(--red);border-color:var(--red);font-weight:600;}
   .b-own{color:var(--ink);background:var(--green);border-color:var(--green);}
   .b-early{color:#eba13a;border-color:rgba(235,161,58,.38);background:rgba(235,161,58,.10);}
 
@@ -231,6 +232,7 @@
         <span class="chip src" data-src="seeded"><span class="dot" style="background:var(--gold)"></span>Seeded</span>
         <span class="chip src" data-src="pricecharting"><span class="dot" style="background:var(--teal)"></span>PriceCharting</span>
         <span class="chip src" data-src="early"><span class="dot" style="background:#eba13a"></span>Pre-release</span>
+        <span class="chip src" data-src="gap"><span class="dot" style="background:var(--red,#e0574c)"></span>No cards</span>
         <span class="chip own" id="ownToggle">◆ Owned only</span>
         <span class="chip edit" id="editToggle">✎ Edit overlay</span>
         <button class="chip newset" id="newSetBtn" style="display:none">＋ New set</button>
@@ -363,6 +365,19 @@ async function setsForLang(lang){
 }
 
 /* ---- filtering + render ------------------------------------------------ */
+// The coverage watchdog's verdicts (data/pokemon-coverage.json, baked by the pokemon-coverage
+// refresh bake). A set can be perfectly indexed and still resolve to zero cards — visible here,
+// pickable in the stock tools, and not listable. Before this the catalogue could not SHOW that
+// state at all, which is how M6 Storm Emeralda looked fine on this page for three weeks.
+let COVERAGE=null;
+async function loadCoverage(){
+  if(COVERAGE)return COVERAGE;
+  const j=await fetch('/data/pokemon-coverage.json',{cache:'no-store'}).then((r)=>r.ok?r.json():null).catch(()=>null);
+  COVERAGE=new Map(((j&&j.sets)||[]).filter((r)=>!r.ok).map((r)=>[r.lang+':'+r.code,r]));
+  return COVERAGE;
+}
+const gapFor=(set)=>(COVERAGE?COVERAGE.get(set.lang+':'+(set.rid||set.code)):null)||null;
+
 function matchQuery(set,t){
   if(!t)return true;
   return [set.code,set.name,set.nameEn,set.nameNative,set.enEquivalent&&set.enEquivalent.name]
@@ -376,14 +391,15 @@ async function renderGrid(){
   const grid=$('grid');
   grid.innerHTML=Array.from({length:8}).map(()=>'<div class="skel"></div>').join('');
   let sets;
-  try{sets=await setsForLang(state.lang);}
+  try{sets=await setsForLang(state.lang);await loadCoverage();}
   catch(e){grid.innerHTML='<div class="empty">Couldn’t load '+esc(state.lang.toUpperCase())+' sets — is the dev server running?<br><span style="color:var(--faint)">'+esc(e.message)+'</span></div>';return;}
   const t=state.q.trim().toLowerCase();
   const acc=LANG_ACC[state.lang]||'var(--gold)';
   let shown=0,ownedTotal=0;
   const rows=[];
   for(const set of sets){
-    if(state.src!=='all'&&set.source!==state.src)continue;
+    if(state.src==='gap'){ if(!gapFor(set))continue; }
+    else if(state.src!=='all'&&set.source!==state.src)continue;
     if(!matchQuery(set,t))continue;
     const own=ownedForSet(set);const ownN=own.graded.length+own.sealed.length;
     if(state.ownedOnly&&!ownN)continue;
@@ -416,6 +432,7 @@ function setCardHTML(set,acc,ownN){
   const meta=[set.serie?'<b>'+esc(set.serie.replace('ポケモンカードゲーム ',''))+'</b>':'',fmtDate(set.releaseDate),set.cardCount!=null?set.cardCount+' cards':'',eq].filter(Boolean).join(' · ');
   const badges=['<span class="badge '+sb[0]+'" title="'+esc(sb[2])+'"><span class="d" style="background:currentColor"></span>'+sb[1]+'</span>',
     set.noCode?'<span class="badge b-warn" title="No printed set code — search by name only">no code</span>':'',
+    (function(){const g=gapFor(set);return g?'<span class="badge b-gap" title="'+esc(g.error||'Resolves to zero cards — not listable')+'">no cards</span>':'';})(),
     ownN?'<span class="badge b-own">◆ '+ownN+' owned</span>':''].filter(Boolean).join('');
   return '<button class="setcard'+(ownN?' owned':'')+'" data-rid="'+esc(set.rid)+'" style="--acc:'+acc+'">'+
     '<div class="sc-head"><div class="sc-sym">'+sym+'</div><div class="sc-title">'+
@@ -641,15 +658,20 @@ async function loadCards(set,wrap){
   try{
     const qs=new URLSearchParams({lang:set.lang,set:set.rid});
     if(set.pcSlug)qs.set('pcSlug',set.pcSlug);   // EN early sets pass it too — server falls back to the PC console
-    if(set.lang!=='en'){qs.set('src',set.source);if(set.tcgdexId)qs.set('tcgdexId',set.tcgdexId);}
+    // Capabilities only — the server picks the order (lib/catalog.mjs cardSourceChain). `src` used
+    // to be sent here as a directive; the batch runner sent a different one for the same set, which
+    // is how the two tools disagreed about whether M6 Storm Emeralda had any cards.
+    if(set.lang!=='en'&&set.tcgdexId)qs.set('tcgdexId',set.tcgdexId);
     const j=await jget('/api/catalog/cards?'+qs.toString());
     const raw=(j&&j.cards)||[];
     if(!raw.length){
-      const seededNoSrc=set.lang!=='en'&&set.source!=='indexed';
-      return note(noteHTML(seededNoSrc
-        ? 'This set is seeded ahead of the card sources — no card list yet. Open it in the builder (it’ll appear here once TCGdex or PriceCharting publishes it).'
-        : 'No cards returned for this set yet — open it in the builder.',set),
-        set.source==='seeded'?'seeded · no card list yet':'via builder');
+      // "Seeded" no longer implies "no cards" — a seeded set carries a PriceCharting console and
+      // loads from it. What actually decides the message is whether the set has any SOURCE at all.
+      const noRoute=set.lang!=='en'&&!set.tcgdexId&&!set.pcSlug;
+      return note(noteHTML(noRoute
+        ? 'This set has no card source yet — neither TCGdex nor a PriceCharting console. Add a PriceCharting slug to its overlay entry, or wait for TCGdex to ingest it.'
+        : 'No cards came back for this set. The sources are reachable but returned nothing — try ↻ in the builder, or check the coverage panel in Settings.',set),
+        noRoute?'no card source':'via builder');
     }
     const toAud=(v,cur)=>(window.TCG&&v!=null&&cur&&TCG.toAUD)?TCG.toAUD(v,cur):null;
     const cards=raw.map((c)=>({numN:parseCardNum(c.numRaw),numRaw:c.numRaw,name:c.name||'',rarity:c.rarity||'',

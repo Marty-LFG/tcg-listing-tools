@@ -484,6 +484,22 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
 
 ## 10. Known limitations & roadmap
 
+- **53 Japanese sets are split in two, and the printed code lands on the dead
+  half.** Surfaced by the new coverage watchdog on its first run (2026-08-23).
+  TCGdex lists these sets with a card count but ships an **empty `cards` array**
+  (`S4a` claims `official: 190`, returns 0), and because they have no `name_en`
+  in the seed, `mergePcConsoles` — which matches JP consoles by ENGLISH set name
+  — cannot attach their `pcSlug`. The console then gets added separately as a
+  code-less `pcOnly` stub. So the catalogue holds `S4A` (code, zero cards) *and*
+  `Shiny Star V` (335 cards, no code) as two entries for one physical set: it is
+  listable by name and dead by the code the operator reads off the card. Same
+  class as the M6 failure, different cause. **This predates the source-chain fix**
+  — verified identical against the old code — and the fix is per-set data, not
+  logic: seed a `name_en` (one click each in catalog.html's overlay editor) and
+  the console attaches on the next bake. Deliberately NOT automated: joining a
+  code to a console by fuzzy name/date/count would eventually bind the wrong set,
+  and mislabelling a card's set is worse than not finding it (GR4). The current
+  list is always in `data/pokemon-coverage.json` and the Settings coverage card.
 - **Production hosting** needs a backend (proxies are dev-only — Golden Rule 1).
 - **Riftbound price graph** no longer has Scrydex *trend deltas* to reconstruct
   from — that subscription lapsed (402) and prices now come from the keyless

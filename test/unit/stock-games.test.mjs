@@ -151,6 +151,14 @@ describe('URLs and set lists', () => {
     assert.equal(u.searchParams.get('lang'), 'ja');
     assert.equal(u.searchParams.get('set'), 'M5');
     assert.equal(u.searchParams.get('pcSlug'), 'pokemon-japanese-abyss-eye');
+    assert.equal(u.searchParams.get('tcgdexId'), 'M5');
+    // THE regression this file exists to prevent. This used to send `src=indexed` for any set with a
+    // code, which pinned every intl set to TCGdex and made the server's PriceCharting branch
+    // unreachable — so a set TCGdex had not ingested (M6 Storm Emeralda) 404'd and reported "no
+    // cards returned" while its PriceCharting console sat there with every card in it. The client
+    // states CAPABILITIES; lib/catalog.mjs cardSourceChain() picks the order. It went unnoticed for
+    // three weeks because this assertion did not exist.
+    assert.equal(u.searchParams.get('src'), null, 'the client must not dictate the source');
     assert.equal(P.cardUrl('M5', '102', 'JP'), '/api/tcgdex/ja/cards/M5-102');
     assert.equal(P.cardUrl('SV8A', '1', 'TW'), '/api/tcgdex/zh-tw/cards/SV8A-1');
     // The zero-padding ladder TCGdex ids need — 3-pad first, and no truncating "pad" for a number
@@ -159,6 +167,26 @@ describe('URLs and set lists', () => {
       ['/api/tcgdex/ja/cards/M5-001', '/api/tcgdex/ja/cards/M5-1', '/api/tcgdex/ja/cards/M5-01']);
     assert.deepEqual(P.cardUrlCandidates(M5, '102', 'JP'), ['/api/tcgdex/ja/cards/M5-102']);
     assert.deepEqual(P.cardUrlCandidates(M5, '102', 'EN'), [], 'English has no TCGdex lane');
+  });
+
+  // A set TCGdex has not ingested is baked with a BLANK tcgdexId (scripts/build-pokemon-intl-sets.mjs
+  // no longer defaults it to the printed code), so the URL must claim only the PriceCharting
+  // capability. This is the exact shape M6 Storm Emeralda has.
+  it('claims only PriceCharting for a set TCGdex does not have', () => {
+    const M6 = {
+      code: 'M6', tcgdexId: '', name_en: 'Storm Emeralda', name_native: 'ストームエメラルダ',
+      cardCount: null, releaseDate: '2026-07-31', pcSlug: 'pokemon-japanese-storm-emeralda', seeded: true,
+    };
+    const u = new URL(P.setCardsUrl('M6', false, 'JP', M6), 'http://x');
+    assert.equal(u.searchParams.get('pcSlug'), 'pokemon-japanese-storm-emeralda');
+    assert.equal(u.searchParams.get('tcgdexId'), null, 'no TCGdex id means no TCGdex claim');
+    assert.equal(u.searchParams.get('src'), null);
+    assert.deepEqual(P.cardUrlCandidates(M6, '125', 'JP'), [], 'and no per-card TCGdex lookups either');
+  });
+
+  it('passes the refresh flag through on the intl lane', () => {
+    const u = new URL(P.setCardsUrl('M5', true, 'JP', M5), 'http://x');
+    assert.equal(u.searchParams.get('refresh'), '1', 'the reload button has to reach the server');
   });
 
   it('offers a PriceCharting console only where the set has one', () => {

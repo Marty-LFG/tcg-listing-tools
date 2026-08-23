@@ -127,12 +127,74 @@ function loadExisting(out) {
   return map
 }
 
+// The identity a set is DIFFED on between bakes. Deliberately not `code`: a PriceCharting-only set
+// that TCGdex has never ingested has no printed code (mergePcConsoles adds it with `code: ''`), and
+// keying those on the code would collapse every one of them onto `lang:` and report the whole lot as
+// new on every single run. The pcSlug is the stable identity in that case.
+export const setDiffKey = (lang, r) => lang + ':' + String((r && (r.code || r.pcSlug)) || '')
+
+// Sets present in the freshly-built index but not in the previous one. Returns [] when there IS no
+// previous index — a first build is not 600 new sets, and an alert nobody can act on is noise.
+// `needsCode` marks the ones that came in from PriceCharting with no printed code yet: they are
+// fully listable by NAME right now, and assigning the code is a one-click job in catalog.html.
+// Pure; exported for the unit harness.
+export function diffNewSets(priorIndex, result) {
+  const seen = new Set()
+  let priorTotal = 0
+  for (const lang of Object.keys(priorIndex || {})) {
+    for (const r of (priorIndex[lang] || [])) { seen.add(setDiffKey(lang, r)); priorTotal++ }
+  }
+  if (!priorTotal) return []
+  const out = []
+  for (const lang of Object.keys(result || {})) {
+    for (const r of (result[lang] || [])) {
+      if (seen.has(setDiffKey(lang, r))) continue
+      out.push({
+        lang,
+        code: r.code || '',
+        name: r.name_en || r.name_native || r.code || r.pcSlug || '(unnamed)',
+        pcSlug: r.pcSlug || '',
+        releaseDate: r.releaseDate || '',
+        needsCode: !r.code,
+      })
+    }
+  }
+  return out
+}
+
+const readIndex = (out) => { try { return JSON.parse(readFileSync(out, 'utf8')) } catch { return {} } }
+
+// Re-attach the PREVIOUS index's PriceCharting data when the console directory was unreachable.
+// Matched by printed code where there is one, and by pcSlug for the code-less PC-only sets (which
+// loadExisting cannot see, since it keys on code). Pure; exported for the unit harness.
+export function restorePcFromPrior(result, priorIndex) {
+  let restored = 0, readded = 0
+  for (const lang of Object.keys(result || {})) {
+    const list = result[lang] || []
+    const byCode = new Map(list.filter((r) => r && r.code).map((r) => [r.code, r]))
+    const haveSlug = new Set(list.map((r) => r && r.pcSlug).filter(Boolean))
+    for (const p of ((priorIndex && priorIndex[lang]) || [])) {
+      if (!p || !p.pcSlug) continue
+      const ex = p.code ? byCode.get(p.code) : null
+      if (ex) {
+        if (!ex.pcSlug) { ex.pcSlug = p.pcSlug; if (p.pcOnly) ex.pcOnly = true; restored++ }
+        haveSlug.add(p.pcSlug)
+        continue
+      }
+      if (!haveSlug.has(p.pcSlug)) { list.push({ ...p }); haveSlug.add(p.pcSlug); readded++ }
+    }
+    list.sort((a, b) => (b.releaseDate || '').localeCompare(a.releaseDate || '') || (a.name_en || a.code || '').localeCompare(b.name_en || b.code || ''))
+  }
+  return { restored, readded }
+}
+
 const cc = (o) => (o ? (o.official != null ? o.official : (o.total != null ? o.total : null)) : null)
 
 // Bake the index and (atomically) write it to `out`. Returns a summary object.
 export async function buildPokemonIntlSets({ out = OUT } = {}) {
   const seed = loadSeed()
   const prior = loadExisting(out)
+  const priorIndex = readIndex(out)   // read BEFORE the atomic rename below, for the new-set diff
   const result = {}
   let fetched = 0, reused = 0, injected = 0
   const nameCollisions = []
@@ -192,8 +254,13 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
         if (sd.pcSlug) ex.pcSlug = sd.pcSlug   // pin an explicit PriceCharting console (card source)
         if (sd.pcOnly) ex.pcOnly = true
       } else {
+        // This branch runs precisely BECAUSE TCGdex's brief list has no such code — so defaulting
+        // tcgdexId to the code fabricates an id that is guaranteed to 404, and any consumer that
+        // treats "has a tcgdexId" as "is on TCGdex" is then lied to. That is what happened to M6
+        // Storm Emeralda: seeding it (to make it available EARLY) is what made it unloadable.
+        // Blank unless the seed pins a real id — e.g. a casing variant TCGdex does carry.
         const rec = {
-          code, tcgdexId: sd.tcgdexId || rawCode,
+          code, tcgdexId: sd.tcgdexId || '',
           name_native: sd.name_native || '', name_en: sd.name_en || '',
           serie: sd.serie || '', releaseDate: sd.releaseDate || '',
           cardCount: sd.cardCount != null ? sd.cardCount : null,
@@ -237,12 +304,30 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
   }
 
   // Merge PriceCharting consoles (JP/CN/KO card + image source). Best-effort (GR7).
-  let pcMatched = 0, pcAdded = 0
+  let pcMatched = 0, pcAdded = 0, pcRestored = null
   try {
     const dir = await listPokemonConsoles()
     const r = mergePcConsoles(result, dir)
     pcMatched = r.matched; pcAdded = r.added
-  } catch (e) { console.warn('[pkm-intl] PriceCharting console directory unavailable — ' + (e?.message || e)) }
+  } catch (e) {
+    console.warn('[pkm-intl] PriceCharting console directory unavailable — ' + (e?.message || e))
+  }
+  // ALWAYS carry the previous index's PriceCharting data forward into any gap the merge left. Two
+  // separate ways a set loses its card source without this, both silent:
+  //   1. The directory fetch fails. Records here are rebuilt from the TCGdex brief list, which knows
+  //      nothing about PriceCharting, so every pcSlug and every PC-only set would simply VANISH —
+  //      ~117 JP sets un-sourced until the next successful bake.
+  //   2. The directory churns. It is a curated, incomplete index, not a catalogue: measured
+  //      2026-08-23, six JP consoles dropped off it in a day while their console pages still worked.
+  //      A set silently losing its slug that way is indistinguishable from the M6 failure.
+  // This only FILLS gaps — a slug the merge did attach always wins — so a genuine rename still
+  // takes effect, and a genuinely dead console surfaces as a coverage gap rather than a silent hole.
+  pcRestored = restorePcFromPrior(result, priorIndex)
+
+  // Diff BEFORE the write — after the rename the "previous" index is gone. This is the only signal
+  // anywhere that a new JP/CN/KO set exists; without it a set could sit unlisted for weeks and the
+  // only symptom was a bake summary nobody reads.
+  const newSets = diffNewSets(priorIndex, result)
 
   mkdirSync(dirname(out), { recursive: true })
   const tmp = out + '.tmp'
@@ -252,8 +337,10 @@ export async function buildPokemonIntlSets({ out = OUT } = {}) {
   const counts = LANGS.map((l) => l + ':' + result[l].length).join(' ')
   const suspect = nameCollisions.reduce((n, c) => n + c.count, 0)
   const summary = counts + ' (fetched ' + fetched + ', reused ' + reused + ', injected ' + injected
-    + ', pcSlugs ' + pcMatched + ', pcAdded ' + pcAdded + (suspect ? ', nameSuspect ' + suspect : '') + ')'
-  return { summary, out, fetched, reused, injected, pcMatched, pcAdded, nameCollisions }
+    + ', pcSlugs ' + pcMatched + ', pcAdded ' + pcAdded + (suspect ? ', nameSuspect ' + suspect : '')
+    + (pcRestored && (pcRestored.restored || pcRestored.readded) ? ', pcCarried ' + pcRestored.restored + '/' + pcRestored.readded : '')
+    + (newSets.length ? ', new ' + newSets.length : '') + ')'
+  return { summary, out, fetched, reused, injected, pcMatched, pcAdded, pcRestored, nameCollisions, newSets }
 }
 
 // CLI entry — only runs when invoked directly (not when imported).

@@ -761,14 +761,23 @@
       ['pokemon_intl','Pokémon intl sets',(x)=>x.count+' sets · '+x.langs+' langs'],
       ['pokemon_en_early','Early EN Pokémon',(x)=>x.count+' sets'],
       ['pokemon_mep','Mega Evolution Promo',(x)=>x.count+' cards · '+x.with_art+' w/ art'],
+      ['pokemon_coverage','Set coverage',(x)=>x.count+' sets proven'+(x.deferred?' · '+x.deferred+' queued':'')],
       ['funko','Funko catalog',(x)=>x.count+' pops · frozen 2021'],
       ['pokemon_dex','Pokémon dex names',(x)=>x.count+' species'],
     ];
     for(const [key,label,fmt] of items){
       const x=d[key]; if(!x) continue;
-      const state=x.error?'bad':x.stale?'warn':'ok';
-      const card=el('<div class="card"><h3><span class="ttl">'+esc(label)+'</span> '+pill(state,x.error?'broken':x.stale?'stale':x.frozen?'frozen':'fresh')+'</h3>'+
+      // Coverage is the one card that can be BAD while being perfectly fresh: a gap means a set is
+      // pickable in the tools and resolves to no cards. Freshness must never outrank that.
+      const gaps=x.gaps||0;
+      const state=x.error?'bad':gaps?'bad':x.stale?'warn':'ok';
+      const word=x.error?'broken':gaps?(gaps+' unlistable'):x.stale?'stale':x.frozen?'frozen':'fresh';
+      const gapRows=gaps?('<div class="kv"><span class="k">No cards</span><span class="v bad">'+
+        (x.gap_sets||[]).map(function(g){return esc((g.code||g.name||'?')+' ('+g.lang+')');}).join(', ')+
+        (gaps>((x.gap_sets||[]).length)?' +'+(gaps-(x.gap_sets||[]).length)+' more':'')+'</span></div>'):'';
+      const card=el('<div class="card"><h3><span class="ttl">'+esc(label)+'</span> '+pill(state,word)+'</h3>'+
         '<div class="kv"><span class="k">Contents</span><span class="v">'+esc(x.error||(fmt(x)||x.count))+'</span></div>'+
+        gapRows+
         '<div class="kv"><span class="k">Age</span><span class="v'+(x.stale?' warn':'')+'">'+fmtAge(x.age_h)+'</span></div>'+
         '<div class="kv"><span class="k">Refresh</span><span class="v dim">'+(x.managed?'scheduled bake':x.frozen?'frozen upstream':'manual')+'</span></div></div>');
       card.setAttribute('data-find',(label+' baked catalog '+key+' '+(x.file||'')).toLowerCase());

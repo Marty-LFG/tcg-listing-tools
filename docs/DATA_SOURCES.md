@@ -119,6 +119,26 @@ exactly the symbol the user searches by. The language toggle in the builder scop
   (`fetch('/data/pokemon-intl-sets.json')`, cached under `localStorage` `pkm_intl_sets_v1`). Wired
   into the daily `lib/refresh.mjs` bake (`pokemon-intl`), which also picks up sets TCGdex ingests
   after a physical release.
+- **Source selection is the SERVER's, and it is a CHAIN, not a choice.** `GET /api/catalog/cards`
+  builds an ordered list of sources for the set (`cardSourceChain`, `lib/catalog.mjs`) and walks it
+  until one returns cards: **EN** = pokemontcg.io → PriceCharting (a pre-release set graduates by
+  itself the moment pokemontcg.io answers); **intl** = TCGdex → PriceCharting. A step that THROWS
+  does not end the walk — a 404 for a set an upstream never ingested means "not here", not "this set
+  is broken". Clients send `tcgdexId`/`pcSlug` as **capabilities**, never as a directive; a legacy
+  `src=` parameter is accepted and ignored.
+
+  This is load-bearing, and it was learned the hard way. Until 2026-08-23 the branches were mutually
+  exclusive and `lib/stock-games.mjs` stamped `src=indexed` on every intl set that had a code — so
+  the PriceCharting branch was unreachable from the stock tools. **M6 Storm Emeralda** (JP, released
+  2026-07-31) was in the index with a working `pcSlug` and 113 cards on PriceCharting, and the Batch
+  Runner answered *"Could not load this set: no cards returned"* for three weeks while catalog.html
+  — which happened to send a different `src` — rendered the same set fine. `?refresh=1` is honoured
+  here too (it silently was not, so the ↻ button could not clear a bad 24h cache).
+- **A seeded set carries NO `tcgdexId`.** The seed-inject branch runs precisely because TCGdex's
+  brief list lacks that code, so defaulting the id to the printed code (which it used to do)
+  fabricates an id guaranteed to 404 and makes "has a tcgdexId" a lie. Pinning a real one in the
+  seed still works. `test/invariants/pokemon-set-reachability.test.mjs` walks the real baked index
+  and fails if any set is unreachable, or if a seeded set carries an unpinned id.
 - **Set search:** the picker matches the UPPERCASE printed **code** OR `name_native` OR `name_en`
   OR `enEquivalent.name`, so `M5`, `アビスアイ`, `Abyss Eye`, and `Pitch Black` all resolve M5.
   **Code/symbol search is complete for every set** (id = printed code); **English-name search is
@@ -136,6 +156,14 @@ exactly the symbol the user searches by. The language toggle in the builder scop
     `[{number, name(ENGLISH), image, url}]` in one cached fetch; the builder matches the typed number
     → English card name + a **1600px image** (`storage.googleapis.com/images.pricecharting.com/<hash>/1600.jpg`;
     `/320.jpg` for display) + the graded/raw price ladder via `GET /api/pc/lookup?url=<card url>`.
+  - The console directory is a **curated, incomplete, churning index** — not a catalogue. Measured
+    2026-08-23: six JP consoles left it and four arrived in a single day, while the departed
+    consoles' own pages still worked. So `listPokemonConsoles` THROWS rather than returning empty
+    buckets when it cannot read the page (an empty directory is never a fact, and the bakes used to
+    treat it as one and report success), rejects only a >40% *collapse* as a bad render, and the
+    bake **always carries the previous index's `pcSlug`/`pcOnly` forward into any gap the merge
+    left** (`restorePcFromPrior`). Without that, records rebuilt from the TCGdex brief list — which
+    knows nothing about PriceCharting — silently drop the card source for ~117 JP sets.
   - **Fallback:** sets without a `pcSlug` (older JP, all `zh-tw`) use TCGdex
     `GET /api/tcgdex/{lang}/cards/{code}-{localId}` (zero-padded id; image base + `/high.webp`). A
     total miss degrades to manual entry (comps still work).
@@ -178,6 +206,39 @@ exactly the symbol the user searches by. The language toggle in the builder scop
   console link, and attempts an inline scrape via `/api/pc/lookup?…&lang=jp` (see below).
 - **Scope:** listing-builder only. JP/CN/KO cards are **not** written to the tracker/inventory/bulk
   pipeline (which key on pokemontcg.io ids) — `identity_key` is left blank so those actions are gated.
+
+## Pokémon set-coverage watchdog (`data/pokemon-coverage.json`, bake `pokemon-coverage`)
+
+Everything else in this file can tell you a **file** is stale. Nothing could tell you a **set** was
+missing — there was no expected-set list, no diff, and no check that a set in the index resolves to
+anything. That is the gap M6 Storm Emeralda fell through: `catalogStatus()` reported the JP index as
+fresh (it was — it was rebuilt every six hours, correctly, with M6 in it) while the set could not be
+loaded. Freshness and correctness are different questions.
+
+`checkPokemonCoverage` (`lib/catalog.mjs`) resolves sets through **the same `cardSourceChain` the
+stock tools use** and records what came back, per set, to `data/pokemon-coverage.json`.
+
+- **Ranked, capped, and honest about it.** Proving all ~700 sets every cycle would be a stampede
+  against a keyless scraper we are a guest of. Ranks: `0` no lookup route at all (free — no request
+  needed), `1` released in the last 120 days, `2` was a gap last run (did it heal?), `3` never
+  checked, `4` proven good but longer ago than 14 days. Rank 0 never spends budget. The top 250 run;
+  the rest are **deferred, returned, and logged** — a bounded run must never read as "all clear".
+  Verdicts not revisited are carried forward, so the picture stays complete rather than shrinking to
+  whatever ran last.
+- **EN earns a check only when it is new, pre-release, or already failing.** EN's set list and EN's
+  card data come from the same upstream, so re-proving Base Set discovers nothing and just
+  rate-limits us out of the API we depend on.
+- **"No cards" and "could not ask" are different facts** (`classifyCoverage`). A 4xx-that-answered or
+  an empty HTTP 200 is a `gap`; a 5xx/429/dead socket is `unavailable` and never counts as a gap —
+  and never overwrites a verdict already earned (GR7). This is not theoretical: the first live run,
+  2026-08-23, drew **108 HTTP 500/502s from pokemontcg.io in one pass** (confirmed by probing the
+  host directly, outside our code). Without the distinction the watchdog's debut would have been an
+  alert declaring 108 sets unlistable.
+- **Telegram fires on NEW gaps only.** The long tail of genuinely source-less old sets (the JP era
+  promo pools, the `CS*` block) is real and lives in the Settings panel; re-pushing it every six
+  hours would train the alert to be ignored, which is the same as not having one.
+- Surfaced in **settings.html** ("Set coverage" — the one baked-data card that can be red while
+  perfectly fresh) and in **catalog.html** (a `no cards` badge and a "No cards" filter chip).
 
 ## PriceCharting — graded/raw/pop (Pokémon)  (proxy `/api/pc`, keyless scrape)
 
