@@ -704,6 +704,17 @@
       keyRow('EBAY_NOTIFY_VERIFICATION_TOKEN',!!en.EBAY_NOTIFY_VERIFICATION_TOKEN,'','Hashed with the public endpoint into eBay’s challenge reply. Without it the listener cannot be validated, and eBay marks the destination down.'),
       keyRow('EBAY_NOTIFY_DELETION_TOKEN',!!en.EBAY_NOTIFY_DELETION_TOKEN,'','The marketplace-account-deletion endpoint’s own token — eBay requires that endpoint for a production keyset.'),
     ]));
+    const sh=k.shopify||{};
+    box.appendChild(keyCard('Shopify','shopify storefront channel client id secret shop dev store admin api second channel',[
+      keyRow('Connected',sh.ready===true,sh.ready===true?'':'needs id + secret + a shop',
+        'The client-credentials grant needs all three. A missing SHOP fails before anything is sent (ShopifyNotConfigured); a missing SECRET fails at the token mint — different symptoms, so this row does the AND for you.'),
+      keyRow('SHOPIFY_CLIENT_ID',!!sh.SHOPIFY_CLIENT_ID),
+      keyRow('SHOPIFY_CLIENT_SECRET',!!sh.SHOPIFY_CLIENT_SECRET,'','Also the secret Shopify signs webhook deliveries with. After a rotation Shopify can take up to an hour to switch over, so both old and new have to be accepted for that window.'),
+      keyRow('Live store',sh.SHOPIFY_SHOP||'—','','Not a secret. <b>SHOPIFY_SHOP</b> — reached only when a call explicitly asks for live.'),
+      keyRow('Dev store',sh.SHOPIFY_DEV_SHOP||'—','','Not a secret. <b>SHOPIFY_DEV_SHOP</b>, and the DEFAULT: reaching live takes an explicit argument, because nothing destructive touches live until it has passed on dev.'),
+      keyRow('Default store',sh.default_store||'dev'),
+      keyRow('API version',sh.api_version||'—','','Pinned in code. Shopify FALLS FORWARD silently when a version retires — a stale pin does not 404, it quietly starts answering as a newer version, which is a breaking change with no signal.'),
+    ]));
     box.appendChild(keyCard('AI lanes','anthropic openai grader model postsale provider llm',[
       keyRow('ANTHROPIC_API_KEY',!!g.ANTHROPIC_API_KEY),
       keyRow('OPENAI_API_KEY',!!g.OPENAI_API_KEY),
