@@ -16,6 +16,8 @@ import { openDbAt } from '../../lib/db.mjs';
 import { storePath } from '../../lib/listing-image-store.mjs';
 import { ensureShopifyMedia, postToStagedTarget, cachedFile } from '../../lib/channels/shopify-media.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
+import { buildProductSetInput } from '../../lib/channels/shopify-product-api.mjs';
+import { toShopifyProduct } from '../../lib/channels/shopify-map.mjs';
 
 const ENV = {
   SHOPIFY_DEV_SHOP: 'binders-keepers-dev',
@@ -69,6 +71,7 @@ function stubShopify({ fileStatus = 'READY', statusSequence = null, stagedFail =
     }
     if (q.includes('fileCreate')) {
       calls.fileCreate++;
+      calls.fileCreateAlt = JSON.parse(init.body).variables.files[0].alt;
       return mkResponse(200, JSON.stringify({ data: { fileCreate: { files: [{ id: 'gid://shopify/MediaImage/' + calls.fileCreate, fileStatus, alt: '' }], userErrors: [] } } }));
     }
     if (q.includes('nodes(ids:')) {
@@ -82,6 +85,13 @@ function stubShopify({ fileStatus = 'READY', statusSequence = null, stagedFail =
   return fn;
 }
 
+// A real mapped product, so the seam test exercises the actual contract rather than a stand-in.
+const PRODUCT = toShopifyProduct({
+  id: 7, sku: 'AAC-085', game: 'pokemon', identity_key: 'sv8a-102', name: 'Iono', number: '186/159',
+  set_name: 'White Flare', set_code: 'SV8a', rarity: 'Special Illustration Rare', language: 'JP',
+  variant: 'Holo', condition: 'Near Mint', quantity: 1, target_price_cents: 12999,
+});
+
 let db;
 beforeEach(() => { db = openDbAt(tmpFile('shopify-media-' + Math.random().toString(36).slice(2) + '.db')); });
 
@@ -94,11 +104,30 @@ describe('the happy path', () => {
     const r = await ensureShopifyMedia(ENV, db, { imageSet: set, fetchImpl });
     assert.equal(r.ok, true, r.errors.join('; '));
     assert.equal(r.uploaded, 2);
-    assert.equal(r.files.length, 2);
-    assert.deepEqual(r.files.map((f) => f.contentType), ['IMAGE', 'IMAGE']);
-    assert.match(r.files[0].originalSource, /^gid:\/\/shopify\/MediaImage\//);
     // Gallery order IS array order, and buildImageSet guarantees position 1 is the real card.
-    assert.equal(r.files[0].alt, 'Iono front');
+    assert.equal(r.fileGids.length, 2);
+    assert.ok(r.fileGids.every((g) => typeof g === 'string'), 'bare GIDs — an object here cannot connect to buildProductSetInput');
+    assert.match(r.fileGids[0], /^gid:\/\/shopify\/MediaImage\//);
+  });
+
+  it('returns exactly the shape publishProduct takes, so the two wire up with no adapter', async () => {
+    const h = seedStore('shape-1');
+    const fetchImpl = stubShopify();
+    const set = { sku: 'AAC-085', alt: 'Iono front', images: [frame(h)], social: frame(h, { position: null, view: 'og', filename: 'AAC-085-og.jpg' }) };
+
+    const r = await ensureShopifyMedia(ENV, db, { imageSet: set, fetchImpl });
+    // publishProduct destructures { fileGids, ogFileGid } — spreading the result must satisfy it.
+    const input = buildProductSetInput(PRODUCT, { fileGids: r.fileGids, ogFileGid: r.ogFileGid });
+    assert.deepEqual(input.files, [{ id: r.fileGids[0] }], 'the media layer and the publish layer disagreed about `files`');
+    assert.ok(input.metafields.some((m) => m.namespace === 'bkc' && m.key === 'og_image' && m.value === r.ogFileGid));
+  });
+
+  it('alt travels with the FILE, not with the attachment — siblings share one file', async () => {
+    const h = seedStore('alt-1');
+    const fetchImpl = stubShopify();
+    const set = { sku: 'AAC-085', alt: 'Iono front', images: [frame(h, { alt: 'Iono front' })], social: null };
+    await ensureShopifyMedia(ENV, db, { imageSet: set, fetchImpl });
+    assert.equal(fetchImpl.calls.fileCreateAlt, 'Iono front', 'alt must be set at fileCreate, where it belongs to the file');
   });
 
   it('sends the signed parameters BEFORE the file part', async () => {
@@ -135,9 +164,9 @@ describe('the social card never enters the gallery', () => {
     };
     const r = await ensureShopifyMedia(ENV, db, { imageSet: set, fetchImpl });
     assert.equal(r.ok, true, r.errors.join('; '));
-    assert.equal(r.files.length, 1, 'the og card leaked into the product gallery');
+    assert.equal(r.fileGids.length, 1, 'the og card leaked into the product gallery');
     assert.ok(r.ogFileGid, 'the og card was not uploaded at all');
-    assert.ok(!r.files.some((f) => f.originalSource === r.ogFileGid));
+    assert.ok(!r.fileGids.includes(r.ogFileGid));
   });
 });
 
@@ -154,7 +183,7 @@ describe('the cache is what stops Shopify Files filling with orphans', () => {
     assert.equal(b.reused, 1);
     assert.equal(b.uploaded, 0);
     assert.equal(second.calls.staged, 0, 'it re-staged bytes it had already uploaded');
-    assert.equal(b.files[0].originalSource, a.files[0].originalSource);
+    assert.equal(b.fileGids[0], a.fileGids[0]);
   });
 
   it('condition siblings sharing one image upload it ONCE', async () => {
@@ -165,8 +194,8 @@ describe('the cache is what stops Shopify Files filling with orphans', () => {
     const set = { images: [frame(h), frame(h, { position: 2, view: 'back', filename: 'x-2-back.jpg' })], social: null };
     const r = await ensureShopifyMedia(ENV, db, { imageSet: set, fetchImpl });
     assert.equal(fetchImpl.calls.fileCreate, 1, 'the same bytes were uploaded twice in one pass');
-    assert.equal(r.files.length, 2);
-    assert.equal(r.files[0].originalSource, r.files[1].originalSource);
+    assert.equal(r.fileGids.length, 2);
+    assert.equal(r.fileGids[0], r.fileGids[1]);
   });
 
   it('only a READY row is reusable — a staged or failed one is not', async () => {
@@ -204,7 +233,7 @@ describe('failures are reported, never assumed away', () => {
     const set = { images: [frame(h1), frame('0'.repeat(64), { position: 2, view: 'back' })], social: null };
     const r = await ensureShopifyMedia(ENV, db, { imageSet: set, fetchImpl: stubShopify() });
     assert.equal(r.ok, true, 'a missing back should not block the publish');
-    assert.equal(r.files.length, 1);
+    assert.equal(r.fileGids.length, 1);
     assert.match(r.warnings.join(' '), /no bytes in the image store/);
 
     const set2 = { images: [frame('0'.repeat(64))], social: null };
@@ -251,5 +280,68 @@ describe('postToStagedTarget in isolation', () => {
       { filename: 'a.jpg', mimeType: 'image/jpeg', fetchImpl: async () => mkResponse(403, 'denied') });
     assert.equal(r.ok, false);
     assert.match(r.error, /403/);
+  });
+});
+
+// A file that Shopify has already created is a permanent object on the store. If our poll gives up
+// before it finishes processing, the id is the only handle we will ever have on it — drop that and the
+// file is unreachable AND the retry makes another one, in a Files area with no bulk delete. These lock
+// down the difference between a retry that RESUMES and a retry that LITTERS.
+describe('a timeout is an unfinished wait, not a failure', () => {
+  // Shopify says PROCESSING at fileCreate and never reaches READY within the (tiny) timeout.
+  const neverReady = () => stubShopify({ fileStatus: 'PROCESSING', statusSequence: ['PROCESSING'] });
+
+  it('KEEPS the file id when the READY poll times out', async () => {
+    const h = seedStore('timeout-1');
+    const r = await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl: neverReady(), timeoutMs: 5 });
+    assert.equal(r.ok, false);
+    const row = db.prepare('SELECT * FROM shopify_files WHERE content_hash = ?').get(h);
+    assert.equal(row.status, 'processing', 'a timeout is not the same fact as a failure');
+    assert.match(row.file_gid, /^gid:\/\/shopify\/MediaImage\//, 'the id was thrown away — that file is now unreachable');
+  });
+
+  it('the RETRY adopts that file instead of uploading the same bytes again', async () => {
+    const h = seedStore('timeout-2');
+    await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl: neverReady(), timeoutMs: 5 });
+
+    // Second attempt: the file finished processing in the meantime, as it almost always does.
+    const second = stubShopify();
+    const r = await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl: second });
+
+    assert.equal(r.ok, true, r.errors.join('; '));
+    assert.equal(second.calls.staged, 0, 'it re-staged bytes for a file that already existed');
+    assert.equal(second.calls.fileCreate, 0, 'it minted a DUPLICATE file — this is the orphan pile');
+    assert.equal(r.adopted, 1);
+    assert.equal(cachedFile(db, h).status, 'ready');
+  });
+
+  it('records the id even when Shopify FAILED the image, so the orphan is at least nameable', async () => {
+    const h = seedStore('failed-1');
+    const fetchImpl = stubShopify({ fileStatus: 'PROCESSING', statusSequence: ['FAILED'] });
+    const r = await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl });
+    assert.equal(r.ok, false);
+    const row = db.prepare('SELECT * FROM shopify_files WHERE content_hash = ?').get(h);
+    assert.equal(row.status, 'failed');
+    assert.ok(row.file_gid, 'a failed file still exists on the store and still needs deleting by hand');
+  });
+
+  it('a gidless failure never erases an id an earlier attempt recorded', async () => {
+    const h = seedStore('coalesce-1');
+    await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl: neverReady(), timeoutMs: 5 });
+    const gid = db.prepare('SELECT file_gid FROM shopify_files WHERE content_hash = ?').get(h).file_gid;
+
+    // Now a run that cannot even reach fileCreate — staging itself fails.
+    await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl: stubShopify({ stagedFail: true }), timeoutMs: 5 });
+    assert.equal(db.prepare('SELECT file_gid FROM shopify_files WHERE content_hash = ?').get(h).file_gid, gid);
+  });
+
+  it('a still-unfinished file stays adoptable rather than being downgraded to failed', async () => {
+    const h = seedStore('still-1');
+    await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl: neverReady(), timeoutMs: 5 });
+    // Second attempt, still processing: it must NOT end up as a plain 'failed' row with the id lost.
+    await ensureShopifyMedia(ENV, db, { imageSet: { images: [frame(h)], social: null }, fetchImpl: neverReady(), timeoutMs: 5 });
+    const row = db.prepare('SELECT * FROM shopify_files WHERE content_hash = ?').get(h);
+    assert.ok(row.file_gid, 'the handle survived a second timeout');
+    assert.equal(row.status, 'processing');
   });
 });
