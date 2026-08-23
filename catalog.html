@@ -680,7 +680,13 @@ async function loadCards(set,wrap){
       img:c.img||'',owned:ownNums.get(ownedNumKey(c.numRaw))}));
     const fx=(window.TCG&&TCG.fxInfo)?TCG.fxInfo():null;
     const fxNote=(fx&&fx.stale)?' · FX cached'+(fx.date?' '+fx.date:''):'';
-    const srcLabel=j.stale?'cached copy':(j.source==='pricecharting-early'?'via PriceCharting · pre-release':(j.source==='pricecharting'?'via PriceCharting':(j.source==='tcgdex'?'via TCGdex':'')));
+    // Provenance is worth stating plainly for the two derived lanes especially: a Korean set shown
+    // here is carrying names and numbers off the JAPANESE print (identical roster, no images), and
+    // the operator should be able to see that rather than infer it.
+    const SRC_LABEL={'pricecharting-early':'via PriceCharting · pre-release','pricecharting':'via PriceCharting',
+      tcgdex:'via TCGdex',pokemontcg:'via pokemontcg.io','japanese-twin':'via the Japanese set · names + numbers only',
+      '52poke':'via 52poke'};
+    const srcLabel=j.stale?'cached copy':(SRC_LABEL[j.source]||'');
     paintCards(head,grid,cards,srcLabel+fxNote);
   }catch(e){
     note(noteHTML('Cards aren’t available from the data source right now — open it in the builder to look them up.',set),'via builder');

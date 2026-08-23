@@ -217,6 +217,57 @@ exactly the symbol the user searches by. The language toggle in the builder scop
 - **Scope:** listing-builder only. JP/CN/KO cards are **not** written to the tracker/inventory/bulk
   pipeline (which key on pokemontcg.io ids) — `identity_key` is left blank so those actions are gated.
 
+## Pokémon KO + ZH-CN — the two lanes nothing else covers
+
+Measured 2026-08-23. **TCGdex indexes the Korean and Simplified-Chinese sets but serves no cards for
+either**: `/v2/{ko|zh-cn}/sets/<id>` answers 200 with `cardCount.official` populated and an EMPTY
+`cards[]`, and `/v2/{lang}/cards/<id>-<n>` is a flat 404. PriceCharting's directory carries **5
+Korean consoles for 100 Korean sets and 22 Chinese for 66**. So ~90 Korean and ~35 Chinese sets were
+pickable in the stock tools with nothing behind them. Each lane gets one last chain step, always
+LAST so a genuine Korean/Chinese console still wins.
+
+### `ko` → the Japanese twin (`fetchTwinCards`, lib/catalog.mjs)
+
+Korean releases are the Japanese line reprinted under the **same set code** — 98% of Korean codes
+exist in `ja`. Verified rather than assumed, by diffing the three sets PriceCharting happens to carry
+in both languages: **M5 matched 118/118** on number+name, S6A 101/105, SV8A 237/239. So names and
+numbers transfer.
+
+**Images do not, and are stripped at the source** (`stripTwinImages`). PriceCharting does not scan
+Korean cards — its Korean consoles are largely imageless — so the only picture available is the
+Japanese print, and a Korean listing carrying a Japanese scan shows the buyer a card they will not
+receive. For the same reason the derived rows carry **no `native_name`**: reconstructing a Korean
+name from the dex (`nativeInfo`) would be inventing text that is on no card, so `NO_NATIVE_SOURCES`
+in lib/stock-games.mjs suppresses it. Korean can only ever be as good as Japanese — a Korean set
+whose Japanese twin has no console still has none.
+
+### `zh-cn` → 52poke (`lib/wiki52poke.mjs`)
+
+Chinese sets are **not** the Japanese line — only 12% share a code, and the A/B/C sub-sets are
+CN-exclusive — so the twin trick cannot work and a real source was needed. 52poke (神奇宝贝百科) is a
+MediaWiki, so its card lists are machine-readable wikitext rather than rendered HTML:
+
+```
+{{卡牌列表/entryjp|001/125|{{C|妙蛙花V|SEF}}|草||RR|}}     Pokémon — {{C|name|jp-origin-set}}
+{{卡牌列表/entryjp|119/125|{{TCG|夏科娅}}|支援者卡||U|}}    Trainer/Energy — {{TCG|name}}
+```
+
+Parse notes that cost time: the API **403s without a descriptive User-Agent**; the page title is
+`<native name>（TCG）` with full-width parens (search is the fallback); and the NAME cell is itself a
+template, so a regex splitting on `|` reads the pipes inside `{{C|妙蛙花V|SEF}}` as separators and
+hands back the string `"C"` as every Pokémon's name — hence the brace-depth `splitCells`.
+
+Names arrive Chinese and go out English through the existing `englishCardName` with the `zh-cn`
+species map already in `data/pokemon-dex-en.json` (1025 entries) — **~76% of a set**. The rest are
+Trainers and Energy, which have no species to resolve and keep their native name, exactly as the
+Japanese lane already does. 52poke carries no per-card prices or images. Title resolution is live per
+request, so a set 52poke has not documented yet **heals itself** once it does, with no code change.
+
+Result: Korean gaps 92 → 20, Chinese 35 → 7. What remains is bounded and explained — the Korean
+`CS*` block mirrors the Japanese TCGdex name collision, four Korean sets have a twin with no console
+of its own, and the seven Chinese ones are the newest Mega-era sets 52poke has yet to write up.
+`zh-tw` has no PriceCharting bucket at all and no equivalent wiki, so its 15 stay open.
+
 ## Pokémon set-coverage watchdog (`data/pokemon-coverage.json`, bake `pokemon-coverage`)
 
 Everything else in this file can tell you a **file** is stale. Nothing could tell you a **set** was

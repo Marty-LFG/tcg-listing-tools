@@ -484,25 +484,30 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
 
 ## 10. Known limitations & roadmap
 
-- **The Japanese split-brain is fixed; the Korean and Chinese lanes are not.**
-  Reconciled 2026-08-23. TCGdex lists many JP sets with a card count but ships
-  an **empty `cards` array**, and with no `name_en` the bake could not match
-  their PriceCharting console — so the catalogue held `S4A` (code, 0 cards)
-  *and* `Shiny Star V` (335 cards, no code) as two rows for one set: listable by
-  name, dead by the code printed on the card. 121 sets were joined to a verified
-  console via Bulbapedia's Japanese-name → English-name mapping (an exact string
-  join, never a transliteration), each console fetched and checked before it was
-  written. JP orphans 153 → 32, duplicate stubs 80 → 26.
-  **What is deliberately left unbound:** the fifteen `CS*` codes TCGdex hands one
-  set's identity to (their 101-card count contradicts the real Triplet Beat's 73,
-  which is how `SV1A` was identified as the genuine one); `ADV1`, `PMCG5`,
-  `LL`, `SVK`, `SV-P`, `M-P` and the starter decks, which have no console at all.
-  Joining those by fuzzy name/date/count would eventually bind the wrong set, and
-  a mislabelled set is worse than a missing one (GR4).
-  **`ko` (92) and `zh-cn` (47) carry the same defect and have NOT been worked
-  through** — Bulbapedia has no equivalent per-language expansion list, and the
-  intl records for those lanes carry almost no `name_en` to join on. The live
-  list is always in `data/pokemon-coverage.json` and the Settings coverage card.
+- **Every Pokémon lane now has a card source; what remains is bounded.**
+  Reconciled 2026-08-23. TCGdex lists many intl sets with a card count but ships
+  an **empty `cards` array**, so a set could sit in the catalogue with the
+  printed code and nothing behind it while a code-less twin held the cards.
+  **`ja`**: 121 sets joined to a verified PriceCharting console via Bulbapedia's
+  Japanese-name → English-name mapping (an exact string join, never a
+  transliteration), every console fetched and checked first. **`ko`**: derives
+  from the Japanese twin — same set code, rosters verified identical (M5 matched
+  118/118) — with images stripped, because PriceCharting does not scan Korean
+  cards and a Japanese scan on a Korean listing shows the buyer the wrong card.
+  **`zh-cn`**: a new keyless source, 52poke's MediaWiki (`lib/wiki52poke.mjs`).
+  Coverage gaps 167 → 66 (ja 59→24, ko 92→20, zh-cn 35→7).
+  **Deliberately left unbound:** the fifteen `CS*` codes TCGdex hands one set's
+  identity to (their 101-card count contradicts the real Triplet Beat's 73, which
+  is how `SV1A` was identified as genuine), the Korean mirror of that same block,
+  four Korean sets whose Japanese twin has no console either, and the sets with
+  no console under any candidate (`ADV1`, `PMCG5`, `SVK`, `SV-P`, `M-P`, the
+  starter decks). Fuzzy-matching those on name, date or card count would
+  eventually bind the wrong set, and a mislabelled set is worse than a missing
+  one (GR4). The seven Chinese stragglers are the newest Mega-era sets 52poke has
+  not written up; that lookup is live, so they heal themselves when it does.
+  **`zh-tw` (15) has no source at all** — no PriceCharting bucket, no wiki
+  equivalent. The live list is always in `data/pokemon-coverage.json` and the
+  Settings coverage card.
 - **Production hosting** needs a backend (proxies are dev-only — Golden Rule 1).
 - **Riftbound price graph** no longer has Scrydex *trend deltas* to reconstruct
   from — that subscription lapsed (402) and prices now come from the keyless
