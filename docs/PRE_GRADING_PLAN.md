@@ -424,6 +424,37 @@ diagrams drawn true to the measured millimetres against a 63x88mm card, likeliho
 corner/edge grid, annotated plates, and every disclaimer. Verified end to end on the real
 sleeved SAR: five pages, 2.8MB, built in 147ms.
 
+**Full review and the four streams it triggered (2026-08-23).** A four-lens review (operator loop,
+competitive feature gaps, robustness, code health) against the owner's real workflow — grading
+stacks, not one-offs. It found four silent data-integrity bugs and one live correctness problem,
+all now fixed:
+
+- `newCard()` cleared images and identity but not the six condition sliders, so card two in a stack
+  was predicted, reported and queued on card one's corners/edges/surface.
+- `openReport` never cleared `SHOTS` or `_ai`, so opening report B kept A's images and A's defects
+  underneath, and the next save wrote them into B — corrupting the calibration record.
+- The sliders rest at 9 and were read as measurement. An AI answering `null` ("cannot see that
+  corner") left the 9 standing, carrying 30% of the weighted grade. The engine now drops unassessed
+  pillars and renormalises, echoes them back as null, reports `assessed`/`partial`, and the report
+  says a partial grade is a ceiling rather than a call.
+- The aspect gate is scale-free: a penny sleeve (66×92mm, aspect 0.7174) passes as a card (0.7159),
+  the analyzer locks the sleeve edge, and both borders inflate by a constant — which drags the ratio
+  toward 50/50 and flatters the card. Given dpi the analyzer now measures in millimetres and names
+  the object; a sleeve caps confidence at 0.35 and warns.
+- **Live correctness:** `cheapestTier()` sorted by price with no availability check while three of
+  five companies had their cheapest tiers closed. BGS was judged on a $17.95 tier nobody can buy
+  (real cheapest open: $79.95) and TAG on $22 (real: $149). Tiers now carry `available`, card
+  minimums gate the bulk rows, and a company with nothing open says so.
+
+Four things were built on top: a **triage lane** (one 600dpi front scan, ~30s, promotes to the full
+12 without rescanning), **multi-card platen scanning** (`POST /api/scan/sheet`, 4-6 cards a pass,
+queued), a **money model that fits Australia** (per-company `marketFactor` so a PCG slab stops
+borrowing PSA's price whole, batch-amortised freight — $134/card at one, $8 at thirty — and AUD
+alongside USD), and the **calibration loop** (`GET /api/pregrade/calibration`), which reads the
+grades that came back and is deliberately quiet about statistics below n=3. A prediction linked to a
+live submission is now frozen, because reopening a report re-pulled prices and overwrote the very
+prediction the returning slab was meant to be judged against.
+
 Unchecked items — none blocks use, all should be closed deliberately:
 
 - [x] ~~**Tomlov microscope corner shots, live.**~~ **DONE 2026-08-22** — owner ran the full
