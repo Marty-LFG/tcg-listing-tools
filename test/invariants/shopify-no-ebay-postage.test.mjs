@@ -129,12 +129,28 @@ describe('the shared product wording is imported, not re-typed', () => {
   it('shopify-map.mjs takes its sentences from lib/listing-copy.mjs', () => {
     const src = stripComments(fs.readFileSync(path.join(ROOT, 'lib/channels/shopify-map.mjs'), 'utf8'));
     assert.match(src, /from\s+'\.\.\/listing-copy\.mjs'/, 'the wording must come from the one source');
-    for (const k of ['CARD_CONDITION_SUFFIX', 'CARD_PROTECTION', 'CARD_FOOTER', 'SLAB_CONDITION_SUFFIX', 'SLAB_PROTECTION']) {
+    // The set the Shopify path actually uses. CARD_CONDITION_SUFFIX, SLAB_CONDITION_SUFFIX and
+    // CARD_FOOTER are deliberately NOT here: "Thanks for looking" and "item specifics" are eBay idiom,
+    // and the condition suffix duplicates the parcel sentence now that condition leads the identity
+    // line (A7, 2026-08-23).
+    for (const k of ['CARD_PROTECTION', 'SLAB_PROTECTION', 'SHOPIFY_WYSIWYG', 'SHOPIFY_PROVENANCE']) {
       assert.match(src, new RegExp('\\b' + k + '\\b'), `${k} should be imported rather than restated`);
     }
-    // If any of these ever appears as a literal here, the mirror this import exists to avoid is back.
+    // If a frozen sentence ever appears as a LITERAL here, the mirror the import exists to avoid is
+    // back — and the Shopify pair is newly at risk, having been written for this file's benefit.
     assert.doesNotMatch(src, /Pulled straight to sleeve/);
     assert.doesNotMatch(src, /penny sleeve and toploader/);
     assert.doesNotMatch(src, /From a smoke-free home/);
+    assert.doesNotMatch(src, /we photograph the actual card/);
+    assert.doesNotMatch(src, /not a warehouse/);
+  });
+
+  it('the eBay idiom cannot creep back into the Shopify path', () => {
+    // Belt and braces over the unit test: this scans the SOURCE, so it holds even if somebody writes a
+    // new builder that never runs under the existing description tests.
+    for (const { rel, src } of shopifySources()) {
+      assert.doesNotMatch(src, /Thanks for looking/i, `${rel} carries eBay's sign-off`);
+      assert.doesNotMatch(src, /item specifics/i, `${rel} names an eBay UI element`);
+    }
   });
 });
