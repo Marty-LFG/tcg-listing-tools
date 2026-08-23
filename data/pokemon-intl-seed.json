@@ -207,6 +207,498 @@
       "cardCount": 9,
       "pcSlug": "pokemon-japanese-11th-movie-commemoration-promo",
       "pcOnly": true
+    },
+    "ADV2": {
+      "name_en": "Miracle of the Desert",
+      "pcSlug": "pokemon-japanese-miracle-of-the-desert"
+    },
+    "ADV3": {
+      "name_en": "Rulers of the Heavens",
+      "pcSlug": "pokemon-japanese-rulers-of-the-heavens"
+    },
+    "ADV4": {
+      "name_en": "Magma VS Aqua: Two Ambitions",
+      "pcSlug": "pokemon-japanese-magma-vs-aqua-two-ambitions"
+    },
+    "ADV5": {
+      "name_en": "Undone Seal",
+      "pcSlug": "pokemon-japanese-undone-seal"
+    },
+    "CP2": {
+      "name_en": "Legendary Shine Collection",
+      "pcSlug": "pokemon-japanese-legendary-shine-collection"
+    },
+    "CP3": {
+      "name_en": "PokéKyun Collection",
+      "pcSlug": "pokemon-japanese-pokekyun-collection"
+    },
+    "CP4": {
+      "name_en": "Premium Champion Pack",
+      "pcSlug": "pokemon-japanese-premium-champion-pack"
+    },
+    "CP5": {
+      "name_en": "Mythical & Legendary Dream Shine Collection",
+      "pcSlug": "pokemon-japanese-dream-shine-collection"
+    },
+    "CP6": {
+      "name_en": "Expansion Pack 20th Anniversary",
+      "pcSlug": "pokemon-japanese-20th-anniversary"
+    },
+    "E2": {
+      "name_en": "The Town on No Map",
+      "pcSlug": "pokemon-japanese-the-town-on-no-map"
+    },
+    "E3": {
+      "name_en": "Wind from the Sea",
+      "pcSlug": "pokemon-japanese-wind-from-the-sea"
+    },
+    "E4": {
+      "name_en": "Split Earth",
+      "pcSlug": "pokemon-japanese-split-earth"
+    },
+    "E5": {
+      "name_en": "Mysterious Mountains",
+      "pcSlug": "pokemon-japanese-mysterious-mountains"
+    },
+    "L2": {
+      "name_en": "Reviving Legends",
+      "pcSlug": "pokemon-japanese-reviving-legends"
+    },
+    "L3": {
+      "name_en": "Clash at the Summit",
+      "pcSlug": "pokemon-japanese-clash-at-the-summit"
+    },
+    "MC": {
+      "name_en": "Start Deck 100 Battle Collection",
+      "pcSlug": "pokemon-japanese-start-deck-100-battle-collection"
+    },
+    "NEO2": {
+      "name_en": "Crossing the Ruins...",
+      "pcSlug": "pokemon-japanese-crossing-the-ruins"
+    },
+    "NEO3": {
+      "name_en": "Awakening Legends",
+      "pcSlug": "pokemon-japanese-awakening-legends"
+    },
+    "NEO4": {
+      "name_en": "Darkness, and to Light...",
+      "pcSlug": "pokemon-japanese-darkness-and-to-light"
+    },
+    "PCG1": {
+      "name_en": "Flight of Legends",
+      "pcSlug": "pokemon-japanese-flight-of-legends"
+    },
+    "PCG10": {
+      "name_en": "World Champions Pack",
+      "pcSlug": "pokemon-japanese-world-champions-pack"
+    },
+    "PCG2": {
+      "name_en": "Clash of the Blue Sky",
+      "pcSlug": "pokemon-japanese-clash-of-the-blue-sky"
+    },
+    "PCG3": {
+      "name_en": "Rocket Gang Strikes Back",
+      "pcSlug": "pokemon-japanese-rocket-gang-strikes-back"
+    },
+    "PCG4": {
+      "name_en": "Golden Sky, Silvery Ocean",
+      "pcSlug": "pokemon-japanese-golden-sky-silvery-ocean"
+    },
+    "PCG5": {
+      "name_en": "Mirage Forest",
+      "pcSlug": "pokemon-japanese-mirage-forest"
+    },
+    "PCG7": {
+      "name_en": "Holon Phantom",
+      "pcSlug": "pokemon-japanese-holon-phantom"
+    },
+    "PCG8": {
+      "name_en": "Miracle Crystal",
+      "pcSlug": "pokemon-japanese-miracle-crystal"
+    },
+    "PCG9": {
+      "name_en": "Offense and Defense of the Furthest Ends",
+      "pcSlug": "pokemon-japanese-offense-and-defense-of-the-furthest-ends"
+    },
+    "PMCG1": {
+      "name_en": "Expansion Pack",
+      "pcSlug": "pokemon-japanese-expansion-pack"
+    },
+    "PMCG3": {
+      "name_en": "Mystery of the Fossils",
+      "pcSlug": "pokemon-japanese-mystery-of-the-fossils"
+    },
+    "PMCG4": {
+      "name_en": "Rocket Gang",
+      "pcSlug": "pokemon-japanese-rocket-gang"
+    },
+    "PMCG6": {
+      "name_en": "Challenge from the Darkness",
+      "pcSlug": "pokemon-japanese-challenge-from-the-darkness"
+    },
+    "S10A": {
+      "name_en": "Dark Phantasma",
+      "pcSlug": "pokemon-japanese-dark-phantasma"
+    },
+    "S10B": {
+      "name_en": "Pokémon GO",
+      "pcSlug": "pokemon-japanese-go"
+    },
+    "S10D": {
+      "name_en": "Time Gazer",
+      "pcSlug": "pokemon-japanese-time-gazer"
+    },
+    "S10P": {
+      "name_en": "Space Juggler",
+      "pcSlug": "pokemon-japanese-space-juggler"
+    },
+    "S11": {
+      "name_en": "Lost Abyss",
+      "pcSlug": "pokemon-japanese-lost-abyss"
+    },
+    "S11A": {
+      "name_en": "Incandescent Arcana",
+      "pcSlug": "pokemon-japanese-incandescent-arcana"
+    },
+    "S12": {
+      "name_en": "Paradigm Trigger",
+      "pcSlug": "pokemon-japanese-paradigm-trigger"
+    },
+    "S12A": {
+      "name_en": "VSTAR Universe",
+      "pcSlug": "pokemon-japanese-vstar-universe"
+    },
+    "S1A": {
+      "name_en": "VMAX Rising",
+      "pcSlug": "pokemon-japanese-vmax-rising"
+    },
+    "S1H": {
+      "name_en": "Shield",
+      "pcSlug": "pokemon-japanese-shield"
+    },
+    "S1W": {
+      "name_en": "Sword",
+      "pcSlug": "pokemon-japanese-sword"
+    },
+    "S2A": {
+      "name_en": "Explosive Walker",
+      "pcSlug": "pokemon-japanese-explosive-walker"
+    },
+    "S3": {
+      "name_en": "Infinity Zone",
+      "pcSlug": "pokemon-japanese-infinity-zone"
+    },
+    "S3A": {
+      "name_en": "Legendary Heartbeat",
+      "pcSlug": "pokemon-japanese-legendary-heartbeat"
+    },
+    "S4": {
+      "name_en": "Amazing Volt Tackle",
+      "pcSlug": "pokemon-japanese-amazing-volt-tackle"
+    },
+    "S4A": {
+      "name_en": "Shiny Star V",
+      "pcSlug": "pokemon-japanese-shiny-star-v"
+    },
+    "S5I": {
+      "name_en": "Single Strike Master",
+      "pcSlug": "pokemon-japanese-single-strike-master"
+    },
+    "S5R": {
+      "name_en": "Rapid Strike Master",
+      "pcSlug": "pokemon-japanese-rapid-strike-master"
+    },
+    "S6A": {
+      "name_en": "Eevee Heroes",
+      "pcSlug": "pokemon-japanese-eevee-heroes"
+    },
+    "S6H": {
+      "name_en": "Silver Lance",
+      "pcSlug": "pokemon-japanese-silver-lance"
+    },
+    "S6K": {
+      "name_en": "Jet-Black Spirit",
+      "pcSlug": "pokemon-japanese-jet-black-spirit"
+    },
+    "S7D": {
+      "name_en": "Skyscraping Perfection",
+      "pcSlug": "pokemon-japanese-skyscraping-perfection"
+    },
+    "S8": {
+      "name_en": "Fusion Arts",
+      "pcSlug": "pokemon-japanese-fusion-arts"
+    },
+    "S8A": {
+      "name_en": "25th Anniversary Collection",
+      "pcSlug": "pokemon-japanese-25th-anniversary-collection"
+    },
+    "S8B": {
+      "name_en": "VMAX Climax",
+      "pcSlug": "pokemon-japanese-vmax-climax"
+    },
+    "S9": {
+      "name_en": "Star Birth",
+      "pcSlug": "pokemon-japanese-star-birth"
+    },
+    "S9A": {
+      "name_en": "Battle Region",
+      "pcSlug": "pokemon-japanese-battle-region"
+    },
+    "SM10": {
+      "name_en": "Double Blaze",
+      "pcSlug": "pokemon-japanese-double-blaze"
+    },
+    "SM10A": {
+      "name_en": "GG End",
+      "pcSlug": "pokemon-japanese-gg-end"
+    },
+    "SM10B": {
+      "name_en": "Sky Legend",
+      "pcSlug": "pokemon-japanese-sky-legend"
+    },
+    "SM11": {
+      "name_en": "Miracle Twin",
+      "pcSlug": "pokemon-japanese-miracle-twins"
+    },
+    "SM11A": {
+      "name_en": "Remix Bout",
+      "pcSlug": "pokemon-japanese-remix-bout"
+    },
+    "SM11B": {
+      "name_en": "Dream League",
+      "pcSlug": "pokemon-japanese-dream-league"
+    },
+    "SM12": {
+      "name_en": "Alter Genesis",
+      "pcSlug": "pokemon-japanese-alter-genesis"
+    },
+    "SM12A": {
+      "name_en": "Tag All Stars",
+      "pcSlug": "pokemon-japanese-tag-all-stars"
+    },
+    "SM1M": {
+      "name_en": "Collection Moon",
+      "pcSlug": "pokemon-japanese-collection-moon"
+    },
+    "SM1S": {
+      "name_en": "Collection Sun",
+      "pcSlug": "pokemon-japanese-collection-sun"
+    },
+    "SM2+": {
+      "name_en": "Facing a New Trial",
+      "pcSlug": "pokemon-japanese-facing-a-new-trial"
+    },
+    "SM2K": {
+      "name_en": "Islands Await You",
+      "pcSlug": "pokemon-japanese-islands-await-you"
+    },
+    "SM2P": {
+      "name_en": "Facing a New Trial",
+      "pcSlug": "pokemon-japanese-facing-a-new-trial"
+    },
+    "SM3+": {
+      "name_en": "Shining Legends",
+      "pcSlug": "pokemon-japanese-shining-legends"
+    },
+    "SM3N": {
+      "name_en": "Darkness that Consumes Light",
+      "pcSlug": "pokemon-japanese-darkness-that-consumes-light"
+    },
+    "SM3P": {
+      "name_en": "Shining Legends",
+      "pcSlug": "pokemon-japanese-shining-legends"
+    },
+    "SM4+": {
+      "name_en": "GX Battle Boost",
+      "pcSlug": "pokemon-japanese-gx-battle-boost"
+    },
+    "SM4A": {
+      "name_en": "Ultradimensional Beasts",
+      "pcSlug": "pokemon-japanese-ultradimensional-beasts"
+    },
+    "SM4P": {
+      "name_en": "GX Battle Boost",
+      "pcSlug": "pokemon-japanese-gx-battle-boost"
+    },
+    "SM4S": {
+      "name_en": "Awakened Heroes",
+      "pcSlug": "pokemon-japanese-awakened-heroes"
+    },
+    "SM5+": {
+      "name_en": "Ultra Force",
+      "pcSlug": "pokemon-japanese-ultra-force"
+    },
+    "SM5M": {
+      "name_en": "Ultra Moon",
+      "pcSlug": "pokemon-japanese-ultra-moon"
+    },
+    "SM5P": {
+      "name_en": "Ultra Force",
+      "pcSlug": "pokemon-japanese-ultra-force"
+    },
+    "SM5S": {
+      "name_en": "Ultra Sun",
+      "pcSlug": "pokemon-japanese-ultra-sun"
+    },
+    "SM6": {
+      "name_en": "Forbidden Light",
+      "pcSlug": "pokemon-japanese-forbidden-light"
+    },
+    "SM6A": {
+      "name_en": "Dragon Storm",
+      "pcSlug": "pokemon-japanese-dragon-storm"
+    },
+    "SM6B": {
+      "name_en": "Champion Road",
+      "pcSlug": "pokemon-japanese-champion-road"
+    },
+    "SM7": {
+      "name_en": "Sky-Splitting Charisma",
+      "pcSlug": "pokemon-japanese-sky-splitting-charisma"
+    },
+    "SM7A": {
+      "name_en": "Thunderclap Spark",
+      "pcSlug": "pokemon-japanese-thunderclap-spark"
+    },
+    "SM7B": {
+      "name_en": "Fairy Rise",
+      "pcSlug": "pokemon-japanese-fairy-rise"
+    },
+    "SM8": {
+      "name_en": "Super-Burst Impact",
+      "pcSlug": "pokemon-japanese-super-burst-impact"
+    },
+    "SM8A": {
+      "name_en": "Dark Order",
+      "pcSlug": "pokemon-japanese-dark-order"
+    },
+    "SM8B": {
+      "name_en": "GX Ultra Shiny",
+      "pcSlug": "pokemon-japanese-gx-ultra-shiny"
+    },
+    "SM9": {
+      "name_en": "Tag Bolt",
+      "pcSlug": "pokemon-japanese-tag-bolt"
+    },
+    "SM9B": {
+      "name_en": "Full Metal Wall",
+      "pcSlug": "pokemon-japanese-full-metal-wall"
+    },
+    "SMP2": {
+      "name_en": "Detective Pikachu",
+      "pcSlug": "pokemon-japanese-detective-pikachu"
+    },
+    "XY11B": {
+      "name_en": "Cruel Traitor",
+      "pcSlug": "pokemon-japanese-cruel-traitor"
+    },
+    "XY2": {
+      "name_en": "Wild Blaze",
+      "pcSlug": "pokemon-japanese-wild-blaze"
+    },
+    "XY3": {
+      "name_en": "Rising Fist",
+      "pcSlug": "pokemon-japanese-rising-fist"
+    },
+    "XY4": {
+      "name_en": "Phantom Gate",
+      "pcSlug": "pokemon-japanese-phantom-gate"
+    },
+    "XY6": {
+      "name_en": "Emerald Break",
+      "pcSlug": "pokemon-japanese-emerald-break"
+    },
+    "XY7": {
+      "name_en": "Bandit Ring",
+      "pcSlug": "pokemon-japanese-bandit-ring"
+    },
+    "XY9": {
+      "name_en": "Rage of the Broken Heavens",
+      "pcSlug": "pokemon-japanese-rage-of-the-broken-heavens"
+    },
+    "S7R": {
+      "name_en": "Blue Sky Stream",
+      "pcSlug": "pokemon-japanese-blue-sky-stream"
+    },
+    "SM9A": {
+      "name_en": "Night Unison",
+      "pcSlug": "pokemon-japanese-night-unison"
+    },
+    "SM2L": {
+      "name_en": "Alolan Moonlight",
+      "pcSlug": "pokemon-japanese-alolan-moonlight"
+    },
+    "XY11A": {
+      "name_en": "Fever-Burst Fighter",
+      "pcSlug": "pokemon-japanese-fever-burst-fighter"
+    },
+    "XY10": {
+      "name_en": "Awakening Psychic King",
+      "pcSlug": "pokemon-japanese-awakening-psychic-king"
+    },
+    "XY8A": {
+      "name_en": "Blue Shock",
+      "pcSlug": "pokemon-japanese-blue-shock"
+    },
+    "XY8B": {
+      "name_en": "Red Flash",
+      "pcSlug": "pokemon-japanese-red-flash"
+    },
+    "XY5A": {
+      "name_en": "Gaia Volcano",
+      "pcSlug": "pokemon-japanese-gaia-volcano"
+    },
+    "XY5B": {
+      "name_en": "Tidal Storm",
+      "pcSlug": "pokemon-japanese-tidal-storm"
+    },
+    "XY1A": {
+      "name_en": "Collection X",
+      "pcSlug": "pokemon-japanese-collection-x"
+    },
+    "XY1B": {
+      "name_en": "Collection Y",
+      "pcSlug": "pokemon-japanese-collection-y"
+    },
+    "L1A": {
+      "name_en": "HeartGold Collection",
+      "pcSlug": "pokemon-japanese-heartgold-collection"
+    },
+    "L1B": {
+      "name_en": "SoulSilver Collection",
+      "pcSlug": "pokemon-japanese-soulsilver-collection"
+    },
+    "PCG6": {
+      "name_en": "Holon Research Tower",
+      "pcSlug": "pokemon-japanese-holon-research"
+    },
+    "E1": {
+      "name_en": "Base Expansion Pack",
+      "pcSlug": "pokemon-japanese-expedition-expansion-pack"
+    },
+    "VS1": {
+      "name_en": "Pokémon VS",
+      "pcSlug": "pokemon-japanese-vs"
+    },
+    "PMCG2": {
+      "name_en": "Pokémon Jungle",
+      "pcSlug": "pokemon-japanese-jungle"
+    },
+    "NEO1": {
+      "name_en": "Gold, Silver, to a New World...",
+      "pcSlug": "pokemon-japanese-gold-silver-new-world"
+    },
+    "SV1A": {
+      "name_en": "Triplet Beat",
+      "pcSlug": "pokemon-japanese-triplet-beat"
+    },
+    "S2": {
+      "name_en": "Rebellion Crash",
+      "pcSlug": "pokemon-japanese-rebel-clash"
+    },
+    "LL": {
+      "name_en": "Lost Link",
+      "pcSlug": "pokemon-japanese-lost-link"
     }
   },
   "zh-cn": {

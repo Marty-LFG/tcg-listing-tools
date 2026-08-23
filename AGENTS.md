@@ -484,21 +484,24 @@ mint with `invalid_client` and surface as a 502 with that detail. Never commit
 
 ## 10. Known limitations & roadmap
 
-- **53 Japanese sets are split in two, and the printed code lands on the dead
-  half.** Surfaced by the new coverage watchdog on its first run (2026-08-23).
-  TCGdex lists these sets with a card count but ships an **empty `cards` array**
-  (`S4a` claims `official: 190`, returns 0), and because they have no `name_en`
-  in the seed, `mergePcConsoles` — which matches JP consoles by ENGLISH set name
-  — cannot attach their `pcSlug`. The console then gets added separately as a
-  code-less `pcOnly` stub. So the catalogue holds `S4A` (code, zero cards) *and*
-  `Shiny Star V` (335 cards, no code) as two entries for one physical set: it is
-  listable by name and dead by the code the operator reads off the card. Same
-  class as the M6 failure, different cause. **This predates the source-chain fix**
-  — verified identical against the old code — and the fix is per-set data, not
-  logic: seed a `name_en` (one click each in catalog.html's overlay editor) and
-  the console attaches on the next bake. Deliberately NOT automated: joining a
-  code to a console by fuzzy name/date/count would eventually bind the wrong set,
-  and mislabelling a card's set is worse than not finding it (GR4). The current
+- **The Japanese split-brain is fixed; the Korean and Chinese lanes are not.**
+  Reconciled 2026-08-23. TCGdex lists many JP sets with a card count but ships
+  an **empty `cards` array**, and with no `name_en` the bake could not match
+  their PriceCharting console — so the catalogue held `S4A` (code, 0 cards)
+  *and* `Shiny Star V` (335 cards, no code) as two rows for one set: listable by
+  name, dead by the code printed on the card. 121 sets were joined to a verified
+  console via Bulbapedia's Japanese-name → English-name mapping (an exact string
+  join, never a transliteration), each console fetched and checked before it was
+  written. JP orphans 153 → 32, duplicate stubs 80 → 26.
+  **What is deliberately left unbound:** the fifteen `CS*` codes TCGdex hands one
+  set's identity to (their 101-card count contradicts the real Triplet Beat's 73,
+  which is how `SV1A` was identified as the genuine one); `ADV1`, `PMCG5`,
+  `LL`, `SVK`, `SV-P`, `M-P` and the starter decks, which have no console at all.
+  Joining those by fuzzy name/date/count would eventually bind the wrong set, and
+  a mislabelled set is worse than a missing one (GR4).
+  **`ko` (92) and `zh-cn` (47) carry the same defect and have NOT been worked
+  through** — Bulbapedia has no equivalent per-language expansion list, and the
+  intl records for those lanes carry almost no `name_en` to join on. The live
   list is always in `data/pokemon-coverage.json` and the Settings coverage card.
 - **Production hosting** needs a backend (proxies are dev-only — Golden Rule 1).
 - **Riftbound price graph** no longer has Scrydex *trend deltas* to reconstruct

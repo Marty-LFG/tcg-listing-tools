@@ -134,6 +134,16 @@ exactly the symbol the user searches by. The language toggle in the builder scop
   Runner answered *"Could not load this set: no cards returned"* for three weeks while catalog.html
   — which happened to send a different `src` — rendered the same set fine. `?refresh=1` is honoured
   here too (it silently was not, so the ↻ button could not clear a bad 24h cache).
+- **A `name_en` is what attaches a console — and for many sets it is the ONLY thing that will.**
+  `mergePcConsoles` matches a JP/KO console by slugifying `name_en`, so a set with no English name
+  gets no `pcSlug`. That matters more than it sounds: TCGdex lists a large number of Japanese sets
+  with a card count but ships an **empty `cards` array** for them, so with no console attached they
+  resolve to nothing. The console meanwhile gets added separately as a code-less `pcOnly` stub, and
+  the catalogue ends up holding the same physical set twice — `S4A` with the printed code and zero
+  cards, `Shiny Star V` with 335 cards and no code. Reconciled 2026-08-23 for `ja` (121 sets joined
+  through Bulbapedia's Japanese-name → English-name mapping, every console fetched and checked
+  first); `ko` and `zh-cn` still carry it. Seed `pcSlug` explicitly whenever the console is absent
+  from PriceCharting's directory index — over half of the ones found were.
 - **A seeded set carries NO `tcgdexId`.** The seed-inject branch runs precisely because TCGdex's
   brief list lacks that code, so defaulting the id to the printed code (which it used to do)
   fabricates an id guaranteed to 404 and makes "has a tcgdexId" a lie. Pinning a real one in the

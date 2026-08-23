@@ -450,7 +450,7 @@ function openDrawer(rid){const set=findSet(rid);if(!set)return;_openRid=rid;rend
 function openNewEditor(){
   if(state.lang==='en'){flash('English sets are live from pokemontcg.io — switch to JP / CN / KO to add an overlay set','err');return;}
   _openRid=null;
-  renderDrawer({lang:state.lang,rid:'__new',code:'',name:'New overlay set',nameEn:'',nameNative:'',serie:'ポケモンカードゲーム MEGA',releaseDate:'',cardCount:null,source:'seeded',enEquivalent:{id:'',name:''},builderSet:''},true);
+  renderDrawer({lang:state.lang,rid:'__new',code:'',name:'New overlay set',nameEn:'',nameNative:'',serie:'ポケモンカードゲーム MEGA',releaseDate:'',cardCount:null,source:'seeded',enEquivalent:{id:'',name:''},pcSlug:'',builderSet:''},true);
 }
 function renderDrawer(set,isNew){
   const acc=LANG_ACC[set.lang]||'var(--gold)';
@@ -500,14 +500,15 @@ function editFormHTML(set,isNew){
       f('ef_serie','Series',set.serie,'ポケモンカードゲーム MEGA',false,false)+
       '<label>Release date<input id="ef_release" type="date" value="'+esc(fmtDate(set.releaseDate))+'"></label>'+
       f('ef_eq_id','EN-equivalent id',eq.id,'e.g. me2pt5',false,false)+
-      f('ef_eq_name','EN-equivalent name',eq.name,'e.g. Ascended Heroes',false,true)+
+      f('ef_eq_name','EN-equivalent name',eq.name,'e.g. Ascended Heroes',false,false)+
+      f('ef_pcslug','PriceCharting console',set.pcSlug,'e.g. pokemon-japanese-shiny-star-v',false,true)+
     '</div>'+
     '<div class="ef-actions">'+
       '<button class="dw-jump" id="ef_save">'+(isNew?'Add & rebuild':'Save & rebuild')+'</button>'+
       (!isNew&&set.source==='seeded'?'<button class="ef-del" id="ef_del">Remove overlay</button>':'')+
       '<span class="ef-status" id="ef_status"></span>'+
     '</div>'+
-    '<div class="ef-note">Writes <b>data/pokemon-intl-seed.json</b> and rebuilds the index (a few seconds). Enrich a TCGdex set, or inject one it hasn’t ingested yet. Leave EN-equivalent id blank if unknown.</div>'+
+    '<div class="ef-note">Writes <b>data/pokemon-intl-seed.json</b> and rebuilds the index (a few seconds). Enrich a TCGdex set, or inject one it hasn’t ingested yet. Leave EN-equivalent id blank if unknown.<br><b>PriceCharting console</b> pins where the cards come from — needed when TCGdex lists the set but ships no cards for it, or when the console is missing from PriceCharting’s directory index. Check the slug works first: <span class="mono">pricecharting.com/console/&lt;slug&gt;</span>.</div>'+
   '</div>';
 }
 function wireEditForm(set,isNew){
@@ -516,7 +517,7 @@ function wireEditForm(set,isNew){
     const g=(id)=>{const e=$(id);return e?e.value.trim():'';};
     const code=(isNew?g('ef_code'):set.code).toUpperCase();
     if(!code){st('Enter a set code','err');return;}
-    const entry={name_en:g('ef_name_en'),name_native:g('ef_name_native'),serie:g('ef_serie'),releaseDate:g('ef_release'),enEquivalent:{id:g('ef_eq_id'),name:g('ef_eq_name')}};
+    const entry={name_en:g('ef_name_en'),name_native:g('ef_name_native'),serie:g('ef_serie'),releaseDate:g('ef_release'),pcSlug:g('ef_pcslug'),enEquivalent:{id:g('ef_eq_id'),name:g('ef_eq_name')}};
     st('Saving & rebuilding…','wait');
     try{
       const r=await fetch('/api/catalog/seed',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({lang:set.lang,code,entry})});
