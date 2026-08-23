@@ -13,7 +13,7 @@ import { openDbAt } from '../../lib/db.mjs';
 import { openPostsaleDbAt } from '../../lib/postsale-db.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
 
-const SHOPIFY_TABLES = ['shopify_listings', 'channel_intent', 'sync_jobs'];
+const SHOPIFY_TABLES = ['shopify_listings', 'channel_intent', 'sync_jobs', 'shopify_files'];
 const tables = (db) => db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all().map((r) => r.name);
 const indexes = (db) => db.prepare(`SELECT name FROM sqlite_master WHERE type='index'`).all().map((r) => r.name);
 const cols = (db, t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
