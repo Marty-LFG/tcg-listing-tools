@@ -386,7 +386,11 @@ $('c_go').addEventListener('click', async () => {
     if (!r.ok) return S('err', 'Import failed (' + r.status + ') — ' + (await r.text()).slice(0, 200));
     const { added, summary } = await consumeNdjson(r, 'Importing Collectr CSV');
     if (summary && (!$('b_name').value || $('b_name').dataset.auto)) { $('b_name').value = (summary.portfolios || [])[0] || f.name.replace(/\.csv$/i, ''); $('b_name').dataset.auto = '1'; }
-    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows · ' + (summary ? summary.resolved + ' matched, ' + summary.graded + ' graded, ' + summary.needs_price + ' need a price, ' + summary.unsupported_game + ' unsupported-game' : '') + '. Now: filter & select, then 💲 Price rows.');
+    // 'intl' is called out rather than folded into the counts: a non-English row has no catalogue
+    // behind it here, so it stays unmatched with no image and no live price, and it comps against a
+    // different market. Silence would read as "these imported the same as the others".
+    const intl = summary && summary.intl ? ', ' + summary.intl + ' non-English (no catalogue — comp them)' : '';
+    S(added ? 'ok' : 'warn', '✓ ' + added + ' rows · ' + (summary ? summary.resolved + ' matched, ' + summary.graded + ' graded, ' + summary.needs_price + ' need a price, ' + summary.unsupported_game + ' unsupported-game' + intl : '') + '. Now: filter & select, then 📊 Comp rows.');
   } catch (e) { S('err', 'Import failed — ' + e.message); }
   refreshButtons();
 });
