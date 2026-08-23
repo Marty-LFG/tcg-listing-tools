@@ -268,6 +268,40 @@ Result: Korean gaps 92 → 20, Chinese 35 → 7. What remains is bounded and exp
 of its own, and the seven Chinese ones are the newest Mega-era sets 52poke has yet to write up.
 `zh-tw` has no PriceCharting bucket at all and no equivalent wiki, so its 15 stay open.
 
+## Japanese card-art repair (`data/pokemon-jp-art.json`, bake `pokemon-jp-art`)
+
+PriceCharting sometimes carries a card's **illustration crop** instead of the card scan. Measured
+2026-08-23: **M6 Storm Emeralda 12 of 113**, M5 Abyss Eye 3 of 118, S6A Eevee Heroes 3 of 101, M4
+Ninja Spinner 0 of 120 — worst on the newest set, so they do appear to backfill, but the residue
+persists for years. That crop goes to eBay as the product photo, which is the same defect class as
+the One Piece SAMPLE watermark and gets the same answer: **the wrong product picture is worse than an
+ugly one.** Serebii has a proper full-card scan at a derivable URL (`/card/<englishname>/<num>.jpg`,
+number unpadded), and the swap happens through `catalogArtFor` — the one hook every surface already
+goes through.
+
+**The detection is a comparison, never a threshold**, and three separate real-world traps are why:
+
+1. **Genuinely wide cards exist.** Storm Emeralda introduced *paired Stadium* cards (#71-#76), where
+   two cards form one artwork. "Not portrait therefore broken" would flag them.
+2. **Serebii's own scan is sometimes the JOINED PAIR** — #73 Legendary Summit measures 1736×1212,
+   exactly two 868×1212 cards side by side, while PriceCharting has the correct *single* card there.
+   Substituting would put a two-card photo on a one-card listing, worse than the crop being fixed.
+   So a swap requires Serebii's image to itself be a single card.
+3. **The swap is BY NUMBER**, so nothing but the card name stands between it and another card's
+   picture if the two catalogues number a set differently. Per-card name matching over-rejects — the
+   two translate Japanese Trainers differently ("Delicious Onigiri" / "Yummy Onigiri", "Adventuring
+   Lantern" / "Adventure Lantern", "Fossil Excavation Site" / "Fossil Quarry"). So alignment is
+   proven **set-wide** (M6 agrees on 104/113 names, M5 on 105/118) and only then is the number
+   trusted. Below 85%, or under 10 shared cards, nothing in that set is swapped.
+
+The aspect window (0.55–0.85) is measured, not guessed: PriceCharting pads some legitimate single
+cards to 0.809 (M6 #72) and its wrong images start at 0.887 (M6 #105, against Serebii's 0.717).
+
+The bake is **accretive and capped**: a verdict never changes once measured, so the store is keyed by
+set+number and a measured card is never re-fetched — the first pass over ~21,800 Japanese cards is
+long, every pass after it is just the newest set. Serebii's roster is read once per SET (its index
+page carries number → name for the whole set), not once per card. Deferrals are logged.
+
 ## Pokémon set-coverage watchdog (`data/pokemon-coverage.json`, bake `pokemon-coverage`)
 
 Everything else in this file can tell you a **file** is stale. Nothing could tell you a **set** was
