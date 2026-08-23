@@ -41,7 +41,10 @@
   .chip.mkt{background:#173a24;color:var(--ok);} .chip.tier{background:#3a3117;color:var(--warn);} .chip.pc{background:#17293a;color:#6db3e8;}
   .chip.needs{background:#3a1717;color:var(--bad);} .chip.override{background:#2a173a;color:#c58cf0;}
   .chip.graded{background:#1c2b5e;color:var(--gold);} .chip.miss{background:#2a2a33;color:#9aa;}
+  .chip.ebay{background:#132a33;color:#67c7d8;}
   .mono{font-family:var(--mono,ui-monospace,Consolas,monospace);}
+  .linkbtn{color:var(--gold);text-decoration:none;font-size:12px;font-weight:700;white-space:nowrap;}
+  .linkbtn:hover{text-decoration:underline;}
 
   /* ---------- pipeline stepper ---------- */
   .steps{display:flex;gap:10px;align-items:center;margin:0 0 14px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);}
@@ -201,6 +204,7 @@
         <div style="flex:0 0 auto;min-width:auto;white-space:nowrap;"><label style="display:inline" for="qtyAll">Qty for selected&nbsp;</label><input id="qtyAll" style="width:60px;display:inline-block" type="number" min="1" placeholder="1"><button class="btn" id="qtyApply">Set</button></div>
         <div style="flex:1 1 0;min-width:0;"></div>
         <div style="flex:0 0 auto;min-width:auto;white-space:nowrap;">
+          <button class="btn" id="compBtn" disabled>📊 Comp rows</button>
           <button class="btn" id="priceBtn" disabled>💲 Price rows</button>
           <button class="btn" id="saveBtn" disabled>💾 Save batch</button>
           <button class="btn primary" id="exportBtn" disabled>⬇ Export eBay CSV</button>
@@ -209,12 +213,13 @@
       <div id="gridWrap">
         <table class="grid"><thead><tr>
           <th scope="col"><input type="checkbox" id="hdrChk" checked aria-label="Select all visible rows"></th><th></th><th>Card</th><th>No.</th><th>Rarity</th><th>Variant</th>
-          <th>Badges</th><th>Market A$</th><th>Price A$</th><th>Qty</th><th>Title preview</th>
-        </tr></thead><tbody id="gridBody"><tr><td colspan="11" style="color:var(--muted);padding:22px;">No rows yet — enumerate a set or import a Collectr CSV.</td></tr></tbody></table>
+          <th>Badges</th><th>Market A$</th><th title="Live eBay AU comps for this card — Australian sellers only">Comps</th><th>Price A$</th><th>Qty</th><th>Title preview</th>
+        </tr></thead><tbody id="gridBody"><tr><td colspan="12" style="color:var(--muted);padding:22px;">No rows yet — enumerate a set or import a Collectr CSV.</td></tr></tbody></table>
       </div>
       <div class="foot">
         <span id="f_count">0 rows</span>
         <span>Value <b id="f_value">A$0.00</b></span>
+        <span id="f_mkt" title="Market value of the selected rows, before any listing round-up. This is the number to build an offer on — Value beside it is what the pile would LIST for."></span>
         <span>Fees <b id="f_fees">A$0.00</b></span>
         <span id="f_img"></span>
         <span id="f_src"></span>
@@ -247,6 +252,12 @@
 <script type="module">
 import { buildTitle, rowToFields } from '/lib/listing-copy.mjs';
 import { feeAU } from '/lib/fees.mjs';
+// The SAME query and the SAME URL builder the runner and the uploader use, so a comp opened from
+// this grid lands on the identical eBay search — a second copy of either would be a mirror to
+// police (GR9). Collectr rows carry name/set/number/language, which is all compsQueryFor needs.
+import { searchUrl } from '/lib/ebay-links.mjs';
+import { compsQueryFor } from '/lib/stock-games.mjs';
+import { normalizeNumber } from '/lib/collectr.mjs';
 
 const $ = (id) => document.getElementById(id);
 const S = (cls, msg) => { const el = $('status'); el.className = 'status ' + cls; el.textContent = msg; };
@@ -381,6 +392,7 @@ $('c_go').addEventListener('click', async () => {
 });
 
 // ---------------- pricing ----------------
+$('compBtn').addEventListener('click', runComps);
 $('priceBtn').addEventListener('click', async () => {
   const act = window.TCG ? TCG.activity('Pricing ' + rows.length + ' rows') : null;
   try {
@@ -636,19 +648,179 @@ function srcChip(r) {
   if (r.value_source === 'bulk_tier') return '<span class="chip tier">tier</span>';
   if (r.value_source === 'pricecharting') return '<span class="chip pc">PC</span>';
   if (r.value_source === 'override') return '<span class="chip override">ovr</span>';
+  // Last, so an explicit PRICING verdict still wins the chip: this one describes where the MARKET
+  // figure came from, and only comps ever set it to 'ebay'.
+  if (r.market_source === 'ebay') return '<span class="chip ebay">eBay</span>';
   return '';
 }
 const A$ = (c) => c == null ? '—' : 'A$' + (c / 100).toFixed(2);
 
+// The number the comps engine and the comps LINKS both use. Collectr writes the printed form
+// ('143/236', '052/173'); the engine's title filter (buildNumberRe) is happiest with the bare number,
+// because '\b0*143\b' matches a title that says 143 AND one that says 143/236, while '143/236' as a
+// matcher throws away every seller who wrote only the left half.
+//
+// lookup_num is the field the importer already computed for exactly this ('052/173' -> '52'), but it
+// is NOT an inventory_items column — a row that came back through "load batch" has only the display
+// number, and that path is the normal one for a portfolio you imported yesterday. So re-derive it
+// from the same function the importer used rather than trusting a field that half the rows lack.
+function compNumber(r) {
+  if (r.lookup_num != null && r.lookup_num !== '') return String(r.lookup_num);
+  return normalizeNumber(r.number).lookupNum || String(r.number || '');
+}
+
+// The query for one row. After a comp run the SERVER's own echoed query wins, so the link opens the
+// search the price was actually taken from — a link that disagrees with the number beside it is
+// worse than no link at all.
+function compsQueryOf(r) {
+  if (r.priceInfo && r.priceInfo.query) return r.priceInfo.query;
+  try { return compsQueryFor(r.game || 'pokemon', r, compNumber(r)); } catch { return ''; }
+}
+
+// BIN + Sold for one row. Deliberately built from the row rather than from a resolved identity:
+// an "unmatched" row (a vintage set name the card APIs do not carry) still knows what card it is,
+// and comping it by hand is exactly what you do when the catalogue cannot price it.
+function compsLinks(r) {
+  const q = compsQueryOf(r);
+  if (!q) return '<span class="chip miss">no query</span>';
+  return '<a class="linkbtn" data-comps="bin" target="_blank" rel="noopener" title="Active Buy It Now on eBay AU, Australian sellers only, cheapest first — opens in the BIN window and reuses it" href="' + esc(searchUrl(q)) + '">BIN</a>'
+    + ' <a class="linkbtn" data-comps="sold" target="_blank" rel="noopener" title="Sold in the last 90 days on eBay AU, Australian sellers only — opens in the Sold window and reuses it" href="' + esc(searchUrl(q, { sold: true })) + '">sold</a>';
+}
+
+// Why a comp run came back with nothing, in words rather than in an enum. Every one of these is a
+// legitimate answer, and the cell stays EMPTY of a price and says which (GR4/GR7): a number invented
+// here would be typed into an offer as though somebody had checked it.
+const COMPS_WHY = {
+  no_query: 'nothing to search on - this row has no name or set',
+  no_listings: 'eBay AU returned no listings at all for this search',
+  too_few_comps: 'fewer than 4 comparable listings - too thin to price from',
+  ebay_unconfigured: 'eBay keys are not set on this server',
+  request_failed: 'the lookup never reached the server',
+};
+
+// Collectr tags a non-English card in the NAME ('Marill (JP)') while the import hardcodes
+// language:'EN' (lib/collectr.mjs toImportRow). That mismatch prices a Japanese card off the English
+// market, and nothing in the number catches it, so the row says so rather than being quietly wrong.
+function langMismatch(r) {
+  const m = /\((JP|JA|CN|TW|KO)\)/i.exec(String(r.name || ''));
+  return m && String(r.language || 'EN').toUpperCase() === 'EN' ? m[1].toUpperCase() : null;
+}
+
+function compsCell(r) {
+  const bits = [];
+  const bad = langMismatch(r);
+  if (r._comping) bits.push('<span class="chip miss">comping...</span>');
+  else if (r.comps) {
+    const c = r.comps, sold = c.mode === 'sold';
+    const tip = [
+      'A$' + c.fair.toFixed(2) + ' fair value - cluster A$' + c.clusterRange[0].toFixed(2) + ' to A$' + c.clusterRange[1].toFixed(2),
+      c.comparable + ' comparable of ' + c.sampleSize + ' listings - ' + c.confidence + ' confidence',
+      sold ? 'FROM COMPLETED SALES - what people actually paid.'
+           : 'FROM ASKING PRICES - nobody has paid this. It is what sellers want, so treat it as a ceiling.',
+      c.reliable ? '' : 'Wide spread or thin data: the engine does not call this one reliable.',
+    ].filter(Boolean).join('\n');
+    bits.push('<span class="chip ' + (sold ? 'mkt' : 'tier') + '" title="' + esc(tip) + '">A$' + c.fair.toFixed(2) + (sold ? ' sold' : ' ask') + (c.reliable ? '' : ' ?') + '</span>');
+  } else if (r.compsReason) {
+    bits.push('<span class="chip miss" title="' + esc(COMPS_WHY[r.compsReason] || r.compsReason) + '">no comps</span>');
+  }
+  if (bad) bits.push('<span class="chip needs" title="The name says ' + bad + ' but this row imported as English, so the search beside it is the ENGLISH market. Fix the language before trusting a price for this card.">lang?</span>');
+  return (bits.length ? '<div>' + bits.join(' ') + '</div>' : '') + compsLinks(r);
+}
+
+// ---------------- comps: the live eBay AU engine ----------------
+// The SAME POST /api/listings/price the batch runner and the single uploader use. Not to be confused
+// with the button beside it: 'Price rows' is arithmetic on a figure the row already carries
+// (override > market > tier floor) and invents a floor when there is none, which is fine for pricing
+// bulk you already own and useless for deciding what a pile is worth. This one asks eBay.
+//
+// SELECTED rows only, deliberately: every row is a live lookup (a Marketplace Insights attempt, then
+// a Browse fallback), so a 500-row portfolio would be a thousand calls and a long wait. Tick what you
+// are actually valuing. Three at a time, matching the runner's pool.
+let comping = false;
+
+// Repaint as results land, but throttled and never while a grid cell has focus: three workers
+// finishing at once would otherwise re-render the tbody three times a second and yank the caret out
+// of a Price A$ box mid-keystroke. Comping is a background job; typing over the top of it is normal.
+let compRepaintT = null;
+function compRepaint() {
+  if (compRepaintT) return;
+  compRepaintT = setTimeout(() => {
+    compRepaintT = null;
+    const ae = document.activeElement;
+    if (ae && ae.closest && ae.closest('#gridBody')) return;
+    renderGrid(true);
+  }, 120);
+}
+
+function compRow(r) {
+  return {
+    game: r.game || 'pokemon', name: r.name, set_name: r.set_name, set_code: r.set_code || null,
+    number: compNumber(r), language: r.language || 'EN',
+    finish: r.finish, variant: r.variant,
+    graded: !!r.graded, grading_company: r.grading_company || null,
+  };
+}
+
+async function runComps() {
+  if (comping) { comping = false; return; }          // second click stops after the in-flight rows
+  const targets = rows.filter((r) => r._inc);
+  if (!targets.length) return S('warn', 'No rows selected - tick the ones you want comped.');
+  if (targets.length > 60 && !confirm(targets.length + ' rows, each one a live eBay lookup. This will take a few minutes. Continue?')) return;
+  comping = true; refreshButtons();
+  const act = window.TCG ? TCG.activity('Comping ' + targets.length + ' rows') : null;
+  const q = targets.slice();
+  let done = 0, matched = 0, ask = 0, unreliable = 0;
+  const worker = async () => {
+    while (comping && q.length) {
+      const r = q.shift();
+      r._comping = true; compRepaint();
+      try {
+        const out = await fetch('/api/listings/price', { method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ row: compRow(r) }) }).then((x) => x.json());
+        const c = (out && out.comps) || {};
+        r.priceInfo = out || null;
+        r.comps = c.matched ? c : null;
+        r.compsReason = c.matched ? null : (c.reason || 'no_listings');
+        if (c.matched) {
+          matched++;
+          if (c.mode !== 'sold') ask++;
+          if (!c.reliable) unreliable++;
+          // c.fair, NOT c.recommended. `recommended` is deliberately an UNDERCUT of the cheapest
+          // competitor - the number you list at to make the card sell. What a card is WORTH, which is
+          // what an offer is built on, is the middle of the cluster.
+          r.market_aud = c.fair; r.market_usd = null; r.market_currency = 'AUD';
+          r.market_cents = Math.round(c.fair * 100);
+          r.market_source = 'ebay';
+        }
+      } catch (e) { r.comps = null; r.compsReason = 'request_failed'; }
+      finally { r._comping = false; done++; act && act.update('Comping ' + done + '/' + targets.length); compRepaint(); }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  const stopped = !comping && q.length > 0;
+  comping = false;
+  touch(); renderGrid(); refreshButtons();
+  act && act.done(matched + '/' + done + ' comped');
+  // Say what the numbers ARE. Marketplace Insights (real sold prices) is entitlement-gated on this
+  // account, so the engine falls back to asking prices - and presenting a shop window as a sale
+  // history is the single most expensive thing to get wrong when you are the one buying.
+  const parts = [(stopped ? 'stopped - ' : '') + matched + ' of ' + done + ' rows comped'];
+  if (ask) parts.push(ask + ' priced off ASKING listings, not sold prices - a ceiling, not a going rate');
+  if (unreliable) parts.push(unreliable + ' flagged unreliable (wide spread or thin data)');
+  if (done - matched) parts.push((done - matched) + ' left empty - hover "no comps" for why');
+  parts.push('Market A$ now holds fair value; Price rows turns it into a list price.');
+  S(matched ? (ask || unreliable ? 'warn' : 'ok') : 'warn', parts.join(' - '));
+}
+
 function renderGrid(windowOnly) {
   const tb = $('gridBody');
-  const emptyRow = (msg) => `<tr><td colspan="11" style="color:var(--muted);padding:22px;">${msg}</td></tr>`;
+  const emptyRow = (msg) => `<tr><td colspan="12" style="color:var(--muted);padding:22px;">${msg}</td></tr>`;
   if (!rows.length) { tb.innerHTML = emptyRow('No rows yet.'); syncHdr(); updateFoot(); return; }
   if (!view.length) { tb.innerHTML = emptyRow('No rows match the current filters — <b>✕ Clear</b> to see everything.'); syncHdr(); updateFoot(); return; }
   const slice = view.slice(winStart, winStart + WINDOW);
   const padTop = winStart * ROW_PX, padBot = Math.max(0, (view.length - winStart - slice.length) * ROW_PX);
   tb.innerHTML =
-    (padTop ? `<tr style="height:${padTop}px"><td colspan="11"></td></tr>` : '') +
+    (padTop ? `<tr style="height:${padTop}px"><td colspan="12"></td></tr>` : '') +
     slice.map((gi) => {
       const r = rows[gi];
       let title = '';
@@ -660,12 +832,13 @@ function renderGrid(windowOnly) {
         <td class="mono">${r.number || ''}</td><td>${r.rarity || ''}</td><td>${r.variant || ''}</td>
         <td>${badge(r)}</td>
         <td class="mono">${A$(r.market_cents)} ${srcChip(r)}</td>
+        <td>${compsCell(r)}</td>
         <td><input class="cell price" type="number" step="0.01" min="0" value="${r.price_cents != null ? (r.price_cents / 100).toFixed(2) : ''}"></td>
         <td><input class="cell qty" type="number" min="1" value="${r.quantity || 1}"></td>
         <td title="${title.replace(/"/g, '&quot;')}"><span class="title-prev" style="display:inline-block;vertical-align:middle;">${title}</span> <span class="pill${title.length >= 80 ? ' over' : ''}">${title.length}/80</span></td>
       </tr>`;
     }).join('') +
-    (padBot ? `<tr style="height:${padBot}px"><td colspan="11"></td></tr>` : '');
+    (padBot ? `<tr style="height:${padBot}px"><td colspan="12"></td></tr>` : '');
   syncHdr();
   if (!windowOnly) updateFoot();
 }
@@ -716,6 +889,15 @@ function updateFoot() {
     const units = inc.reduce((a, r) => a + (r.quantity || 1), 0);
     $('f_count').innerHTML = `<b>${inc.length}</b>/${rows.length} rows · ${units} units` + (filterActive() ? ` · ${view.length} visible` : '');
     $('f_value').textContent = A$(cents);
+    // The MARKET total, kept separate from Value. Value is price_cents, which 💲 Price rows rounds up
+    // to the store's listing endings (A$12.50 fair becomes A$12.99) — a retail total, and the wrong
+    // number to build an offer on. Rows with no comped value are counted so the gap is visible: a
+    // total that quietly skips half the pile reads as though the pile is worth less than it is.
+    const mkt = inc.reduce((a, r) => a + (r.market_cents || 0) * (r.quantity || 1), 0);
+    const noMkt = inc.filter((r) => r.market_cents == null).length;
+    $('f_mkt').innerHTML = mkt
+      ? 'Market <b>' + A$(mkt) + '</b>' + (noMkt ? ` <span class="fw">(${noMkt} row${noMkt === 1 ? '' : 's'} unvalued)</span>` : '')
+      : '';
     $('f_fees').textContent = 'A$' + fees.toFixed(2);
     const noImg = inc.filter((r) => !r.image).length;
     $('f_img').innerHTML = noImg ? `<span class="fw">⚠ ${noImg} selected without image</span>` : (inc.length ? 'images ✓' : '');
@@ -747,6 +929,11 @@ function refreshSteps() {
 }
 function refreshButtons() {
   const has = rows.length;
+  const sel = rows.reduce((a, r) => a + (r._inc ? 1 : 0), 0);
+  $('compBtn').disabled = !has || (!sel && !comping);
+  $('compBtn').textContent = comping ? '\u23F9 Stop comping' : '\uD83D\uDCCA Comp rows' + (sel ? ' (' + sel + ')' : '');
+  $('compBtn').title = comping ? 'Stop after the lookups already in flight'
+    : 'Live eBay AU comps for the SELECTED rows - fills Market A$ with fair value. One lookup per row, so tick only what you are valuing.';
   $('priceBtn').disabled = !has;
   $('priceBtn').title = has ? 'Price every row from live market data' : 'Enumerate a set or import a CSV first';
   $('saveBtn').disabled = !has;
@@ -825,6 +1012,9 @@ $('batchList').addEventListener('click', async (e) => {
     openExportPreview(id, rowEl.dataset.shape === 'multi_variation' ? 'multi_variation' : 'per_card', { onStatus: SB });
   }
 });
+// One delegated listener for the whole grid: every BIN lands in the bk-comps-bin window and every
+// sold in bk-comps-sold, so 17 cards do not become 34 tabs. Ctrl/⌘-click still opens a throwaway.
+if (window.TCG && TCG.wireCompsWindows) TCG.wireCompsWindows();
 </script>
 </body>
 </html>

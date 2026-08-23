@@ -67,6 +67,7 @@ describe('the surfaces that show comps links still reach for it', () => {
   const IMPORTERS = {
     'stock-runner.html': /import \{[^}]*searchUrl[^}]*\} from '\/lib\/ebay-links\.mjs'/,
     'stock-uploader.html': /import \{[^}]*searchUrl[^}]*\} from '\/lib\/ebay-links\.mjs'/,
+    'bulk-listing-builder.html': /import \{[^}]*searchUrl[^}]*\} from '\/lib\/ebay-links\.mjs'/,
   };
   for (const [file, re] of Object.entries(IMPORTERS)) {
     it(file, () => assert.match(read(file), re));
