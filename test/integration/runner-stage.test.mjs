@@ -12,6 +12,20 @@
 //
 // Boots the real server against temp DBs (bootServer), so the owner's data/tracker.db and its
 // monotonic label counter are never touched.
+//
+// ⚠ THE 409 BELOW IS A GUARANTEE, NOT AN OBSERVATION. This file POSTs the real /api/listings/batch
+// route and asserts it refuses. That is safe ONLY because bootServer blanks the eBay credentials via
+// OFFLINE_ENV (test/helpers/boot-server.mjs), which forces oauthStatus() to report disconnected on
+// every machine — including the one that trades.
+//
+// It was not always. On 2026-08-23 this test listed "Batch Guard 210/197" on the LIVE eBay store at
+// A$28.33, visible to buyers, because the assertion was written on a developer box with no consent and
+// the helper blanked every credential except eBay's. The redirected databases made it worse rather than
+// better: the staged row died with the temp DB, so nothing local ever recorded the listing.
+//
+// If you are here to remove that blanking, or to "fix" this test by giving it real credentials so the
+// batch path can be exercised end to end: do not. Exercise it against a stub. A test that can reach a
+// real marketplace has customers.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { bootServer } from '../helpers/boot-server.mjs';
@@ -112,7 +126,7 @@ describe('Phase 2 routes — /api/listings/batch', () => {
     assert.equal(r.status, 200, r.text);
     assert.equal(r.json.total, 2);
     assert.ok(r.json.rows[0].title, 'preflight builds the real title');
-    // The dear one trips the ceiling; this box has no eBay consent, and it still worked.
+    // The dear one trips the ceiling; eBay is force-disconnected here (OFFLINE_ENV), and it still worked.
     assert.ok(r.json.rows[1].refusals.some((x) => x.code === 'over_ceiling'));
   });
 
@@ -122,6 +136,8 @@ describe('Phase 2 routes — /api/listings/batch', () => {
     assert.match(r.json.error, /item_ids/);
   });
 
+  // The row this stages is the one that escaped. Left exactly as it was, deliberately: the fixture was
+  // never the problem, and renaming it would remove the only landmark tying this file to the incident.
   it('the publish route refuses up front when eBay is not connected — once, not N times', async () => {
     const a = await post('/api/inventory/items', runnerRow({ identity_key: 'sv3-210', number: '210/197', name: 'Batch Guard' }));
     const r = await post('/api/listings/batch', { item_ids: [a.json.id] });

@@ -55,10 +55,10 @@ const post = (p, body) => fetch(S.base + p, { method: 'POST', headers: { 'conten
   .then(async (r) => ({ status: r.status, json: await r.json() }));
 
 before(async () => {
-  process.env.EBAY_REFRESH_TOKEN = 'fake';
-  process.env.EBAY_CERT_ID = 'c';
-  process.env.EBAY_APP_ID = 'a';
-  S = await bootServer();
+  // FAKE credentials, declared here rather than set on process.env before the boot: bootServer blanks
+  // every real credential first and only then applies these, so this suite can exercise the connected
+  // path (against installStub's fetch) with no possibility of a real token surviving.
+  S = await bootServer({ env: { EBAY_REFRESH_TOKEN: 'fake', EBAY_CERT_ID: 'c', EBAY_APP_ID: 'a' } });
   db = openDbAt(S.trackerDb);
   if (sharp) photoDataUrl = 'data:image/jpeg;base64,' + (await fakeCard(900, 1200)).toString('base64');
 });
