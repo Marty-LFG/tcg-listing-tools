@@ -361,11 +361,11 @@ eBay is the business until Shopify launches. Nothing in Phase 1 changes eBay beh
 | ID | Task | Files | Gate | Dep | Size |
 |---|---|---|---|---|---|
 | **S0-1** | Does `bulkUpdatePriceQuantity` behave on an AU offer-based listing? One sacrificial A$1 listing, one call | — | Recorded result. **The highest-value 20 minutes in the plan** | A2 | S |
-| **S0-2** | `productSet` list-replace semantics on the dev store: publish 3 metafields, `productSet` with 1, read back | — | Recorded result | A1,A2 | S |
-| **S0-3** | `changeFromQuantity` really is CAS: two calls with the same value, the second must fail | — | Recorded result | A2 | S |
+| **S0-2** | ~~`productSet` list-replace semantics~~ | `scripts/check-shopify.mjs` | **CONFIRMED 2026-08-23 on the dev store.** 3 metafields + 3 tags in; after a second call carrying 1 of each, `beta`/`gamma`/`probe-tag-two`/`probe-tag-three` were **gone**. T2 holds — every publish must send complete state built from the DB | A1,A2 | S |
+| **S0-3** | ~~`changeFromQuantity` really is CAS~~ | `scripts/check-shopify.mjs` | **CONFIRMED 2026-08-23.** A stale value is refused with **`CHANGE_FROM_QUANTITY_STALE`** — the named code, not merely some refusal. The simultaneous-purchase race has a real defence and S10/S11 can be built on it | A2 | S |
 | **S0-4** | ~~`order_line_items` uniqueness~~ | — | **DONE 2026-08-22** — no unique index; tables can be shared. §3.2 | — | — |
-| **S0-5** | Protected customer data: place a test order with `place-test-order.ps1`, dump the payload, check the `errors` array on the 200 | — | Recorded; bk-shopify D-022 corrected either way | A2 | S |
-| **S1** | ~~`lib/channels/shopify-admin.mjs`~~ **DONE 2026-08-22** — token mint+cache, cost-bucket throttle, retry, `moneyToCents`, `userErrors`→`ok:false` | `lib/channels/shopify-admin.mjs` | `test/unit/shopify-admin.test.mjs`, 22 tests. **Live `shop { name }` smoke still owes A1+A2** | A2 | M |
+| **S0-5** | ~~Protected customer data~~ | `scripts/check-shopify.mjs` | **ANSWERED 2026-08-23 — bk-shopify D-022 IS WRONG.** Dev-store order #1001 returned `customer.firstName` and `customer.email` **PRESENT** with no `errors[]`. shopify.dev was right: a Dev-Dashboard custom app has Level 2 "always available". See §13 | A2 | S |
+| **S1** | ~~`lib/channels/shopify-admin.mjs`~~ **DONE 2026-08-22, live-verified 2026-08-23** — token mint+cache, cost-bucket throttle, retry, `moneyToCents`, `userErrors`→`ok:false` | `lib/channels/shopify-admin.mjs` | `test/unit/shopify-admin.test.mjs`, 22 tests, **plus a real connection to `binders-keepers-dev` via `scripts/check-shopify.mjs`** | A2 | M |
 | **S2** | ~~`migrateShopify(db)`~~ **DONE 2026-08-22** — `shopify_listings`, `channel_intent`, `sync_jobs`, `channel` columns, `idx_inv_ebay_listing`, backfill | `lib/db.mjs`, `lib/postsale-db.mjs` | `test/unit/shopify-schema.test.mjs`, 13 tests. Rehearsed on a copy of the real DB: clean, idempotent across three opens, no data loss. **Backfill volume unverified — this box's tracker.db holds no inventory or eBay rows; confirm on ALCSERVER** | — | M |
 | **S3** | ~~`lib/channels/shopify-map.mjs`~~ **DONE 2026-08-22** — `toShopifyProduct` + `validateProduct` off `buildRowIn`; identity handles; full `bkc.*`; `tracked:true` + `DENY`; own description | `lib/channels/shopify-map.mjs`, `lib/listing-copy.mjs` (+`pkmRarityAbbrev`) | `test/unit/shopify-map.test.mjs` (39) + `test/invariants/shopify-no-ebay-postage.test.mjs` (16). Mirror-parity harness still green | S2 | L |
 | **S4** | ~~Extract the shelf-label peek/commit → `lib/shelf-label.mjs`~~ **DONE 2026-08-22** — `reserveShelfLabel` / `commitShelfLabel`, channel-neutral | `lib/shelf-label.mjs`, `lib/listings.mjs` (−25/+19) | `deferred-label.test.mjs` green **unchanged**, 27/27; new `test/unit/shelf-label.test.mjs` (9) covers both channels, the dry run, the double commit and the failed commit | — | M |
@@ -422,9 +422,49 @@ and cancels with restock — the Shopify half of B, C and E.
 
 ---
 
-## 13. Still to settle
+## 13. S0 results (first live run, 2026-08-23)
+
+Run with `node --disable-warning=ExperimentalWarning scripts/check-shopify.mjs` on ALCSERVER, against
+**`binders-keepers-dev`** (plan "Basic App Development"). Three of the four questions are now answered,
+and one of the answers overturns a decision in the other repo.
+
+**`productSet` replaces — confirmed.** Three metafields and three tags in; a second call carrying one of
+each left exactly one of each. T2 stands: every publish sends complete state rebuilt from `tracker.db`,
+never a patch. This is now measured rather than read off a doc page.
+
+**`changeFromQuantity` is a real compare-and-swap — confirmed, and this is the important one.** The
+stale write came back refused with the *named* code `CHANGE_FROM_QUANTITY_STALE`, which is what makes it
+evidence: an unrelated refusal would have proved nothing. This is the only defence in the
+simultaneous-purchase race on a qty-1 card, so S10 and S11 rest on it.
+
+**Buyer PII is READABLE — bk-shopify D-022 is wrong.** Order #1001 returned `customer.firstName` and
+`customer.email` as PRESENT with an empty top-level `errors[]`. shopify.dev's "custom apps: always
+available at Level 2" is correct and help.shopify.com's plan-gated reading does not apply to a
+Dev-Dashboard custom app. Consequences, all in the other repo:
+- the Phase 4 ledger does **not** have to run de-identified;
+- "order PII for the ledger/shipping tooling" disappears from D-022's list of Grow-plan upgrade triggers;
+- `INVENTORY-SYNC.md`'s webhook PII test keeps its value as a *webhook*-payload check, since a webhook
+  body is not the same surface as a GraphQL query and should still be confirmed at S7.
+  (`shippingAddress.address1` came back null on #1001 — that is `place-test-order.ps1` completing a draft
+  order with no default address on the test customer, not redaction. `customer.email` being present is
+  what settles it.)
+
+**Still open: S0-1**, the `bulkUpdatePriceQuantity` probe. It needs a sacrificial live **eBay** listing,
+not Shopify, so it is not in this harness. It remains the highest-value 20 minutes in the plan and it
+gates S8.
+
+A false FAIL worth recording, because it is the mirror of the failure mode the harness was built to
+avoid: the first run reported `read_publications` MISSING. It was granted — as `write_publications`,
+which implies it. The probe was string-matching a scope list instead of testing the capability. It now
+does both: implied reads are honoured, and it actually queries `publications` and names the Online Store
+publication, which is the thing S6 genuinely needs.
+
+---
+
+## 14. Still to settle
 
 1. The uplift **percentage** (shape is decided: flat %, rounded up to .48/.98). Due before S11.
 2. The **high-value one-channel threshold** — due immediately after the latency test.
 3. **GST treatment** — Gate A8.
 4. **Shopify description wording** — Gate A7.
+5. **S0-1** — `bulkUpdatePriceQuantity` against a sacrificial eBay listing. Gates S8.

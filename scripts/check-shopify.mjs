@@ -65,10 +65,17 @@ async function guard(probe, fn) {
 
 // --- probe 1: connection, scopes, and the shipping location -------------------------------------
 
+// What the build needs. `write_X` IMPLIES `read_X` in Shopify's scope model, and the granted string
+// lists only what was actually selected on the app version — so requiring the literal 'read_publications'
+// alongside 'write_publications' reported a MISSING scope for an app that could read publications
+// perfectly well. That was a false FAIL on the first live run, and a false FAIL on a gating check is
+// nearly as expensive as a false PASS: it stops work that was never blocked.
 const NEEDED_SCOPES = [
   'write_products', 'write_inventory', 'read_locations', 'read_orders',
   'read_publications', 'write_publications', 'write_files', 'write_metaobjects',
 ];
+const scopeSatisfied = (granted, want) =>
+  granted.has(want) || (want.startsWith('read_') && granted.has('write_' + want.slice(5)));
 
 async function probeConnection() {
   // Not-configured is a legitimate state with an obvious remedy, NOT a harness bug — resolveShop
@@ -96,7 +103,7 @@ async function probeConnection() {
   catch (e) { record('1 connection', 'SKIP', 'could not mint a token', [String(e?.message || e)]); return null; }
 
   const granted = new Set(String(tok.scope || '').split(/[\s,]+/).filter(Boolean));
-  const missing = NEEDED_SCOPES.filter((s) => !granted.has(s));
+  const missing = NEEDED_SCOPES.filter((s) => !scopeSatisfied(granted, s));
 
   const shopQ = await shopifyGraphQL(env, '{ shop { name myshopifyDomain plan { displayName } } }', {}, { estimate: 5 });
   if (!shopQ.ok) {
@@ -112,11 +119,21 @@ async function probeConnection() {
   // there reads as in-stock through the API while the storefront says "Unavailable".
   const shipping = locs.find((l) => l.isActive && l.fulfillsOnlineOrders && l.shipsInventory) || null;
 
+  // GROUND TRUTH for the scope question. A granted-scope string is a proxy; actually running the query
+  // is the fact. This is also the gate for S6: without the Online Store publication a product is created,
+  // invisible to buyers, and looks live in our ledger — worse than a clean failure.
+  const pubQ = await shopifyGraphQL(env, '{ publications(first: 10) { nodes { id name } } }', {}, { estimate: 10 });
+  const pubs = pubQ.ok ? (pubQ.data.publications?.nodes || []) : [];
+  const onlineStore = pubs.find((p) => p.name === 'Online Store') || null;
+
   const ev = [
     `store        ${shop.myshopifyDomain}  (${shop.name}, plan ${shop.plan?.displayName || '?'})`,
     `api version  pinned ${API_VERSION}`,
     `scopes       ${granted.size} granted`,
-    `  needed     ${NEEDED_SCOPES.map((s) => (granted.has(s) ? '+' : '-') + s).join('  ')}`,
+    `  needed     ${NEEDED_SCOPES.map((s) => (scopeSatisfied(granted, s) ? '+' : '-') + s).join('  ')}`,
+    `             (write_X implies read_X — a '+' on an unlisted read_X means its write_X is granted)`,
+    `publications ${pubQ.ok ? `readable, ${pubs.length} found` : 'NOT readable — ' + (firstErrorText(pubQ) || `HTTP ${pubQ.httpStatus}`)}`,
+    ...(pubs.length ? pubs.map((p) => `  ${p.name === 'Online Store' ? '>' : ' '} ${p.name}  ${p.id}`) : []),
     `locations    ${locs.length} total`,
   ];
   for (const l of locs) {
@@ -126,12 +143,17 @@ async function probeConnection() {
 
   if (missing.length) {
     record('1 connection', 'FAIL', `connected, but ${missing.length} required scope(s) are NOT granted`, [...ev, `MISSING      ${missing.join(', ')}`]);
+  } else if (!pubQ.ok) {
+    // The capability, not the string, is what gates S6.
+    record('1 connection', 'FAIL', 'connected, but publications cannot be read — publishablePublish will fail and every product would be invisible', ev);
+  } else if (!onlineStore) {
+    record('1 connection', 'FAIL', 'publications readable but no "Online Store" publication exists — nothing to publish to', ev);
   } else if (!shipping) {
-    record('1 connection', 'FAIL', 'connected with every scope, but no location can hold sellable stock', ev);
+    record('1 connection', 'FAIL', 'connected and publishable, but no location can hold sellable stock', ev);
   } else {
-    record('1 connection', 'PASS', 'connected, all required scopes granted, a shipping location exists', ev);
+    record('1 connection', 'PASS', 'connected; scopes, Online Store publication and a shipping location all present', ev);
   }
-  return { shop, shipping, missing, granted };
+  return { shop, shipping, onlineStore, missing, granted };
 }
 
 // --- the shared fixture -------------------------------------------------------------------------
@@ -279,32 +301,41 @@ async function probeChangeFromQuantity(product, shipping) {
   const invItem = product.variants?.nodes?.[0]?.inventoryItem?.id;
   if (!invItem) { record('3 changeFromQuantity CAS', 'SKIP', 'the fixture has no inventory item'); return; }
 
-  // Stock it at the qualifying location. inventoryActivate is the only call that can attach an item to
-  // a location it is not yet stocked at, and it too requires @idempotent.
-  const act = await shopifyGraphQL(env, `
-    mutation A($inventoryItemId: ID!, $locationId: ID!, $key: String!) {
-      inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: 5) @idempotent(key: $key) {
-        inventoryLevel { id quantities(names: ["available"]) { name quantity } }
-        userErrors { field message }
-      }
-    }`, { inventoryItemId: invItem, locationId: shipping.id, key: crypto.randomUUID() }, { estimate: 20 });
-
-  // Already-active is fine — read the current figure instead of assuming 5.
-  const read = await shopifyGraphQL(env, `
+  const readLevels = () => shopifyGraphQL(env, `
     query R($id: ID!) {
       inventoryItem(id: $id) {
         inventoryLevels(first: 20) { nodes { location { id } quantities(names: ["available"]) { name quantity } } }
       }
     }`, { id: invItem }, { estimate: 10 });
+  const availableAt = (r) => r.data?.inventoryItem?.inventoryLevels?.nodes
+    ?.find((n) => n.location.id === shipping.id)?.quantities?.find((q) => q.name === 'available')?.quantity;
+
+  // READ FIRST, activate only if genuinely needed. A product created by productSet is already active at
+  // the location, so calling inventoryActivate unconditionally always fails with "Not allowed to set
+  // available quantity when the item is already active" — harmless, but it logs a scary line for an
+  // entirely expected case, and noise in a diagnostic is a real cost when someone is reading it to
+  // decide something.
+  let read = await readLevels();
+  let activateNote = 'already active at the location';
+  if (read.ok && !Number.isFinite(availableAt(read))) {
+    const act = await shopifyGraphQL(env, `
+      mutation A($inventoryItemId: ID!, $locationId: ID!, $key: String!) {
+        inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: 0) @idempotent(key: $key) {
+          inventoryLevel { id }
+          userErrors { field message }
+        }
+      }`, { inventoryItemId: invItem, locationId: shipping.id, key: crypto.randomUUID() }, { estimate: 20 });
+    activateNote = act.ok ? 'activated at the location' : 'activate failed: ' + (firstErrorText(act) || '');
+    read = await readLevels();
+  }
   if (!read.ok) {
     record('3 changeFromQuantity CAS', 'SKIP', 'could not read the current quantity',
-      [firstErrorText(read) || `HTTP ${read.httpStatus}`, act.ok ? '' : 'activate: ' + (firstErrorText(act) || '')].filter(Boolean));
+      [firstErrorText(read) || `HTTP ${read.httpStatus}`, activateNote]);
     return;
   }
-  const level = read.data.inventoryItem?.inventoryLevels?.nodes?.find((n) => n.location.id === shipping.id);
-  const current = level?.quantities?.find((q) => q.name === 'available')?.quantity;
+  const current = availableAt(read);
   if (!Number.isFinite(current)) {
-    record('3 changeFromQuantity CAS', 'SKIP', 'the fixture is not stocked at the qualifying location', [`activate ok=${act.ok}`]);
+    record('3 changeFromQuantity CAS', 'SKIP', 'the fixture is not stocked at the qualifying location', [activateNote]);
     return;
   }
 
@@ -315,6 +346,7 @@ async function probeChangeFromQuantity(product, shipping) {
 
   const staleCodes = (stale.userErrors || []).map((e) => e.code).filter(Boolean);
   const ev = [
+    `location           ${activateNote}`,
     `available before   ${current}`,
     `(a) correct changeFromQuantity=${current} -> ok=${good.ok}` + (good.ok ? '' : '  ' + (firstErrorText(good) || '')),
     `(b) STALE  changeFromQuantity=${current} -> ok=${stale.ok}  codes=[${staleCodes.join(', ') || 'none'}]`,
