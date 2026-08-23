@@ -239,6 +239,14 @@
 
       <div class="card" id="step2" style="--d:.05s">
         <h2><span class="n">02</span> Capture<span class="rule"></span></h2>
+        <div class="wiz" style="margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span class="colhead" style="margin:0;">Mode</span>
+            <button class="btn solid" style="padding:4px 11px;font-size:11.5px;" data-profile="triage" onclick="setProfile('triage')">Triage</button>
+            <button class="btn" style="padding:4px 11px;font-size:11.5px;" data-profile="full" onclick="setProfile('full')">Full</button>
+          </div>
+          <div class="small muted" id="profileNote" style="margin-left:auto;text-align:right;max-width:46ch;"></div>
+        </div>
         <div class="wiz">
           <div class="cur">Next: <b id="wizLabel">Scan — front</b></div>
           <div class="acts">
@@ -376,6 +384,30 @@ var SHOT_DEFS = [
   { id:'surface-front', short:'Surface F', label:'Surface close-up — front', kind:'surface', side:'front' },
   { id:'surface-back',  short:'Surface B', label:'Surface close-up — back',  kind:'surface', side:'back' }
 ];
+// Two ways to work a stack. Triage answers the question that kills most cards — is the centering
+// good enough to be worth a fee — from ONE scan in about 30 seconds. Full is the 12-shot treatment,
+// earned by the few cards that survive triage. The shot registry is the same either way; the profile
+// only decides which slots the wizard walks and which the report expects.
+var PROFILES = {
+  triage: { label:'Triage', dpi:600, shots:['scan-front'], note:'One front scan, centering only. About 30 seconds a card.' },
+  full:   { label:'Full',   dpi:null, shots:null,          note:'All 12 shots: both scans, eight microscope corners, two surfaces.' }
+};
+var _profile = 'triage';
+function profileShots(){ var p=PROFILES[_profile]; return p.shots||SHOT_DEFS.map(function(d){return d.id;}); }
+function inProfile(id){ return profileShots().indexOf(id)>=0; }
+function setProfile(name){
+  if(!PROFILES[name])return;
+  _profile=name;
+  try{ localStorage.setItem('grader_profile',name); }catch(e){}
+  // triage pins its own fast dpi; full hands the choice back to the scanner's configured default
+  var dpi=PROFILES[name].dpi||(_scanCap&&_scanCap.defaultDpi);
+  if(dpi&&$('scanDpi')) $('scanDpi').value=String(dpi);
+  document.querySelectorAll('[data-profile]').forEach(function(b){ b.classList.toggle('solid', b.getAttribute('data-profile')===name); });
+  var n=$('profileNote'); if(n) n.textContent=PROFILES[name].note;
+  if(!inProfile(_cur)) _cur=profileShots()[0]||'scan-front';
+  renderShots(); recompute();
+}
+
 var SHOT_GROUPS = [
   { title:'Flatbed scan (or photo)', cls:'g2', ids:['scan-front','scan-back'] },
   { title:'Microscope corners — front', cls:'g4', ids:['mic-corner-front-tl','mic-corner-front-tr','mic-corner-front-bl','mic-corner-front-br'] },
@@ -406,7 +438,7 @@ function updateRail(){
   var measured=!!(_pads.front&&_pads.front.ratios());
   var st=[
     { done:!!val('f_name'), note:val('f_num')||'' },
-    { done:!!primaryFront(), note:shots?shots+'/12':'' },
+    { done:!!primaryFront(), note:shots?shots+'/'+profileShots().length:'' },
     { done:measured, note:measured?_pads.front.ratios().label:'' },
     { done:!!_ai, note:_ai?'AI':'manual' }
   ];
@@ -555,8 +587,10 @@ function ingest(fileOrDataUrl, kind, cb){ downscaleTo(fileOrDataUrl, 2500, 0.9, 
 function renderShots(){
   var H='';
   SHOT_GROUPS.forEach(function(g){
+    var ids=g.ids.filter(inProfile);
+    if(!ids.length) return;              // triage hides the microscope groups entirely
     H+='<div class="shotgroup"><div class="colhead">'+esc(g.title)+'</div><div class="shotgrid '+g.cls+'">';
-    g.ids.forEach(function(id){
+    ids.forEach(function(id){
       var def=shotDef(id), d=SHOTS[id];
       H+='<button type="button" class="slot'+(def.required?' req':'')+(d?' has':'')+(id===_cur?' cur':'')+'" data-slot="'+id+'"'
         +' title="'+esc(def.label)+(d?'':' — click to make this the current shot, double-click to upload a file')+'"'
@@ -587,8 +621,10 @@ function refreshAfterImage(){
   recompute();
 }
 function wizAdvance(){
-  // next unfilled step after the current one, in registry order (no wrap-past-everything loop)
-  var ids=SHOT_DEFS.map(function(d){return d.id;});
+  // next unfilled step after the current one, within the ACTIVE profile only — triage must not
+  // march the operator through eight microscope slots it never intends to use
+  var ids=SHOT_DEFS.map(function(d){return d.id;}).filter(inProfile);
+  if(!ids.length) ids=SHOT_DEFS.map(function(d){return d.id;});
   var from=ids.indexOf(_cur);
   for(var i=1;i<=ids.length;i++){ var id=ids[(from+i)%ids.length]; if(!SHOTS[id]){ _cur=id; return; } }
 }
@@ -685,7 +721,10 @@ async function loadScanCapability(){
   var mh=$('mhScan');
   if(_scanCap&&_scanCap.enabled){
     $('scanCtls').style.display='';
-    if(_scanCap.defaultDpi) $('scanDpi').value=String(_scanCap.defaultDpi);
+    // the capability probe lands after the profile is applied, so it must not stomp triage's 600
+    var pdpi=PROFILES[_profile]&&PROFILES[_profile].dpi;
+    if(pdpi) $('scanDpi').value=String(pdpi);
+    else if(_scanCap.defaultDpi) $('scanDpi').value=String(_scanCap.defaultDpi);
     if(mh&&_scanCap.device) mh.textContent=' · '+_scanCap.device.name;   // the scanner is part of the tool's identity when present
   } else if(mh){ mh.textContent=' · no scanner on this machine'; }
 }
@@ -1206,7 +1245,9 @@ function renderReport(pred, rf, rb){
     if(bp.partial){
       var missing=['centering','corners','edges','surface'].filter(function(k){ return (bp.assessed||[]).indexOf(k)<0; });
       H+='<div class="small" style="margin-top:9px;color:var(--amber);">Based on '+esc((bp.assessed||[]).join(', '))
-        +' only. Nothing has looked at '+esc(missing.join(' or '))+' yet, so this grade is a ceiling, not a call.</div>';
+        +' only. Nothing has looked at '+esc(missing.join(' or '))+' yet, so this grade is a ceiling, not a call.'
+        +(_profile==='triage'?' <button class="btn" style="padding:3px 9px;font-size:11px;margin-left:4px;" onclick="promoteToFull()">Give it the full treatment</button>':'')
+        +'</div>';
     }
     if(be.ok){
       H+='<div class="money">'
@@ -1322,6 +1363,14 @@ function reportPayload(){
 }
 // Grading a stack means the identity changes under a report that is already saved. Updating
 // THAT row would quietly overwrite the previous card, so a changed name starts a new report.
+// A triage card that survives keeps its scan and steps up to the full treatment — rescanning the
+// front would waste the 25 seconds triage just spent.
+function promoteToFull(){
+  setProfile('full');
+  wizAdvance(); renderShots();
+  var el=$('step2'); if(el) el.scrollIntoView({block:'start'});
+  toast('Full treatment: scan the back, then the corners');
+}
 function newCard(){
   _reportId=null; _ai=null; _card=null; window._lastPred=null; _savedName=null;
   SHOT_DEFS.forEach(function(d){ delete SHOTS[d.id]; });
@@ -1517,6 +1566,8 @@ async function downloadPDF(){
   ['f_name','f_set','f_num','f_rarity','f_finish'].forEach(function(id){ $(id).addEventListener('input',recompute); });
   if(navigator.mediaDevices&&navigator.mediaDevices.enumerateDevices) listCams();
   loadScanCapability(); setReportActions(false);
+  var sp=null; try{ sp=localStorage.getItem('grader_profile'); }catch(e){}
+  setProfile(sp==='full'?'full':'triage');
   loadConfig().then(function(){
     loadSets(); recompute(); loadSavedList();
     var m=location.search.match(/[?&]report=(\d+)/); if(m) openReport(+m[1]);
