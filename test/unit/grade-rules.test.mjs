@@ -342,6 +342,47 @@ describe('centering percentages sum to 100 (property)', () => {
     assert.equal(GR.predictAll({ centeringFrontWorst: null, corners: { front: 9 }, edges: { front: 9 }, surface: { front: 9 } }, cfg), null)
   })
 
+  test('an unassessed pillar is dropped and the rest renormalised, never treated as a 9', () => {
+    // The sliders rest at 9. Feeding that to the engine when nobody looked invents 30% of the
+    // grade in the expensive direction — the same class of bug as the fabricated 50/50 centering.
+    const ctx = { frontWorst: 50, backWorst: 50 }
+    // centering-only (a triage card: front scan, no AI pass)
+    const only = GR.predictCompany('PSA', { centering: 8, corners: null, edges: null, surface: null }, cfg, 0.5, ctx)
+    assert.equal(only.grade, 8, 'a lone assessed pillar carries the grade by itself')
+    assert.deepEqual(only.assessed, ['centering'])
+    assert.equal(only.partial, true)
+    assert.equal(only.pillars.corners, null, 'unassessed pillars echo back as null, not a number')
+
+    // renormalisation: two pillars at 9 must predict 9, not 9 x (their combined weight)
+    const half = GR.predictCompany('PSA', { centering: 9, corners: 9, edges: null, surface: null }, cfg, 0.6, ctx)
+    assert.equal(half.grade, 9)
+
+    // a partial assessment cannot produce the four subgrades a slab prints
+    const bgs = GR.predictCompany('BGS', { centering: 10, corners: 10, edges: null, surface: null }, cfg, 0.6, ctx)
+    assert.equal(bgs.subgrades, undefined, 'no subgrades without all four pillars')
+
+    // nothing assessed at all is null out — never a default-9 prediction
+    assert.equal(GR.predictCompany('PSA', { centering: null, corners: null, edges: null, surface: null }, cfg, 0.6, ctx), null)
+  })
+
+  test('predictAll passes nulls through instead of coercing them', () => {
+    const out = GR.predictAll({
+      centeringFrontWorst: 55, centeringBackWorst: null,
+      corners: { front: null, back: null }, edges: { front: null, back: null }, surface: { front: null, back: null },
+      confidence: 0.5
+    }, cfg)
+    assert.ok(out && out.perCompany.PSA, 'a centering-only card still predicts')
+    assert.equal(out.perCompany.PSA.partial, true)
+    assert.deepEqual(out.perCompany.PSA.assessed, ['centering'])
+    // a back-only reading still counts as assessed for that pillar
+    const backOnly = GR.predictAll({
+      centeringFrontWorst: 55, centeringBackWorst: null,
+      corners: { front: null, back: 8 }, edges: { front: null, back: null }, surface: { front: null, back: null },
+      confidence: 0.5
+    }, cfg)
+    assert.ok(backOnly.perCompany.PSA.assessed.indexOf('corners') >= 0)
+  })
+
   test('PCG ten-tiers: the label climbs Gem Mint -> Pristine -> Flawless on published centering', () => {
     const perfect = { centering: 10, corners: 10, edges: 10, surface: 10 }
     const ctx = (f, b) => ({ frontWorst: f, backWorst: b })

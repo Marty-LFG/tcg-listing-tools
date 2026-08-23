@@ -980,10 +980,31 @@ function bakeRotation(side, ang, guides){
 /* ============================ pillar sliders ============================ */
 var PILLARS=['corners','edges','surface'], SIDES=['front','back'];
 function wireSliders(){
-  PILLARS.forEach(function(p){ SIDES.forEach(function(s){ var el=$('s_'+p+'_'+s); el.addEventListener('input',function(){ $('v_'+p+'_'+s).textContent=el.value; recompute(); }); }); });
+  PILLARS.forEach(function(p){ SIDES.forEach(function(s){ var el=$('s_'+p+'_'+s);
+    el.addEventListener('input',function(){ _pillarSet[pillarKey(p,s)]=true; markPillarRow(p,s); recompute(); }); }); });
+  PILLARS.forEach(function(p){ SIDES.forEach(function(s){ markPillarRow(p,s); }); });
 }
-function pillarVal(p,s){ return parseFloat(val('s_'+p+'_'+s)); }
-function setPillar(p,s,v){ if(v==null)return; var el=$('s_'+p+'_'+s); el.value=v; $('v_'+p+'_'+s).textContent=v; }
+// Which pillar/side values were actually assessed — by the AI answering, or by a human moving the
+// slider. An untouched slider rests at 9; feeding that to the engine invents 30% of the grade out of
+// nothing. Same principle the centering guides already follow with their 'default' state.
+var _pillarSet={};
+function pillarKey(p,s){ return p+'_'+s; }
+function pillarAssessed(p,s){ return !!_pillarSet[pillarKey(p,s)]; }
+function pillarVal(p,s){ return pillarAssessed(p,s)?parseFloat(val('s_'+p+'_'+s)):null; }
+function setPillar(p,s,v,assessed){
+  if(v==null){ if(assessed===false){ delete _pillarSet[pillarKey(p,s)]; markPillarRow(p,s); } return; }
+  var el=$('s_'+p+'_'+s); el.value=v; $('v_'+p+'_'+s).textContent=v;
+  if(assessed!==false) _pillarSet[pillarKey(p,s)]=true;
+  markPillarRow(p,s);
+}
+function markPillarRow(p,s){
+  var v=$('v_'+p+'_'+s); if(!v)return;
+  var on=pillarAssessed(p,s);
+  v.textContent=on?val('s_'+p+'_'+s):'—';
+  v.title=on?'':'Not assessed yet. Run the AI pass or move the slider.';
+  v.style.opacity=on?'':'.45';
+}
+function resetPillars(){ _pillarSet={}; PILLARS.forEach(function(p){ SIDES.forEach(function(s){ var el=$('s_'+p+'_'+s); if(el) el.value=9; markPillarRow(p,s); }); }); }
 function gradeStr(g){ return (g%1===0)?String(g):g.toFixed(1); }
 // Per-corner / per-edge readout under the sliders when the AI returned granular scores.
 function renderGranularRO(){
@@ -1021,7 +1042,11 @@ async function runAI(){
     _ai=res;
     // Sliders take the flat per-side scores; when granular corner/edge scores exist the flat
     // value is already their weakest link (the server derives it), so sliders stay the master.
-    PILLARS.forEach(function(p){ SIDES.forEach(function(s){ var v=res[p]&&res[p][s]; if(v!=null) setPillar(p,s,v); }); });
+    PILLARS.forEach(function(p){ SIDES.forEach(function(s){
+      var v=res[p]&&res[p][s];
+      // an explicit null is the model saying it could not see that area; it must not read as a 9
+      if(v!=null) setPillar(p,s,v); else setPillar(p,s,null,false);
+    }); });
     renderGranularRO();
     st.className='status ok'; st.textContent='Read by '+res.provider+' ('+res.model+'), '+Math.round((res.confidence||0)*100)+'% confident.';
     act&&act.done(res.provider);
@@ -1077,6 +1102,7 @@ function recompute(){
     surface:{front:pillarVal('surface','front'),back:primaryBack()?pillarVal('surface','back'):null},
     confidence:globalConfidence() };
   var pred=GradeRules.predictAll(input,CFG);
+  if(!pred){ $('report').innerHTML='<div class="empty">Nothing has been assessed yet.</div>'; return; }
   renderReport(pred, rf, rb);
 }
 
@@ -1177,6 +1203,11 @@ function renderReport(pred, rf, rb){
       +'<span class="tier">'+esc(bp.gradeLabel)+'</span>'
       +(be.ok?'<span class="call">'+esc(be.verdict==="Don't grade"?'Keep it raw':be.verdict)+'</span>'
              :'<span class="call" style="--vc:var(--muted)">'+esc(bp.confidence)+' confidence</span>')+'</div>';
+    if(bp.partial){
+      var missing=['centering','corners','edges','surface'].filter(function(k){ return (bp.assessed||[]).indexOf(k)<0; });
+      H+='<div class="small" style="margin-top:9px;color:var(--amber);">Based on '+esc((bp.assessed||[]).join(', '))
+        +' only. Nothing has looked at '+esc(missing.join(' or '))+' yet, so this grade is a ceiling, not a call.</div>';
+    }
     if(be.ok){
       H+='<div class="money">'
         +'<div>Worth at that grade<b>'+usd(valueAtGradeUSD(heroCo,bp.grade,bp.gradeLabel))+'</b></div>'
@@ -1294,6 +1325,7 @@ function reportPayload(){
 function newCard(){
   _reportId=null; _ai=null; _card=null; window._lastPred=null; _savedName=null;
   SHOT_DEFS.forEach(function(d){ delete SHOTS[d.id]; });
+  resetPillars();                 // the sliders used to carry the previous card's condition scores
   _cur='scan-front';
   ['f_name','f_set','f_num','f_rarity'].forEach(function(id){ setv(id,''); });
   setv('num',''); setv('setCode',''); selectedSet=null;
@@ -1345,6 +1377,11 @@ async function openReport(id){
     saveStatus('load','Opening report #'+id+'…',true);
     var r=await fetch('/api/pregrade/'+id); if(!r.ok) throw new Error('HTTP '+r.status);
     var j=await r.json(); var rep=j.report||{};
+    // start from empty: opening report B used to leave A's shots, A's defects and A's back
+    // measurement live underneath, and the next Save wrote all of it into B
+    SHOT_DEFS.forEach(function(d){ delete SHOTS[d.id]; });
+    _ai=null; window._lastPred=null; resetPillars();
+    _pads.front.setImage(null); _pads.back.setImage(null);
     _reportId=rep.id;
     setv('f_name',rep.name); setv('f_set',rep.set_name); setv('f_num',rep.number); setv('f_rarity',rep.rarity); setv('f_finish',rep.finish||'Holo');
     _card={ name:rep.name, set:rep.set_name, number:rep.number, rarity:rep.rarity, finish:rep.finish, id:rep.identity_key, pc:null };

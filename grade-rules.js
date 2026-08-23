@@ -184,6 +184,16 @@
     return grade;
   }
 
+  // Four subgrades or none: a slab prints all four, so a partial assessment yields no subgrades.
+  function subgradesOf(pillars, step) {
+    var k = ['centering', 'corners', 'edges', 'surface'];
+    for (var i = 0; i < k.length; i++) if (pillars[k[i]] == null) return null;
+    return {
+      centering: roundToStep(pillars.centering, step), corners: roundToStep(pillars.corners, step),
+      edges: roundToStep(pillars.edges, step), surface: roundToStep(pillars.surface, step)
+    };
+  }
+
   // Per-pillar -> a single company's prediction.
   // pillars = { centering, corners, edges, surface } as numeric grades (1..10).
   // confidence 0..1 is the overall input confidence (AI + centering certainty).
@@ -193,10 +203,17 @@
     var meta = (cfg.companies || {})[company] || { step: 0.5, lowestPlusCap: 1, has95: true, pillarWeights: {} };
     var step = meta.step || 0.5;
     var w = meta.pillarWeights || { centering: 0.3, corners: 0.3, edges: 0.2, surface: 0.2 };
-    var vals = [pillars.centering, pillars.corners, pillars.edges, pillars.surface];
+    // A null pillar means NOBODY LOOKED — a card scanned front-only, or an AI pass that answered
+    // "cannot see that corner". Treating it as a 9 (the slider's resting position) invents 30% of
+    // the grade out of nothing, in the expensive direction. Drop it and renormalise the rest, so
+    // the prediction is honestly "what the assessed pillars support" rather than a fabrication.
+    var KEYS = ['centering', 'corners', 'edges', 'surface'];
+    var assessed = KEYS.filter(function (k) { return pillars[k] != null; });
+    if (!assessed.length) return null;
+    var wSum = assessed.reduce(function (a, k) { return a + (w[k] || 0); }, 0) || 1;
+    var vals = assessed.map(function (k) { return pillars[k]; });
     var lowest = Math.min.apply(null, vals);
-    var weighted = pillars.centering * w.centering + pillars.corners * w.corners +
-      pillars.edges * w.edges + pillars.surface * w.surface;
+    var weighted = assessed.reduce(function (a, k) { return a + pillars[k] * (w[k] || 0); }, 0) / wSum;
     // weakest-link cap: final rarely exceeds lowest + companyCap (PSA ~1, BGS ~2).
     var cap = lowest + (meta.lowestPlusCap == null ? 1 : meta.lowestPlusCap);
     var raw = Math.min(weighted, cap);
@@ -205,28 +222,20 @@
 
     var subgrades = null, label;
     if (company === 'BGS') {
-      subgrades = {
-        centering: roundToStep(pillars.centering, 0.5),
-        corners: roundToStep(pillars.corners, 0.5),
-        edges: roundToStep(pillars.edges, 0.5),
-        surface: roundToStep(pillars.surface, 0.5)
-      };
-      // BGS final is anchored by the lowest subgrade (and rarely > lowest + 2).
-      var bgsLow = Math.min(subgrades.centering, subgrades.corners, subgrades.edges, subgrades.surface);
-      grade = roundToStep(Math.min(grade, bgsLow + 2), 0.5);
-      grade = applyGradeGates(meta, grade, subgrades, 0.5);
+      subgrades = subgradesOf(pillars, 0.5);
+      // A slab carries four subgrades, so a partial assessment cannot produce one. Anchoring and
+      // the published gates both need the full set; without it, only the weighted grade stands.
+      if (subgrades) {
+        // BGS final is anchored by the lowest subgrade (and rarely > lowest + 2).
+        var bgsLow = Math.min(subgrades.centering, subgrades.corners, subgrades.edges, subgrades.surface);
+        grade = roundToStep(Math.min(grade, bgsLow + 2), 0.5);
+        grade = applyGradeGates(meta, grade, subgrades, 0.5);
+      }
       label = tenTierLabel(meta, grade, subgrades, ctx) || bgsLabel(grade, subgrades);
     } else {
       // any other slab that PRINTS subgrades (PCG, TAG) gets them in the prediction too —
       // no extra anchoring, that formula is BGS's own
-      if (meta.subgradesOnSlab) {
-        subgrades = {
-          centering: roundToStep(pillars.centering, 0.5),
-          corners: roundToStep(pillars.corners, 0.5),
-          edges: roundToStep(pillars.edges, 0.5),
-          surface: roundToStep(pillars.surface, 0.5)
-        };
-      }
+      if (meta.subgradesOnSlab) subgrades = subgradesOf(pillars, 0.5);
       if (subgrades) grade = applyGradeGates(meta, grade, subgrades, step);
       label = tenTierLabel(meta, grade, subgrades, ctx) || genericLabel(company, grade);
     }
@@ -244,11 +253,13 @@
       probabilities: dist,
       confidence: confLevel,
       pillars: {
-        centering: roundToStep(pillars.centering, step),
-        corners: roundToStep(pillars.corners, step),
-        edges: roundToStep(pillars.edges, step),
-        surface: roundToStep(pillars.surface, step)
-      }
+        centering: pillars.centering == null ? null : roundToStep(pillars.centering, step),
+        corners: pillars.corners == null ? null : roundToStep(pillars.corners, step),
+        edges: pillars.edges == null ? null : roundToStep(pillars.edges, step),
+        surface: pillars.surface == null ? null : roundToStep(pillars.surface, step)
+      },
+      assessed: assessed.slice(),                       // which pillars actually had a value
+      partial: assessed.length < KEYS.length            // the report must say so out loud
     };
     if (subgrades) out.subgrades = subgrades;
     if (company === 'TAG') out.tagScore = Math.max(100, Math.min(1000, Math.round(grade * 100))); // 1st digit ~ grade
@@ -269,11 +280,14 @@
     companies.forEach(function (co) {
       var step = (cfg.companies[co] || {}).step || 0.5;
       var centerGrade = GR.centeringGrade(co, input.centeringFrontWorst, input.centeringBackWorst, cfg);
+      // null in, null through: pillarEffective must not turn "not assessed" into a number
+      function eff(p) {
+        if (!p || (p.front == null && p.back == null)) return null;
+        return GR.pillarEffective(p.front == null ? p.back : p.front, p.front == null ? null : p.back, step);
+      }
       var pillars = {
         centering: centerGrade,
-        corners: GR.pillarEffective(input.corners.front, input.corners.back, step),
-        edges: GR.pillarEffective(input.edges.front, input.edges.back, step),
-        surface: GR.pillarEffective(input.surface.front, input.surface.back, step)
+        corners: eff(input.corners), edges: eff(input.edges), surface: eff(input.surface)
       };
       perCompany[co] = GR.predictCompany(co, pillars, cfg, conf,
         { frontWorst: input.centeringFrontWorst, backWorst: input.centeringBackWorst });
