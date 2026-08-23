@@ -102,23 +102,86 @@ describe('no eBay postage copy reaches the storefront', () => {
     assert.doesNotMatch(html, /\$\s*\d/, 'a dollar figure in the product description');
     assert.doesNotMatch(html, /postage|shipping|tracked|satchel|letter/i, 'shipping copy belongs to the theme');
   });
-  it('still carries the product sentences, from the shared constants', () => {
-    assert.match(html, /Pulled straight to sleeve and stored in a toploader/);
+  it('carries the parcel sentence, from the shared constant', () => {
     assert.match(html, /penny sleeve and toploader inside a rigid mailer/);
-    assert.match(html, /From a smoke-free home/);
   });
-  it('renders the card details table and escapes what it puts in it', () => {
+  it('drops the eBay-marketplace idiom entirely (A7)', () => {
+    // "Thanks for looking" belongs to a listing among many; "item specifics" names an eBay UI element
+    // that does not exist on Shopify. Neither survives the move.
+    assert.doesNotMatch(html, /Thanks for looking/i);
+    assert.doesNotMatch(html, /item specifics/i);
+    assert.doesNotMatch(html, /smoke-free/i);
+  });
+  it('escapes what it interpolates', () => {
     const evil = buildShopifyDescription(row({ set_name: '<script>x</script>' }), { set: '<script>x</script>', cond: 'NM' });
-    assert.doesNotMatch(evil, /<script>/);
+    assert.doesNotMatch(evil, /<script>x/);
     assert.match(evil, /&lt;script&gt;/);
   });
-  it('a slab gets the slab wording and its cert row', () => {
-    const slab = row({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '84512203' });
-    const h = buildShopifyDescription(slab, { cond: 'PSA 9', set: 'White Flare' });
-    assert.match(h, /Professionally graded and encapsulated/);
-    assert.match(h, /Ships securely inside a rigid mailer/);
-    assert.match(h, /84512203/);
+  it('emits no table — every consuming surface flattens markup to text', () => {
+    // Flattened, a table reads "Set White Flare Card number 186/159 Rarity ..." — worse for an agent
+    // than the same facts in grammar, and a duplicate of the bk-product-facts panel the PDP renders.
+    assert.doesNotMatch(html, /<table|<tr|<th|<td/);
   });
+  it('a slab leads on grader and grade, and carries the cert', () => {
+    const slab = row({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '84512203' });
+    const h = buildShopifyDescription(slab, { name: 'Iono', num: '186/159', set: 'White Flare', lang: 'English' });
+    assert.match(h, /^<p>PSA 9 /);
+    assert.match(h, /cert 84512203/);
+    assert.match(h, /Ships securely inside a rigid mailer/);
+  });
+  it('leads with the identity, and closes it inside the snippet budget', () => {
+    // The audience is a Google snippet, a Shop card and a product feed — the PDP renders no
+    // description block at all. A snippet cuts near 160 characters, so the whole card has to land
+    // before that or the one thing the surface exists to say is the thing it truncates.
+    const flat = toShopifyProduct(row()).descriptionHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const identity = flat.split('.')[0];
+    assert.ok(identity.length < 160, `identity is ${identity.length} chars, past the snippet cut`);
+    assert.match(flat, /^Near Mint Special Illustration Rare Pokémon single —/);
+  });
+
+  it('carries what the TITLE cannot, which is the whole reason it exists (D-020)', () => {
+    // buildShopifyTitle already ships name, number, set, language and condition. Agents cannot filter
+    // on trading-card attributes, so game / rarity / set code / printing reach them only through here.
+    const p = toShopifyProduct(row());
+    assert.doesNotMatch(p.title, /Pokémon|Special Illustration Rare|SV8a|Holo/);
+    for (const token of ['Pokémon', 'Special Illustration Rare', 'SV8a', 'Holo']) {
+      assert.ok(p.descriptionHtml.includes(token), `description is missing ${token}`);
+    }
+  });
+
+  it('siblings differ in the FIRST words, not the last', () => {
+    // D-012 gives every condition its own product, so four URLs share a description bar one token.
+    // Buried at the end it differentiates nothing in a search result.
+    const nm = toShopifyProduct(row({ condition: 'Near Mint' })).descriptionHtml;
+    const lp = toShopifyProduct(row({ condition: 'Lightly Played' })).descriptionHtml;
+    assert.match(nm, /^<p>Near Mint /);
+    assert.match(lp, /^<p>Lightly Played /);
+  });
+
+  it('never promises a photo it does not have', () => {
+    // Not keepable for every product: a pre-order has no card to photograph, and validateProduct only
+    // WARNS on a row with no image rather than refusing it.
+    const ok = buildShopifyDescription(row(), { img: 'https://x/y.png', cond: 'NM' });
+    assert.match(ok, /we photograph the actual card/);
+    for (const over of [{ release_status: 'pre-order' }, { image_url: null, image: null }]) {
+      const h = toShopifyProduct(row(over)).descriptionHtml;
+      assert.doesNotMatch(h, /we photograph the actual card/, JSON.stringify(over));
+      // …but the provenance line is unconditional, because it is true of everything we sell.
+      assert.match(h, /Run by collectors in Newcastle, not a warehouse\./);
+    }
+  });
+
+  it("suppresses 'Normal', the one finish that says nothing", () => {
+    assert.doesNotMatch(toShopifyProduct(row({ variant: 'Normal' })).descriptionHtml, /Normal/);
+    assert.match(toShopifyProduct(row({ variant: 'Holofoil' })).descriptionHtml, /Holofoil/);
+  });
+
+  it('degrades to English with rarity, printing and set code all missing', () => {
+    const h = toShopifyProduct(row({ rarity: '', variant: '', set_code: '' })).descriptionHtml;
+    assert.match(h, /^<p>Near Mint Pokémon single — Iono 186\/159, White Flare, Japanese\.<\/p>/);
+    assert.doesNotMatch(h, /\(\)|,\s*,|—\s*,|\s\./, 'punctuation left stranded by a missing field');
+  });
+
   it('a desc_override wins outright', () => {
     assert.equal(buildShopifyDescription(row({ desc_override: '  <p>mine</p>  ' }), {}), '<p>mine</p>');
   });
