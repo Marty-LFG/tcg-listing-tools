@@ -87,6 +87,13 @@ describe('backup.config.json', () => {
     assert.equal(typeof c.include_secrets, 'boolean');
     assert.equal(c.include_secrets, false, 'include_secrets must default false — no silent .env duplication');
   });
+  it('the pre-grade image mirror is ON — those bytes exist nowhere else', () => {
+    // data/pregrade-images/ holds card scans and microscope shots that cannot be re-derived from any
+    // API; the DB snapshot beside them carries only their sha256 filenames. Turning this off means a
+    // restore yields reports whose every image 404s, so it flipping to false should be deliberate.
+    assert.equal(typeof c.include_images, 'boolean');
+    assert.equal(c.include_images, true);
+  });
 });
 
 describe('collectr.config.json', () => {

@@ -2,5 +2,6 @@
   "enabled": true,
   "interval_hours": 24,
   "keep": 14,
-  "include_secrets": false
+  "include_secrets": false,
+  "include_images": true
 }
