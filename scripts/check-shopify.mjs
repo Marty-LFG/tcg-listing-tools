@@ -105,12 +105,26 @@ async function probeConnection() {
   const granted = new Set(String(tok.scope || '').split(/[\s,]+/).filter(Boolean));
   const missing = NEEDED_SCOPES.filter((s) => !scopeSatisfied(granted, s));
 
-  const shopQ = await shopifyGraphQL(env, '{ shop { name myshopifyDomain plan { displayName } } }', {}, { estimate: 5 });
+  // partnerDevelopment is the one live-store guard with an EXTERNAL anchor. Everything else here
+  // (devShop vs liveShop) derives from the same .env through the same function, so it only proves the
+  // two variables differ — not that either is right. If SHOPIFY_DEV_SHOP were pointed at the live store
+  // by a typo and SHOPIFY_SHOP left unset, every env-derived check would pass happily. Asking the SERVER
+  // whether this is a development store is the check that cannot be fooled by a bad .env.
+  const shopQ = await shopifyGraphQL(env,
+    '{ shop { name myshopifyDomain plan { displayName partnerDevelopment } } }', {}, { estimate: 5 });
   if (!shopQ.ok) {
     record('1 connection', 'FAIL', 'token minted but the shop query failed', [firstErrorText(shopQ) || `HTTP ${shopQ.httpStatus}`]);
     return null;
   }
   const shop = shopQ.data.shop;
+  const isDevStore = shop.plan?.partnerDevelopment === true;
+  if (!isDevStore) {
+    record('1 connection', 'FAIL',
+      'the store answering is NOT a development store — refusing to run the write probes against it',
+      [`store  ${shop.myshopifyDomain}  plan ${shop.plan?.displayName || '?'}  partnerDevelopment=${shop.plan?.partnerDevelopment}`,
+       'check SHOPIFY_DEV_SHOP — a typo here would have probes 2 and 3 writing to production']);
+    return null;
+  }
 
   const locQ = await shopifyGraphQL(env,
     '{ locations(first: 20) { nodes { id name isActive fulfillsOnlineOrders shipsInventory } } }', {}, { estimate: 10 });
@@ -138,8 +152,14 @@ async function probeConnection() {
   ];
   for (const l of locs) {
     ev.push(`  ${l.shipsInventory && l.isActive && l.fulfillsOnlineOrders ? '>' : ' '} ${l.name}  active=${l.isActive} online=${l.fulfillsOnlineOrders} ships=${l.shipsInventory}`);
+    ev.push(`      ${l.id}`);
   }
-  ev.push(shipping ? `qualifying   ${shipping.name}` : 'qualifying   NONE — no location satisfies active && fulfillsOnlineOrders && shipsInventory');
+  // The GID, not just the name: this is the value data/shopify.config.json pins, and a name is not
+  // something you can paste into a config. Same reason the publication GIDs are printed above.
+  ev.push(shipping
+    ? `qualifying   ${shipping.name}\n             ${shipping.id}   <- pin this as the shipping location`
+    : 'qualifying   NONE — no location satisfies active && fulfillsOnlineOrders && shipsInventory');
+  if (onlineStore) ev.push(`publish to   ${onlineStore.id}   <- pin this as the Online Store publication`);
 
   if (missing.length) {
     record('1 connection', 'FAIL', `connected, but ${missing.length} required scope(s) are NOT granted`, [...ev, `MISSING      ${missing.join(', ')}`]);
@@ -362,10 +382,16 @@ async function probeChangeFromQuantity(product, shipping) {
     record('3 changeFromQuantity CAS', 'FAIL', 'NOT a compare-and-swap here — a stale changeFromQuantity was ACCEPTED. The simultaneous-purchase race has no defence; do not build on it', ev);
     return;
   }
+  // ⚠ WHAT THIS DOES AND DOES NOT PROVE. These calls are SEQUENTIAL, so what is established is the
+  // CONTRACT — a stale changeFromQuantity is rejected, by name. That is the mechanism the race defence
+  // is built on, and it is worth knowing it is real. It is NOT a measurement of behaviour under genuine
+  // concurrency: two in-flight writes racing at the server is test E in the A-F suite, and only that
+  // measures whether exactly one purchase wins.
+  ev.push('proves the CONTRACT (sequential). The RACE itself is test E in the A-F suite — not this.');
   const named = staleCodes.includes('CHANGE_FROM_QUANTITY_STALE');
   record('3 changeFromQuantity CAS', named ? 'PASS' : 'FAIL',
     named
-      ? 'CONFIRMED: a stale changeFromQuantity is refused with CHANGE_FROM_QUANTITY_STALE — the race has a real defence'
+      ? 'CONFIRMED: a stale changeFromQuantity is refused, by name — the mechanism the race defence needs is real'
       : 'the stale write was refused, but NOT with CHANGE_FROM_QUANTITY_STALE — the refusal may be unrelated, so this does not prove a CAS',
     ev);
 }
@@ -418,10 +444,21 @@ async function probeProtectedCustomerData() {
   }
   if (errTxt.length) ev.push(...errTxt.map((t) => 'errors[]: ' + t));
 
+  // ⚠ SCOPE OF THIS ANSWER. D-022's claim is about the BASIC plan on the LIVE store. This runs against a
+  // PARTNER DEVELOPMENT store, and Shopify explicitly exempts development stores from protected-customer-
+  // data review — "You don't need to submit a request for review for apps that are installed only on
+  // development stores". So a dev store is precisely where PII would be readable REGARDLESS of what the
+  // live store does, and a PASS here cannot overturn D-022 on its own. It is a useful lower bound (it
+  // rules out an app-level block that would apply everywhere) and nothing more. The conclusive test is
+  // the same read against the live store, which is read-only and therefore safe to run there.
+  ev.push('scope: this is a DEVELOPMENT store, which Shopify exempts from protected-customer-data review');
+  ev.push('       -> re-run the same read against the LIVE store before changing bk-shopify D-022');
   if (anyPii) {
-    record('4 protected customer data', 'PASS', 'buyer PII IS readable by this custom app — bk-shopify D-022 is wrong about redaction on this plan', ev);
+    record('4 protected customer data', 'PASS',
+      'buyer PII is readable HERE — but this is a dev store, so it does NOT settle D-022 (which is about live/Basic)', ev);
   } else {
-    record('4 protected customer data', 'PASS', 'buyer PII is REDACTED (200 + nulls) — D-022 is right, and the ledger must tolerate de-identified orders', ev);
+    record('4 protected customer data', 'PASS',
+      'buyer PII is REDACTED even on a development store — an app-level block, so D-022 holds on live too', ev);
   }
 }
 
@@ -431,6 +468,9 @@ line('Shopify S0 probes — docs/SHOPIFY_CHANNEL_PLAN.md');
 line('DEV STORE ONLY. Probes 1 and 4 write nothing; 2 and 3 share one throwaway DRAFT product.\n');
 
 let fixture = null;
+// A PASS verdict with a stocked draft product left behind is not a clean run, and exiting 0 would say
+// it was. It goes into the exit code and the summary.
+let cleanupFailed = false;
 try {
   const conn = await guard('1 connection', probeConnection);
   if (!conn) {
@@ -449,6 +489,7 @@ try {
   const id = fixture?.id || (await findFixture().catch(() => null))?.id || null;
   if (id && !KEEP) {
     const del = await deleteFixture(id).catch(() => null);
+    cleanupFailed = !del?.ok;
     line(`\ncleanup: fixture ${id} ${del?.ok ? 'deleted' : 'NOT deleted — remove it by hand'}`);
   } else if (id) {
     line(`\ncleanup: --keep, fixture left in place: ${id}`);
@@ -460,5 +501,11 @@ for (const r of results) line(`${r.verdict.padEnd(4)}  ${r.probe.padEnd(28)} ${r
 const failed = results.filter((r) => r.verdict === 'FAIL').length;
 const skipped = results.filter((r) => r.verdict === 'SKIP').length;
 line(`\n${results.length - failed - skipped} passed, ${failed} failed, ${skipped} skipped`);
+if (cleanupFailed) line('⚠ CLEANUP FAILED — a stocked draft product is still on the dev store. Delete it by hand.');
 line('No credential appears in this output — it is safe to paste verbatim.');
-process.exit(failed ? 1 : 0);
+
+// exitCode, NOT process.exit(). On Windows stdout to a pipe or a redirect is ASYNCHRONOUS, and
+// process.exit() immediately after a console.log can truncate the buffer — losing the last lines, which
+// here are the summary. The owner runs this on Windows and pastes the output, so a truncated tail is
+// exactly the failure that matters. Setting exitCode lets node flush and exit on its own.
+process.exitCode = failed || cleanupFailed ? 1 : 0;

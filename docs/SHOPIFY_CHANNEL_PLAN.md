@@ -364,7 +364,7 @@ eBay is the business until Shopify launches. Nothing in Phase 1 changes eBay beh
 | **S0-2** | ~~`productSet` list-replace semantics~~ | `scripts/check-shopify.mjs` | **CONFIRMED 2026-08-23 on the dev store.** 3 metafields + 3 tags in; after a second call carrying 1 of each, `beta`/`gamma`/`probe-tag-two`/`probe-tag-three` were **gone**. T2 holds — every publish must send complete state built from the DB | A1,A2 | S |
 | **S0-3** | ~~`changeFromQuantity` really is CAS~~ | `scripts/check-shopify.mjs` | **CONFIRMED 2026-08-23.** A stale value is refused with **`CHANGE_FROM_QUANTITY_STALE`** — the named code, not merely some refusal. The simultaneous-purchase race has a real defence and S10/S11 can be built on it | A2 | S |
 | **S0-4** | ~~`order_line_items` uniqueness~~ | — | **DONE 2026-08-22** — no unique index; tables can be shared. §3.2 | — | — |
-| **S0-5** | ~~Protected customer data~~ | `scripts/check-shopify.mjs` | **ANSWERED 2026-08-23 — bk-shopify D-022 IS WRONG.** Dev-store order #1001 returned `customer.firstName` and `customer.email` **PRESENT** with no `errors[]`. shopify.dev was right: a Dev-Dashboard custom app has Level 2 "always available". See §13 | A2 | S |
+| **S0-5** | Protected customer data — **live-store read still owed** | `scripts/check-shopify.mjs` | **PARTIAL 2026-08-23.** Dev-store order #1001 returned `customer.firstName` and `customer.email` **PRESENT** with no `errors[]`. shopify.dev was right: a Dev-Dashboard custom app has Level 2 "always available". See §13 | A2 | S |
 | **S1** | ~~`lib/channels/shopify-admin.mjs`~~ **DONE 2026-08-22, live-verified 2026-08-23** — token mint+cache, cost-bucket throttle, retry, `moneyToCents`, `userErrors`→`ok:false` | `lib/channels/shopify-admin.mjs` | `test/unit/shopify-admin.test.mjs`, 22 tests, **plus a real connection to `binders-keepers-dev` via `scripts/check-shopify.mjs`** | A2 | M |
 | **S2** | ~~`migrateShopify(db)`~~ **DONE 2026-08-22** — `shopify_listings`, `channel_intent`, `sync_jobs`, `channel` columns, `idx_inv_ebay_listing`, backfill | `lib/db.mjs`, `lib/postsale-db.mjs` | `test/unit/shopify-schema.test.mjs`, 13 tests. Rehearsed on a copy of the real DB: clean, idempotent across three opens, no data loss. **Backfill volume unverified — this box's tracker.db holds no inventory or eBay rows; confirm on ALCSERVER** | — | M |
 | **S3** | ~~`lib/channels/shopify-map.mjs`~~ **DONE 2026-08-22** — `toShopifyProduct` + `validateProduct` off `buildRowIn`; identity handles; full `bkc.*`; `tracked:true` + `DENY`; own description | `lib/channels/shopify-map.mjs`, `lib/listing-copy.mjs` (+`pkmRarityAbbrev`) | `test/unit/shopify-map.test.mjs` (39) + `test/invariants/shopify-no-ebay-postage.test.mjs` (16). Mirror-parity harness still green | S2 | L |
@@ -432,22 +432,31 @@ and one of the answers overturns a decision in the other repo.
 each left exactly one of each. T2 stands: every publish sends complete state rebuilt from `tracker.db`,
 never a patch. This is now measured rather than read off a doc page.
 
-**`changeFromQuantity` is a real compare-and-swap — confirmed, and this is the important one.** The
-stale write came back refused with the *named* code `CHANGE_FROM_QUANTITY_STALE`, which is what makes it
-evidence: an unrelated refusal would have proved nothing. This is the only defence in the
-simultaneous-purchase race on a qty-1 card, so S10 and S11 rest on it.
+**`changeFromQuantity` refuses a stale write, by name — confirmed.** The stale call came back with the
+*named* code `CHANGE_FROM_QUANTITY_STALE`; an unrelated refusal would have proved nothing, which is why
+the code matters. ⚠ **Scope it correctly.** The probe is SEQUENTIAL, so what is established is the
+**contract**, not the race. Two in-flight writes colliding at the server is **test E** in the A–F suite,
+and only that measures whether exactly one purchase wins. S0-3 buys the knowledge that the mechanism
+S10/S11 are built on is real — not that the race is won.
 
-**Buyer PII is READABLE — bk-shopify D-022 is wrong.** Order #1001 returned `customer.firstName` and
-`customer.email` as PRESENT with an empty top-level `errors[]`. shopify.dev's "custom apps: always
-available at Level 2" is correct and help.shopify.com's plan-gated reading does not apply to a
-Dev-Dashboard custom app. Consequences, all in the other repo:
-- the Phase 4 ledger does **not** have to run de-identified;
-- "order PII for the ledger/shipping tooling" disappears from D-022's list of Grow-plan upgrade triggers;
-- `INVENTORY-SYNC.md`'s webhook PII test keeps its value as a *webhook*-payload check, since a webhook
-  body is not the same surface as a GraphQL query and should still be confirmed at S7.
-  (`shippingAddress.address1` came back null on #1001 — that is `place-test-order.ps1` completing a draft
-  order with no default address on the test customer, not redaction. `customer.email` being present is
-  what settles it.)
+**Buyer PII was readable on the DEV store — and that does NOT settle D-022.** Order #1001 returned
+`customer.firstName` and `customer.email` PRESENT with an empty top-level `errors[]`. But D-022's claim
+is about the **Basic plan on the LIVE store**, and this ran against a **Partner development store**
+(`plan.displayName = "Basic App Development"`). Shopify explicitly exempts development stores from
+protected-customer-data review — *"You don't need to submit a request for review for apps that are
+installed only on development stores"* — so a dev store is precisely where PII would read fine
+**regardless** of what live does. The result is a useful lower bound (it rules out an app-level block
+that would apply everywhere) and nothing more.
+
+→ **D-022 STANDS until the same read runs against the LIVE store.** That read is read-only and therefore
+safe to run there; it is the conclusive test and it has not been done. Until then, keep building the
+Phase 4 ledger to tolerate de-identified orders, and leave "order PII" on D-022's list of Grow-plan
+upgrade triggers. `INVENTORY-SYNC.md`'s webhook PII test stays necessary at S7 either way — a webhook
+body is not the same surface as a GraphQL query.
+
+(`shippingAddress.address1` came back null on #1001. That is `place-test-order.ps1` completing a draft
+order against a customer with no default address, not redaction — `customer.email` being present is what
+rules redaction out *on this store*.)
 
 **Still open: S0-1**, the `bulkUpdatePriceQuantity` probe. It needs a sacrificial live **eBay** listing,
 not Shopify, so it is not in this harness. It remains the highest-value 20 minutes in the plan and it
