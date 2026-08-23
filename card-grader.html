@@ -253,6 +253,7 @@
             <span id="scanCtls" style="display:none;">
               <select id="scanDpi" title="Scan resolution. 600 dpi is the sweet spot; 1200 is slow."><option value="300">300 dpi</option><option value="600" selected>600 dpi</option><option value="1200">1200 dpi</option></select>
               <button class="btn" id="scanFrontBtn" onclick="doScan('front')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h16v4"/><path d="M3 12h18"/><path d="M4 15h16v4H4z"/></svg>Scan front</button>
+              <button class="btn ghost" id="scanSheetBtn" onclick="doScanSheet()" title="Lay four to six cards on the glass and scan them all in one pass. Each becomes its own triage report."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v7H4zM14 4h6v7h-6zM4 13h6v7H4zM14 13h6v7h-6z"/></svg>Scan sheet</button>
               <button class="btn ghost" id="scanBackBtn" onclick="doScan('back')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h16v4"/><path d="M3 12h18"/><path d="M4 15h16v4H4z"/></svg>Scan back</button>
             </span>
             <button class="btn ghost" onclick="wizSkip()" title="Skip this shot. Everything except the front image is optional.">Skip</button>
@@ -326,7 +327,8 @@
         <div id="ebayextras" style="margin-top:12px;"></div>
       </div>
       <div class="card">
-        <h2>Saved reports <button class="btn" style="padding:3px 9px;font-size:10.5px;margin-left:6px;" onclick="loadSavedList()">↻</button></h2>
+        <h2>Saved reports<span class="rule"></span><button class="btn ghost" aria-label="Refresh the saved reports" style="padding:3px 9px;font-size:10.5px;" onclick="loadSavedList()">Refresh</button></h2>
+        <div id="calib"></div>
         <div id="savedList"><div class="empty small">Nothing saved yet. Save keeps a report and its images, so you can open it again later and see how the prediction compared to the grade that came back.</div></div>
       </div>
     </div>
@@ -751,6 +753,7 @@ async function doScan(side){
     var done='Scanned the '+side+' at '+img.dpi+' dpi'+(fixups.length?' and '+fixups.join(' and '):'')+'. ';
     if(res.analysis&&res.analysis.outer){
       seedGuides(side, res.analysis, img.w, img.h);
+      warnPhysical(res.analysis);
       st.className='status ok';
       st.innerHTML=esc(done+(res.analysis.inner?'The guides are placed for you — check them before trusting the numbers.':'Only the card edge was found, so set the inner frame yourself.'))
         +' <button class="btn" style="padding:3px 9px;font-size:11px;margin-left:4px;" onclick="openFullPad(\''+side+'\')">Check centering</button>';
@@ -758,9 +761,61 @@ async function doScan(side){
       st.className='status ok';
       st.textContent=done+(res.analysis===null?'':'No card was found for auto-centering, so drag the guides yourself.');
     }
+    if(_sheetQueue.length) renderSheetQueue();
   }catch(e){ st.className='status err'; st.textContent='That scan request failed. Is the dev server still running?'; }
   finally{ $('scanFrontBtn').disabled=false; $('scanBackBtn').disabled=false; }
 }
+// The platen holds four to six cards; scanning them one at a time is the single biggest waste in a
+// stack. One pass returns them all, and they queue up as triage cards to be worked through.
+var _sheetQueue=[];
+async function doScanSheet(){
+  if(!(_scanCap&&_scanCap.enabled)){ toast('No scanner detected'); return; }
+  var dpi=parseInt(val('scanDpi'),10)||600;
+  var st=$('scanStatus'); st.className='status load busy';
+  st.textContent='Scanning the whole platen at '+dpi+' dpi. Lay the cards a few millimetres apart and off the glass edge.';
+  ['scanSheetBtn','scanFrontBtn','scanBackBtn'].forEach(function(id){ var b=$(id); if(b) b.disabled=true; });
+  try{
+    var r=await fetch('/api/scan/sheet',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({dpi:dpi})});
+    var res=await r.json();
+    if(!res||!res.ok){ st.className='status warn'; st.textContent='Sheet scan failed: '+((res&&(res.message||res.error))||'unknown'); return; }
+    if(!res.cards||!res.cards.length){ st.className='status warn'; st.textContent='No cards found on the platen. '+esc(res.note||''); return; }
+    _sheetQueue=res.cards.slice();
+    st.className='status ok';
+    st.textContent='Found '+res.cards.length+' cards. Working through them one at a time — save or skip each.';
+    takeFromSheet();
+  }catch(e){ st.className='status err'; st.textContent='That sheet request failed. Is the dev server still running?'; }
+  finally{ ['scanSheetBtn','scanFrontBtn','scanBackBtn'].forEach(function(id){ var b=$(id); if(b) b.disabled=false; }); }
+}
+function takeFromSheet(){
+  if(!_sheetQueue.length){ renderSheetQueue(); return; }
+  var c=_sheetQueue.shift();
+  newCard();
+  var img=c.image;
+  setShot('scan-front',{ dataUrl:'data:'+img.mediaType+';base64,'+img.dataB64, b64:img.dataB64, media:img.mediaType, w:img.w, h:img.h, dpi:img.dpi, kind:'scan' });
+  if(c.analysis&&c.analysis.outer) seedGuides('front',c.analysis,img.w,img.h);
+  warnPhysical(c.analysis);
+  renderSheetQueue();
+}
+function renderSheetQueue(){
+  var st=$('scanStatus');
+  if(!_sheetQueue.length){ if(st&&st.dataset.sheet){ st.className='status ok'; st.textContent='That was the last card from the sheet.'; delete st.dataset.sheet; } return; }
+  st.dataset.sheet='1'; st.className='status ok';
+  st.innerHTML=esc(_sheetQueue.length+' more card'+(_sheetQueue.length===1?'':'s')+' from that sheet still to look at.')
+    +' <button class="btn" style="padding:3px 9px;font-size:11px;margin-left:4px;" onclick="takeFromSheet()">Next card</button>';
+}
+// The analyzer can now tell a sleeve from a card by its millimetres. A sleeve reads as better
+// centered than the card inside it, so this is the one warning worth interrupting for.
+function warnPhysical(analysis){
+  var ph=analysis&&analysis.physical; if(!ph)return;
+  if(ph.match==='sleeved'){
+    var st=$('scanStatus'); st.className='status warn';
+    st.textContent='That measures '+ph.wmm+'×'+ph.hmm+'mm, which is a sleeve, not the card. The guides are on the sleeve edge, so the centering will read better than it is. Scan it out of the sleeve before trusting the numbers.';
+  } else if(ph.match==='unknown'&&ph.confident===false){
+    var s2=$('scanStatus'); s2.className='status warn';
+    s2.textContent='That measures '+ph.wmm+'×'+ph.hmm+'mm, which is not a card size we know. Check the guides by hand.';
+  }
+}
+
 // Auto-detect on whatever front/back images exist (uploads included) — the same analyzer the
 // scan path runs, exposed for images that didn't come off the flatbed.
 async function autoDetect(){
@@ -1112,22 +1167,50 @@ function valueAtGradeUSD(company, grade, label){
   // PCG has no PriceCharting ladder — it falls through to the PSA 10 → 9.5 → 9 chain, which
   // OVERSTATES a PCG slab's realised price (AU market discounts local slabs vs PSA); the
   // config carries a disclaimer for exactly this.
+  // A slab from this company priced off ANOTHER company's comps is not worth the same money.
+  // PriceCharting has no PCG or TAG ladder at all, so those always borrow PSA's — and an AU PCG
+  // slab realises roughly half a PSA slab. marketFactor is applied ONLY to a borrowed price;
+  // a company's own ladder row already reflects its own market.
+  var mf=(CFG&&CFG.companies&&CFG.companies[company]&&CFG.companies[company].marketFactor);
+  if(mf==null) mf=1;
+  function own(v){ return v; }                       // the company's own comp: as-is
+  function borrowed(v){ return v==null?null:v*mf; }  // someone else's comp: discounted
   if(grade>=10){
     // the tiered 10s have their own market rows: a Black Label or CGC Pristine slab is not
     // priced like the base 10 — use the tier's ladder row when the prediction claims the tier
     if(label){
-      if(company==='BGS'&&label.indexOf('Black')>=0){ var vB=ladVal('BGS 10 Black'); if(vB!=null) return vB; }
-      if(company==='CGC'&&label.indexOf('Pristine')>=0){ var vP=ladVal('CGC 10 Pristine'); if(vP!=null) return vP; }
+      if(company==='BGS'&&label.indexOf('Black')>=0){ var vB=ladVal('BGS 10 Black'); if(vB!=null) return own(vB); }
+      if(company==='CGC'&&label.indexOf('Pristine')>=0){ var vP=ladVal('CGC 10 Pristine'); if(vP!=null) return own(vP); }
     }
     var m={PSA:'PSA 10',BGS:'BGS 10',CGC:'CGC 10',PCG:'PCG 10',TAG:'TAG 10'};
-    return firstNonNull(ladVal(m[company]), ladVal('PSA 10'), ladVal('Grade 9.5'), ladVal('Grade 9')); }
-  if(grade>=9.5) return firstNonNull(ladVal('Grade 9.5'), ladVal('BGS 9.5'), ladVal('Grade 9'));
-  if(grade>=9) return firstNonNull(ladVal('Grade 9'), ladVal('PSA 9'));
-  if(grade>=8) return firstNonNull(ladVal('Grade 8'), ladVal('Grade 9'));
-  if(grade>=7) return firstNonNull(ladVal('Grade 7'), ladVal('Grade 8'));
-  var r=rawUSD(); return r!=null? r*Math.max(0.5, grade/9) : null;
+    var mine=ladVal(m[company]); if(mine!=null) return own(mine);
+    return borrowed(firstNonNull(ladVal('PSA 10'), ladVal('Grade 9.5'), ladVal('Grade 9'))); }
+  if(grade>=9.5) return borrowed(firstNonNull(ladVal('Grade 9.5'), ladVal('BGS 9.5'), ladVal('Grade 9')));
+  if(grade>=9) return borrowed(firstNonNull(ladVal('Grade 9'), ladVal('PSA 9')));
+  if(grade>=8) return borrowed(firstNonNull(ladVal('Grade 8'), ladVal('Grade 9')));
+  if(grade>=7) return borrowed(firstNonNull(ladVal('Grade 7'), ladVal('Grade 8')));
+  var r=rawUSD(); return r!=null? borrowed(r*Math.max(0.5, grade/9)) : null;
 }
-function cheapestTier(company){ var t=(CFG&&CFG.fees&&CFG.fees[company])||[]; return t.slice().sort(function(a,b){return a.price-b.price;})[0]||null; }
+// The cheapest tier you can actually BUY for this submission. Three of five companies currently
+// have their cheapest tiers switched off (BGS Base/Standard, TAG Basic/Standard/Express), and a
+// plain sort by price recommends them anyway — a fee nobody can pay, on a company that then looks
+// artificially attractive. Bulk tiers also carry card minimums the batch has to meet.
+function cheapestTier(company){
+  var t=(CFG&&CFG.fees&&CFG.fees[company])||[];
+  var n=batchSize();
+  var usable=t.filter(function(x){ return x.available!==false && (!x.minCards || n>=x.minCards); });
+  return usable.slice().sort(function(a,b){return a.price-b.price;})[0]||null;
+}
+// What the submission costs beyond the per-card fee, shared across the batch. One card carries the
+// whole ~US$130 AU→US round trip; thirty carry about $4 each, and that difference decides cards.
+function batchSize(){ var v=parseInt(val('batchN'),10); return (v>0&&v<10000)?v:1; }
+function perCardOverheadUSD(declaredValueUSD){
+  var sc=CFG&&CFG.submissionCosts; if(!sc) return 0;
+  var ins=(sc.insurancePct||0)/100*(declaredValueUSD||0);
+  return ((sc.shippingUsd||0)+(sc.returnShippingUsd||0))/Math.max(1,batchSize()) + ins;
+}
+function audOf(usd){ var r=CFG&&CFG.fx&&CFG.fx.audUsd; return (r&&usd!=null)?usd/r:null; }
+function aud(usd){ var a=audOf(usd); return a==null?'':' (A$'+(Math.round(a*100)/100).toFixed(2)+')'; }
 
 function recompute(){
   updateRail();                 // capture progress is real even when the config is not loaded
@@ -1219,7 +1302,10 @@ function renderReport(pred, rf, rb){
   // economics + grader-fit
   var econ={}, bestCo=null, bestProfit=-Infinity, raw=rawUSD();
   order.forEach(function(c){
-    var p=pred.perCompany[c]; var tier=cheapestTier(c); var fee=tier?tier.price:30;
+    var p=pred.perCompany[c]; var tier=cheapestTier(c);
+    // the fee that decides the card is the tier price PLUS this card's share of the round trip
+    var atVal0=valueAtGradeUSD(c,p.grade,p.gradeLabel);
+    var fee=(tier?tier.price:30)+perCardOverheadUSD(atVal0);
     // the predicted grade carries its tier label (Black Label / CGC Pristine); other grades in
     // the distribution price at their base ladder row — the tier there is unknowable
     var values={}; p.probabilities.forEach(function(d){ values[String(d.grade)]=valueAtGradeUSD(c,d.grade,d.grade===p.grade?p.gradeLabel:null); });
@@ -1253,7 +1339,7 @@ function renderReport(pred, rf, rb){
       H+='<div class="money">'
         +'<div>Worth at that grade<b>'+usd(valueAtGradeUSD(heroCo,bp.grade,bp.gradeLabel))+'</b></div>'
         +'<div>Expected after fees<b>'+usd(be.expectedValue)+'</b></div>'
-        +'<div>Against selling raw<b class="'+(be.profitVsRaw>=0?'pos':'neg')+'">'+(be.profitVsRaw>=0?'+':'')+usd(be.profitVsRaw).replace('US$','$')+'</b></div>'
+        +'<div>Against selling raw<b class="'+(be.profitVsRaw>=0?'pos':'neg')+'">'+(be.profitVsRaw>=0?'+':'')+usd(be.profitVsRaw).replace('US$','$')+esc(aud(be.profitVsRaw))+'</b></div>'
         +'<div>Grading fee<b>'+usd(be.fee)+(be.tier?' · '+be.tier.turnaroundDays+'d':'')+'</b></div>'
         +'</div>';
     } else {
@@ -1295,16 +1381,27 @@ function renderReport(pred, rf, rb){
   H+='</table></div>';
 
   // financial / should I grade
-  H+='<div class="rcard"><h3>Should I grade it? <span class="small muted" style="text-transform:none;letter-spacing:0;font-weight:400;">· USD · base fees · after '+(CFG.marketplaceFeePct||13)+'% sale fee</span></h3>';
+  H+='<div class="rcard"><h3>Should I grade it?</h3>';
+  H+='<div class="small muted" style="margin:-4px 0 9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+    +'<span>USD, after the '+(CFG.marketplaceFeePct||13)+'% sale fee, and each card carries a share of the trip.</span>'
+    +'<label style="display:flex;gap:5px;align-items:center;margin:0;text-transform:none;letter-spacing:0;font-size:11.5px;">Cards in this submission'
+    +'<input id="batchN" type="number" min="1" max="500" value="'+batchSize()+'" style="width:62px;padding:3px 6px;background:var(--field);border:1px solid var(--line);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:12px;" oninput="recompute()"></label>'
+    +'</div>';
   if(raw==null){ H+='<div class="small muted">Look up the card so PriceCharting can supply raw + graded values. Showing grade predictions only.</div>'; }
   else {
     H+='<div class="small" style="margin-bottom:8px;">Raw now: <b>'+usd(raw)+'</b> (sell raw nets '+usd(raw*(1-(CFG.marketplaceFeePct||13)/100))+')</div>';
     H+='<table class="predtable"><tr><th>Co.</th><th>@ grade</th><th>Fee · days</th><th>Exp. value</th><th>vs raw</th><th>Verdict</th></tr>';
     order.forEach(function(c){
       var p=pred.perCompany[c], e=econ[c]; var atVal=valueAtGradeUSD(c,p.grade,p.gradeLabel);
+      if(!cheapestTier(c)){
+        H+='<tr><td><b>'+esc(co[c].label.split(' ')[0])+'</b></td><td class="small">'+gradeStr(p.grade)+' → '+usd(atVal)+'</td>'
+          +'<td colspan="4" class="small muted">No tier open for a '+batchSize()+'-card submission right now.</td></tr>';
+        return;
+      }
       H+='<tr><td><b>'+esc(co[c].label.split(' ')[0])+'</b></td><td class="small">'+gradeStr(p.grade)+' → '+usd(atVal)+'</td>';
       if(e.ok){ var vc=e.verdict==='Submit'?'Submit':e.verdict==='Borderline'?'Borderline':'bad';
-        H+='<td class="small mono">'+usd(e.fee)+' · '+(e.tier?e.tier.turnaroundDays+'d':'?')+'</td>';
+        var tdays=e.tier?(e.tier.turnaroundDaysObserved||e.tier.turnaroundDays):null;
+        H+='<td class="small mono">'+usd(e.fee)+' · '+(tdays?tdays+'d':'?')+(e.tier&&e.tier.minCards?' · min '+e.tier.minCards:'')+'</td>';
         H+='<td class="small mono">'+usd(e.expectedValue)+'</td>';
         H+='<td class="small mono" style="color:'+(e.profitVsRaw>=0?'var(--good)':'var(--bad)')+'">'+(e.profitVsRaw>=0?'+':'')+usd(e.profitVsRaw).replace('US$','$')+'</td>';
         H+='<td><span style="font-weight:800;color:'+(e.verdict==='Submit'?'var(--good)':e.verdict==='Borderline'?'var(--warn)':'var(--bad)')+'">'+e.verdict+'</span><div class="small muted">score '+e.capitalScore+'</div></td>';
@@ -1414,10 +1511,11 @@ async function saveReport(){
       if(!ir.ok){ var ij=await ir.json().catch(function(){return {};}); throw new Error('image '+d.id+': '+(ij.error||ir.status)); }
     }
     _savedName=val('f_name');
-    saveStatus('ok','Saved as report #'+_reportId+' with '+filled.length+' image'+(filled.length===1?'':'s')+'.');
+    saveStatus('ok','Saved as report #'+_reportId+' with '+filled.length+' image'+(filled.length===1?'':'s')+'.'
+      +(_sheetQueue.length?' '+_sheetQueue.length+' more from that sheet.':''));
     toast('✓ Report saved');
     recompute();
-    loadSavedList();
+    loadSavedList(); loadCalibration();
   }catch(e){ saveStatus('err','Save failed: '+(e.message||e)); }
   btn.disabled=false;
 }
@@ -1456,6 +1554,43 @@ async function openReport(id){
     _savedName=rep.name;
     saveStatus('ok','Opened report #'+id+'. Change anything you like, then Save to update it.');
   }catch(e){ saveStatus('err','Open failed: '+(e.message||e)); }
+}
+// How well the predictions have actually done. The link between a saved report and the slab that
+// came back has existed since day one and nothing read it — this is that loop closing. It stays
+// quiet until there is enough data to say something true: below the API's own thresholds it shows
+// counts and says how far off a usable answer is, rather than a precise-looking number built on n=2.
+async function loadCalibration(){
+  var el=$('calib'); if(!el)return;
+  try{
+    var r=await fetch('/api/pregrade/calibration?recent=5');
+    var j=await r.json();
+    if(!j||!j.ok||!j.n){ el.innerHTML=''; return; }
+    var o=j.overall||{};
+    var H='<div class="rcard" style="margin:10px 0 0;padding:12px;">';
+    H+='<h3 style="margin-bottom:8px;">How the predictions are doing<span class="small muted" style="font-family:var(--sans);font-weight:400;text-transform:none;letter-spacing:0;"> · '+j.n+' graded back</span></h3>';
+    if(j.confidence==='none'){
+      H+='<div class="small muted">Too early to call. '+esc(j.note||'')+'</div>';
+    } else {
+      var mae=o.mae!=null?o.mae.toFixed(2):'—';
+      var bias=o.medianError!=null?((o.medianError>0?'+':'')+o.medianError.toFixed(2)):null;
+      H+='<div style="display:flex;gap:18px;flex-wrap:wrap;">';
+      H+='<div class="small muted">Typical miss<b class="mono" style="display:block;font-size:15px;color:var(--text);">'+mae+'</b></div>';
+      if(bias!=null) H+='<div class="small muted">Bias<b class="mono" style="display:block;font-size:15px;color:'+(Math.abs(o.medianError)<0.25?'var(--green)':'var(--amber)')+';">'+bias+'</b><span style="font-size:10.5px;">'+(o.medianError>0?'we call high':'we call low')+'</span></div>';
+      H+='<div class="small muted">Within half a grade<b class="mono" style="display:block;font-size:15px;color:var(--text);">'+(o.within0_5||0)+'/'+j.n+'</b></div>';
+      H+='</div>';
+      if(j.confidence==='weak') H+='<div class="small muted" style="margin-top:7px;">Still a small sample, so treat this as a hint.</div>';
+    }
+    if(j.recent&&j.recent.length){
+      H+='<div style="margin-top:9px;">'+j.recent.slice(0,5).map(function(x){
+        var d=x.delta;
+        return '<div class="small" style="display:flex;gap:8px;padding:2px 0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(x.name||('#'+x.reportId))+'</span>'
+          +'<span class="mono muted">'+esc(x.company||'')+' '+esc(String(x.predicted))+' → '+esc(String(x.actual))+'</span>'
+          +'<span class="mono" style="width:42px;text-align:right;color:'+(d===0?'var(--green)':Math.abs(d)<=0.5?'var(--amber)':'var(--red)')+';">'+(d>0?'+':'')+d+'</span></div>';
+      }).join('')+'</div>';
+    }
+    H+='</div>';
+    el.innerHTML=H;
+  }catch(e){ el.innerHTML=''; }
 }
 async function loadSavedList(){
   try{
@@ -1569,7 +1704,7 @@ async function downloadPDF(){
   var sp=null; try{ sp=localStorage.getItem('grader_profile'); }catch(e){}
   setProfile(sp==='full'?'full':'triage');
   loadConfig().then(function(){
-    loadSets(); recompute(); loadSavedList();
+    loadSets(); recompute(); loadSavedList(); loadCalibration();
     var m=location.search.match(/[?&]report=(\d+)/); if(m) openReport(+m[1]);
   });
 })();

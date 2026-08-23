@@ -262,3 +262,254 @@ describe('DELETE reference-counts shared bytes', () => {
     assert.equal((await del('/api/pregrade/999999')).status, 404);
   });
 });
+
+// ============================ THE FREEZE ============================
+// The data-integrity half. A report whose card has been submitted is the only before-the-fact
+// record of what we predicted; reopening it in the grader weeks later re-pulls today's comps and
+// re-runs the AI, and the save that follows would quietly replace the prediction with one made
+// WITH knowledge of the result. These tests are written against the REAL inventory submissions
+// POST, so the lock is proven against the link the app actually creates.
+
+// A saved report + a real grading submission pointing at it. Returns both ids.
+async function linkAndSubmit({ name, company = 'PSA', predictions } = {}) {
+  const reportId = (await post('/api/pregrade/', { ...payload, name, ...(predictions ? { predictions } : {}) })).json.id;
+  const sub = await post('/api/inventory/submissions', { game: 'pokemon', name, grading_company: company, pregrade_id: reportId });
+  assert.equal(sub.status, 201, sub.text);
+  return { reportId, subId: sub.json.id };
+}
+describe('a linked report freezes its prediction', () => {
+  let ids;
+  before(async () => { ids = await linkAndSubmit({ name: 'Frozen Card' }); });
+
+  it('an unlinked report is freely editable — the lock is the LINK, not the table', async () => {
+    const loose = (await post('/api/pregrade/', { ...payload, name: 'Unlinked Card' })).json.id;
+    const r = await patch('/api/pregrade/' + loose, { predictions: { perCompany: { PSA: { grade: 7 } } } });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.locked, false);
+    assert.equal((await get('/api/pregrade/' + loose)).json.report.predictions.perCompany.PSA.grade, 7);
+  });
+
+  it('GET /:id announces the freeze BEFORE the client offers to save', async () => {
+    const r = await get('/api/pregrade/' + ids.reportId);
+    assert.equal(r.json.report.locked, true);
+    assert.equal(r.json.lock.submission_id, ids.subId);
+    assert.ok(r.json.lock.frozen.includes('predictions'), 'the client must be told WHICH columns');
+    assert.ok(r.json.lock.locked_at, 'locked_at derives from the link even before anything stamps it');
+  });
+
+  it('PATCHing a frozen column is a 409 that names what it refused, and changes NOTHING', async () => {
+    const before = (await get('/api/pregrade/' + ids.reportId)).json.report;
+    const r = await patch('/api/pregrade/' + ids.reportId, {
+      predictions: { perCompany: { PSA: { grade: 10 } } },
+      economics: { PSA: { ok: true, profitVsRaw: 999 } },
+    });
+    assert.equal(r.status, 409, r.text);
+    assert.equal(r.json.ok, false);
+    assert.equal(r.json.error, 'locked');
+    assert.deepEqual(r.json.refused.sort(), ['economics', 'predictions']);
+    assert.equal(r.json.submission_id, ids.subId);
+    assert.match(r.json.hint, /unlock/);
+    const after = (await get('/api/pregrade/' + ids.reportId)).json.report;
+    assert.deepEqual(after.predictions, before.predictions, 'the prediction on file must be untouched');
+    assert.deepEqual(after.economics, before.economics);
+  });
+
+  it('every frozen column is actually refused, one at a time', async () => {
+    for (const col of ['predictions', 'economics', 'centering', 'pillars', 'granular', 'ai_meta', 'config_as_of']) {
+      const r = await patch('/api/pregrade/' + ids.reportId, { [col]: { rewritten: true } });
+      assert.equal(r.status, 409, `${col} was NOT frozen`);
+      assert.deepEqual(r.json.refused, [col]);
+    }
+  });
+
+  it('notes / status / identity edits still go through, and stamp the lock date from the LINK', async () => {
+    const r = await patch('/api/pregrade/' + ids.reportId, { status: 'sent', name: 'Frozen Card (fixed spelling)' });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.updated, true);
+    assert.equal(r.json.locked, true);
+    const sub = db.prepare('SELECT created_at FROM grading_submissions WHERE id = ?').get(ids.subId);
+    assert.equal(r.json.locked_at, sub.created_at, 'the freeze began when the card was sent, not when we noticed');
+    const got = (await get('/api/pregrade/' + ids.reportId)).json.report;
+    assert.equal(got.status, 'sent');
+    assert.equal(got.name, 'Frozen Card (fixed spelling)');
+    assert.equal(got.locked_at, sub.created_at);
+  });
+
+  it('a mixed body is refused WHOLE — no half-applied save', async () => {
+    const r = await patch('/api/pregrade/' + ids.reportId, { status: 'draft', predictions: { perCompany: { PSA: { grade: 2 } } } });
+    assert.equal(r.status, 409, r.text);
+    assert.deepEqual(r.json.allowed, ['status'], 'it must say what it would otherwise have allowed');
+    assert.equal((await get('/api/pregrade/' + ids.reportId)).json.report.status, 'sent', 'the allowed half must not sneak through');
+  });
+
+  it('only a literal true unlocks — no truthy strings, no 1, no "yes"', async () => {
+    for (const v of ['true', 1, 'yes', {}]) {
+      const r = await patch('/api/pregrade/' + ids.reportId, { unlock: v, predictions: { perCompany: { PSA: { grade: 3 } } } });
+      assert.equal(r.status, 409, `unlock:${JSON.stringify(v)} must not open the hatch`);
+    }
+  });
+
+  it('a link written straight into the DB locks the report just the same', async () => {
+    // Belt and braces for the pre-migration case: a report linked before locked_at existed has a
+    // NULL stamp, so the lock cannot depend on the column being filled in.
+    const orphan = (await post('/api/pregrade/', { ...payload, name: 'Legacy Link' })).json.id;
+    db.prepare(`INSERT INTO grading_submissions (game, name, grading_company, pregrade_id) VALUES ('pokemon','Legacy Link','PSA',?)`).run(orphan);
+    assert.equal(db.prepare('SELECT locked_at FROM pregrade_reports WHERE id = ?').get(orphan).locked_at, null);
+    const r = await patch('/api/pregrade/' + orphan, { centering: { front: {} } });
+    assert.equal(r.status, 409, r.text);
+  });
+});
+
+describe('the unlock hatch: deliberate, recorded, and one request wide', () => {
+  let ids;
+  before(async () => { ids = await linkAndSubmit({ name: 'Corrected Card' }); });
+
+  it('{unlock:true} applies the correction and writes an audit entry', async () => {
+    const r = await patch('/api/pregrade/' + ids.reportId, {
+      unlock: true, unlock_reason: 'centering was measured against the sleeve',
+      predictions: { perCompany: { PSA: { grade: 8 } } },
+    });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.unlocked, true);
+    assert.deepEqual(r.json.unlocked_columns, ['predictions']);
+    const rep = (await get('/api/pregrade/' + ids.reportId)).json.report;
+    assert.equal(rep.predictions.perCompany.PSA.grade, 8, 'the owner must be able to fix a genuine mistake');
+    assert.equal(rep.unlock_log.length, 1);
+    assert.equal(rep.unlock_log[0].reason, 'centering was measured against the sleeve');
+    assert.deepEqual(rep.unlock_log[0].columns, ['predictions']);
+    assert.equal(rep.unlock_log[0].submission_id, ids.subId);
+    assert.ok(rep.unlock_log[0].was_locked_at, 'the audit records the freeze it broke');
+    assert.ok(rep.frozen_dirty_at, 'and the row confesses that a frozen column was rewritten');
+  });
+
+  it('the very next PATCH is refused again — an unlock is never a standing exemption', async () => {
+    const r = await patch('/api/pregrade/' + ids.reportId, { predictions: { perCompany: { PSA: { grade: 5 } } } });
+    assert.equal(r.status, 409, r.text);
+    assert.equal((await get('/api/pregrade/' + ids.reportId)).json.report.predictions.perCompany.PSA.grade, 8);
+  });
+
+  it('a second unlock appends rather than overwrites the record', async () => {
+    const r = await patch('/api/pregrade/' + ids.reportId, { unlock: true, pillars: { corners: { front: 8 } } });
+    assert.equal(r.status, 200, r.text);
+    const rep = (await get('/api/pregrade/' + ids.reportId)).json.report;
+    assert.equal(rep.unlock_log.length, 2, 'the audit trail is append-only');
+    assert.equal(rep.unlock_log[1].reason, null);
+    assert.deepEqual(rep.unlock_log[1].columns, ['pillars']);
+  });
+
+  it('unlocking to fix an identity typo does NOT taint the prediction', async () => {
+    const clean = await linkAndSubmit({ name: 'Typo Card' });
+    const r = await patch('/api/pregrade/' + clean.reportId, { unlock: true, name: 'Typo Card (fixed)' });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(db.prepare('SELECT frozen_dirty_at FROM pregrade_reports WHERE id = ?').get(clean.reportId).frozen_dirty_at, null);
+  });
+
+  it('the audit column is server-only: a client cannot PATCH its own unlock_log', async () => {
+    const loose = (await post('/api/pregrade/', { ...payload, name: 'Audit Forgery' })).json.id;
+    const r = await patch('/api/pregrade/' + loose, { unlock_log: [{ at: 'never happened' }] });
+    assert.equal(r.status, 400, 'unlock_log is not a writable column, so that body updates nothing');
+    assert.equal(db.prepare('SELECT unlock_log FROM pregrade_reports WHERE id = ?').get(loose).unlock_log, null);
+  });
+});
+
+// ============================ CALIBRATION ============================
+describe('GET /calibration', () => {
+  it('answers ok:true with n:0 while every submission is still out at the grader', async () => {
+    // This DB already holds reports AND links by now — what it has no trace of is a RESULT. A
+    // submission with no result_grade must contribute nothing, not a zero.
+    const r = await get('/api/pregrade/calibration');
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.ok, true);
+    assert.equal(r.json.n, 0);
+    assert.deepEqual(r.json.byCompany, {});
+    assert.deepEqual(r.json.recent, []);
+    assert.equal(r.json.confidence, 'none');
+    assert.match(r.json.note, /nothing to calibrate against/);
+  });
+
+  let psa;
+  it('n=1: the card shows up, and not one statistic does', async () => {
+    psa = await linkAndSubmit({ name: 'First Result', company: 'PSA' });
+    await patch('/api/inventory/submissions/' + psa.subId, { result_grade: 8, status: 'graded' });
+    const c = (await get('/api/pregrade/calibration')).json;
+    assert.equal(c.n, 1);
+    assert.equal(c.confidence, 'none');
+    assert.equal(c.byCompany.PSA.n, 1);
+    assert.equal(c.byCompany.PSA.meanError, null);
+    assert.equal(c.byCompany.PSA.medianError, null);
+    assert.equal(c.byCompany.PSA.overPredicted, 1);      // predicted PSA 9, slab said 8
+    assert.equal(c.recent[0].reportId, psa.reportId);
+    assert.deepEqual(
+      { p: c.recent[0].predicted, a: c.recent[0].actual, d: c.recent[0].delta },
+      { p: 9, a: 8, d: 1 });
+    assert.ok(c.recent[0].gradedAt, 'the dashboard needs a date per row');
+  });
+
+  it('mixed companies split apart, and a company is never measured against another’s prediction', async () => {
+    const bgs = await linkAndSubmit({
+      name: 'BGS Result', company: 'BGS',
+      predictions: { perCompany: { PSA: { grade: 10 }, BGS: { grade: 9, subgrades: { centering: 9, corners: 9, edges: 9, surface: 9 } } } },
+    });
+    await patch('/api/inventory/submissions/' + bgs.subId, {
+      result_grade: 9.5, status: 'graded', result_subgrades: JSON.stringify({ centering: 9, corners: 9.5, edges: 9.5, surface: 9.5 }),
+    });
+    const c = (await get('/api/pregrade/calibration')).json;
+    assert.equal(c.n, 2);
+    assert.deepEqual(Object.keys(c.byCompany).sort(), ['BGS', 'PSA']);
+    assert.equal(c.byCompany.BGS.n, 1);
+    assert.equal(c.byCompany.BGS.underPredicted, 1, 'BGS 9 predicted vs 9.5 actual — not the PSA 10 in the same blob');
+    assert.equal(c.byCompany.BGS.biasPerPillar, null, 'one BGS slab is not a per-pillar bias');
+    assert.deepEqual(c.byCompany.BGS.biasPerPillarN, { centering: 1, corners: 1, edges: 1, surface: 1 });
+    assert.equal(c.overall.n, 2);
+    assert.equal(c.overall.confidence, 'none');
+  });
+
+  it('a report rewritten through the unlock hatch is flagged and excluded from the maths', async () => {
+    const dirty = await linkAndSubmit({ name: 'Rewritten After Linking' });
+    await patch('/api/pregrade/' + dirty.reportId, { unlock: true, predictions: { perCompany: { PSA: { grade: 10 } } } });
+    await patch('/api/inventory/submissions/' + dirty.subId, { result_grade: 4, status: 'graded' });
+    const c = (await get('/api/pregrade/calibration')).json;
+    assert.equal(c.n, 2, 'the rewritten prediction must not enter the sample');
+    assert.equal(c.excluded.suspectEdits, 1);
+    const flagged = c.recent.find((x) => x.reportId === dirty.reportId);
+    assert.ok(flagged, 'but it must stay visible');
+    assert.equal(flagged.suspect, true);
+    assert.match(c.note, /unlock hatch/);
+  });
+
+  it('crossing the threshold turns the statistics on, and states its own uncertainty', async () => {
+    for (let i = 0; i < 7; i++) {
+      const s = await linkAndSubmit({ name: `Bulk PSA ${i}` });     // payload predicts PSA 9
+      await patch('/api/inventory/submissions/' + s.subId, { result_grade: 8.5, status: 'graded' });
+    }
+    const c = (await get('/api/pregrade/calibration')).json;
+    assert.equal(c.byCompany.PSA.n, 8);
+    assert.equal(c.byCompany.PSA.confidence, 'usable');
+    assert.ok(c.byCompany.PSA.meanError > 0, 'we predict high: 9 against 8.5s and one 8');
+    assert.equal(c.byCompany.PSA.meanErrorCi95.length, 2);
+    assert.match(c.byCompany.PSA.note, /95% interval/);
+    assert.equal(c.byCompany.BGS.n, 1, 'BGS is untouched by PSA volume');
+    assert.equal(c.byCompany.BGS.meanError, null);
+    assert.equal(c.thresholds.stats, 3);
+    assert.equal(c.thresholds.bias, 8);
+  });
+
+  it('a resubmitted card counts once, at its newest result', async () => {
+    const again = await post('/api/inventory/submissions', {
+      game: 'pokemon', name: 'First Result', grading_company: 'PSA', pregrade_id: psa.reportId,
+    });
+    await patch('/api/inventory/submissions/' + again.json.id, { result_grade: 9, status: 'graded' });
+    const c = (await get('/api/pregrade/calibration')).json;
+    assert.equal(c.recent.filter((x) => x.reportId === psa.reportId).length, 1, 'one row per report, not one per submission');
+    assert.equal(c.recent.find((x) => x.reportId === psa.reportId).actual, 9, 'the crossover result is the live one');
+  });
+
+  it('junk query parameters degrade instead of throwing (GR7)', async () => {
+    for (const qs of ['?recent=abc', '?recent=-5', '?recent=99999', '?recent=']) {
+      const r = await get('/api/pregrade/calibration' + qs);
+      assert.equal(r.status, 200, qs);
+      assert.equal(r.json.ok, true);
+      assert.ok(r.json.recent.length <= 200);
+    }
+  });
+});

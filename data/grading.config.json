@@ -1,6 +1,31 @@
 {
-  "asOf": "2026-06-24",
-  "_warning": "Prices, turnaround times and centering tolerances change CONSTANTLY (PSA paused four Value tiers in June 2026). These are point-in-time approximations compiled from public sources — verify against each company's official site before relying on them. Centering bands below are a transparent approximation; the real algorithms (esp. BGS) are proprietary.",
+  "asOf": "2026-08-23",
+  "_warning": "Prices, turnaround times and centering tolerances change CONSTANTLY, and in 2026 AVAILABILITY changes faster than either. Three of the five companies here have their cheapest tiers switched off right now (PSA Value paused 2026-06-02, BGS Base/Standard sold out 2026-08-05, TAG Basic/Standard/Express paused 2026-05-01 and 2026-05-28). Every tier therefore carries an 'available' flag — read it before you quote a price. Centering bands below remain a transparent approximation; the real algorithms (esp. BGS) are proprietary.",
+  "_availabilityWarning": "READ THIS BEFORE TRUSTING A FEE. `cheapestTier()` in card-grader.html sorts fees[company] by price and returns [0] with NO availability check, so it still picks tiers this file marks available:false — the BGS Base row at $17.95 and the TAG Basic row at $22 are both unbuyable today and both are still the cheapest number in their arrays. Data alone cannot fix that; the sort needs a `.filter(t => t.available !== false)` and this file cannot supply one. Until that lands, the 'Should I grade it?' economics for BGS and TAG are computed on prices nobody can pay. The unavailable rows are kept rather than deleted on purpose: they are the record of what the tier costs when it reopens, and deleting them would hide the problem instead of naming it.",
+  "_sourcesRead": [
+    { "url": "https://www.psacard.com/services/tradingcards", "read": "2026-08-23", "for": "PSA prices, max insured values, estimated turnarounds, Value-pause banner" },
+    { "url": "https://www.psacard.com/info/postage", "read": "2026-08-23", "for": "PSA international return shipping chart (page itself last updated 2025-08-29)" },
+    { "url": "https://www.beckett.com/grading", "read": "2026-08-23", "for": "BGS service levels, prices, turnarounds, live SOLD OUT flags, Pristine 10 centering criteria" },
+    { "url": "https://www.beckett.com/card-grading-availability", "read": "2026-08-23", "for": "BGS pause scope and the September 15 reopening estimate (page last updated 2026-08-05)" },
+    { "url": "https://www.cgccards.com/submit/services-fees/cgc-grading/", "read": "2026-08-23", "for": "CGC full tier table, 25-card Bulk minimum, working-days definition" },
+    { "url": "https://premiercardgrading.com.au/pages/pricing-services", "read": "2026-08-23", "for": "PCG AUD prices, per-card insurance caps, 30-card bulk minimum, published turnarounds" },
+    { "url": "https://taggrading.com/pages/backlog-tracker", "read": "2026-08-23", "for": "TAG pause dates (2026-05-01 Basic/Standard, 2026-05-28 Express), backlog load, 2026-08-27 limited re-opening (tracker update dated 2026-08-13)" },
+    { "url": "https://help.taggrading.com/en/articles/10692075-what-are-tag-s-available-grading-services", "read": "2026-08-23", "for": "TAG tier prices, business-day estimates, per-card insurance caps, 10-card Basic minimum" },
+    { "url": "https://api.frankfurter.dev/v1/latest?base=AUD&symbols=USD", "read": "2026-08-23", "for": "AUD/USD reference rate (ECB daily fixing, 2026-08-21)" },
+    { "url": "https://cardgrader.ai/blog/psa-grading-backlog-2026", "read": "2026-08-23", "for": "third-party observed PSA Regular turnaround (article dated 2026-08-15) — tracker, not official" }
+  ],
+  "fx": {
+    "audUsd": 0.7168,
+    "asOf": "2026-08-21",
+    "source": "https://api.frankfurter.dev/v1/latest?base=AUD&symbols=USD",
+    "_note": "Multiply AUD by audUsd to get USD. ECB daily reference fixing via Frankfurter, read 2026-08-23 (latest publication was 2026-08-21). This is a MID-MARKET rate: the owner banks AUD, and the card he actually pays PSA/BGS/CGC/TAG with will land 2-4% worse once the issuer's international fee and spread are applied. Nothing here adds that margin — a USD fee shown in this file is the sticker price, not the bank statement. Only PCG quotes in AUD; every other company's figures below are native USD and are NOT converted."
+  },
+  "submissionCosts": {
+    "shippingUsd": 50,
+    "insurancePct": 4,
+    "returnShippingUsd": 79.99,
+    "_note": "AU -> US round trip, PER BATCH, not per card — and that is the whole point. The per-card model everywhere else in this tool cannot express a fixed cost that one card and thirty cards share, so a single card carries the entire ~$130 round trip while thirty carry ~$4.30 each. Read every per-card economics number in the report as excluding this block until the caller divides it by the batch size itself. shippingUsd 50 is an ESTIMATE: Australia Post Zone 3 (Americas) for a ~500g parcel, roughly AUD 40 Pack & Track / AUD 70 International Express under the rates effective 2026-07-01, converted at fx.audUsd — third-party rate table (hotsnail.com.au, read 2026-08-23), not verified against a live auspost.com.au quote for the owner's actual parcel. insurancePct 4 is Australia Post Extra Cover, AUD 4.00 per AUD 100 (or part thereof) of declared value on items AUD 100-5,000, i.e. 4% of declared value with an AUD 5,000 ceiling — above that the outbound leg cannot be fully covered at any price. returnShippingUsd 79.99 is SOURCED and exact: PSA's published international return chart, 10-19 items at the $15,000 max-insured band (psacard.com/info/postage, read 2026-08-23; 1-4 items is $69.99, 50+ adds $1.49/item). It is used as the stand-in for all five companies because only PSA publishes a chart — BGS, CGC, TAG and PCG return shipping is unverified here. NOT included and NOT estimated: US import duty. The USD 800 de minimis exemption has been suspended since 2025-08-29 and from 2026-07-24 CBP charges per 10-digit HS code and country of origin, so the inbound leg now attracts duty that depends on the cards themselves. PCG is the exception to this entire block — it is a domestic AU submission with no international leg at all, which is a real part of its value that its marketFactor discount has to be weighed against."
+  },
   "marketplaceFeePct": 13,
   "psa10VsPsa9Note": "For modern Pokemon, PSA 10 typically sells for 2-5x a PSA 9 — the '9-vs-10 cliff' is where the value and the prediction error both live.",
   "companies": {
@@ -13,7 +38,9 @@
       "lowestPlusCap": 1,
       "known": "Deepest resale liquidity; the de-facto market reference.",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
-      "topLabel": "Gem Mint 10"
+      "topLabel": "Gem Mint 10",
+      "marketFactor": 1.0,
+      "_marketFactorNote": "1.0 BY DEFINITION — PSA is the reference every other marketFactor is measured against, not a measured value. It is the right reference because it is where the comps are: GemRate via Yahoo Sports put PSA at 72% of 2025 graded volume (76% sports, 69% TCG), which is why a PSA comp exists for almost any card and the other four often have none."
     },
     "BGS": {
       "label": "BGS (Beckett)",
@@ -25,6 +52,8 @@
       "known": "Mandatory 4 subgrades on every slab; coveted Black Label (all four 10s). The famous trio is Black 10 / Gold 10 / Gem Mint 9.5 — two 10s exist, and the 9.5 shares the gold label.",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
       "topLabel": "Pristine 10 (Black Label)",
+      "marketFactor": 0.95,
+      "_marketFactorNote": "ESTIMATE, and the one number in this block that is most wrong at the extremes — a single scalar genuinely cannot describe BGS. At the top BGS beats PSA outright: one 2026 dataset of ~57,190 Pokemon cards put the median BGS 10 multiplier at 31.9x raw versus PSA's 24.5x, and Black Label 10s are reported selling at 1.5-3x the PSA 10 price (fewer than ~0.1% of submissions earn one). At 9 and below the same slab trades under the equivalent PSA grade, because the subgrades printed on the label give a buyer reasons to pay less that a bare PSA 9 never surfaces. 0.95 is a deliberate blend that is too low for a Pristine 10 and too high for a BGS 8; treat it as a placeholder for a grade-dependent curve nobody here has fitted. Sources: pokemonpricetracker.com and phantomdisplay.com resale comparisons, read 2026-08-23 — hobby analysis, not exchange data.",
       "tenTiers": [
         { "label": "Pristine 10 · Black Label", "quadTen": true },
         { "label": "Pristine 10 · Gold Label", "minTenSubs": 3, "minOtherSub": 9.5 }
@@ -33,7 +62,7 @@
         { "grade": 10, "need": 3, "at": 10, "othersAt": 9.5 },
         { "grade": 9.5, "need": 3, "at": 9.5, "othersAt": 9 }
       ],
-      "_tenTiersNote": "Beckett's OWN words (beckett.com/grading + their 'Walking Through the BGS Process' article, read 2026-08-22): Black Label = all four subgrades 10; the ONLY difference for a gold-label Pristine 10 is ONE 9.5 among THREE 10s; Gem Mint 9.5 needs three 9.5s with the fourth no lower than 9. gradeGates enforce those combinations — a weighted average alone would award 10s Beckett's rules refuse."
+      "_tenTiersNote": "Beckett's OWN words (beckett.com/grading + their 'Walking Through the BGS Process' article, read 2026-08-22): Black Label = all four subgrades 10; the ONLY difference for a gold-label Pristine 10 is ONE 9.5 among THREE 10s; Gem Mint 9.5 needs three 9.5s with the fourth no lower than 9. gradeGates enforce those combinations — a weighted average alone would award 10s Beckett's rules refuse. Re-read 2026-08-23: beckett.com/grading now states the label split as Black for perfect Pristine 10s, Gold for Pristine 10 and Gem Mint 9.5, Silver for everything else — consistent with the gates above, so they are unchanged."
     },
     "CGC": {
       "label": "CGC",
@@ -42,9 +71,11 @@
       "has95": true,
       "subgradesOnSlab": false,
       "lowestPlusCap": 1.5,
-      "known": "Price/speed/consistency; subgrades discontinued on new slabs. Two 10s: Gem Mint 10, and Pristine 10 above it (special label).",
+      "known": "Price/speed/consistency; subgrades discontinued on new slabs. Two 10s: Gem Mint 10, and Pristine 10 above it (special label). As of 2026-08-23 the only one of the five with NOTHING paused — every tier is orderable.",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
       "topLabel": "Pristine 10",
+      "marketFactor": 0.85,
+      "_marketFactorNote": "ESTIMATE from a wide and genuinely disputed spread. Narrow readings put modern CGC 10s within 5-10% of PSA 10 (a Mega Lucario ex SIR at ~$1,078 PSA vs ~$980 CGC, ~9%; a CGC Pristine 10 Mega Zygarde ex SIR reportedly outsold its PSA equivalent), wider readings put CGC 10s at 75-85% of PSA. Vintage is worse for CGC than modern, consistently reported at a 15-20% PSA premium. 0.85 sits mid-spread and leans to the pessimistic side because the store's mix is not all-modern. Sources: misprint.com, polkastarter.com, pokemonpricetracker.com comparisons, read 2026-08-23 — hobby analysis, not exchange data. One real complication the number hides: CGC's two 10s are not the same product, and a Pristine 10 does not trade like a Gem Mint 10.",
       "tenTiers": [
         { "label": "Pristine 10", "front": 51, "back": 60 },
         { "label": "Gem Mint 10", "front": 55, "back": 75 }
@@ -58,9 +89,11 @@
       "has95": true,
       "subgradesOnSlab": true,
       "lowestPlusCap": 1.5,
-      "known": "AU-market local grader (NZ-registered; drop-off Good Games Parramatta). Publishes numeric centering bands. Three 10s: Gem Mint -> Pristine -> Flawless (quad-10, gold label). Resale: AU market discounts PCG slabs vs the same PSA grade (~0.4-0.7x, estimate) and they sell slower.",
+      "known": "AU-market local grader (NZ-registered; drop-off Good Games Parramatta). Publishes numeric centering bands. Three 10s: Gem Mint -> Pristine -> Flawless (quad-10, gold label). Resale: AU market discounts PCG slabs vs the same PSA grade (~0.4-0.7x, estimate) and they sell slower. The offsetting advantage no other company here has: it is a domestic submission, so none of submissionCosts applies.",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
       "topLabel": "10 Gem Mint (up to Flawless)",
+      "marketFactor": 0.55,
+      "_marketFactorNote": "ESTIMATE, and the weakest-evidenced number in this file — SAY SO when it is quoted. No PCG price ladder exists anywhere and no dataset of PCG-vs-PSA same-grade sales was found in the 2026-08-23 research pass; searching for one returned only the general observation that non-incumbent slabs sell at a discount and that a locally graded AU slab is recognised less internationally than a PSA or BGS one. 0.55 is simply the midpoint of the ~0.4-0.7x range this config's own prose has carried since 2026-06-24, which was itself an owner-side estimate. It is a placeholder for a measurement, not a measurement. The honest way to improve it is the store's own eBay AU sold data once enough PCG slabs have moved through it.",
       "tenTiers": [
         { "label": "10 Flawless", "front": 51, "back": 51, "quadTen": true },
         { "label": "10 Pristine", "front": 51, "back": 60 },
@@ -75,9 +108,11 @@
       "has95": false,
       "subgradesOnSlab": true,
       "lowestPlusCap": 1,
-      "known": "AI/computer-vision grading; richest digital report (DIG).",
+      "known": "AI/computer-vision grading; richest digital report (DIG). Deeply capacity-constrained through 2026 — every tier under $149 has been shut since May.",
       "pillarWeights": { "centering": 0.30, "corners": 0.30, "edges": 0.20, "surface": 0.20 },
-      "topLabel": "Pristine 10 (990-1000)"
+      "topLabel": "Pristine 10 (990-1000)",
+      "marketFactor": 0.5,
+      "_marketFactorNote": "ESTIMATE, but the best-sourced of the non-PSA four: multiple 2026 reviews independently report TAG slabs selling 35-60% below the equivalent PSA grade (narrower on modern, wider on vintage where PSA's brand is strongest), i.e. a 0.40-0.65 factor. 0.5 is the midpoint. Sources: tcgtreasury.com, misprint.com, read 2026-08-23 — hobby analysis, not exchange data. Worth stating alongside the number rather than hiding behind it: TAG's own pitch is grading accuracy and a documented report, not liquidity, so a 0.5 factor is the expected cost of that choice and not evidence the grade is wrong."
     }
   },
   "centering": {
@@ -119,8 +154,9 @@
       { "grade": 6, "front": 70, "back": 90 },
       { "grade": 5, "front": 80, "back": 90 }
     ],
-    "_bgsNote": "Band-10 back tightened 60->55 per beckett.com/grading (the newer of Beckett's two live scale pages; the legacy /grading/scale page still says 60/40), read 2026-08-22. The published Pristine criteria are IDENTICAL for both 10s — the black/gold split is purely the subgrade combination (companies.BGS.gradeGates).",
+    "_bgsNote": "Band-10 back tightened 60->55 per beckett.com/grading (the newer of Beckett's two live scale pages; the legacy /grading/scale page still says 60/40), read 2026-08-22. RE-VERIFIED 2026-08-23 on beckett.com/grading, which states Pristine 10 centering as '50/50 all around on front. 55/45 or better on back.' — the 51/55 pair below is that sentence encoded, and the tighter number stands. The published Pristine criteria are IDENTICAL for both 10s — the black/gold split is purely the subgrade combination (companies.BGS.gradeGates).",
     "_pcgNote": "PCG PUBLISHES these bands (premiercardgrading.com.au/pages/grading-standards, read 2026-08-22) — the one company here whose numbers are not approximations. This band list answers 'what earns A 10' (Gem Mint's 55/60); WHICH 10 — Gem Mint / Pristine / Flawless — is the tenTiers list on the company entry, applied as a label refinement from the measured centering + subgrades. 10/9 share 55/60 on a worst-axis model, so the 9 band is documentation, not logic; same for 7.5 vs 8.",
+    "_centeringRefreshNote": "The 2026-08-23 refresh pass was a FEES and AVAILABILITY refresh. Only the BGS band-10 pair was re-checked against a live page; the PSA, CGC, PCG and TAG band tables below are carried forward from 2026-06-24 / 2026-08-22 unverified this pass. They are tolerances, not prices, and they move far more slowly than fees — but 'did not move' is an assumption here, not a re-read.",
     "TAG": [
       { "grade": 10, "front": 55, "back": 65 },
       { "grade": 9, "front": 60, "back": 75 },
@@ -130,36 +166,46 @@
     ]
   },
   "fees": {
-    "_doc": "Base grading fee in USD per card and on-site turnaround in business days (excludes shipping transit). maxValueUsd = declared-value cap for the tier. PSA/BGS/CGC/TAG as of 2026-06-24; PCG as of 2026-08-22, converted from AUD at 0.7164 (their caps are per-card insurance/liability caps, quoted AUD). Verify live.",
+    "_doc": "Base grading fee in USD per card and on-site turnaround in BUSINESS days (excludes shipping transit). All five companies publish in business days or explicitly define their unit as such, so nothing here is converted from calendar days — see _unitsNote. maxValueUsd = the tier's declared-value / insurance cap. available = orderable on 2026-08-23; note explains every false. minCards = the tier's minimum submission size. turnaroundDaysRange = the official published range where a range is published, with turnaroundDays as its midpoint so single-number consumers stay honest. turnaroundDaysObserved = what submitters are actually reporting, present ONLY where a sourced figure exists.",
+    "_unitsNote": "Unit normalisation, checked per company rather than assumed. PSA publishes 'Business Days' on the tier cards. BGS publishes 'business days' per service level. CGC publishes 'working days' and its own FAQ defines them as Monday-Friday excluding public holidays, i.e. business days — the two words are the same unit at CGC. TAG's pricing footnote states estimates 'are measured in business days and exclude weekends, holidays, and carrier transit time'. PCG publishes BOTH forms and supplies its own conversion ('2 to 4 Weeks (10-20 Business Days)' = 5 business days per week); its Standard Bulk '6 to 8 Weeks' carries no gloss, so 30-40 business days below applies PCG's own stated rate to PCG's own stated weeks. NONE of these include transit — an AU submitter adds roughly 1-2 weeks each way on top of every number in this file.",
+    "_observedNote": "turnaroundDaysObserved appears exactly once, on PSA Regular, because it is the only per-tier observed figure this pass could source. The rest is stated rather than guessed: BGS, CGC and PCG published no observed data and none was found, so those tiers carry no observed field at all. TAG is the interesting gap — TAG itself confirms slippage in plain language on its backlog tracker ('many orders are running past their estimated completion date', backlog at 134% of monthly processing capacity, down from a 420% peak) but publishes no per-tier day count, so inventing one would be fabricating precision TAG declined to give.",
     "PSA": [
-      { "tier": "Regular", "price": 79.99, "turnaroundDays": 25, "maxValueUsd": 1500, "note": "Cheapest tier currently accepting new submissions (Value tiers paused June 2026)." },
-      { "tier": "Express", "price": 149, "turnaroundDays": 12, "maxValueUsd": 2499 },
-      { "tier": "Super Express", "price": 299, "turnaroundDays": 6, "maxValueUsd": 4999 }
+      { "tier": "Regular", "price": 79.99, "turnaroundDays": 75, "turnaroundDaysRange": [70, 80], "turnaroundDaysObserved": 55, "maxValueUsd": 1500, "available": true, "note": "Cheapest PSA tier that can be bought — the four Value tiers ($24.99 Value Bulk through $64.99 Value Max) have been paused to new submissions since 2026-06-02 and are deliberately not listed here (see _psaNote). Official estimate is 70-80 business days as shown on psacard.com/services/tradingcards, read 2026-08-23; that is up from the 25 days this config carried on 2026-06-24, and PSA raised it rather than missing it.", "_observedNote": "55 is a THIRD-PARTY tracker figure (cardgrader.ai, article dated 2026-08-15, reporting 50-60 days; pregradecards.com reports 40-60 over the same window) and it is BELOW PSA's own 70-80 estimate — the opposite of the usual direction, because PSA re-baselined the official number upward during the backlog. Two caveats worth carrying: the trackers do not state whether their days are business or calendar, and a figure that flatters the vendor deserves more suspicion than one that does not. Treat 55 as a hint that Regular may beat its quote, never as a promise." },
+      { "tier": "Express", "price": 149, "turnaroundDays": 25, "turnaroundDaysRange": [20, 30], "maxValueUsd": 2500, "available": true, "note": "Includes Grader Notes. Turnaround was 12 days in the 2026-06-24 snapshot and is now officially 20-30." },
+      { "tier": "Super Express", "price": 349, "turnaroundDays": 13, "turnaroundDaysRange": [10, 15], "maxValueUsd": 5000, "available": true, "note": "Price rose $299 -> $349 and turnaround 6 -> 10-15 days since the 2026-06-24 snapshot. Includes Premium Imaging and Grader Notes." },
+      { "tier": "Walk-Through", "price": 599, "turnaroundDays": 9, "turnaroundDaysRange": [7, 10], "maxValueUsd": 10000, "available": true, "note": "Added 2026-08-23; was absent from the previous snapshot. Cards above $10,000 route to PSA's Premium options, which are quoted individually and are not modelled here." }
     ],
+    "_psaNote": "The paused Value tiers are NOT rows in this array, and that omission is a decision, not an oversight. PSA paused Value Bulk, Value, Value Plus and Value Max on 2026-06-02 after submissions spiked into a backlog PSA's own tracker put near 12 million units through July-August 2026; there is no reopening date, only a stated goal of working the queue down. Listing them at $24.99-$64.99 with available:false would hand cheapestTier() four prices below Regular that no one can pay, and cheapestTier() does not read available (see _availabilityWarning). When PSA reopens them, add them back as rows. SEPARATE and equally important for this store: PSA has not accepted direct submissions from customers outside the US since April 2025 (a tariff measure), with Japan and Canada served by local facilities and a Frankfurt facility opened to European dealers in July 2026. An Australian submitter must currently go through a PSA Authorized Dealer or a middleman group submission, which adds a per-card margin this file does not model — the PSA prices above are PSA's, not what an AU collector actually pays. Verified psacard.com/services/tradingcards and psacard.com/info/postage 2026-08-23; the dealer-only status is from PSA's own 2025 tariff articles and AU dealer pages, not re-confirmed on a live PSA policy page this pass.",
     "BGS": [
-      { "tier": "Base (+subgrades)", "price": 17.95, "turnaroundDays": 75, "maxValueUsd": null },
-      { "tier": "Standard", "price": 34.95, "turnaroundDays": 45, "maxValueUsd": null },
-      { "tier": "Express", "price": 79.95, "turnaroundDays": 15, "maxValueUsd": null },
-      { "tier": "Priority", "price": 124.95, "turnaroundDays": 5, "maxValueUsd": null }
+      { "tier": "Base (+subgrades)", "price": 17.95, "turnaroundDays": 75, "maxValueUsd": null, "available": false, "note": "SOLD OUT on beckett.com/grading, read 2026-08-23. Beckett paused new online Base and Standard submissions and its availability page (last updated 2026-08-05) cites card submissions up 102% year over year to July 2026, with TCG volume up 159%. Reopening is ESTIMATED at 2026-09-15 and Beckett says availability will then be metered rather than fully restored. Price and the 75+ business-day estimate are still published, which is why this row keeps them." },
+      { "tier": "Standard", "price": 34.95, "turnaroundDays": 45, "maxValueUsd": null, "available": false, "note": "SOLD OUT on beckett.com/grading, read 2026-08-23; same pause, same estimated 2026-09-15 reopening as Base. Limited Base/Standard drop-off capacity was offered at the Front Row Card Show Las Vegas (2026-08-15/16) and the Dallas Card Show (2026-09-10/13) — in-person US events, so not reachable from Australia." },
+      { "tier": "Express", "price": 79.95, "turnaroundDays": 15, "maxValueUsd": null, "available": true, "note": "Open — 'Submit Now' live on beckett.com/grading, read 2026-08-23. Beckett's availability FAQ names Express and Priority as the two services that remain available through the pause." },
+      { "tier": "Priority", "price": 124.95, "turnaroundDays": 5, "maxValueUsd": null, "available": true, "note": "Open — 'Submit Now' live on beckett.com/grading, read 2026-08-23." }
     ],
+    "_bgsFeesNote": "maxValueUsd is null on every BGS row because Beckett publishes NO per-tier declared-value cap — the null means 'not published', not 'unlimited', and quoting BGS as uncapped would be inventing a guarantee. Two live prices are deliberately not rows: Base without subgrades at $14.95 (subgrades are the entire reason to use BGS, and at $3 extra for any 10 the cheaper row would be a false economy), and it is unbuyable today regardless. Every price and turnaround above was read off beckett.com/grading on 2026-08-23 and matches the 2026-06-24 snapshot exactly — BGS changed its availability this quarter, not its pricing.",
     "CGC": [
-      { "tier": "Bulk", "price": 17, "turnaroundDays": 120, "maxValueUsd": 500, "note": "25-card minimum." },
-      { "tier": "Economy", "price": 20, "turnaroundDays": 65, "maxValueUsd": 1000 },
-      { "tier": "Standard", "price": 55, "turnaroundDays": 10, "maxValueUsd": 3000 },
-      { "tier": "Express", "price": 100, "turnaroundDays": 5, "maxValueUsd": 10000 }
+      { "tier": "Bulk", "price": 17, "turnaroundDays": 150, "maxValueUsd": 500, "minCards": 25, "available": true, "note": "25-card minimum, VERIFIED on cgccards.com 2026-08-23 ('Cards may be a mix of different types/games. 25-card minimum'). Turnaround has stretched 120 -> 150 working days since the 2026-06-24 snapshot; the $17 price is unchanged. At 150 days this is the slowest tier in the file and the cheapest thing an AU submitter can actually buy today from any of the five." },
+      { "tier": "Economy", "price": 20, "turnaroundDays": 90, "maxValueUsd": 1000, "available": true, "note": "Turnaround 65 -> 90 working days since 2026-06-24; price unchanged." },
+      { "tier": "Standard", "price": 55, "turnaroundDays": 10, "maxValueUsd": 3000, "available": true, "note": "Unchanged since the 2026-06-24 snapshot." },
+      { "tier": "Express", "price": 100, "turnaroundDays": 5, "maxValueUsd": 10000, "available": true, "note": "Unchanged since the 2026-06-24 snapshot." },
+      { "tier": "WalkThrough", "price": 300, "turnaroundDays": 2, "maxValueUsd": 100000, "available": true, "note": "Added 2026-08-23; was absent from the previous snapshot. Above $100,000 CGC's Unlimited Value tier applies at $300 + 1% of fair market value, which is not a fixed price and is not modelled here." }
     ],
+    "_cgcNote": "CGC is the only company in this file with nothing paused on 2026-08-23 — every tier above was orderable when the page was read. That is worth saying out loud precisely because the tool's job is recommending a tier: when PSA's cheap end is shut, BGS's cheap end is sold out and TAG's cheap end has been closed since May, CGC Bulk at $17 is not merely the cheapest number, it is the cheapest number anyone can act on. Two caveats the fee table cannot carry: CGC quotes these as estimates and NOT guarantees, and CGC memberships discount grading (Associate/Premium 10%, Elite 20%), so a member pays less than every price above. Read cgccards.com/submit/services-fees/cgc-grading/ 2026-08-23.",
     "PCG": [
-      { "tier": "Standard Bulk", "price": 17.91, "turnaroundDays": 35, "maxValueUsd": 179, "note": "AUD $25 · 30-card minimum · stated 6-8 weeks." },
-      { "tier": "Standard", "price": 25.07, "turnaroundDays": 15, "maxValueUsd": 1790, "note": "AUD $35 · no minimum · subgrades included · stated 2-4 weeks." },
-      { "tier": "Express", "price": 42.98, "turnaroundDays": 5, "maxValueUsd": 7165, "note": "AUD $60." },
-      { "tier": "Premium Same Day", "price": 57.31, "turnaroundDays": 1, "maxValueUsd": 71640, "note": "AUD $80 · in-store drop-off (Parramatta NSW), Mon-Fri." }
+      { "tier": "Standard Bulk", "price": 17.92, "priceAud": 25, "turnaroundDays": 35, "turnaroundDaysRange": [30, 40], "maxValueUsd": 179, "maxValueAud": 250, "minCards": 30, "available": true, "note": "AUD $25 · 30-card minimum VERIFIED on premiercardgrading.com.au/pages/pricing-services 2026-08-23 ('Minimum 30+ card submission') · published as 6 to 8 weeks, i.e. 30-40 business days at PCG's own 5-day week · insurance cap AUD $250/card. Aimed at middlemen and group submissions." },
+      { "tier": "Standard", "price": 25.09, "priceAud": 35, "turnaroundDays": 15, "turnaroundDaysRange": [10, 20], "maxValueUsd": 1792, "maxValueAud": 2500, "available": true, "note": "AUD $35 · no minimum · subgrades included · published as '2 to 4 Weeks (10-20 Business Days)' — PCG's own conversion · insurance cap AUD $2,500/card. PCG's most popular service." },
+      { "tier": "Express", "price": 43.01, "priceAud": 60, "turnaroundDays": 5, "maxValueUsd": 7168, "maxValueAud": 10000, "available": true, "note": "AUD $60 · 5 business days · insurance cap AUD $10,000/card." },
+      { "tier": "Premium Same Day", "price": 57.34, "priceAud": 80, "turnaroundDays": 1, "maxValueUsd": 71680, "maxValueAud": 100000, "available": true, "note": "AUD $80 · returned end of day · insurance cap AUD $100,000/card · in-store drop-off only, Mon-Fri 10am-3pm for same-day pickup (Parramatta NSW). The turnaround is only 1 day if you can physically get there." }
     ],
+    "_pcgNote": "PCG quotes in AUD and this is the only company where the USD figures are DERIVED — priceAud/maxValueAud are the published truth, price/maxValueUsd are those numbers times fx.audUsd (0.7168), carried so the USD-only fee table stays comparable. Re-verified against premiercardgrading.com.au/pages/pricing-services on 2026-08-23: every AUD price and insurance cap is unchanged from the 2026-08-22 read, and nothing is paused. Two published services are deliberately NOT rows here. Reslab (AUD $15 TCG) carries an existing slab's grade across to a PCG holder and grades nothing, and Authentication (AUD $25) confirms genuineness and assigns no grade at all — both are cheaper than Standard Bulk, so listing either would make cheapestTier() recommend a service that cannot answer the question this tool asks. Also noted rather than modelled: PCG's Sports tier currently accepts 35/55/75pt cards only, with 100-360pt 'available for submission soon'.",
     "TAG": [
-      { "tier": "Basic", "price": 22, "turnaroundDays": 45, "maxValueUsd": 300, "note": "10-card minimum." },
-      { "tier": "Standard", "price": 39, "turnaroundDays": 30, "maxValueUsd": 500 },
-      { "tier": "Express", "price": 59, "turnaroundDays": 15, "maxValueUsd": 1000 },
-      { "tier": "Priority", "price": 149, "turnaroundDays": 5, "maxValueUsd": 2500 }
-    ]
+      { "tier": "Basic", "price": 22, "turnaroundDays": 45, "maxValueUsd": 300, "minCards": 10, "available": false, "note": "PAUSED since 2026-05-01 per TAG's own backlog tracker (taggrading.com/pages/backlog-tracker, read 2026-08-23). 10-card minimum VERIFIED on TAG's help centre. Price and the 45+ business-day estimate are TAG's published figures and are unchanged; only the ability to buy it went away." },
+      { "tier": "Standard", "price": 39, "turnaroundDays": 30, "maxValueUsd": 500, "available": false, "note": "PAUSED since 2026-05-01, same announcement as Basic (taggrading.com/pages/backlog-tracker, read 2026-08-23)." },
+      { "tier": "Express", "price": 59, "turnaroundDays": 15, "maxValueUsd": 1000, "available": false, "note": "PAUSED since 2026-05-28 — the second cut, after Basic and Standard. TAG says Express is expected to be the first service level to be fully caught up, which makes it the likeliest of the three to reopen first (taggrading.com/pages/backlog-tracker, read 2026-08-23)." },
+      { "tier": "Priority", "price": 149, "turnaroundDays": 5, "maxValueUsd": 2500, "available": true, "note": "Open but LIMITED — TAG's site banner reads 'REGULAR TIERS PAUSED / LIMITED AVAILABLE' and names Priority and Walkthrough as the survivors. available:true here means orderable, not plentiful. TAG's own tracker says many orders are running past their estimated completion windows, so 5 days is the quote, not the experience." },
+      { "tier": "Walkthrough", "price": 299, "turnaroundDays": 3, "turnaroundDaysRange": [2, 3], "maxValueUsd": 5000, "available": true, "note": "Added 2026-08-23; was absent from the previous snapshot. Open but limited, same caveat as Priority." }
+    ],
+    "_tagNote": "TAG's cheap end has been shut for over three months and the tool must not pretend otherwise: Basic and Standard closed 2026-05-01, Express followed 2026-05-28, leaving only limited Priority ($149) and Walkthrough ($299). TAG publishes a genuinely unusual amount of detail about why — backlog peaked near 420% of monthly processing capacity and stood at 134% on the 2026-08-13 update, with a first LIMITED re-opening anticipated 2026-08-27 (11AM PT) and full catch-up targeted for end of September. That 2026-08-27 drop is announced as TAG Score at $79/card, 25 business days estimated, insurance to $1,500/card, with 360 video and premium imaging — and it is NOT a row in this array on purpose: it is a one-off capped drop, not a standing tier, and adding a $79 price cheaper than Priority would have cheapestTier() recommending a product that sells out in minutes. Add it as a row only if it becomes a permanent service level. All prices, caps, business-day estimates and the 10-card Basic minimum verified 2026-08-23 against TAG's help centre article 10692075; availability and dates from TAG's backlog tracker."
   },
   "disclaimers": [
     "Estimate only — this is NOT an official grade or a guarantee. Grading companies make the final call and outcomes vary on resubmission.",
@@ -168,6 +214,10 @@
     "Lower confidence on holo / refractor / gold / chrome surfaces, and at the 9-vs-10 boundary where most of the value (and the error) lives.",
     "Centering is measured geometrically and is the most reliable signal; corners/edges/surface come from an AI vision pass and are advisory.",
     "All prices and grading fees are point-in-time and change frequently.",
-    "PCG value-at-grade borrows PSA-slab prices (no PCG price ladder exists anywhere) — AU-market PCG slabs typically realise a substantial discount (~0.4-0.7x, estimate) vs the same PSA grade and sell slower. Treat PCG expected values as optimistic."
+    "PCG value-at-grade borrows PSA-slab prices (no PCG price ladder exists anywhere) — AU-market PCG slabs typically realise a substantial discount (~0.4-0.7x, estimate) vs the same PSA grade and sell slower. Treat PCG expected values as optimistic.",
+    "A cheap tier you cannot buy is not a cheap tier. As of 2026-08-23 PSA's four Value tiers, Beckett's Base and Standard, and TAG's Basic, Standard and Express are all closed to new submissions — check the 'available' flag on a tier before quoting its fee.",
+    "Quoted turnarounds are on-site business days and EXCLUDE transit. An Australian submission adds roughly 1-2 weeks each way on top, and every company states its estimate is not a guarantee.",
+    "Shipping, insurance and return postage are a per-BATCH cost (see submissionCosts) that the per-card economics on this page does not include. One card carries the whole round trip; thirty cards share it.",
+    "marketFactor is an ESTIMATE of what a company's slab realises against the same grade from PSA, drawn from published hobby analysis rather than exchange data — and for BGS a single number is actively misleading, because Black Label 10s command a large premium while lower BGS grades trade at a discount."
   ]
 }
