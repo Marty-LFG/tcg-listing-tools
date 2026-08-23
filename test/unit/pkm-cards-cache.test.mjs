@@ -16,7 +16,7 @@ import path from 'node:path';
 // fixture written into the real one would still be there next month.
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-cards-unit-'));
 process.env.PKM_CARDS_CACHE_DIR = DIR;
-const { isSetId, trimCard, isCompleteSet, decideCardsResponse, readSetCache, writeSetCache } = await import('../../lib/pkm-cards-cache.mjs');
+const { isSetId, trimCard, isCompleteSet, decideCardsResponse, readSetCache, writeSetCache, hasDuplicateCards } = await import('../../lib/pkm-cards-cache.mjs');
 
 const NOW = '2026-08-03T00:00:00.000Z';
 const card = (n) => ({
@@ -73,6 +73,22 @@ describe('isCompleteSet — only a whole set is worth keeping forever', () => {
     assert.equal(isCompleteSet(null, 197), false);
   });
   it('no totalCount at all: trust what arrived', () => assert.equal(isCompleteSet([card(1)], undefined), true));
+
+  // THE regression this whole check exists for, and the one it originally missed. Measured
+  // 2026-08-23 on me2pt5 (Ascended Heroes, 295 cards): `orderBy=number` made page 2 re-serve 45
+  // rows already on page 1. The fetch was 295 rows long — exactly totalCount — so a row count said
+  // "complete" and it went into a cache that never expires, holding 250 unique cards, 45 duplicates,
+  // and nothing above #250. Every card past 250 was unlistable and the set looked fine.
+  it('rejects a batch padded out to the right LENGTH by duplicates', () => {
+    const dupes = [...Array.from({ length: 250 }, (_, i) => card(i + 1)), ...Array.from({ length: 45 }, (_, i) => card(i + 1))];
+    assert.equal(dupes.length, 295, 'the row count alone looks complete');
+    assert.equal(isCompleteSet(dupes, 295), false, 'and it is 45 cards short');
+  });
+
+  it('counts distinct cards by id, so two printings of one number still count twice', () => {
+    const a = { ...card(1), id: 'x-1' }, b = { ...card(1), id: 'x-1a' };
+    assert.equal(isCompleteSet([a, b], 2), true);
+  });
 });
 
 describe('decideCardsResponse', () => {
@@ -153,5 +169,24 @@ describe('the disk cache round trip', () => {
     fs.mkdirSync(DIR, { recursive: true });
     fs.writeFileSync(path.join(DIR, 'zzztest2.json'), '{"v":1,"cards":[{"id"');
     assert.equal(readSetCache('zzztest2'), null);
+  });
+});
+
+// The cache never expires, so a copy written before the paging fix would be served forever. This is
+// how getSetCards notices one and goes upstream instead of waiting to be told.
+describe('hasDuplicateCards — the self-heal for a pre-fix cached copy', () => {
+  it('a real set has no repeated card id', () => {
+    assert.equal(hasDuplicateCards([{ id: 'me2pt5-1' }, { id: 'me2pt5-2' }]), false);
+  });
+  it('spots the duplicate-inflated shape', () => {
+    assert.equal(hasDuplicateCards([{ id: 'me2pt5-1' }, { id: 'me2pt5-2' }, { id: 'me2pt5-1' }]), true);
+  });
+  it('falls back to the number when a row carries no id', () => {
+    assert.equal(hasDuplicateCards([{ number: '7' }, { number: '7' }]), true);
+    assert.equal(hasDuplicateCards([{ number: '7' }, { number: '8' }]), false);
+  });
+  it('empty and junk are not duplicates', () => {
+    assert.equal(hasDuplicateCards([]), false);
+    assert.equal(hasDuplicateCards(null), false);
   });
 });
