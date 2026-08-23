@@ -3,7 +3,7 @@
 // PriceCharting console name, and title -> product_type classification. Offline / no DB.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeSealed, normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore, naturalCompare, ebayQueryFor } from '../../lib/sealed.mjs';
+import { summarizeSealed, normalizeUpc, upcCandidates, valueForSealed, gameFromConsole, inferProductType, PRODUCT_TYPES, sanitizePlacements, pickSealedHit, fuzzyContainment, catalogScore, naturalCompare, ebayQueryFor, getSealedRefreshState} from '../../lib/sealed.mjs';
 
 describe('naturalCompare (locations)', () => {
   it('sorts numeric suffixes 1,2,…10,11 — not 1,10,11,2', () => {
@@ -246,5 +246,20 @@ describe('ebayQueryFor (language belongs in the query, not just the filter)', ()
   it('still de-duplicates set words already carried by the name', () => {
     assert.equal(ebayQueryFor({ name: 'Surging Sparks Booster Box', set_name: 'Surging Sparks', language: 'EN' }),
       'Surging Sparks Booster Box');
+  });
+});
+
+describe('getSealedRefreshState — `running` answers the same question as every other loop', () => {
+  it('reports the TIMER being armed, not a pass being mid-flight', () => {
+    // The console renders this field as the state pill. It used to return _svRunning, true only for
+    // the few seconds a nightly pass executes, so a healthy loop showed STOPPED ~all day and sent
+    // the owner looking for a fault on a freshly deployed server. Siblings (getReconcileState,
+    // getRefreshState) all mean "armed"; this now matches them and reports in-flight separately.
+    const st = getSealedRefreshState();
+    assert.equal(typeof st.running, 'boolean');
+    assert.ok('in_progress' in st, 'the in-flight fact is still reported, under its own name');
+    // never started in this process -> no timer -> not running, and definitely not mid-pass
+    assert.equal(st.running, false);
+    assert.equal(st.in_progress, false);
   });
 });
