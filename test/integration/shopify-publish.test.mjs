@@ -117,14 +117,15 @@ const CFG = {
   collections: {},
 };
 
-// The router reads config off disk, so the test writes a real config file and points the module at it
-// through the same data/ directory it always uses. Restored in after().
-let realConfig = null;
-const CONFIG_PATH = path.resolve(process.cwd(), 'data', 'shopify.config.json');
+// The router reads config off disk, so the test writes one — into a TEMP path, never the operator's
+// real data/shopify.config.json. lib/shopify.mjs honours TCG_SHOPIFY_CONFIG for exactly this reason:
+// writing the live file and restoring it in after() means a crashed run leaves the real box armed
+// against pins that do not exist. Set before the module is imported, so its module-level const sees it.
+const CONFIG_PATH = path.join(os.tmpdir(), 'tcg-shopify-cfg-' + process.pid + '.json');
+process.env.TCG_SHOPIFY_CONFIG = CONFIG_PATH;
 function writeConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); }
 
 before(async () => {
-  if (fs.existsSync(CONFIG_PATH)) realConfig = fs.readFileSync(CONFIG_PATH, 'utf8');
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-shopify-'));
   db = openDbAt(path.join(tmpDir, 'tracker.db'));
 
@@ -145,7 +146,7 @@ after(async () => {
   await new Promise((r) => server.close(r));
   try { db.close(); } catch { /* already closed */ }
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
-  if (realConfig != null) fs.writeFileSync(CONFIG_PATH, realConfig); else try { fs.unlinkSync(CONFIG_PATH); } catch { /* was absent */ }
+  try { fs.unlinkSync(CONFIG_PATH); } catch { /* already gone */ }
 });
 
 beforeEach(() => {
@@ -405,5 +406,120 @@ describe('scrubForAudit', () => {
     assert.equal(out.title, 'keep me');
     assert.equal(out.parameters[0].policy, '[scrubbed]');
     assert.equal(out.parameters[0].signature, '[scrubbed]');
+  });
+});
+
+// Everything below was found by an adversarial review before this code was ever armed. Each one is a
+// silent failure on a live store, so each gets a test that fails without its fix.
+describe('a label a Shopify product already carries is NOT free', () => {
+  it('BLOCKER: a failed publish does not release the label to the next card', async () => {
+    bend.publish = 'no such publication';
+    await post('/publish', { itemId });                       // card A takes AAC-097 and fails
+    assert.equal(mirror('AAC-097').state, 'failed');
+
+    // Card B. Without the fix it peeks AAC-097 again, and because that label IS productSet's
+    // custom.id upsert key, B's publish resolves to A's product and overwrites it in place.
+    const b = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, condition, quantity, target_price_cents)
+                          VALUES ('STG-000002','pokemon','base1-58','Pikachu','Near Mint',1,1299)`).run();
+    bend = {};
+    const r = await post('/publish', { itemId: b.lastInsertRowid });
+    assert.equal(r.json.sku !== 'AAC-097', true, 'card B was handed the label card A already put on a Shopify product');
+    assert.equal(r.json.sku, 'AAC-098');
+    assert.equal(mirror('AAC-097').item_id, itemId, "card A's row was overwritten by card B");
+  });
+
+  it('claims the label with a pending row BEFORE anything is sent', async () => {
+    // The claim has to exist during compose/media/publish, not after — that is the concurrency window.
+    bend.compose = true;
+    await post('/publish', { itemId });
+    const m = mirror('AAC-097');
+    assert.ok(m, 'nothing claimed the label while the publish was in flight');
+    assert.equal(m.state, 'pending', 'nothing was sent, so the row must not claim more than that');
+  });
+
+  it('a dry run claims nothing', async () => {
+    await post('/publish', { itemId, dryRun: true });
+    assert.equal(mirror('AAC-097'), undefined);
+  });
+});
+
+describe('a failed republish must not damage a live row', () => {
+  it('keeps the gids and stays live — the product is still for sale', async () => {
+    await post('/publish', { itemId });
+    const live = mirror('AAC-097');
+    assert.equal(live.state, 'live');
+
+    // Now a republish that fails before productSet returns anything.
+    bend.productSet = 'throttled';
+    const r = await post('/publish', { itemId });
+    assert.equal(r.json.ok, false);
+
+    const after = mirror('AAC-097');
+    assert.equal(after.product_gid, live.product_gid, 'the only handle on a live product was nulled');
+    assert.equal(after.variant_gid, live.variant_gid);
+    assert.equal(after.state, 'live', 'a failed republish unpublishes nothing — saying "failed" here means the ledger lies about a buyable card');
+    assert.ok(after.error, 'the failure still has to be recorded somewhere');
+    assert.equal(after.published_at, live.published_at);
+  });
+
+  it('so the condition selector keeps the card after a failed republish', async () => {
+    await post('/publish', { itemId });
+    bend.productSet = 'throttled';
+    await post('/publish', { itemId });
+    calls = [];
+    const out = await rebuildIdentity(ENV, db, { identityHandle: 'pokemon-base1-58-base-en', fetchImpl: stub });
+    assert.deepEqual(out.listings, ['gid://shopify/Product/100'], 'a for-sale condition vanished from the PDP');
+  });
+});
+
+describe('the corrections the review forced', () => {
+  it('publish.status DRAFT is actually honoured — it is the first-run safety valve', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'DRAFT' } });
+    await post('/publish', { itemId });
+    assert.equal(calls.find((c) => c.op === 'productSet').variables.input.status, 'DRAFT');
+  });
+
+  it('an unrecognised status means ACTIVE, never something Shopify would reject', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'banana' } });
+    await post('/publish', { itemId });
+    assert.equal(calls.find((c) => c.op === 'productSet').variables.input.status, 'ACTIVE');
+  });
+
+  it('card_facts is merged, so set_code reaches the metafields and the collections that key on it', async () => {
+    db.prepare('UPDATE inventory_items SET card_facts = ? WHERE id = ?').run(JSON.stringify({ set_code: 'SV8a' }), itemId);
+    const r = await post('/preview', { itemId });
+    const mf = r.json.input.metafields.find((m) => m.key === 'set_code');
+    assert.equal(mf?.value, 'SV8a', 'set_code lives only in card_facts — an unmerged row publishes without it');
+  });
+
+  it('validation refuses BEFORE any byte is uploaded, so a refused row leaves no orphan file', async () => {
+    db.prepare('UPDATE inventory_items SET game = ? WHERE id = ?').run('lorcana', itemId);
+    const r = await post('/publish', { itemId });
+    assert.equal(r.json.ok, false);
+    assert.match(r.json.error, /validation/);
+    assert.deepEqual(ops(), [], 'a scope refusal had already staged files that can never be bulk-deleted');
+  });
+
+  it('scrubForAudit leaves metafield keys intact — it was redacting the payload and no secret', () => {
+    const input = { metafields: [{ namespace: 'custom', key: 'id', value: 'AAC-097', type: 'id' }] };
+    const out = scrubForAudit(input);
+    assert.equal(out.metafields[0].key, 'id', 'the upsert key was scrubbed out of the audit record');
+  });
+
+  it('scrubForAudit still redacts a staged-upload policy in its real {name,value} shape', () => {
+    const out = scrubForAudit({ parameters: [{ name: 'policy', value: 'SECRET' }, { name: 'key', value: 'uploads/1' }] });
+    assert.equal(out.parameters[0].value, '[scrubbed]');
+    assert.equal(out.parameters[1].value, 'uploads/1', 'the GCS object path is not a credential');
+  });
+
+  it('/identity/rebuild uses the handle the mirror RECORDED, not one re-derived from edited columns', async () => {
+    await post('/publish', { itemId });
+    // Someone corrects the printing on the stock row afterwards. The product Shopify holds is still
+    // filed under the identity it was published with.
+    db.prepare("UPDATE inventory_items SET variant = 'Reverse Holo' WHERE id = ?").run(itemId);
+    calls = [];
+    await post('/identity/rebuild', { itemId });
+    assert.equal(calls.at(-1).variables.handle.handle, 'pokemon-base1-58-base-en',
+      'the rebuild went to a different identity and left the real one still holding this product');
   });
 });
