@@ -1,0 +1,36 @@
+{
+  "_comment": "TEMPLATE for data/shopify.config.json (gitignored — SERVER-OWNED, same reason as every other runtime config here: the settings dashboard edits it live and a tracked copy collides with git pulls). lib/shopify.mjs seeds it from this file on boot if missing. Holds the PINNED per-store object ids the publish sequence cannot run without, and the two kill switches. Not secret and no tokens live here (Golden Rule 2) — the shop domains and credentials come from .env, and are deliberately NOT duplicated into this file, because two sources for one fact is a drift waiting to happen.",
+
+  "defaultStore": "dev",
+
+  "stores": {
+    "dev": {
+      "_comment": "The dev store's real pins, measured by scripts/check-shopify.mjs probe 1 on 2026-08-23 and printed by it with a '<- pin this' marker. Committed on purpose: these are not secrets, and seeding them means a fresh checkout can publish to dev without a manual step.",
+      "locationGid": "gid://shopify/Location/74916331581",
+      "publicationGid": "gid://shopify/Publication/141974077501"
+    },
+    "live": {
+      "_comment": "EMPTY UNTIL MEASURED. Run scripts/check-shopify.mjs against the live store and paste what it prints. Never copy the dev values here — a Location gid is store-scoped and the live store's ids are different numbers entirely.",
+      "locationGid": "",
+      "publicationGid": ""
+    }
+  },
+
+  "publish": {
+    "_comment": "enabled is the master switch for writing to Shopify at all. It ships FALSE: until the first supervised dev-store publish has been eyeballed, /api/shopify/publish refuses with a 409 and only /preview (which is local and calls nothing) will run. `status` is what a published product is set to; DRAFT is a useful setting for a supervised first run because a draft cannot be bought even if publishing misfires.",
+    "enabled": false,
+    "status": "ACTIVE"
+  },
+
+  "sync": {
+    "_comment": "The cross-channel delist lane (Phase 3, S7-S12). Nothing reads this yet. It exists here now so that turning sync on is a config edit rather than a code change, and so the switch is visibly OFF while the publish path is being proved.",
+    "enabled": false
+  },
+
+  "collections": {
+    "_comment": "Shopify collection GIDs, resolved at publish and sent whole (ProductSetInput.collections is a full replacement like every other list on that input). Per-SET collections are deliberately absent: D-016/D-027 make those AUTOMATED collections keyed on the bkc.set_code metafield, so they need no maintenance as stock grows and no entry here. byGame is the manual fallback for the handful of top-level groupings.",
+    "byGame": {},
+    "bySet": {},
+    "japaneseImports": ""
+  }
+}
