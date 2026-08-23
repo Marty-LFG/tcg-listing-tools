@@ -28,7 +28,7 @@
   /* faint grain overlay */
   body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.028'/%3E%3C/svg%3E");}
-  .wrap{position:relative;z-index:1;max-width:1320px;margin:0 auto;padding:26px 22px 90px;}
+  .wrap{position:relative;z-index:1;max-width:1560px;margin:0 auto;padding:26px 22px 90px;}
   a{color:var(--gold);text-decoration:none;}
 
   /* masthead */
@@ -43,34 +43,63 @@
   a.back{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);align-self:flex-start;}
   a.back:hover{color:var(--text);}
 
-  /* sticky segmented nav */
-  .nav{position:sticky;top:0;z-index:20;margin:22px 0 8px;padding:9px 0;
-    backdrop-filter:blur(10px);background:linear-gradient(180deg,rgba(9,10,14,.92),rgba(9,10,14,.62));
-    border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
-  .nav a{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
-    color:var(--muted);padding:7px 13px;border-radius:9px;border:1px solid transparent;transition:.16s;}
-  .nav a:hover{color:var(--text);border-color:var(--line2);}
-  .nav a.active{color:var(--ink);background:var(--gold);border-color:var(--gold);}
-  .nav .sp{flex:1;}
-  .nav .live{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+  /* ---- shell: a left RAIL beside the content. Nothing is ever hidden or unmounted — every
+     section stays in the DOM at all times, so browser find-in-page reaches every setting and a
+     #hash deep-links to a card that is already there. The rail navigates; it does not gate. ---- */
+  .shell{display:grid;grid-template-columns:212px minmax(0,1fr);gap:26px;align-items:start;margin-top:18px;}
+  .rail{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto;padding-right:6px;}
+  .rgroup + .rgroup{margin-top:2px;}
+  .rl{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;
+    color:var(--muted);padding:6px 10px;border-radius:9px;border:1px solid transparent;transition:.16s;}
+  .rl.sec{text-transform:uppercase;font-weight:600;}
+  .rl:hover{color:var(--text);border-color:var(--line2);}
+  .rl:focus-visible{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .rl.sec.active{color:var(--ink);background:var(--gold);border-color:var(--gold);}
+  .rl .cnt{margin-left:auto;font-size:10px;color:var(--faint);}
+  .rl.sec.active .cnt{color:rgba(11,13,18,.62);}
+  .rl .dot{width:6px;height:6px;border-radius:50%;background:var(--gold);display:none;}
+  .rl.dirty .dot{display:block;}
+  .rl.sec.active .dot{background:var(--ink);}
+  .rgroup .sub{display:none;margin:2px 0 8px 11px;padding-left:9px;border-left:1px solid var(--line);}
+  .rgroup.on .sub{display:block;}
+  .sub .rl{font-size:11px;letter-spacing:.02em;text-transform:none;padding:4px 9px;}
+  .sub .rl.active{color:var(--gold);}
 
-  section{scroll-margin-top:66px;padding-top:14px;}
-  .sec-h{font-family:var(--serif);font-weight:600;font-size:18px;margin:26px 0 14px;display:flex;align-items:baseline;gap:12px;}
+  /* sticky finder / live strip above the content column */
+  .topbar{position:sticky;top:0;z-index:20;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    padding:10px 0;margin-bottom:2px;backdrop-filter:blur(10px);
+    background:linear-gradient(180deg,rgba(9,10,14,.94),rgba(9,10,14,.66));border-bottom:1px solid var(--line);}
+  .findwrap{position:relative;flex:1;min-width:220px;max-width:420px;}
+  .findfield{width:100%;font-family:var(--mono);font-size:12.5px;color:var(--text);background:var(--field);
+    border:1px solid var(--line2);border-radius:9px;padding:8px 34px 8px 11px;transition:.15s;}
+  .findfield:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .findwrap kbd{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:10px;
+    color:var(--faint);border:1px solid var(--line2);border-radius:5px;padding:1px 5px;transition:.15s;}
+  .findfield:focus + kbd{opacity:0;}
+  .tally{font-family:var(--mono);font-size:11px;color:var(--faint);}
+  .topbar .sp{flex:1;}
+  .topbar .live{font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+
+  section{scroll-margin-top:62px;padding-top:10px;}
+  .sec-h{font-family:var(--serif);font-weight:600;font-size:18px;margin:24px 0 13px;display:flex;align-items:baseline;gap:12px;}
   .sec-h::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent);}
   .sec-h .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:400;}
+  .sub-h{font-size:15px;}
 
   .grid{display:grid;gap:13px;}
   .g-vitals{grid-template-columns:repeat(auto-fill,minmax(232px,1fr));}
   .g3{grid-template-columns:repeat(auto-fill,minmax(290px,1fr));}
-  .g2{grid-template-columns:repeat(auto-fill,minmax(420px,1fr));}
+  .g2{grid-template-columns:repeat(auto-fill,minmax(400px,1fr));align-items:start;}
 
   .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:15px;
-    box-shadow:var(--shadow);padding:16px 18px;opacity:0;transform:translateY(10px);animation:rise .45s cubic-bezier(.2,.7,.3,1) forwards;}
+    box-shadow:var(--shadow);padding:16px 18px;scroll-margin-top:70px;
+    opacity:0;transform:translateY(10px);animation:rise .45s cubic-bezier(.2,.7,.3,1) forwards;animation-delay:var(--d,0s);}
   .card h3{margin:0 0 12px;font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);
     font-weight:600;display:flex;align-items:center;gap:8px;justify-content:space-between;}
+  .card h3 .ttl{display:flex;align-items:center;gap:7px;}
   .h-note{font-family:var(--mono);font-size:10.5px;color:var(--faint);font-weight:400;letter-spacing:0;text-transform:none;}
   @keyframes rise{to{opacity:1;transform:none;}}
-  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}.card{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}.card{opacity:1;transform:none;}html{scroll-behavior:auto;}}
 
   /* vitals tile */
   .vital{position:relative;overflow:hidden;}
@@ -93,6 +122,9 @@
   .kv .v{font-family:var(--mono);font-size:12px;text-align:right;color:var(--text);}
   .kv .v.ok{color:var(--green);} .kv .v.bad{color:var(--red);} .kv .v.warn{color:var(--amber);} .kv .v.dim{color:var(--faint);}
   .dim{color:var(--faint);}   /* utility: the rule above only matches a .v that is ITSELF .dim, so a nested note went unstyled */
+  .kvhead{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
+    font-weight:600;margin:12px 0 4px;padding-top:9px;border-top:1px dashed var(--line);}
+  .kvhead:first-child{margin-top:0;padding-top:0;border-top:0;}
 
   /* systems table */
   .systable{width:100%;border-collapse:collapse;font-size:12.5px;}
@@ -139,8 +171,10 @@
     background:var(--panel2);color:var(--text);cursor:pointer;transition:all .16s ease;white-space:nowrap;}
   .btn:hover{transform:translateY(-1px);border-color:var(--gold);color:var(--gold);}
   .btn:active{transform:none;}
+  .btn:focus-visible{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
   .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);}
   .btn.go:hover{border-color:var(--green);}
+  .btn.ghost{color:var(--muted);}
   .btn.sm{padding:5px 10px;font-size:11px;}
   .btn:disabled{opacity:.4;cursor:default;transform:none;}
   .actionbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
@@ -168,10 +202,48 @@
   .tog input:focus-visible + .sw{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
   .tog .lbl{display:flex;align-items:center;gap:6px;}
   .tog .lbl b{font-weight:600;}
+  .tog.mini{padding:0;gap:7px;}
+  .tog.mini .sw{width:30px;height:17px;}
+  .tog.mini .sw::after{width:12px;height:12px;}
+  .tog.mini input:checked + .sw::after{transform:translateX(13px);}
   .lock{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;}
 
   .actions{display:flex;gap:9px;justify-content:flex-end;align-items:center;margin-top:16px;padding-top:13px;border-top:1px solid var(--line);}
   .savenote{font-family:var(--mono);font-size:11px;color:var(--faint);margin-right:auto;}
+
+  /* one save bar per FILE — PUT /api/settings/:name replaces the whole file, so a per-card save
+     button on a split-up config would be a lie about what it writes. The bar sticks to the bottom
+     of the viewport for as long as any card belonging to its file is on screen. */
+  .fileblock{margin-bottom:16px;}
+  .savebar{position:sticky;bottom:10px;z-index:15;display:flex;align-items:center;gap:11px;flex-wrap:wrap;
+    margin-top:11px;padding:10px 14px;border-radius:12px;border:1px solid var(--line2);
+    background:linear-gradient(180deg,rgba(26,30,40,.97),rgba(13,15,21,.97));backdrop-filter:blur(8px);box-shadow:var(--shadow);}
+  .savebar.on{border-color:var(--gold);}
+  .savebar .who{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .savebar .dcount{font-family:var(--mono);font-size:11.5px;color:var(--faint);}
+  .savebar.on .dcount{color:var(--gold);}
+  .savebar .savenote{margin-right:0;flex:1;text-align:right;}
+
+  /* read-only matrices (grading tolerances, fee tables) */
+  .matrix{width:100%;border-collapse:collapse;font-size:12px;}
+  .matrix th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:5px 8px;border-bottom:1px solid var(--line);}
+  .matrix td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  .matrix tr:last-child td{border-bottom:none;}
+  .matrix td.n,.matrix th.n{text-align:right;font-family:var(--mono);}
+  .matrix td.nm{font-size:12.5px;}
+  .matrix input{width:100%;min-width:62px;font-family:var(--mono);font-size:12px;color:var(--text);background:var(--field);
+    border:1px solid var(--line2);border-radius:7px;padding:5px 7px;text-align:right;transition:.15s;}
+  .matrix input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  .scrollx{overflow-x:auto;}
+
+  details.blob{border:1px dashed var(--line2);border-radius:11px;padding:2px 12px 10px;margin-top:14px;}
+  details.blob > summary{cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:9px 0;list-style:none;}
+  details.blob > summary::-webkit-details-marker{display:none;}
+  details.blob > summary::before{content:'▸ ';color:var(--dim);}
+  details.blob[open] > summary::before{content:'▾ ';}
+  details.blob > summary:focus-visible{outline:none;color:var(--gold);}
 
   /* info dot + tooltip */
   .infodot{width:14px;height:14px;flex:0 0 auto;border-radius:50%;border:1px solid var(--line3);color:var(--muted);
@@ -206,6 +278,21 @@
   .tokfield{font-family:var(--mono);font-size:11.5px;background:var(--field);border:1px solid var(--line2);border-radius:8px;color:var(--text);padding:6px 9px;width:200px;}
   .tokfield:focus{outline:none;border-color:var(--gold);}
 
+  .skip{position:absolute;left:-9999px;}
+  .skip:focus{left:12px;top:12px;z-index:200;background:var(--gold);color:var(--ink);padding:8px 12px;border-radius:9px;font-family:var(--mono);font-size:12px;}
+
+  /* Below the rail's breakpoint it becomes exactly the old sticky segmented strip: sections only,
+     wrapping, pinned under the finder. No new responsive story to invent. */
+  @media (max-width:1080px){
+    .shell{grid-template-columns:1fr;gap:0;}
+    .rail{position:sticky;top:0;z-index:21;display:flex;flex-wrap:wrap;gap:5px;max-height:none;overflow:visible;
+      padding:8px 0;border-bottom:1px solid var(--line);backdrop-filter:blur(10px);
+      background:linear-gradient(180deg,rgba(9,10,14,.94),rgba(9,10,14,.7));}
+    .rgroup .sub{display:none!important;}
+    .topbar{top:47px;}
+    section{scroll-margin-top:104px;}
+    .card{scroll-margin-top:112px;}
+  }
   @media (max-width:720px){.srcrow{grid-template-columns:1fr auto;}.srcrow .evidence{grid-column:1/-1;}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -214,6 +301,7 @@
 <link rel="stylesheet" href="/vault.css">
 </head>
 <body>
+<a class="skip" href="#content">Skip to settings</a>
 <div class="wrap">
   <div class="masthead">
     <div class="monogram">⚙</div>
@@ -224,70 +312,109 @@
   </div>
   <div class="subline" id="verline">booting…</div>
 
-  <nav class="nav" id="nav">
-    <a href="#overview" class="active">Overview</a>
-    <a href="#sources">Sources</a>
-    <a href="#data">Baked data</a>
-    <a href="#settings">Settings</a>
-    <a href="#console">Console</a>
-    <span class="sp"></span>
-    <span class="live"><span class="pill ok plain" id="liveDot" style="width:9px;height:9px;padding:0;border:0;"></span><span id="liveTxt">live · refreshing every 10s</span></span>
-  </nav>
+  <div class="shell">
+    <nav class="rail" id="rail" aria-label="Console sections"></nav>
 
-  <section id="overview">
-    <div id="banners"></div>
-    <div class="sec-h">Vitals <span class="cap">health at a glance</span></div>
-    <div class="grid g-vitals" id="vitals"></div>
-
-    <div class="sec-h" style="font-size:15px;">Background systems <span class="cap">the loops that keep the suite alive</span></div>
-    <div class="card" id="systemsCard" style="padding:6px 4px;"><table class="systable" id="systems"></table></div>
-
-    <div class="sec-h" style="font-size:15px;">Quick actions <span class="cap">manual triggers · needs DIAG_TOKEN</span></div>
-    <div class="card">
-      <div class="actionbar" id="quickActions"></div>
-      <div class="savenote" id="qaNote" style="margin-top:10px;"></div>
-    </div>
-  </section>
-
-  <section id="sources">
-    <div class="sec-h">Data sources <span class="cap">upstream APIs · live probe</span></div>
-    <div id="sourcesBox">loading…</div>
-  </section>
-
-  <section id="data">
-    <div class="sec-h">Baked data <span class="cap">local catalog snapshots &amp; freshness</span></div>
-    <div class="grid g3" id="baked"></div>
-  </section>
-
-  <section id="settings">
-    <div class="sec-h">Settings <span class="cap">every knob, explained — hover the ⓘ</span></div>
-    <div class="grid g2" id="settingsBox">loading…</div>
-  </section>
-
-  <section id="console">
-    <div class="sec-h">Live console <span class="cap">server log stream · scrubbed of secrets · times in Sydney (AEST/AEDT)</span></div>
-    <div class="console">
-      <div class="con-bar">
-        <span class="dot3"><i style="background:#f0666e"></i><i style="background:#f0c04a"></i><i style="background:#43d6a0"></i></span>
-        <span class="title">tail /var/log/tcg-tools</span>
-        <span class="sp"></span>
-        <div class="seg" id="logLevel">
-          <button data-lvl="" class="on">All</button>
-          <button data-lvl="warn">Warn+</button>
-          <button data-lvl="error">Errors</button>
+    <main class="content" id="content">
+      <div class="topbar">
+        <div class="findwrap">
+          <input class="findfield" id="find" type="search" placeholder="filter every setting…" autocomplete="off"
+                 aria-label="Filter settings by name or explanation">
+          <kbd>/</kbd>
         </div>
-        <button class="btn sm" id="logPause">⏸ Pause</button>
-        <button class="btn sm" id="logClear">Clear</button>
-      </div>
-      <div class="con-body" id="conBody"><div class="con-empty" id="conEmpty">Enter the server <b>DIAG_TOKEN</b> to stream logs.</div></div>
-      <div class="con-bar" style="border-top:1px solid var(--line);border-bottom:0;">
-        <input class="tokfield" id="conToken" type="password" placeholder="DIAG_TOKEN" autocomplete="off">
-        <button class="btn go sm" id="conConnect">Connect</button>
+        <span class="tally" id="findTally"></span>
         <span class="sp"></span>
-        <span class="h-note" id="conStatus">not connected</span>
+        <span class="live"><span class="pill ok plain" id="liveDot" style="width:9px;height:9px;padding:0;border:0;"></span><span id="liveTxt">live · refreshing every 10s</span></span>
       </div>
-    </div>
-  </section>
+
+      <section id="overview" style="--d:0s">
+        <div id="banners"></div>
+        <div class="sec-h">Vitals <span class="cap">health at a glance</span></div>
+        <div class="grid g-vitals" id="vitals"></div>
+
+        <div class="sec-h sub-h">Background systems <span class="cap">the loops that keep the suite alive</span></div>
+        <div class="card" id="systemsCard" data-find="background systems loops jobs running stopped last run next run" style="padding:6px 4px;"><table class="systable" id="systems"></table></div>
+
+        <div class="sec-h sub-h">Quick actions <span class="cap">manual triggers · needs DIAG_TOKEN</span></div>
+        <div class="card" data-find="quick actions triggers poll backfill digest scan proposals refresh collector backup clear cache diag token">
+          <div class="actionbar" id="quickActions"></div>
+          <div class="savenote" id="qaNote" style="margin-top:10px;"></div>
+        </div>
+      </section>
+
+      <section id="pregrade" style="--d:.04s">
+        <div class="sec-h">Card pre-grader <span class="cap">scanner · AI grader · image store · economics</span></div>
+        <div class="grid g-vitals" id="pgVitals"></div>
+        <div class="grid g2" id="pgCards" style="margin-top:13px;"></div>
+        <div class="sec-h sub-h">Grading economics <span class="cap">data/grading.config.json · fees, availability, FX</span></div>
+        <div id="host-pregrade"></div>
+      </section>
+
+      <section id="listing" style="--d:.08s">
+        <div class="sec-h">Listing <span class="cap">eBay account setup · postage bands · images</span></div>
+        <div class="grid g2" id="ebSetupHost"></div>
+        <div id="host-listing"></div>
+      </section>
+
+      <section id="pricing" style="--d:.12s">
+        <div class="sec-h">Pricing <span class="cap">repricer · price tracker · bulk floors</span></div>
+        <div id="host-pricing"></div>
+      </section>
+
+      <section id="postsale" style="--d:.16s">
+        <div class="sec-h">Post-sale &amp; fulfilment <span class="cap">orders · buyer messages · dispatch</span></div>
+        <div id="host-postsale"></div>
+      </section>
+
+      <section id="notify" style="--d:.2s">
+        <div class="sec-h">eBay push <span class="cap">notification listener · loopback only</span></div>
+        <div class="grid g2" id="notifyState"></div>
+        <div id="host-notify"></div>
+      </section>
+
+      <section id="data" style="--d:.24s">
+        <div class="sec-h">Baked data <span class="cap">local catalog snapshots &amp; freshness</span></div>
+        <div class="grid g3" id="baked"></div>
+        <div class="sec-h sub-h">Refresh schedule <span class="cap">which catalogs re-bake, and how often</span></div>
+        <div id="host-data"></div>
+      </section>
+
+      <section id="sources" style="--d:.28s">
+        <div class="sec-h">Data sources <span class="cap">upstream APIs · live probe</span></div>
+        <div id="sourcesBox">loading…</div>
+        <div class="sec-h sub-h">Keys &amp; secrets <span class="cap">presence only — a value never leaves the server</span></div>
+        <div class="grid g2" id="keysBox"></div>
+      </section>
+
+      <section id="system" style="--d:.32s">
+        <div class="sec-h">System <span class="cap">backups · databases · process health · console</span></div>
+        <div id="host-system"></div>
+        <div class="grid g2" id="sysCards"></div>
+        <div class="sec-h sub-h">Live console <span class="cap">server log stream · scrubbed of secrets · times in Sydney (AEST/AEDT)</span></div>
+        <div class="console" data-find="console logs stream diag token tail warn error pause clear">
+          <div class="con-bar">
+            <span class="dot3"><i style="background:#f0666e"></i><i style="background:#f0c04a"></i><i style="background:#43d6a0"></i></span>
+            <span class="title">tail /var/log/tcg-tools</span>
+            <span class="sp"></span>
+            <div class="seg" id="logLevel">
+              <button data-lvl="" class="on">All</button>
+              <button data-lvl="warn">Warn+</button>
+              <button data-lvl="error">Errors</button>
+            </div>
+            <button class="btn sm" id="logPause">⏸ Pause</button>
+            <button class="btn sm" id="logClear">Clear</button>
+          </div>
+          <div class="con-body" id="conBody"><div class="con-empty" id="conEmpty">Enter the server <b>DIAG_TOKEN</b> to stream logs.</div></div>
+          <div class="con-bar" style="border-top:1px solid var(--line);border-bottom:0;">
+            <input class="tokfield" id="conToken" type="password" placeholder="DIAG_TOKEN" autocomplete="off" aria-label="DIAG_TOKEN">
+            <button class="btn go sm" id="conConnect">Connect</button>
+            <span class="sp"></span>
+            <span class="h-note" id="conStatus">not connected</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
 </div>
 
 <div id="tip"></div>
@@ -301,14 +428,19 @@
   const el = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
   const _ESC=String.fromCharCode(27), _ANSI=new RegExp(_ESC+'\\[[0-9;?]*[A-Za-z]','g');
   const stripAnsi=(s)=>String(s==null?'':s).replace(_ANSI,'').split(_ESC).join('');   // terminal colour codes → readable text
+  const stripTags=(s)=>String(s==null?'':s).replace(/<[^>]+>/g,' ');
   const fmtAge = (h) => h==null?'—':h<1?Math.round(h*60)+'m':h<48?(Math.round(h*10)/10)+'h':Math.round(h/24)+'d';
   const fmtTs = (t) => t?TZ.stamp(t):'—';   // Sydney date-time + AEST/AEDT (datetime.js)
+  const fmtMb = (b) => b==null?'—':b<1048576?(Math.round(b/1024)+' KB'):((Math.round(b/104857.6)/10)+' MB');
   function ago(t){ if(!t) return '—'; const s=(Date.now()-new Date(t).getTime())/1000; if(!isFinite(s)) return '—';
     if(s<0) return 'in '+rel(-s); if(s<10) return 'just now'; return rel(s)+' ago'; }
   function rel(s){ if(s<60) return Math.round(s)+'s'; const m=s/60; if(m<60) return Math.round(m)+'m'; const h=m/60; if(h<36) return Math.round(h)+'h'; return Math.round(h/24)+'d'; }
   const pill = (state,txt) => '<span class="pill '+esc(state)+'">'+esc(txt||state)+'</span>';
+  // Whole days between an ISO date (YYYY-MM-DD) and now — how stale a hand-maintained figure is.
+  function daysSince(d){ if(!d) return null; const t=Date.parse(String(d)+'T00:00:00Z'); if(!isFinite(t)) return null;
+    return Math.floor((Date.now()-t)/86400000); }
 
-  let STATUS=null, SETTINGS=null;
+  let STATUS=null, SETTINGS=null, SCAN=null, CALIB=null;
 
   /* ---------------- shared tooltip ---------------- */
   const tip = $('tip'); tip.setAttribute('role','tooltip'); let tipEl=null;
@@ -329,12 +461,14 @@
   document.addEventListener('click',(e)=>{ const t=e.target.closest('.infodot[data-tip]'); if(!t) return; e.preventDefault(); (tipEl===t)?hideTip():showTip(t); });   // touch / tap toggle
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') hideTip(); });
   // The visible tooltip keeps its HTML (bold etc.); aria-label carries a tag-stripped plain-text copy.
-  const inf = (txt) => '<span class="infodot" tabindex="0" role="button" aria-label="'+esc(String(txt).replace(/<[^>]+>/g,''))+'" data-tip="'+esc(txt)+'">i</span>';
+  const inf = (txt) => '<span class="infodot" tabindex="0" role="button" aria-label="'+esc(stripTags(txt))+'" data-tip="'+esc(txt)+'">i</span>';
 
   /* ---------------- vitals ---------------- */
-  function vital(cls,name,state,detail){
-    return el('<div class="card vital '+cls+'"><div class="top"><span class="led"></span><span class="name">'+esc(name)+'</span></div>'+
+  function vital(cls,name,state,detail,find){
+    const n=el('<div class="card vital '+cls+'"><div class="top"><span class="led"></span><span class="name">'+esc(name)+'</span></div>'+
       '<div class="state">'+esc(state)+'</div><div class="detail">'+detail+'</div></div>');
+    n.setAttribute('data-find',(name+' '+state+' '+stripTags(detail)+' '+(find||'')).toLowerCase());
+    return n;
   }
   // Short name for a scope, for listing them without a wall of identical URL prefixes.
   const scopeName = (s) => String(s||'').replace('https://api.ebay.com/oauth/api_scope/','').replace('https://api.ebay.com/oauth/api_scope','api_scope');
@@ -376,40 +510,40 @@
     box.appendChild(vital(eoCls,'eBay account',eoWord,
       !eo.connected?'<a href="/api/repricer/oauth">run consent →</a>'
         :eo.needs_reconsent?(esc(eoMissing)+' permission'+(eoMissing===1?'':'s')+' missing · <a href="/api/repricer/oauth">re-consent →</a>')
-        :('token · '+esc(eo.token_source||'consent')+(eo.refresh_expires_at?' · exp '+fmtTs(eo.refresh_expires_at):''))));
+        :('token · '+esc(eo.token_source||'consent')+(eo.refresh_expires_at?' · exp '+fmtTs(eo.refresh_expires_at):'')),'oauth consent scopes token'));
     // Order sync (postsale)
     const ps=jobs.postsale||{}, op=ps.order_poll||{};
     const psState = !op.enabled?'off':(op.running?'ok':'warn');
     const psWord = !op.enabled?'Off':(op.running?'Syncing':'Idle');
     const psd = dbs.postsale||{};
     box.appendChild(vital(psState,'Order sync',psWord,
-      (op.enabled?('next '+ago(op.next_run_at)):'enable in Settings ↓')+' · '+esc((psd.orders??0))+' orders · '+esc((psd.to_pack??0))+' to pack'));
+      (op.enabled?('next '+ago(op.next_run_at)):'enable in Post-sale ↓')+' · '+esc((psd.orders??0))+' orders · '+esc((psd.to_pack??0))+' to pack','postsale orders poll'));
     // Telegram
     const tg=sub.telegram||{};
     const tgOk=tg.enabled&&tg.chat_configured;
     box.appendChild(vital(tgOk?'ok':(tg.enabled?'warn':'off'),'Telegram',tgOk?'Connected':(tg.enabled?'No chat id':'Off'),
-      tgOk?'sale alerts · approvals · digests':'set TELEGRAM_* in .env'));
+      tgOk?'sale alerts · approvals · digests':'set TELEGRAM_* in .env','telegram bot chat approvals'));
     // Printer
     const pr=sub.printer||{};
     box.appendChild(vital(pr.enabled?'ok':'off','Label printer',pr.enabled?'Online':'Off',
-      pr.enabled?('AUSPRINT '+esc(pr.ip)+':'+esc(pr.port)+' · '+esc(pr.lang)+' '+esc(pr.dpi)+'dpi'):'set LABEL_PRINTER_IP'));
+      pr.enabled?('AUSPRINT '+esc(pr.ip)+':'+esc(pr.port)+' · '+esc(pr.lang)+' '+esc(pr.dpi)+'dpi'):'set LABEL_PRINTER_IP','printer label ausprint tspl'));
     // Data refresh
     const rf=jobs.refresh||{}, dr=data.refresh||{};
     box.appendChild(vital(!dr.enabled?'off':(rf.running?'ok':'warn'),'Baked data',!dr.enabled?'Manual':(rf.running?'Auto':'Idle'),
-      'every '+esc(dr.interval_hours??'—')+'h · '+esc((dr.bakes||[]).length)+' bakes · last '+ago(rf.last_run&&rf.last_run.finished_at)));
+      'every '+esc(dr.interval_hours??'—')+'h · '+esc((dr.bakes||[]).length)+' bakes · last '+ago(rf.last_run&&rf.last_run.finished_at),'refresh bake catalog'));
     // Backups
     const bk=jobs.backup||{};
     const bkRun=bk.running!==undefined?bk.running:(bk.enabled!==false);
     box.appendChild(vital(bkRun?'ok':'warn','Backups',bkRun?'Scheduled':'Stopped',
-      'last '+ago(bk.last_run&&(bk.last_run.finished_at||bk.last_run.at)||bk.last_backup_at)));
+      'last '+ago(bk.last_run&&(bk.last_run.finished_at||bk.last_run.at)||bk.last_backup_at),'backup snapshot vacuum'));
     // Price collector
     const co=jobs.collector||{};
     box.appendChild(vital(co.running?'ok':'bad','Price collector',co.running?'Running':'Stopped',
-      'every '+esc((sub.collector&&sub.collector.cadence_hours)??'—')+'h · last '+ago(co.last_pass&&co.last_pass.finished_at)));
+      'every '+esc((sub.collector&&sub.collector.cadence_hours)??'—')+'h · last '+ago(co.last_pass&&co.last_pass.finished_at),'collector tracker prices'));
     // Databases
     const t=dbs.tracker||{}, inv=dbs.inventory||{}, rep=dbs.repricer||{};
     box.appendChild(vital('ok','Databases','Healthy',
-      esc(t.watchlist??0)+' watched · '+esc(inv.items??0)+' stock · '+esc((psd.orders??0))+' orders · '+esc(rep.price_checks??0)+' price checks'));
+      esc(t.watchlist??0)+' watched · '+esc(inv.items??0)+' stock · '+esc((psd.orders??0))+' orders · '+esc(rep.price_checks??0)+' price checks','sqlite db'));
   }
 
   /* ---------------- background systems table ---------------- */
@@ -433,6 +567,15 @@
     // enabled?running:null — a config-disabled loop shows the amber "idle" pill, not a red "stopped",
     // because the owner turning scanning off is not a fault.
     const rs=j.repricer_scan||{}; h+=sysRow('Repricer scan','prices listings vs the market',rs.enabled?rs.running:null,rs.last_run&&(rs.last_run.finished_at||rs.last_run.at),rs.next_run_at);
+    // The listener was served at /api/status all along and had no row: one that failed to bind was
+    // only ever visible in the transient note from the last save.
+    const nt=j.ebay_notify||{};
+    const ntEv=nt.last_event&&(nt.last_event.at||nt.last_event.received_at||nt.last_event.t);
+    h+=sysRow('eBay push listener',nt.bind_error?('bind failed — '+nt.bind_error):(nt.listening?(nt.host+':'+nt.port+nt.path):(nt.enabled?'enabled, not bound':'off')),
+      nt.listening===true?true:(nt.enabled===false?null:false),ntEv||null,null);
+    const lb=j.listing_batch||{};
+    h+=sysRow('Listing batch',lb.id?('run '+lb.id+' · '+(lb.listed??0)+'/'+(lb.total??0)+' listed'):'stock-runner publish queue',
+      lb.running===true?true:null,lb.finished_at||lb.started_at,null);
     const hb=j.heartbeat||{}; h+=sysRow('Heartbeat','liveness canary',hb.running!==undefined?hb.running:true,hb.last_run&&(hb.last_run.at||hb.last_run.finished_at)||hb.last_beat_at,null);
     h+='</tbody>'; tb.innerHTML=h;
   }
@@ -448,7 +591,16 @@
     {label:'Send price proposals',path:'/api/repricer/propose-from-scan',tip:'Turn the latest scan’s <b>raise</b> verdicts into pending proposals and post a Telegram card for each, newest scan, biggest uplift first. <b>This is the step that commits</b> — every card carries a live Approve button that changes a real eBay price. Each listing is re-read first, and one whose price moved since the scan is refused rather than promised at a stale number. Capped by “Max cards per run”.'},
     {label:'Refresh baked data',path:'/api/status/refresh',tip:'Re-bake all enabled catalogs now — picks up a just-pushed seed change without waiting for the interval.'},
     {label:'Run collector pass',path:'/api/status/collect',tip:'Force one price-collector pass now. May bill metered sources (e.g. Scrydex).'},
-    {label:'Backup now',path:'/api/status/backup',tip:'Snapshot the money-bearing databases immediately (VACUUM INTO + rotate).'},
+    {label:'Backup now',path:'/api/status/backup',tip:'Snapshot the money-bearing databases immediately (VACUUM INTO + rotate), and mirror any new pre-grade images.'},
+    // The one diag endpoint that had no button. It needs a body, so it asks for one.
+    {label:'Clear card cache',path:'/api/status/clear-card-cache',tip:'Drop the catalog card cache for ONE set so the next load re-fetches live — how a source or parser fix gets past the 12h/24h caches without waiting. Asks for <b>lang/set</b> (e.g. <code>en/sv3pt5</code>), optionally with a PriceCharting slug as a third segment.',
+      body(){
+        const v=(window.prompt('Clear the catalog card cache for ONE set.\n\nlang/set  —  e.g.  en/sv3pt5\nOptionally add the PriceCharting slug:  en/sv3pt5/pokemon-obsidian-flames','')||'').trim();
+        if(!v) return null;
+        const parts=v.split('/').map(s=>s.trim()).filter(Boolean);
+        if(parts.length<2) return null;
+        return {lang:parts[0],set:parts[1],pcSlug:parts[2]||''};
+      }},
   ];
   function renderQuickActions(){
     const box=$('quickActions'); box.innerHTML='';
@@ -460,17 +612,21 @@
   }
   async function runAction(a,btn){
     const token=getDiagToken(false); if(!token) return;
+    let payload=null;
+    if(a.body){ payload=a.body(); if(!payload){ $('qaNote').style.color='var(--faint)'; $('qaNote').textContent=a.label+' cancelled.'; return; } }
     const orig=btn.textContent; btn.disabled=true; btn.textContent='running…';
     $('qaNote').style.color='var(--faint)'; $('qaNote').textContent=a.label+'…';
     try{
       const sep=a.path.includes('?')?'&':'?';
-      const r=await fetch(a.path+sep+'token='+encodeURIComponent(token),{method:'POST',headers:{authorization:'Bearer '+token}});
+      const headers={authorization:'Bearer '+token};
+      if(payload) headers['content-type']='application/json';
+      const r=await fetch(a.path+sep+'token='+encodeURIComponent(token),{method:'POST',headers,body:payload?JSON.stringify(payload):undefined});
       const j=await r.json().catch(()=>({}));
       if(r.status===401||r.status===403){ try{localStorage.removeItem(DIAG_KEY);}catch(e){} $('qaNote').style.color='var(--red)'; $('qaNote').textContent='DIAG_TOKEN rejected — click again to re-enter.'; return; }
       if(!r.ok){ $('qaNote').style.color='var(--red)'; $('qaNote').textContent=a.label+' failed: '+(j.error||('HTTP '+r.status)); return; }
       const res=j.result||j;
       $('qaNote').style.color='var(--green)'; $('qaNote').textContent=a.label+' ✓  '+summarize(res);
-      load();
+      refreshLive();
     }catch(e){ $('qaNote').style.color='var(--red)'; $('qaNote').textContent=a.label+' failed: '+(e&&e.message||e); }
     finally{ btn.disabled=false; btn.textContent=orig; }
   }
@@ -478,8 +634,8 @@
     if(r.ingested!=null) return r.ingested+' ingested / '+(r.seen!=null?r.seen+' seen':'');
     if(Array.isArray(r.results)) return r.results.map(x=>x.name+(x.skipped?'(fresh)':x.ok?'✓':'✗')).join(' ');
     if(r.snapshots!=null) return r.snapshots+' snapshots';
+    if(r.set_cards_deleted!=null) return r.set_cards_deleted+' cache rows dropped'+((r.pc_cache_removed||[]).length?' · pc files '+r.pc_cache_removed.length:'');
     if(r.ok!=null) return r.ok?'ok':'failed'; return JSON.stringify(r).slice(0,80); }
-
   /* ---------------- sources (probes) ---------------- */
   const SOURCES=[
     {id:'pkm',label:'pokemontcg.io',powers:'Pokémon EN cards + prices',keyed:(k)=>k.pokemon.POKEMONTCG_API_KEY,optional:true},
@@ -489,7 +645,7 @@
     {id:'lorcana',label:'Lorcast',powers:'Disney Lorcana',keyed:()=>null},
     {id:'rb',label:'Scrydex',powers:'Riftbound live pricing',keyed:(k)=>k.riftbound.SCRYDEX_API_KEY&&k.riftbound.SCRYDEX_TEAM_ID,optional:true},
     {id:'rbs',label:'riftscribe.gg',powers:'Riftbound (keyless)',keyed:()=>null},
-    {id:'fx',label:'Frankfurter FX',powers:'AUD conversion',keyed:()=>null},
+    {id:'fx',label:'Frankfurter FX',powers:'AUD conversion · the pre-grader’s AUD/USD source',keyed:()=>null},
     {id:'pc',label:'PriceCharting',powers:'Graded ladder + pop',keyed:(k)=>k.pricecharting.PRICECHARTING_TOKEN,optional:true},
     {id:'ebay',label:'eBay Browse',powers:'Comps, Funko search',keyed:(k)=>k.ebay.EBAY_APP_ID&&k.ebay.EBAY_CERT_ID},
     {id:'ebay-sold',label:'eBay sold comps',powers:'True sold prices (denied — every comp is an ASKING price)',keyed:(k)=>k.ebay.EBAY_APP_ID&&k.ebay.EBAY_CERT_ID,optional:true},
@@ -497,6 +653,9 @@
     {id:'rebrickable',label:'Rebrickable',powers:'LEGO set lookup',keyed:(k)=>k.lego.REBRICKABLE_API_KEY},
     {id:'brickset',label:'Brickset',powers:'LEGO RRP / dims',keyed:(k)=>k.lego.BRICKSET_API_KEY},
     {id:'bricklink',label:'BrickLink',powers:'LEGO new/used pricing',keyed:(k)=>k.lego.BRICKLINK},
+    // Loopback self-test. It exists precisely to catch a listener that is not bound, and until now
+    // it was in the probe allowlist with nowhere on this page to run it from.
+    {id:'ebay-notify',label:'eBay push listener',powers:'Loopback self-test (touches no upstream)',keyed:(k)=>k.ebay_notify.EBAY_NOTIFY_VERIFICATION_TOKEN,optional:true},
   ];
   function renderSources(){
     const box=$('sourcesBox'); box.innerHTML=''; const k=STATUS.keys||{}; const srcs=STATUS.sources||{};
@@ -508,6 +667,7 @@
       const row=el('<div class="srcrow"><div class="srcname">'+esc(s.label)+'<small>'+esc(s.powers)+'</small></div>'+
         '<div>'+keyPill+'</div><div class="evidence">'+pill(st.state)+' <span title="'+esc(evid)+'">'+esc(evid)+'</span></div>'+
         '<div><button class="btn sm" data-src="'+s.id+'">Test</button></div></div>');
+      row.setAttribute('data-find',(s.label+' '+s.powers+' source probe '+st.state).toLowerCase());
       row.querySelector('button').onclick=()=>probe(s.id,row);
       box.appendChild(row);
     }
@@ -517,6 +677,69 @@
     try{ const r=await fetch('/api/status/probe/'+src+'?force=1',{method:'POST'}); const j=await r.json();
       STATUS.sources[src]={...j,evidence:'probe',last_evidence_at:j.checked_at}; renderSources();
     }catch(e){ btn.disabled=false; btn.textContent='retry'; }
+  }
+
+  /* ---------------- keys & secrets (PRESENCE ONLY) ----------------
+     /api/status reports booleans, never values (GR2). This panel is the whole .env surface the
+     dashboard is allowed to know about, including the flags that had no home before: DIAG_TOKEN,
+     the two eBay notification tokens, UPCItemDB, the scanner block and both AI lanes' models. */
+  function keyRow(label,state,detail,tipTxt){
+    const p = state===true?pill('keyed','set') : state===false?pill('unknown','not set') : pill('ok',String(state));
+    return '<div class="kv"><span class="k">'+esc(label)+(tipTxt?inf(tipTxt):'')+'</span>'+
+      '<span class="v">'+p+(detail?' <span class="dim">'+esc(detail)+'</span>':'')+'</span></div>';
+  }
+  function keyCard(title,find,rows){
+    const c=el('<div class="card"><h3><span class="ttl">'+esc(title)+'</span><span class="h-note">.env</span></h3>'+rows.join('')+'</div>');
+    c.setAttribute('data-find',(title+' '+find+' env key secret presence').toLowerCase());
+    return c;
+  }
+  function renderKeys(){
+    const box=$('keysBox'); if(!box) return; box.innerHTML='';
+    const k=STATUS.keys||{}, g=k.grader||{}, sc=k.scanner||{}, pcs=k.pricecharting||{}, u=k.upcitemdb||{}, pp=k.postsale||{}, en=k.ebay_notify||{};
+    box.appendChild(keyCard('eBay','ebay app cert runame marketplace push notify verification deletion',[
+      keyRow('EBAY_APP_ID',!!(k.ebay||{}).EBAY_APP_ID),
+      keyRow('EBAY_CERT_ID',!!(k.ebay||{}).EBAY_CERT_ID),
+      keyRow('EBAY_RUNAME',!!(k.ebay||{}).EBAY_RUNAME),
+      keyRow('Marketplace',(k.ebay||{}).marketplace||'—','','Non-secret. Which eBay site every call is made against — <b>EBAY_AU</b> for this store.'),
+      keyRow('EBAY_NOTIFY_VERIFICATION_TOKEN',!!en.EBAY_NOTIFY_VERIFICATION_TOKEN,'','Hashed with the public endpoint into eBay’s challenge reply. Without it the listener cannot be validated, and eBay marks the destination down.'),
+      keyRow('EBAY_NOTIFY_DELETION_TOKEN',!!en.EBAY_NOTIFY_DELETION_TOKEN,'','The marketplace-account-deletion endpoint’s own token — eBay requires that endpoint for a production keyset.'),
+    ]));
+    box.appendChild(keyCard('AI lanes','anthropic openai grader model postsale provider llm',[
+      keyRow('ANTHROPIC_API_KEY',!!g.ANTHROPIC_API_KEY),
+      keyRow('OPENAI_API_KEY',!!g.OPENAI_API_KEY),
+      keyRow('Pre-grader provider',g.provider||'none','','<b>GRADER_PROVIDER</b>, or whichever key is present when it is unset.'),
+      keyRow('Pre-grader model',g.model||'code default','',
+        'GRADER_MODEL. Empty means lib/grader.mjs uses its own DEFAULT model for the provider — which is a different fact from “the lane is off”, and the one that silently changes what a report costs.'),
+      keyRow('Post-sale provider',pp.provider||'auto'),
+      keyRow('Post-sale model',pp.model||'code default','','POSTSALE_MODEL. This is the lane that writes to buyers.'),
+    ]));
+    box.appendChild(keyCard('Scanner','scanner flatbed dpi region platen sheet epson wia',[
+      keyRow('SCANNER_ENABLED',sc.SCANNER_ENABLED!==false?'on':'off','',
+        'A kill switch, not an address: when off the route answers <b>disabled</b> without ever spawning PowerShell. Everything else here is a per-request default the pre-grader can override.'),
+      keyRow('Default DPI',(sc.defaultDpi||'—')+' dpi'),
+      keyRow('Card region',sc.region_mm?(sc.region_mm.w+'×'+sc.region_mm.h+' mm'):'—'),
+      keyRow('Sheet region',sc.sheet_mm?(sc.sheet_mm.w+'×'+sc.sheet_mm.h+' mm'):'—'),
+      keyRow('Set in .env',(sc.overridden&&sc.overridden.length)?sc.overridden.join(' '):'nothing (all defaults)','',
+        'These are <b>.env-only</b> — this page cannot write them. Change them in the server’s .env and restart.'),
+    ]));
+    box.appendChild(keyCard('Catalog & pricing','pokemontcg scrydex pricecharting upcitemdb psa lego rebrickable brickset bricklink',[
+      keyRow('POKEMONTCG_API_KEY',!!(k.pokemon||{}).POKEMONTCG_API_KEY,'optional'),
+      keyRow('SCRYDEX_API_KEY',!!(k.riftbound||{}).SCRYDEX_API_KEY,'optional'),
+      keyRow('SCRYDEX_TEAM_ID',!!(k.riftbound||{}).SCRYDEX_TEAM_ID,'optional'),
+      keyRow('PRICECHARTING_TOKEN',!!pcs.PRICECHARTING_TOKEN,pcs.enabled===false?'source switched OFF':'', 'PRICECHARTING_ENABLED=false turns the whole source off — a token alone does not mean it is being used.'),
+      keyRow('PSA_API_TOKEN',!!(k.psa||{}).PSA_API_TOKEN,'optional'),
+      keyRow('PSA_CERT_SCRAPE',!!(k.psa||{}).PSA_CERT_SCRAPE,'optional'),
+      keyRow('UPCITEMDB_KEY',!!u.UPCITEMDB_KEY,u.enabled===false?'lane switched OFF':'keyless tier works','The bridge every sealed barcode scan crosses: UPC → product name → PriceCharting.'),
+      keyRow('REBRICKABLE_API_KEY',!!(k.lego||{}).REBRICKABLE_API_KEY),
+      keyRow('BRICKSET_API_KEY',!!(k.lego||{}).BRICKSET_API_KEY),
+      keyRow('BrickLink (4 values)',!!(k.lego||{}).BRICKLINK),
+    ]));
+    box.appendChild(keyCard('Operations','telegram printer diag token label',[
+      keyRow('TELEGRAM_BOT_TOKEN',!!(k.telegram||{}).TELEGRAM_BOT_TOKEN),
+      keyRow('TELEGRAM_CHAT_ID',!!(k.telegram||{}).TELEGRAM_CHAT_ID),
+      keyRow('Label printer',(k.printer||{}).configured?((k.printer.ip||'')+' · '+(k.printer.lang||'')+' '+(k.printer.dpi||'')+'dpi'):false),
+      keyRow('DIAG_TOKEN',!!(k.diag||{}).DIAG_TOKEN,'','Gates the quick actions and the live console below. <b>Unset on the server</b> means those endpoints answer 503 and are disabled entirely — which is not the same as your browser simply not having the token yet.'),
+    ]));
   }
 
   /* ---------------- baked data ---------------- */
@@ -533,16 +756,148 @@
     for(const [key,label,fmt] of items){
       const x=d[key]; if(!x) continue;
       const state=x.error?'bad':x.stale?'warn':'ok';
-      box.appendChild(el('<div class="card"><h3>'+esc(label)+' '+pill(state,x.error?'broken':x.stale?'stale':x.frozen?'frozen':'fresh')+'</h3>'+
+      const card=el('<div class="card"><h3><span class="ttl">'+esc(label)+'</span> '+pill(state,x.error?'broken':x.stale?'stale':x.frozen?'frozen':'fresh')+'</h3>'+
         '<div class="kv"><span class="k">Contents</span><span class="v">'+esc(x.error||(fmt(x)||x.count))+'</span></div>'+
         '<div class="kv"><span class="k">Age</span><span class="v'+(x.stale?' warn':'')+'">'+fmtAge(x.age_h)+'</span></div>'+
-        '<div class="kv"><span class="k">Refresh</span><span class="v dim">'+(x.managed?'scheduled bake':x.frozen?'frozen upstream':'manual')+'</span></div></div>'));
+        '<div class="kv"><span class="k">Refresh</span><span class="v dim">'+(x.managed?'scheduled bake':x.frozen?'frozen upstream':'manual')+'</span></div></div>');
+      card.setAttribute('data-find',(label+' baked catalog '+key+' '+(x.file||'')).toLowerCase());
+      box.appendChild(card);
     }
   }
 
-  /* ---------------- settings (spec-driven, tooltips + toggles) ---------------- */
+  /* ---------------- eBay push listener state ---------------- */
+  function renderNotifyState(){
+    const box=$('notifyState'); if(!box) return; box.innerHTML='';
+    const n=(STATUS.jobs||{}).ebay_notify||{};
+    const cls=n.enabled===false?'off':n.listening?'ok':'bad';
+    const word=n.enabled===false?'Off':n.listening?'Listening':'Not bound';
+    const c=el('<div class="card"><h3><span class="ttl">Listener</span><span class="h-note">live · /api/status jobs.ebay_notify</span></h3>'+
+      '<div class="kv"><span class="k">State</span><span class="v">'+pill(cls==='off'?'off':cls,word)+'</span></div>'+
+      '<div class="kv"><span class="k">Bound to</span><span class="v">'+esc(n.listening?(n.host+':'+n.port+n.path):'—')+'</span></div>'+
+      (n.bind_error?'<div class="kv"><span class="k">Bind error</span><span class="v bad">'+esc(n.bind_error)+'</span></div>':'')+
+      '<div class="kv"><span class="k">Public endpoint</span><span class="v dim">'+esc(n.public_endpoint||'—')+'</span></div>'+
+      '<div class="kv"><span class="k">Topics</span><span class="v">'+esc((n.topics||[]).join(', ')||'—')+'</span></div>'+
+      '<div class="kv"><span class="k">Received / duplicate</span><span class="v">'+esc(n.received??0)+' / '+esc(n.duplicates??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Challenges / sig failures</span><span class="v'+((n.sig_failures||0)>0?' bad':'')+'">'+esc(n.challenges??0)+' / '+esc(n.sig_failures??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Started</span><span class="v dim">'+esc(n.started_at?ago(n.started_at):'—')+'</span></div>'+
+      '<div class="savenote" style="margin-top:9px;">Run the loopback self-test from <a href="#sources">Sources</a> — it proves the listener is bound, routing and hashing the challenge the way eBay will.</div></div>');
+    c.setAttribute('data-find','ebay push listener bound port challenge signature topics notification');
+    box.appendChild(c);
+  }
+
+  /* ---------------- pre-grader: scanner, AI, image store, calibration ---------------- */
+  function renderPregradeTiles(){
+    const box=$('pgVitals'); if(!box) return; box.innerHTML='';
+    const k=STATUS.keys||{}, sc=k.scanner||{}, g=k.grader||{};
+    const pg=(STATUS.subsystems||{}).pregrade_images||{};
+
+    // Scanner. SCANNER_ENABLED=false and "no scanner plugged in" are different answers and get
+    // different words: one is a decision, the other is a missing device.
+    let sCls='off', sWord='Off', sDetail='SCANNER_ENABLED=false in .env';
+    if(sc.SCANNER_ENABLED!==false){
+      if(SCAN===null){ sCls='off'; sWord='…'; sDetail='asking /api/scan'; }
+      else if(SCAN&&SCAN.enabled){ sCls='ok'; sWord='Ready';
+        sDetail=esc(SCAN.device&&(SCAN.device.name||SCAN.device.id)||'WIA device')+' · '+esc(SCAN.defaultDpi)+'dpi default of '+esc((SCAN.dpiOptions||[]).join('/'))
+          +'<br>'+esc((SCAN.region&&SCAN.region.wmm)||'—')+'×'+esc((SCAN.region&&SCAN.region.hmm)||'—')+'mm card · sheet lane '+(SCAN&&SCAN.sheetAvailable?'on':'off'); }
+      else { sCls='warn'; sWord='No device'; sDetail='enabled, but WIA enumerated nothing — the pre-grader falls back to photo upload'; }
+    }
+    box.appendChild(vital(sCls,'Scanner',sWord,sDetail,'flatbed wia epson dpi platen scan'));
+
+    // AI grader
+    const gKey=!!(g.ANTHROPIC_API_KEY||g.OPENAI_API_KEY);
+    box.appendChild(vital(gKey?'ok':'bad','AI grader',gKey?(g.provider||'Keyed'):'No key',
+      gKey?('model '+esc(g.model||'code default')+'<br>'+(g.ANTHROPIC_API_KEY?'anthropic ✓ ':'')+(g.OPENAI_API_KEY?'openai ✓':''))
+        :'set ANTHROPIC_API_KEY or OPENAI_API_KEY in .env','grader vision pillars corners edges surface model'));
+
+    // Image store + whether the backup mirror has caught up. These bytes are the one image set in
+    // the repo that cannot be regenerated, so "not backed up" is stated, never implied.
+    const bk=pg.backup||{};
+    const stCls=pg.error?'bad':(!pg.files?'off':(bk.include_images===false?'warn':(bk.current?'ok':'warn')));
+    const stWord=pg.error?'Error':(!pg.files?'Empty':(bk.current?'Mirrored':'Behind'));
+    let stDetail;
+    if(pg.error) stDetail=esc(pg.error);
+    else if(!pg.files) stDetail='no scans saved yet · '+esc(pg.dir||'data/pregrade-images');
+    else stDetail=esc(pg.files)+' files · '+fmtMb(pg.bytes)+'<br>'+
+      (bk.include_images===false ? '<b>not in the backup</b> — turn on “Mirror pre-grade images” under System'
+        : bk.current ? 'mirror holds all '+esc(bk.files)+' · '+fmtMb(bk.bytes)
+        : esc(bk.pending==null?'?':bk.pending)+' not yet mirrored · next backup copies them');
+    box.appendChild(vital(stCls,'Image store',stWord,stDetail,'pregrade images scans microscope backup mirror unregenerable'));
+
+    // Calibration — the one number that says whether the predictions are any good.
+    let cCls='off', cWord='—', cDetail='asking /api/pregrade/calibration';
+    if(CALIB===false){ cCls='bad'; cWord='Unknown'; cDetail='calibration could not be computed — a failure to measure, not a measurement of zero'; }
+    else if(CALIB){
+      const n=CALIB.n, conf=CALIB.confidence||'none';
+      cCls=conf==='usable'?'ok':conf==='weak'?'warn':'off';
+      cWord=n===0?'No sample':(conf==='usable'?'Usable':conf==='weak'?'Weak':'Thin');
+      const ov=CALIB.overall||{};
+      cDetail='n='+esc(n)+' graded results · confidence '+esc(conf)+
+        (ov.medianError!=null?('<br>median '+esc(ov.medianError)+' · MAE '+esc(ov.mae)):'<br>counts only until the sample carries a statistic');
+    }
+    box.appendChild(vital(cCls,'Calibration',cWord,cDetail,'calibration bias mae predicted actual accuracy'));
+  }
+
+  function renderPregradeCards(){
+    const box=$('pgCards'); if(!box) return; box.innerHTML='';
+    const k=STATUS.keys||{}, sc=k.scanner||{}, g=k.grader||{};
+    const pg=(STATUS.subsystems||{}).pregrade_images||{}, bk=pg.backup||{};
+
+    // Scanner + AI, read-only, because both are .env and settings.html cannot write .env.
+    const s=el('<div class="card" id="c-pregrade-env"><h3><span class="ttl">Scanner &amp; AI grader</span><span class="h-note">.env · read-only here</span></h3>'+
+      '<div class="kvhead">Flatbed (lib/scan.mjs)</div>'+
+      '<div class="kv"><span class="k">SCANNER_ENABLED'+inf('A kill switch. <b>false</b> makes POST /api/scan answer 503 without ever spawning PowerShell; anything else leaves the lane on and lets live WIA enumeration decide.')+'</span><span class="v">'+(sc.SCANNER_ENABLED===false?pill('off','false'):pill('ok','true'))+'</span></div>'+
+      '<div class="kv"><span class="k">SCANNER_DPI_DEFAULT'+inf('300 fast preview · 600 the sweet spot · 1200 forensic (and the driver’s ceiling). An unrecognised value falls back to 1200.')+'</span><span class="v">'+esc(sc.defaultDpi??'—')+'</span></div>'+
+      '<div class="kv"><span class="k">SCANNER_REGION_W_MM × H_MM'+inf('The card window. Deliberately forgiving — the server crops to the detected card before the image is sent, so a casually placed card still lands in frame.')+'</span><span class="v">'+esc((sc.region_mm||{}).w??'—')+' × '+esc((sc.region_mm||{}).h??'—')+' mm</span></div>'+
+      '<div class="kv"><span class="k">SCANNER_SHEET_W_MM × H_MM'+inf('The sheet lane scans the WHOLE platen (A4 by default) and cuts out the 4–6 cards on it.')+'</span><span class="v">'+esc((sc.sheet_mm||{}).w??'—')+' × '+esc((sc.sheet_mm||{}).h??'—')+' mm</span></div>'+
+      '<div class="kv"><span class="k">Live device</span><span class="v">'+(SCAN&&SCAN.enabled?esc(SCAN.device&&(SCAN.device.name||SCAN.device.id)||'detected'):'<span class="dim">none detected</span>')+'</span></div>'+
+      '<div class="kv"><span class="k">Analyzer / sheet lane</span><span class="v">'+(SCAN?((SCAN.analyzeAvailable?'analyze ✓':'analyze ✗')+' · '+(SCAN.sheetAvailable?'sheet ✓':'sheet ✗')):'—')+'</span></div>'+
+      '<div class="kvhead">AI grader (lib/grader.mjs)</div>'+
+      '<div class="kv"><span class="k">GRADER_PROVIDER</span><span class="v">'+esc(g.provider||'auto (whichever key is set)')+'</span></div>'+
+      '<div class="kv"><span class="k">GRADER_MODEL</span><span class="v">'+esc(g.model||'— code default —')+'</span></div>'+
+      '<div class="kv"><span class="k">Keys</span><span class="v">'+(g.ANTHROPIC_API_KEY?pill('keyed','anthropic'):'')+' '+(g.OPENAI_API_KEY?pill('keyed','openai'):'')+(!g.ANTHROPIC_API_KEY&&!g.OPENAI_API_KEY?pill('bad','none'):'')+'</span></div>'+
+      '<div class="savenote" style="margin-top:10px;">Every value on this card lives in the server’s <b>.env</b> and is shown, never written, from here. Change it there and restart the service.</div></div>');
+    s.setAttribute('data-rail','Scanner & AI'); s.setAttribute('data-find','scanner dpi region platen wia epson grader provider model anthropic openai env read-only');
+    box.appendChild(s);
+
+    // Image store + mirror
+    const im=el('<div class="card" id="c-pregrade-images"><h3><span class="ttl">Pre-grade image store</span><span class="h-note">data/pregrade-images</span></h3>'+
+      '<div class="kv"><span class="k">Originals'+inf('Scans and microscope shots of RAW cards. <b>Not regenerable</b> — once the card is sleeved, submitted or sold there is no second take, which is why these bytes sit with the photo originals rather than with the caches.')+'</span><span class="v">'+esc(pg.files??0)+' files · '+fmtMb(pg.bytes)+'</span></div>'+
+      '<div class="kv"><span class="k">Backup mirror'+inf('data/backups/pregrade-images. Append-only and shared by every snapshot, because the store is content-addressed: a filename IS its content hash, so a file that exists in the mirror is by definition already correct. Rotation never touches it.')+'</span><span class="v">'+
+        (bk.include_images===false?pill('bad','off')
+          :bk.absent?pill('warn','never run')
+          :bk.current?pill('ok','current'):pill('warn',(bk.pending??'?')+' behind'))+'</span></div>'+
+      '<div class="kv"><span class="k">Mirrored</span><span class="v">'+esc(bk.files??0)+' files · '+fmtMb(bk.bytes)+'</span></div>'+
+      '<div class="kv"><span class="k">Mirror on backup</span><span class="v'+(bk.include_images===false?' bad':'')+'">'+(bk.include_images===false?'include_images = false':'include_images = true')+'</span></div>'+
+      '<div class="savenote" style="margin-top:10px;">The toggle lives with the other backup settings under <a href="#system">System</a>; a mirror pass runs with every snapshot and copies only what is missing.</div></div>');
+    im.setAttribute('data-rail','Image store'); im.setAttribute('data-find','pregrade images store backup mirror bytes files unregenerable scans microscope');
+    box.appendChild(im);
+
+    // Calibration detail
+    const c=CALIB;
+    let body;
+    if(c===false) body='<div class="kv"><span class="k">Calibration</span><span class="v bad">could not be computed</span></div>';
+    else if(!c) body='<div class="kv"><span class="k">Calibration</span><span class="v dim">loading…</span></div>';
+    else {
+      const ov=c.overall||{}, ex=c.excluded||{};
+      const per=Object.entries(c.byCompany||{}).map(([co,m])=>
+        '<tr><td class="nm">'+esc(co)+'</td><td class="n">'+esc(m.n)+'</td><td class="n">'+esc(m.medianError??'—')+'</td><td class="n">'+esc(m.mae??'—')+'</td><td class="n">'+esc(m.within1)+'</td></tr>').join('');
+      body='<div class="kv"><span class="k">Usable comparisons'+inf('Reports whose linked submission came back with a real grade. Excluded rows are itemised below rather than folded into the count.')+'</span><span class="v">'+esc(c.n)+'</span></div>'+
+        '<div class="kv"><span class="k">Confidence</span><span class="v">'+pill(c.confidence==='usable'?'ok':c.confidence==='weak'?'warn':'off',c.confidence||'none')+'</span></div>'+
+        '<div class="kv"><span class="k">Bias (predicted − actual)</span><span class="v">'+esc(ov.meanError??'—')+(ov.meanErrorCi95?' <span class="dim">95% '+esc(ov.meanErrorCi95[0])+'…'+esc(ov.meanErrorCi95[1])+'</span>':'')+'</span></div>'+
+        '<div class="kv"><span class="k">Median · MAE</span><span class="v">'+esc(ov.medianError??'—')+' · '+esc(ov.mae??'—')+'</span></div>'+
+        '<div class="kv"><span class="k">Excluded</span><span class="v dim">'+esc(ex.suspectEdits||0)+' edited · '+esc(ex.noPredictionForCompany||0)+' no prediction · '+esc(ex.unusableResult||0)+' unusable</span></div>'+
+        (per?'<div class="scrollx" style="margin-top:10px;"><table class="matrix"><thead><tr><th>Company</th><th class="n">n</th><th class="n">median</th><th class="n">MAE</th><th class="n">within 1</th></tr></thead><tbody>'+per+'</tbody></table></div>':'')+
+        '<div class="savenote" style="margin-top:10px;line-height:1.5;">'+esc(c.note||'')+'</div>';
+    }
+    const cal=el('<div class="card" id="c-pregrade-calibration"><h3><span class="ttl">Calibration</span><span class="h-note">GET /api/pregrade/calibration</span></h3>'+body+'</div>');
+    cal.setAttribute('data-rail','Calibration'); cal.setAttribute('data-find','calibration accuracy bias mae median predicted actual confidence graded results');
+    box.appendChild(cal);
+  }
+  /* ---------------- settings (spec-driven, tooltips + toggles) ----------------
+     One CARD PER GROUP, one SAVE BAR PER FILE. PUT /api/settings/:name replaces the whole file,
+     so a per-card save button on a split-up config would be a lie about what it writes. */
   const SPEC={
-    postsale:{ title:'Post-sale &amp; fulfilment',
+    postsale:{ title:'Post-sale', section:'postsale',
       // Best Offer is off store-wide, so a template still telling buyers to "send an offer" points at
       // a button that is not there. The shipped defaults now invite a TOTAL request instead; this
       // catches a copy the owner had already edited, which that update could not touch.
@@ -555,14 +910,14 @@
           +'for a total, one invoice with one lot of postage.';
       },
       groups:[
-      {name:'Order sync',fields:[
+      {name:'Order sync',anchor:'postsale-sync',fields:[
         {p:'enabled',l:'Order sync',t:'toggle',tip:'<b>Master switch.</b> When on, the server polls eBay for new paid orders and powers the Fulfilment dashboard. Off = nothing is ingested.'},
         {p:'messaging',l:'AI buyer messages',t:'toggle',tip:'When on, the AI drafts a personalised thank-you for each <b>new</b> order. Off = fulfilment only (orders, labels, pick sheet) with no buyer messaging.'},
         {p:'poll_interval_min',l:'Poll every (min)',t:'number',tip:'How often, in minutes, to check eBay for new orders.'},
         {p:'lookback_hours',l:'Look back (hrs)',t:'number',tip:'How far back each poll scans for changed orders. eBay caps this at 720h (30 days).'},
         {p:'max_per_run',l:'Max / run',t:'number',tip:'Safety cap on how many new orders are processed in a single poll.'},
       ]},
-      {name:'Messaging behaviour',fields:[
+      {name:'Messaging behaviour',anchor:'postsale-voice',fields:[
         {p:'mode',l:'Send mode',t:'select',opts:['approve','auto'],tip:'<b>Approve:</b> drafts wait for your OK (Telegram or dashboard). <b>Auto:</b> sends automatically, outside quiet hours.'},
         {p:'dry_run',l:'Dry run (safe)',t:'toggle',tip:'<b>Safety.</b> When on, nothing is sent to eBay and “Mark shipped” won’t dispatch — actions are only recorded. Turn OFF to go live.'},
         {p:'reply_poll_interval_min',l:'Reply check (min)',t:'number',tip:'How often, in minutes, to check for buyer replies so a human can take over.'},
@@ -579,77 +934,109 @@
         {p:'brand_voice',l:'Brand voice',t:'textarea',wide:true,tip:'Tone guidance for the AI — e.g. “casual, warm, an Aussie TCG store owner who loves the hobby”. This is voice, so it applies to <b>every</b> message: thank-you, dispatch and delivered.'},
         {p:'style_notes',l:'Style notes',t:'textarea',wide:true,tip:'Extra content rules for the <b>thank-you only</b> (length, what to mention, what to avoid). Deliberately not applied to the dispatch or delivered notes: guidance like “give the ship timing” or “invite bundle deals” is wrong once the parcel has gone.'},
       ]},
-      {name:'Dispatch timing',fields:[
+      {name:'Dispatch timing',anchor:'postsale-dispatch',fields:[
         {p:'ship_timing_text',l:'Dispatch promise',t:'text',wide:true,tip:'The sentence the AI is told to use for when the parcel goes, e.g. <code>packed and sent {{when}}</code>. <code>{{when}}</code> is filled in per order with “later today”, “tomorrow” or “on Tuesday”, and the template fallback uses the <b>same words</b>, so the two can’t contradict each other. A sentence with <b>no</b> <code>{{when}}</code> is used exactly as written, which is how an older config keeps working.'},
-        {p:'same_day_dispatch',l:'Offer same-day dispatch',t:'toggle',tip:'<b>Off by default.</b> When on, an order that lands on a working day at or before the cut-off is promised dispatch <b>today</b> rather than the next business day. Two rails come with it: the wording is worked out fresh each time a draft is written (never from a stale one), and a draft that promised same-day is <b>refused and redrafted</b> if you approve it after the cut-off has passed. <b>Weekends and the holiday list are the only things that stop it</b> — and that list is empty by default, so Anzac Day counts as a working day and the buyer gets promised dispatch on it. Add your state’s public holidays to <code>holidays</code> in <code>data/postsale.config.json</code> before turning this on.'},
+        {p:'same_day_dispatch',l:'Offer same-day dispatch',t:'toggle',tip:'<b>Off by default.</b> When on, an order that lands on a working day at or before the cut-off is promised dispatch <b>today</b> rather than the next business day. Two rails come with it: the wording is worked out fresh each time a draft is written (never from a stale one), and a draft that promised same-day is <b>refused and redrafted</b> if you approve it after the cut-off has passed. <b>Weekends and the holiday list are the only things that stop it</b> — and that list starts empty, so Anzac Day counts as a working day until you fill it in. The list is the next card down.'},
         {p:'same_day_cutoff',l:'Cut-off',t:'text',tip:'24h HH:MM in the timezone above, e.g. <code>12:00</code>. An order drafted after this rolls to the next business day. Checked against the clock <b>now</b>, not when the order was paid: the question is whether there is still time to pack it. A value this can’t read turns same-day off rather than leaving it on all night.'},
         {p:'same_day_text',l:'Same-day wording',t:'text',tip:'What <code>{{when}}</code> becomes on a same-day order, e.g. “later today” or “this arvo”. Keep it relative and vague — a specific time is a promise about the post office, not about you.'},
         {p:'different_day_wording',l:'When their day differs',t:'select',opts:['weekday','next business day'],tip:'“later today” is only true inside one calendar. A 1am Sydney order is still <b>yesterday evening</b> in Perth, so relative words name the wrong day for that buyer. This is what they’re told instead. <b>weekday</b> (“on Tuesday”) is the same day in every timezone and stays right when a public holiday pushes dispatch out. <b>next business day</b> reads more naturally at 11pm, but is a day wrong on exactly that holiday roll. Only applies when their date really does differ from ours, or when we can’t place their address — everyone else still gets the natural wording.'},
       ]},
-      {name:'Telegram approvals',fields:[
+      // The gap the same-day tooltip used to point at: it told the owner to hand-edit `holidays` in
+      // the JSON file, and `holidays` was the one validated key with no control anywhere on this page.
+      {name:'Holidays &amp; backstops',anchor:'postsale-holidays',fields:[
+        {p:'holidays',l:'Public holidays',t:'list',wide:true,tip:'Dates that are NOT working days, comma separated as <code>YYYY-MM-DD</code> (e.g. 2026-04-25, 2026-12-25). This list plus weekends is the <b>only</b> thing that stops a same-day or next-business-day promise, so an empty list means Anzac Day is quietly treated as a working day. Add your state’s public holidays before turning same-day dispatch on.'},
+        {p:'sweep_interval_min',l:'Sweep every (min)',t:'number',min:0,max:1440,tip:'The by-id backstop: every so often, re-read the orders we are still waiting on by their own ids instead of trusting the time-window poll. It is what guarantees a state change eBay reported late is eventually noticed. <b>0 turns it off.</b>'},
+        {p:'hold_alerts',l:'Hold alerts',t:'toggle',tip:'Telegram alert when an order needs a decision before it can be packed (address problem, unpaid, cancellation request).'},
+        {p:'hold_pin',l:'Pin holds',t:'toggle',tip:'Keep a hold pinned in the chat until someone acknowledges it, rather than letting it scroll away.'},
+        {p:'cancel_restock',l:'Restock on cancel',t:'toggle',tip:'Put the card back into stock when an order is cancelled. Off means a cancellation leaves the item marked sold until you fix it by hand.'},
+        {p:'listings_sync',l:'Listings sync',t:'toggle',tip:'Keep the local mirror of your eBay listings in step as orders arrive (ended/sold marking).'},
+        {p:'fees',l:'Fee ingest',t:'toggle',tip:'Pull managed-payments fees for each order. <b>Needs the Finances scope</b>, which is the one permission that requires a fresh eBay consent.'},
+        {p:'cases',l:'Case watch',t:'toggle',tip:'Watch for buyer cases and returns against an order, so a follow-up message is never sent into an open dispute.'},
+      ]},
+      {name:'Telegram approvals',anchor:'postsale-telegram',fields:[
         {p:'telegram_allowed_user_ids',l:'Telegram approvers',t:'text',wide:true,tip:'Numeric Telegram user ids allowed to tap Send/Skip on a <b>buyer message</b> card, comma separated. <b>Empty denies everyone</b> — being in the chat is not authorisation, and the ✅ button sends a real eBay message. Not @usernames: those get changed and reassigned, ids don’t. To find an id, tap a button and the bot replies with yours.'},
       ]},
-      {name:'Fallback message',fields:[
+      {name:'Fallback message',anchor:'postsale-fallback',fields:[
         {p:'fallback_enabled',l:'Template fallback',t:'toggle',tip:'When the AI can’t draft (no API key, provider outage, bad reply), send a plain template instead of leaving the buyer with nothing. The message still waits for your approval, and the dashboard shows <b>template</b> as the model plus the reason the AI lane failed.'},
         {p:'fallback_subject',l:'Subject',t:'text',tip:'Subject line for the template message.'},
         {p:'fallback_card_line',l:'Card line',t:'text',wide:true,tip:'Inserted at <code>{{card}}</code> when we can name the card confidently, using <code>{{card}}</code> for the short name (e.g. “Mega Zeraora ex”). Dropped entirely on multi-card orders or an unusual title.'},
         {p:'fallback_body',l:'Body',t:'textarea',wide:true,tip:'Placeholders: <code>{{name}}</code> buyer’s first name from the shipping address, blank if it looks like a business or an initial · <code>{{card}}</code> the card line above · <code>{{ship_by}}</code> “later today”, “tomorrow” or “on Monday”, matching whatever the AI lane was told · <code>{{signature}}</code>. <b>Anything uncertain collapses to nothing, so the text must still read correctly without it.</b>'},
       ]},
-      {name:'Quiet hours',fields:[
+      {name:'Quiet hours',anchor:'postsale-quiet',fields:[
         {p:'quiet_hours.enabled',l:'Quiet hours',t:'toggle',tip:'Don’t auto-send messages during the window below (buyer-friendly).'},
         {p:'quiet_hours.start',l:'Start',t:'text',tip:'Start of quiet window, 24h HH:MM (e.g. 21:00).'},
         {p:'quiet_hours.end',l:'End',t:'text',tip:'End of quiet window, 24h HH:MM (e.g. 08:00).'},
       ]},
-      {name:'Alerts &amp; integrations',fields:[
+      {name:'Alerts &amp; integrations',anchor:'postsale-alerts',fields:[
         {p:'alerts',l:'Telegram alerts',t:'toggle',tip:'Send Telegram sale alerts + the daily to-pack digest.'},
         {p:'labels',l:'Queue labels',t:'toggle',tip:'Flag each new unshipped order for the label tool (sets its label status to “queued”).'},
         {p:'dashboard_url',l:'Dashboard URL',t:'text',wide:true,tip:'Base URL of this box, used for the Telegram “Edit in dashboard” button, e.g. http://192.168.4.200:5273.'},
       ]},
-      {name:'Postage',fields:[
+      {name:'Postage',anchor:'postsale-postage',fields:[
         {p:'postage.dispatch_message.enabled',l:'Dispatch message',t:'toggle',tip:'When eBay hands back a tracking number (which it does by itself the moment you buy a postage label in Seller Hub), draft a short “it’s on its way” note to the buyer. Follows the send mode above, so in <b>approve</b> mode it waits for your tap. Untracked letters get nothing — they were already promised next-business-day dispatch in the thank-you.'},
         {p:'postage.dispatch_message.delay_min',l:'Hold for (min)',t:'number',min:0,max:1440,tip:'Wait this many minutes after the tracking number appears before drafting. Buying a label is not the same as lodging the parcel, and this stops the message going out while the satchel is still on the bench.'},
         {p:'postage.dispatch_message.include_link',l:'Include tracking link',t:'toggle',tip:'<b>Off by default, deliberately.</b> eBay’s member-to-member contact policy bans web addresses in messages. There is a long-standing carve-out for links that help delivery, but enforcement tightened in 2024 and a message that breaks the rule is <b>dropped silently</b> — you would never know it didn’t arrive. Off = the tracking number and carrier in plain text, which eBay also shows on the buyer’s order page.'},
         {p:'postage.delivered_message.enabled',l:'Delivered follow-up',t:'toggle',tip:'When eBay reports the parcel delivered, draft a short, <b>positive</b> note with a light rating nudge and an invite to send an offer next time. It deliberately never asks whether anything is wrong: raising that right before asking for a rating invites the buyer to go looking for a fault. Skipped automatically if the buyer has already replied to us or a case is open.'},
         {p:'postage.delivered_message.force_approve',l:'Always approve delivered',t:'toggle',tip:'Hold every delivered follow-up for a human tap in Telegram, <b>even when the send mode is auto</b>. It arrives after the transaction is done and asks for a rating, so it is the one message worth eyeballing every time.'},
         {p:'postage.seller_hub_order_url',l:'Seller Hub order URL',t:'text',wide:true,tip:'Where the <b>Buy label on eBay</b> button on the Fulfilment dashboard points. <code>{orderId}</code> is substituted. eBay does not document this deep link, so if it ever stops resolving you can correct it here instead of waiting for a code change.'},
+        {p:'postage.seller_hub_fallback_url',l:'Seller Hub fallback URL',t:'text',wide:true,tip:'Where that button goes when we have no order id to substitute — the plain orders list. Optional; leave blank to fall back to eBay’s own default.'},
         {p:'postage.tracking_url',l:'Tracking URL',t:'text',wide:true,tip:'Carrier tracking page, with <code>{tracking}</code> substituted. Used for the ↗ link on the dashboard, and for the buyer message only when “Include tracking link” is on.'},
       ]},
     ], json:'postage.services', jsonTip:'eBay service code → <code>{ label, tier, tracked, note }</code>, checked <b>before</b> every pattern the classifier has. This is how a service gets read correctly when its code says nothing useful: <code>AU_Regular</code> is the store’s <b>tracked</b> band but matches none of the patterns, so without an entry here an $8.26 tracked order reads as a plain paid letter, gets no upgrade banner, and is packed in an envelope. <code>tier</code> is one of standard/paid/tracked/express. The Fulfilment dashboard lists every code actually sold under, which is the list worth working from.' },
-    tracker:{ title:'Price tracker', groups:[{name:null,fields:[
+
+    repricer:{ title:'Repricer', section:'pricing', locked:'never_decrease is locked on — this tool only ever raises', groups:[
+      {name:'Scanning',anchor:'repricer-scan',fields:[
+        {p:'scan_enabled',l:'Scanning',t:'toggle',tip:'Turn the up-only repricer scan loop on/off.'},
+        {p:'cadence_hours',l:'Cadence (hrs)',t:'number',tip:'How often the repricer scans your live listings.'},
+        {p:'guardrails.max_cards_per_run',l:'Max cards per run',t:'number',tip:'How many Telegram proposal cards one promotion pass may post. A first run over the whole catalogue could otherwise post dozens at once — past Telegram’s ~20/min group limit, and past what anyone will read before tapping. Biggest uplift goes first, so a low number still surfaces the ones worth the most.'},
+        {p:'guardrails.proposal_ttl_hours',l:'Proposal TTL (h)',t:'number',tip:'How long a price proposal stays valid before it expires unapproved. <b>Clamped to the scan cadence</b> while scanning is on, so a card can never outlive the scan that would supersede it — a 24h TTL on a 4h cadence would leave an old price sitting in the chat behind five newer reads.'},
+        {p:'exclude_seller_username',l:'Exclude our own listings',t:'text',wide:true,tip:'Your own eBay username. Every comp search drops listings from this seller — without it the repricer prices you against yourself and walks its own price up.'},
+      ]},
+      {name:'Uplift guards',anchor:'repricer-uplift',fields:[
+        {p:'guardrails.min_uplift_pct',l:'Min uplift %',t:'number',tip:'Only propose a raise if it lifts the price by at least this %.'},
+        {p:'guardrails.min_uplift_aud',l:'Min uplift (A$)',t:'number',tip:'…and by at least this many AUD (whichever is stricter).'},
+        {p:'guardrails.min_comparable',l:'Min comparables',t:'number',tip:'Require at least this many comparable sold listings before proposing a new price.'},
+        {p:'guardrails.max_increase_pct_per_run',l:'Max rise %/run',t:'number',tip:'Cap any single raise to this % so a listing can’t jump wildly in one pass.'},
+        {p:'guardrails.required_confidence',l:'Min confidence',t:'select',opts:['medium','high','low'],tip:'How sure the comps have to be before a raise is proposed. <b>Sold comps are currently blocked by eBay</b>, so every lookup falls back to asking prices — which caps the score at “medium”. Setting this to “high” means nothing will ever be proposed. The real guard is that a proposal also needs the engine’s <i>reliable</i> flag and your minimum comparables.'},
+      ]},
+      {name:'Anchoring',anchor:'repricer-anchor',fields:[
+        {p:'guardrails.target_anchor',l:'Price against',t:'select',opts:['cheapest_n','cluster'],tip:'Which competitor to undercut. <b>cheapest_n</b> beats the Nth cheapest Australian listing outright, so you stay on the first page when someone sorts by price. <b>cluster</b> beats the cheapest listing in the <i>densest</i> price band — a fair-value read, but on a card with a cheap tail it prices you into the middle of the pack: measured on Forest of Vitality, cluster would have moved you from 7th cheapest to 18th.'},
+        {p:'guardrails.anchor_n',l:'Beat the Nth cheapest',t:'number',tip:'Used by <b>cheapest_n</b>. Undercut the Nth cheapest AU delivered price by a cent. <b>3</b> keeps you in the top handful while making a single lowball — a damaged card, a mis-titled listing, someone dumping stock — unable to drag your whole shelf down. 1 chases the very bottom and is fragile; anything much above 5 stops being “one of the cheapest”.'},
+        {p:'guardrails.beat_cheapest_within_aud',l:'Take top slot within (A$)',t:'number',tip:'When the Nth-cheapest listing is within this many dollars of the <b>cheapest</b> one, undercut the cheapest instead — third place buys almost nothing on a bunched market, and being cheapest wins the click. Works with the % below: whichever window is <b>larger</b> applies, so one rule fits a A$3 card and a A$300 one. Set both to 0 to always take the Nth.'},
+        {p:'guardrails.beat_cheapest_within_pct',l:'…or within (%)',t:'number',tip:'The same rule as a percentage of the cheapest listing, for dearer cards where 50c is noise. Whichever of the two windows is larger applies.'},
+        {p:'guardrails.best_offer_scaling',l:'Scale Best Offer floors',t:'toggle',tip:'Best Offer auto-accept is a fixed dollar amount, so a raise that leaves it alone <b>deepens the discount</b> — A$10 list / A$8 accept becomes A$15 list / A$8 accept, turning 20% off into 47% off. It is set on <b>103 of your 161 listings</b>, so with this OFF the repricer refuses nearly all of them. ON, a raise carries the floor up by the same ratio, using ReviseFixedPriceItem instead of the lighter call. If eBay takes the price but not the floor, the write <b>reverts itself</b> and the card fails rather than leaving a widened discount. Leave OFF until you have watched one real listing through it. <b>The two percentages it scales toward live under eBay listing → Best Offer floors.</b>'},
+      ]},
+      {name:'Corroboration',anchor:'repricer-corrob',fields:[
+        {p:'guardrails.corroboration',l:'Corroboration',t:'select',opts:['require','advisory','off'],tip:'Every comp this tool can reach is an <b>asking</b> price — eBay’s sold-comps API is entitlement-gated and we are not entitled. Asking prices of unsold stock sit above what a card actually trades at, and the gap grows with supply. <b>require</b>: a raise is refused unless something that really transacted seconds it. <b>advisory</b>: allowed when nothing is known, still refused when a known source disagrees. <b>off</b>: asking prices alone — which is what proposed A$44.98 on a card whose last sale was A$25.00.'},
+        {p:'guardrails.corroboration_tolerance_pct',l:'…tolerance (%)',t:'number',tip:'How far above the best corroborating sale a target may sit. Not zero, because an asking market legitimately runs above the last sale — but this is the number that stops a raise running away from reality. 30 is the default.'},
+        {p:'corroborate_pricecharting',l:'Corroborate via PriceCharting',t:'toggle',tip:'Also check PriceCharting’s <i>ungraded</i> price, which is eBay-sold-derived. It is <b>USD and the US market</b>, so it is FX-converted and treated as a second opinion, never an anchor — and it costs a scrape per listing, so it is off by default. Your own sales are always used and cost nothing.'},
+      ]},
+      {name:'Telegram approvals',anchor:'repricer-telegram',fields:[
+        {p:'telegram.digest_enabled',l:'Telegram digest',t:'toggle',tip:'Send the repricer proposal digest to Telegram.'},
+        {p:'telegram.poll_enabled',l:'Telegram poll',t:'toggle',tip:'Run the Telegram approve/apply poll loop for repricer proposals.'},
+        {p:'telegram.allowed_user_ids',l:'Telegram approvers',t:'text',wide:true,tip:'Numeric Telegram user ids allowed to tap Approve/Skip on a <b>price</b> proposal, comma separated. <b>Empty denies everyone</b> — being in the chat is not authorisation. Not @usernames: those get changed and reassigned, ids don’t. To find an id, tap a button and the bot replies with yours.'},
+      ]},
+    ]},
+
+    tracker:{ title:'Price tracker', section:'pricing', groups:[{name:'Collector cadence &amp; signals',anchor:'tracker',fields:[
       {p:'cadence_hours',l:'Cadence (hrs)',t:'number',tip:'How often the price collector runs a full pass. Saving restarts the collector.'},
       {p:'thresholds.opportunity_drop_pct',l:'Opportunity drop %',t:'number',tip:'A price drop of at least this % flags a <b>buy opportunity</b>. Use a negative number (e.g. -10).'},
       {p:'thresholds.downtrend_drop_pct',l:'Downtrend drop %',t:'number',tip:'A sustained drop of at least this % flags a <b>downtrend</b>. Negative (e.g. -8).'},
       {p:'thresholds.momentum_rise_pct',l:'Momentum rise %',t:'number',tip:'A rise of at least this % flags upward <b>momentum</b> (e.g. 15).'},
       {p:'thresholds.min_price_aud',l:'Min price (A$)',t:'number',tip:'Ignore cards below this AUD price when raising signals — cuts noise on cheap cards.'},
     ]}]},
-    repricer:{ title:'Repricer', locked:'never_decrease is locked on — this tool only ever raises', groups:[{name:null,fields:[
-      {p:'scan_enabled',l:'Scanning',t:'toggle',tip:'Turn the up-only repricer scan loop on/off.'},
-      {p:'cadence_hours',l:'Cadence (hrs)',t:'number',tip:'How often the repricer scans your live listings.'},
-      {p:'guardrails.min_uplift_pct',l:'Min uplift %',t:'number',tip:'Only propose a raise if it lifts the price by at least this %.'},
-      {p:'guardrails.min_uplift_aud',l:'Min uplift (A$)',t:'number',tip:'…and by at least this many AUD (whichever is stricter).'},
-      {p:'guardrails.min_comparable',l:'Min comparables',t:'number',tip:'Require at least this many comparable sold listings before proposing a new price.'},
-      {p:'guardrails.max_increase_pct_per_run',l:'Max rise %/run',t:'number',tip:'Cap any single raise to this % so a listing can’t jump wildly in one pass.'},
-      {p:'guardrails.required_confidence',l:'Min confidence',t:'select',opts:['medium','high','low'],tip:'How sure the comps have to be before a raise is proposed. <b>Sold comps are currently blocked by eBay</b>, so every lookup falls back to asking prices — which caps the score at “medium”. Setting this to “high” means nothing will ever be proposed. The real guard is that a proposal also needs the engine’s <i>reliable</i> flag and your minimum comparables.'},
-      {p:'guardrails.target_anchor',l:'Price against',t:'select',opts:['cheapest_n','cluster'],tip:'Which competitor to undercut. <b>cheapest_n</b> beats the Nth cheapest Australian listing outright, so you stay on the first page when someone sorts by price. <b>cluster</b> beats the cheapest listing in the <i>densest</i> price band — a fair-value read, but on a card with a cheap tail it prices you into the middle of the pack: measured on Forest of Vitality, cluster would have moved you from 7th cheapest to 18th.'},
-      {p:'guardrails.anchor_n',l:'Beat the Nth cheapest',t:'number',tip:'Used by <b>cheapest_n</b>. Undercut the Nth cheapest AU delivered price by a cent. <b>3</b> keeps you in the top handful while making a single lowball — a damaged card, a mis-titled listing, someone dumping stock — unable to drag your whole shelf down. 1 chases the very bottom and is fragile; anything much above 5 stops being “one of the cheapest”.'},
-      {p:'guardrails.beat_cheapest_within_aud',l:'Take top slot within (A$)',t:'number',tip:'When the Nth-cheapest listing is within this many dollars of the <b>cheapest</b> one, undercut the cheapest instead — third place buys almost nothing on a bunched market, and being cheapest wins the click. Works with the % below: whichever window is <b>larger</b> applies, so one rule fits a A$3 card and a A$300 one. Set both to 0 to always take the Nth.'},
-      {p:'guardrails.beat_cheapest_within_pct',l:'…or within (%)',t:'number',tip:'The same rule as a percentage of the cheapest listing, for dearer cards where 50c is noise. Whichever of the two windows is larger applies.'},
-      {p:'guardrails.corroboration',l:'Corroboration',t:'select',opts:['require','advisory','off'],tip:'Every comp this tool can reach is an <b>asking</b> price — eBay’s sold-comps API is entitlement-gated and we are not entitled. Asking prices of unsold stock sit above what a card actually trades at, and the gap grows with supply. <b>require</b>: a raise is refused unless something that really transacted seconds it. <b>advisory</b>: allowed when nothing is known, still refused when a known source disagrees. <b>off</b>: asking prices alone — which is what proposed A$44.98 on a card whose last sale was A$25.00.'},
-      {p:'guardrails.corroboration_tolerance_pct',l:'…tolerance (%)',t:'number',tip:'How far above the best corroborating sale a target may sit. Not zero, because an asking market legitimately runs above the last sale — but this is the number that stops a raise running away from reality. 30 is the default.'},
-      {p:'corroborate_pricecharting',l:'Corroborate via PriceCharting',t:'toggle',tip:'Also check PriceCharting’s <i>ungraded</i> price, which is eBay-sold-derived. It is <b>USD and the US market</b>, so it is FX-converted and treated as a second opinion, never an anchor — and it costs a scrape per listing, so it is off by default. Your own sales are always used and cost nothing.'},
-      {p:'guardrails.max_cards_per_run',l:'Max cards per run',t:'number',tip:'How many Telegram proposal cards one promotion pass may post. A first run over the whole catalogue could otherwise post dozens at once — past Telegram’s ~20/min group limit, and past what anyone will read before tapping. Biggest uplift goes first, so a low number still surfaces the ones worth the most.'},
-      {p:'guardrails.proposal_ttl_hours',l:'Proposal TTL (h)',t:'number',tip:'How long a price proposal stays valid before it expires unapproved. <b>Clamped to the scan cadence</b> while scanning is on, so a card can never outlive the scan that would supersede it — a 24h TTL on a 4h cadence would leave an old price sitting in the chat behind five newer reads.'},
-      {p:'guardrails.best_offer_scaling',l:'Scale Best Offer floors',t:'toggle',tip:'Best Offer auto-accept is a fixed dollar amount, so a raise that leaves it alone <b>deepens the discount</b> — A$10 list / A$8 accept becomes A$15 list / A$8 accept, turning 20% off into 47% off. It is set on <b>103 of your 161 listings</b>, so with this OFF the repricer refuses nearly all of them. ON, a raise carries the floor up by the same ratio, using ReviseFixedPriceItem instead of the lighter call. If eBay takes the price but not the floor, the write <b>reverts itself</b> and the card fails rather than leaving a widened discount. Leave OFF until you have watched one real listing through it.'},
-      {p:'telegram.digest_enabled',l:'Telegram digest',t:'toggle',tip:'Send the repricer proposal digest to Telegram.'},
-      {p:'telegram.poll_enabled',l:'Telegram poll',t:'toggle',tip:'Run the Telegram approve/apply poll loop for repricer proposals.'},
-      {p:'telegram.allowed_user_ids',l:'Telegram approvers',t:'text',wide:true,tip:'Numeric Telegram user ids allowed to tap Approve/Skip on a <b>price</b> proposal, comma separated. <b>Empty denies everyone</b> — being in the chat is not authorisation. Not @usernames: those get changed and reassigned, ids don’t. To find an id, tap a button and the bot replies with yours.'},
-    ]}]},
-    refresh:{ title:'Baked-data refresh', groups:[{name:null,fields:[
+
+    'bulk-pricing':{ title:'Bulk pricing', section:'pricing', groups:[{name:'Floors',anchor:'bulk',fields:[
+      {p:'min_price_aud',l:'Min price (A$)',t:'number',tip:'Absolute floor for any bulk-listed card.'},
+      {p:'market_threshold_aud.default',l:'Market threshold (A$)',t:'number',tip:'At/above this the live market price is used; below it the conservative tier floor applies.'},
+    ]}], json:'tiers', jsonTip:'Per-game rarity/finish floor prices (AUD). Advanced — edit as JSON.' },
+
+    refresh:{ title:'Baked-data refresh', section:'data', groups:[{name:'Auto refresh',anchor:'refresh',fields:[
       {p:'enabled',l:'Auto refresh',t:'toggle',tip:'Automatically re-bake the enabled catalogs on a timer.'},
       {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to re-bake the catalogs below.'},
     ]}], bakes:true },
-    'ebay-notify':{ title:'eBay push notifications', groups:[
-      {name:null,fields:[
+    'ebay-notify':{ title:'eBay push', section:'notify', groups:[
+      {name:'Destination',anchor:'notify-dest',fields:[
         {p:'enabled',l:'Receive push notifications',t:'toggle',tip:'Bind the notification listener. Off means eBay cannot reach us and the 10-minute poll carries everything — which is exactly what it is for. Needs the Cloudflare tunnel up and <b>EBAY_NOTIFY_VERIFICATION_TOKEN</b> in .env.'},
         {p:'public_endpoint',l:'Public endpoint',t:'text',tip:'The full https URL eBay was given, e.g. <b>https://ebay-notify.example.com/ebay/notifications</b>. Hashed <b>verbatim</b> into the challenge reply, so a trailing slash or a different path fails eBay\'s validation with no error on either side. Its path must match the Listener path below.'},
         {p:'destination_name',l:'Destination name',t:'text',tip:'The label eBay stores this endpoint under. Cosmetic, but it is how you tell destinations apart in the API.'},
@@ -657,31 +1044,22 @@
         {p:'alerts',l:'Telegram alerts',t:'toggle',tip:'Alert when eBay marks the destination down, or when signatures start failing.'},
         {p:'retain_days',l:'Keep events (days)',t:'number',min:1,max:365,tip:'How long a settled notification row is kept before pruning. The stored payload is only ever an audit trail — the order is always re-read from eBay.'},
       ]},
-      {name:'What a notification does',fields:[
+      {name:'What a notification does',anchor:'notify-react',fields:[
         {p:'react.mode',l:'On a sale',t:'select',opts:['poll','observe','off'],wide:true,tip:'<b>poll:</b> run the order poll straight away, so the 🟢 SOLD alert, the stock decrement and the draft all happen seconds after checkout instead of up to ten minutes later. It is not a second pipeline — it calls the same poll the timer calls, so nothing new can happen, only sooner. <b>observe:</b> read the order back from eBay and write down what was true, changing nothing; this is how you measure whether push is worth trusting before you trust it. <b>off:</b> record the notification and look at nothing. The scheduled poll keeps running in every mode — it is what makes this correct, push only makes it fast.'},
         {p:'react.quiet_ms',l:'Settle (ms)',t:'number',min:250,max:60000,def:5000,tip:'Wait this long after a notification before reacting, so five buyers checking out at once cost one poll rather than five. Each new notification restarts the wait.'},
         {p:'react.max_wait_ms',l:'Max wait (ms)',t:'number',min:250,max:600000,def:60000,tip:'The ceiling on that settling. Without it a steady stream of sales would keep restarting the timer and the poll would never actually run.'},
         {p:'react.min_gap_ms',l:'Min gap (ms)',t:'number',min:0,max:60000,def:5000,tip:'Floor between two reactions, so a burst of notifications cannot spend the day\'s eBay call budget. Also the spacing when an order eBay announced has not shown up in GetOrders yet and gets another look.'},
       ]},
-      {name:'Listener',fields:[
+      {name:'Listener',anchor:'notify-listen',fields:[
         {p:'listen_host',l:'Bind host',t:'text',tip:'Must stay <b>127.0.0.1</b>. The tunnel is the only way in; binding this to the LAN would put an unauthenticated POST endpoint on the network. The save is refused if you change it.'},
         {p:'listen_port',l:'Bind port',t:'number',min:1024,max:65535,tip:'Its own port, deliberately not the dev server\'s 5273 — that separation is what stops a misconfigured tunnel reaching /api/*. Give a second instance on the same box a different port.'},
         {p:'path',l:'Listener path',t:'text',tip:'The path eBay POSTs to. Must equal the path part of the Public endpoint above.'},
         {p:'account_deletion_path',l:'Account-deletion path',t:'text',tip:'eBay requires a marketplace-account-deletion endpoint for a production keyset. Same handshake, its own token (<b>EBAY_NOTIFY_DELETION_TOKEN</b>), served by the same listener.'},
       ]},
     ], json:'topics', jsonTip:'Which eBay topics to subscribe to, as a JSON array. Unknown names are refused on save — the valid set comes from the app itself.' },
-    backup:{ title:'Backups', groups:[{name:null,fields:[
-      {p:'enabled',l:'Scheduled backups',t:'toggle',tip:'Take VACUUM-INTO snapshots of the money-bearing databases on a timer.'},
-      {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to snapshot the databases.'},
-      {p:'keep',l:'Keep (count)',t:'number',min:1,max:365,tip:'How many snapshots to retain before rotating out the oldest (1–365).'},
-      {p:'include_secrets',l:'Include .env',t:'toggle',tip:'Bundle the .env (secrets) into the backup. Off by default — only enable if the backup target is secure.'},
-    ]}]},
-    'bulk-pricing':{ title:'Bulk pricing', groups:[{name:null,fields:[
-      {p:'min_price_aud',l:'Min price (A$)',t:'number',tip:'Absolute floor for any bulk-listed card.'},
-      {p:'market_threshold_aud.default',l:'Market threshold (A$)',t:'number',tip:'At/above this the live market price is used; below it the conservative tier floor applies.'},
-    ]}], json:'tiers', jsonTip:'Per-game rarity/finish floor prices (AUD). Advanced — edit as JSON.' },
-    'ebay-listing':{ title:'eBay listing', groups:[
-      {name:null,fields:[
+
+    'ebay-listing':{ title:'eBay listing', section:'listing', groups:[
+      {name:'Warehouse &amp; handling',anchor:'listing-warehouse',fields:[
         {p:'location.postalCode',l:'Warehouse postcode',t:'text',tip:'AU postcode for the merchant inventory location. Required before the first listing (used to create the eBay inventory location).'},
         {p:'handlingDays',l:'Handling days',t:'number',min:0,max:3,tip:'Dispatch time in days (0–3). Kept ≤3 so Authenticity-Guarantee items stay eligible.'},
         {p:'returns.days',l:'Return window (days)',t:'number',min:30,max:60,tip:'How long a buyer has to request a return. eBay AU allows only 30 or 60. Only used when the tool has to <b>create</b> a return policy.'},
@@ -689,7 +1067,7 @@
          opts:[{v:0,l:'Band 1 — a slab follows its price like any card'},{v:1,l:'Band 2 — a graded card never travels untracked'},{v:2,l:'Band 3 — every slab is signed for'}],
          tip:'A graded slab fits the letter service physically, so without a floor a $20 PSA 8 would go untracked for $1.70. This lifts a slab to at least this band whatever it is worth. It only ever lifts: a dear slab keeps its own higher band.'},
       ]},
-      ...[0,1,2].map(i=>({name:'Postage band '+(i+1),fields:[
+      ...[0,1,2].map(i=>({name:'Postage band '+(i+1),anchor:'listing-band-'+(i+1),fields:[
         {p:`shipping.bands.${i}.label`,l:'Band name',t:'text',
          tip:'What you call this band in Settings and on the setup card. Buyers never see it.'},
         {p:`shipping.bands.${i}.maxCents`,l:'Applies up to (cents)',t:'number',min:1,
@@ -705,7 +1083,7 @@
          matchCentsFrom:`shipping.bands.${i}.costCents`,blank:'— not assigned —',
          tip:'Pick the policy that charges this band’s amount. Each option shows the amount and service it really uses, read live from eBay, and a ✓ marks the one whose price matches this band. Setup refuses to publish if they disagree.'},
       ]})),
-      {name:'Business policies',fields:[
+      {name:'Business policies',anchor:'listing-policies',fields:[
         {p:'policies.paymentPolicyId',l:'Payment policy',t:'select',src:'/api/listings/account/policies',kind:'payment',wide:true,
          tip:'Pick the policy you already use on eBay — <b>its</b> terms are what buyers see. “Let setup manage it” lets the tool create and keep its own instead, which is what put 30-day returns and parcel post on the first API listing.'},
         {p:'policies.returnPolicyId',l:'Return policy',t:'select',src:'/api/listings/account/policies',kind:'return',wide:true,
@@ -714,7 +1092,7 @@
         {p:'payments.immediatePay',l:'Require immediate payment',t:'toggle',
          tip:'What the payment policy above <b>should</b> say. Nothing here edits eBay — the account check warns when the live policy disagrees.<br><br><b>On:</b> the buyer pays at checkout or does not buy. Nothing is ever held against money that has not arrived.<br><b>Off:</b> a buyer can ask for a combined total and be sent one invoice with one lot of postage. The cost is that a single-quantity card can sit committed-but-unpaid for up to 4 days.<br><br>Invoice requests need this <b>off</b>: an immediate-payment listing never produces an unpaid order, so there is nothing to invoice.'},
       ]},
-      {name:'Store category',fields:[
+      {name:'Store category',anchor:'listing-store',fields:[
         {p:'store.defaultCategory',l:'Default store category',t:'select',src:'/api/listings/store/categories',wide:true,blank:'— none (eBay files it under “Other”) —',
          tip:'Full path of the storefront department, e.g. <b>/Trading Card Games</b>. Leave it unset and eBay files every listing under “Other” — which is where the first API listing landed, the only one of 163 items outside Trading Card Games. Read live from your storefront.'},
         // Keyed by the game codes lib/channels/ebay-map.mjs knows (cats.games), spelled the way the
@@ -727,27 +1105,29 @@
         {p:'store.sealedCategory',l:'Pokémon sealed',t:'select',src:'/api/listings/store/categories',wide:true,blank:'— use the Pokémon department above —',
          tip:'Storefront department for SEALED Pokémon product (booster packs, bundles and boxes). Separate from the Pokémon row above, which is keyed by game and would otherwise file a booster box under Singles.'},
       ]},
-      {name:'Best Offer defaults',fields:[
-        // Best Offer fields removed: this tool no longer publishes offer terms, so a toggle here would
-        // configure nothing. (The old 'Best Offer on by default' tip claimed it prefilled the uploader
-        // screen — it never did; neither front end has ever read config.bestOffer.) The block survives
-        // in ebay-listing.config.json as the record of the decision, and lib/status.mjs refuses to save
-        // it as true. Scaling floors on the HAND-MADE listings that still have offers on is a different
-        // setting, and it is under Repricer.
+      // Was a NAMED GROUP WITH NO FIELDS — a bare heading that read like a broken section. The two
+      // percentages are still live because the repricer speaks in them when it scales a floor on one
+      // of the hand-made listings that does have offers on, so they belong on screen, said plainly.
+      {name:'Best Offer floors',anchor:'listing-bestoffer',fields:[
+        {p:'bestOffer.autoAcceptPct',l:'Auto-accept %',t:'number',min:1,max:100,
+         tip:'<b>This tool no longer publishes Best Offer terms</b> — a haggle is answered with an invoice instead, and <code>bestOffer.enabled: true</code> is refused on save. What survives is this pair, because the <b>repricer</b> uses them when “Scale Best Offer floors” is on: a raise carries the existing floor up by the same ratio on the HAND-MADE listings that still have offers enabled. Percentage of the list price at which an offer is accepted outright.'},
+        {p:'bestOffer.autoDeclinePct',l:'Auto-decline %',t:'number',min:0,max:100,
+         tip:'Percentage of the list price below which an offer is declined outright. Each number is separately legal, so only the PAIR can be wrong: eBay rejects an auto-accept below the auto-decline (error 25002), and the save is refused rather than the listing failing.'},
       ]},
-      {name:'Generic trailing image',fields:[
+      {name:'Generic trailing image',anchor:'listing-generic',fields:[
         {p:'genericImage.enabled',l:'Append follow-us image',t:'toggle',tip:'Add a configurable generic image as the LAST photo on every listing (uploaded once to eBay, cached).'},
         {p:'genericImage.path',l:'Image file path',t:'text',wide:true,tip:'Absolute path on the server to the generic image (JPG/PNG).'},
       ]},
     ]},
-    'listing-image':{ title:'Listing images (branded rails)', groups:[{name:null,fields:[
+
+    'listing-image':{ title:'Listing images', section:'listing', groups:[{name:'Branded rails',anchor:'images-rails',fields:[
       {p:'enabled',l:'Branded rails',t:'toggle',tip:'<b>Master switch.</b> When on, listing photos are composed into the square branded frame (store mark + set art + card number on the rails) before upload. Off = photos go up untouched. Geometry is tuned in the <a href="/listing-image-lab.html">listing image lab</a>; saving there is deliberate and separate.'},
       {p:'applyTo.catalogArt',l:'Brand catalog art',t:'toggle',tip:'Apply the rails to stock CDN card art (Near Mint listings that use the catalog scan).'},
       {p:'applyTo.ownerPhotos',l:'Brand owner photos',t:'toggle',tip:'Apply the rails to your own photos (played cards, slabs) at upload time.'},
       {p:'promoStar',l:'Promo star style',t:'select',wide:true,
        opts:[{v:'inverted',l:'Inverted — white star (for the dark rails)'},{v:'normal',l:'Normal — the art’s own black'}],
        tip:'Black Star Promo listings wear the PROMO star on the left rail (and the description masthead). The art comes off the CDN <b>black</b>, and the default rails are near-black purple — <b>inverted</b> redraws it white so it actually reads. Pick normal only for rail art with a light background. Flipping this re-composes and re-uploads every promo listing on its next pass.'},
-    ]},{name:'Shopify frames',fields:[
+    ]},{name:'Shopify frames',anchor:'images-shopify',fields:[
       {p:'shopify.enabled',l:'Shopify frames',t:'toggle',tip:'<b>A second master switch, independent of the one above.</b> eBay crops gallery thumbs to a square, so a portrait card letterboxes and the side rails fill the dead columns. Shopify’s grid is <b>63:88 — the card’s own ratio</b>, so there is no dead space; these frames make some deliberately, as a branded band across the top and the bottom carrying the card’s name, set and number. Off = nothing is emitted for Shopify and eBay is untouched either way.'},
       {p:'shopify.quality',l:'Shopify JPEG quality',t:'number',min:1,max:100,tip:'88 matches the eBay compositor. Shopify re-encodes and serves modern formats itself, so this is the <i>last</i> lossy step rather than the first — do not pre-convert to WebP, or the image loses quality twice.'},
       {p:'shopify.bandFraction',l:'Band thickness',t:'number',min:0.02,max:0.3,tip:'Band depth as a fraction of the frame’s long edge. <b>0.093</b> gives a 196px band on the 1512×2112 tile, leaving a 1512×1720 card box — a card lands there at 1230×1720 with plum on all four sides. Thicker bands hold bigger type and a smaller card. Refused at save time if it leaves no room for the card.'},
@@ -756,8 +1136,60 @@
       {p:'shopify.og.cardPaddingY',l:'Social card padding Y',t:'number',min:0,max:200,tip:'Vertical breathing room on the social card. 38 is the eBay layout’s 96/1600 ratio applied to 630.'},
       {p:'shopify.og.cardPaddingX',l:'Social card padding X',t:'number',min:0,max:300,tip:'Gap between the rails’ inner edge and the card. The gradient shows through it, so this is a mat of plum rather than white.'},
     ]}]},
-  };
 
+    backup:{ title:'Backups', section:'system', groups:[{name:'Snapshots',anchor:'backup',fields:[
+      {p:'enabled',l:'Scheduled backups',t:'toggle',tip:'Take VACUUM-INTO snapshots of the money-bearing databases on a timer.'},
+      {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to snapshot the databases.'},
+      {p:'keep',l:'Keep (count)',t:'number',min:1,max:365,tip:'How many snapshots to retain before rotating out the oldest (1–365).'},
+      {p:'include_secrets',l:'Include .env',t:'toggle',tip:'Bundle the .env (secrets) into the backup. Off by default — only enable if the backup target is secure.'},
+      {p:'include_images',l:'Mirror pre-grade images',t:'toggle',def:true,
+       tip:'Copy new files from <b>data/pregrade-images</b> into a mirror beside the snapshots. These are scans and microscope shots of raw cards and are <b>not regenerable</b> — once the card is sleeved, submitted or sold there is no second take. The mirror is append-only, content-addressed and shared by every snapshot (a full report is ~7MB, so a copy per snapshot would run to hundreds of gigabytes), and rotation never touches it. Absent in the file means ON.'},
+    ]}]},
+
+    // The pre-grader's economic model. Curated on purpose: this form writes prices, availability,
+    // turnarounds, marketFactor, FX and the per-batch submission costs — the half of the file that
+    // goes stale on a schedule nobody controls. The tolerances underneath (centering bands, pillar
+    // weights, ten-tiers) are the model's physics and are shown read-only; the server validates them
+    // on every save regardless, so a hand-edit that breaks one can never come back through here.
+    'grading-economics':{ title:'Grading economics', section:'pregrade',
+      groups(c){
+        const co=Object.keys(c.companies||{}).sort();
+        const g=[
+          {name:'Exchange rate &amp; marketplace fee',anchor:'grading-fx',fields:[
+            {p:'fx.audUsd',l:'AUD → USD',t:'number',min:0.01,max:9.99,
+             tip:'Multiply AUD by this to get USD. Every AUD figure in a grade report hangs off it, and it is <b>hand-maintained</b> — the live source it names (Frankfurter, ECB daily fixing) is a probe row under <a href="#sources">Sources</a>, but nothing writes this number for you. It is a MID-MARKET rate: the card the fees are actually paid with lands 2–4% worse.'},
+            {p:'fx.asOf',l:'Rate read on',t:'text',
+             tip:'<code>YYYY-MM-DD</code>. This is the field that tells a reader how much to trust the rate above, so it is refused if it is not a date. Update both together.'},
+            {p:'marketplaceFeePct',l:'Marketplace fee %',t:'number',min:0,max:100,
+             tip:'What the marketplace takes when the graded card sells, subtracted in the “should I grade it?” maths. 13 is the eBay AU managed-payments rate this store pays.'},
+          ]},
+          {name:'Submission costs (per BATCH)',anchor:'grading-costs',fields:[
+            {p:'submissionCosts.shippingUsd',l:'Outbound shipping (USD)',t:'number',min:0,
+             tip:'AU → US, <b>per batch, not per card</b> — that is the whole point of this block. One card carries the entire ~$130 round trip; thirty share it. An estimate: Australia Post Zone 3 for a ~500g parcel, converted at the rate above.'},
+            {p:'submissionCosts.insurancePct',l:'Insurance %',t:'number',min:0,max:100,
+             tip:'Australia Post Extra Cover — AUD 4.00 per AUD 100 (or part thereof) of declared value, i.e. 4%, with an AUD 5,000 ceiling above which the outbound leg cannot be fully covered at any price.'},
+            {p:'submissionCosts.returnShippingUsd',l:'Return shipping (USD)',t:'number',min:0,
+             tip:'Also per batch. Sourced and exact for PSA (published international return chart, 10–19 items at the $15,000 insured band) and used as the stand-in for the other four, because only PSA publishes a chart. <b>PCG is exempt from this entire block</b> — it is a domestic AU submission with no international leg.'},
+          ]},
+          {name:'Resale factor per company',anchor:'grading-factor',fields:co.map(code=>({
+            p:'companies.'+code+'.marketFactor',l:code,t:'number',min:0.01,max:2,
+            tip:'What a '+code+' slab realises against the <b>same grade from PSA</b>, which is 1.0 by definition because that is where the comps are. Everything except PSA is an ESTIMATE drawn from published hobby analysis, not exchange data — and for BGS a single number is actively misleading, since Black Label 10s command a large premium while lower BGS grades trade at a discount. The file carries the reasoning per company in <code>_marketFactorNote</code>.'})),
+          },
+        ];
+        for(const code of Object.keys(c.fees||{}).filter(k=>!k.startsWith('_'))){
+          g.push({name:code+' tiers',anchor:'grading-fees-'+code.toLowerCase(),
+            find:'fee price turnaround availability paused minimum bulk tier '+code,
+            custom:(ctx,cfg,body)=>feeMatrix(ctx,cfg,code,body)});
+        }
+        return g;
+      },
+      extras:[
+        {name:'Tolerances &amp; weights',anchor:'grading-tolerances',find:'centering bands pillar weights tolerance grade gates ten tiers disclaimers read-only',
+         html:(c)=>gradingReadOnly(c)},
+      ],
+    },
+
+  };
   const getP=(o,p)=>p.split('.').reduce((x,k)=>x==null?x:x[k],o);
   // A NUMERIC next segment means this level is an ARRAY, not an object. Creating an object here is how
   // "shipping.bands.0.costCents" silently saves as {bands:{"0":…}}: it parses, it saves, the PUT is
@@ -791,7 +1223,7 @@
     const cur=getP(c,f.p);
     if(f.t==='toggle'){
       const row=el('<label class="tog"><input type="checkbox"><span class="sw"></span><span class="lbl"><b>'+f.l+'</b>'+inf(f.tip)+'</span></label>');
-      const cb=row.querySelector('input'); cb.checked=!!cur; inputs[f.p]=()=>cb.checked;
+      const cb=row.querySelector('input'); cb.checked=(cur==null?!!f.def:!!cur); inputs[f.p]=()=>cb.checked;
       return {node:row,wide:true};
     }
     const cell=el('<div class="field'+(f.wide?' wide':'')+'"><label>'+esc(f.l)+inf(f.tip)+'</label></div>');
@@ -822,6 +1254,13 @@
       inputs[f.p]=f.num?(()=>input.value===''?null:+input.value):(()=>input.value);
     }
     else if(f.t==='textarea'){ input=document.createElement('textarea'); input.value=cur??''; inputs[f.p]=()=>input.value; }
+    // A comma-separated list that saves as a real ARRAY. `holidays` is validated as an array, so a
+    // plain text field here would save a string and be refused with a message about a key the owner
+    // never typed.
+    else if(f.t==='list'){ input=document.createElement('input'); input.type='text';
+      input.value=Array.isArray(cur)?cur.join(', '):(cur??'');
+      input.placeholder='2026-04-25, 2026-12-25';
+      inputs[f.p]=()=>String(input.value).split(',').map(s=>s.trim()).filter(Boolean); }
     // f.def is what the CODE falls back to when the key is absent. Showing it beats showing blank: a
     // config file written before a setting existed would otherwise render an empty box for a knob
     // that is very much doing something, and the honest reading of an empty box is "no value".
@@ -831,6 +1270,304 @@
     return {node:cell,wide:f.wide};
   }
 
+  /* ---- the fee matrix: one row per TIER, because price / turnaround / minimum / orderable are
+     four facts about the same product and reading them apart is how a paused tier keeps getting
+     quoted. `available:false` rows are kept and dimmed rather than hidden — they are the record of
+     what the tier costs when it reopens. ---- */
+  function feeMatrix(ctx,c,code,body){
+    const tiers=(c.fees&&c.fees[code])||[];
+    const box=el('<div class="scrollx"><table class="matrix"><thead><tr>'+
+      '<th>Tier</th><th class="n">Price</th><th class="n">Days</th><th class="n">Min cards</th><th>Orderable</th></tr></thead><tbody></tbody></table></div>');
+    const tb=box.querySelector('tbody');
+    tiers.forEach((t,i)=>{
+      const base='fees.'+code+'.'+i+'.';
+      // Built cell by cell rather than from a string: innerHTML on a <div> silently DROPS a bare
+      // <tr>, so el('<tr>…') hands back null and the whole card render dies.
+      const tr=document.createElement('tr');
+      const tds=['nm','n','n','n',''].map(cls=>{ const td=document.createElement('td'); if(cls) td.className=cls; tr.appendChild(td); return td; });
+      const aud=t.priceAud!=null?' <span class="dim">A$'+esc(t.priceAud)+'</span>':'';
+      tds[0].innerHTML='<b>'+esc(t.tier||('tier '+(i+1)))+'</b>'+aud+
+        (t.note?inf('<b>'+esc(t.tier)+'</b> — '+esc(String(t.note)).slice(0,700)):'')+
+        (t.maxValueUsd!=null?'<div class="dim" style="font-size:10.5px;font-family:var(--mono)">insured to $'+esc(t.maxValueUsd)+'</div>':'');
+      const mk=(td,path,val,step,ph)=>{
+        const inp=document.createElement('input'); inp.type='number'; inp.step=step||'any'; inp.value=val??''; if(ph)inp.placeholder=ph;
+        inp.setAttribute('aria-label',code+' '+(t.tier||i)+' '+path.split('.').pop());
+        td.appendChild(inp); ctx.inputs[path]=()=>inp.value===''?null:+inp.value;
+      };
+      mk(tds[1],base+'price',t.price,'0.01');
+      mk(tds[2],base+'turnaroundDays',t.turnaroundDays,'1');
+      mk(tds[3],base+'minCards',t.minCards,'1','—');
+      const tg=el('<label class="tog mini"><input type="checkbox"><span class="sw"></span></label>');
+      const cb=tg.querySelector('input'); cb.checked=t.available!==false;
+      cb.setAttribute('aria-label',code+' '+(t.tier||i)+' orderable');
+      ctx.inputs[base+'available']=()=>cb.checked;
+      tds[4].appendChild(tg);
+      if(t.available===false) tr.style.opacity='.62';
+      tb.appendChild(tr);
+    });
+    body.appendChild(box);
+    body.appendChild(el('<div class="savenote" style="margin-top:10px;line-height:1.5;">Prices are USD per card'+
+      (code==='PCG'?' (PCG publishes in AUD — the AUD figure beside each tier is the published truth and the USD is derived at the rate above)':'')+
+      ' · days are on-site BUSINESS days and exclude transit, which adds roughly 1–2 weeks each way from Australia · '+
+      'a tier switched off is kept, dimmed, and still carries its price for when it reopens.</div>'));
+  }
+
+  /* ---- what the form deliberately does NOT write: the tolerances the prediction is made of. ---- */
+  function gradingReadOnly(c){
+    const cos=Object.keys(c.companies||{}).sort();
+    const w=cos.map(code=>{
+      const pw=(c.companies[code]||{}).pillarWeights||{};
+      return '<tr><td class="nm">'+esc(code)+'</td>'+['centering','corners','edges','surface'].map(p=>'<td class="n">'+esc(pw[p]??'—')+'</td>').join('')+
+        '<td class="n">'+esc(Math.round(Object.values(pw).reduce((a,b)=>a+(+b||0),0)*1000)/1000)+'</td></tr>';
+    }).join('');
+    const bands=cos.map(code=>{
+      const rows=(c.centering&&c.centering[code])||[];
+      return '<div class="kvhead">'+esc(code)+' centering — max larger-side % on the worst axis</div>'+
+        '<div class="scrollx"><table class="matrix"><thead><tr><th>Grade</th><th class="n">Front</th><th class="n">Back</th></tr></thead><tbody>'+
+        rows.map(b=>'<tr><td class="nm">'+esc(b.grade)+'</td><td class="n">'+esc(b.front)+'</td><td class="n">'+esc(b.back??'—')+'</td></tr>').join('')+
+        '</tbody></table></div>';
+    }).join('');
+    return '<div class="savenote" style="margin-bottom:10px;line-height:1.5;">These are the model’s physics, not facts about the market, so they are read-only here and edited on disk. '+
+      'The server still validates them on <b>every</b> save from this page: the roster must stay the five companies, each set of pillar weights must sum to exactly 1, and every centering table must run best to worst without a worse grade being the tighter band.</div>'+
+      '<div class="kvhead">Pillar weights</div>'+
+      '<div class="scrollx"><table class="matrix"><thead><tr><th>Company</th><th class="n">Centering</th><th class="n">Corners</th><th class="n">Edges</th><th class="n">Surface</th><th class="n">Σ</th></tr></thead><tbody>'+w+'</tbody></table></div>'+
+      bands+
+      '<div class="kvhead">Disclaimers carried into every report</div>'+
+      '<ol style="margin:0;padding-left:18px;font-size:12px;color:var(--muted);line-height:1.55;">'+
+        (c.disclaimers||[]).map(d=>'<li style="margin-bottom:5px;">'+esc(d)+'</li>').join('')+'</ol>';
+  }
+
+  /* ---------------- the settings engine ---------------- */
+  function cardShell(title,note,anchor,find){
+    const card=el('<div class="card"><h3><span class="ttl">'+title+'</span><span class="h-note">'+esc(note)+'</span></h3><div class="cbody"></div></div>');
+    // textContent, not the source string: group names carry entities (&amp;) and the rail would
+    // otherwise print them raw after a second escaping pass.
+    if(anchor){ card.id='c-'+anchor; card.setAttribute('data-rail',card.querySelector('.ttl').textContent.trim()); }
+    card.setAttribute('data-find',find.toLowerCase());
+    return card;
+  }
+  function groupCard(ctx,g,c){
+    const find=[ctx.spec.title,g.name,ctx.f.file,ctx.name,g.find||''].concat(
+      (g.fields||[]).map(f=>f.l+' '+f.p+' '+stripTags(f.tip||''))).join(' ');
+    const card=cardShell(g.name,ctx.f.file,g.anchor,stripTags(find));
+    const body=card.querySelector('.cbody');
+    if(g.custom){ g.custom(ctx,c,body); return card; }
+    const rowGrid=el('<div class="frow"></div>');
+    for(const fld of g.fields){
+      const {node}=fieldCtl(fld,c,ctx.inputs);
+      if(fld.t==='toggle'){ node.classList.add('field'); node.style.gridColumn='1/-1'; }
+      rowGrid.appendChild(node);
+    }
+    body.appendChild(rowGrid);
+    return card;
+  }
+
+  function snapshot(ctx){
+    const vals={};
+    for(const [p,get] of Object.entries(ctx.inputs)){ try{ vals[p]=JSON.stringify(get()); }catch(e){ vals[p]='?'; } }
+    return {vals,bakes:ctx.bakesBox?JSON.stringify([...ctx.bakesBox.querySelectorAll('input:checked')].map(x=>x.dataset.bake)):null,
+      json:ctx.jsonBox?ctx.jsonBox.value:null};
+  }
+  function dirtyCount(ctx){
+    const now=snapshot(ctx), was=ctx.baseline; let n=0;
+    for(const p of Object.keys(now.vals)) if(now.vals[p]!==was.vals[p]) n++;
+    if(now.bakes!==was.bakes) n++;
+    if(now.json!==was.json) n++;
+    return n;
+  }
+  function markDirty(ctx){
+    const n=dirtyCount(ctx);
+    ctx.bar.classList.toggle('on',n>0);
+    ctx.dirtyEl.textContent=n===0?'no changes':(n+' change'+(n===1?'':'s')+' not saved');
+    ctx.dirty=n;
+    updateRailDirty();
+  }
+
+  function buildFile(name,spec,f,host){
+    const c=JSON.parse(JSON.stringify(f.content));
+    const ctx={name,spec,f,inputs:{},bakesBox:null,jsonBox:null,bar:null,dirtyEl:null,note:null,dirty:0,section:spec.section};
+    const block=el('<div class="fileblock" id="file-'+name+'"></div>');
+    const grid=el('<div class="grid g2"></div>');
+    block.appendChild(grid);
+    const groups=typeof spec.groups==='function'?spec.groups(c):(spec.groups||[]);
+    for(const g of groups){
+      if(!g.custom && !(g.fields||[]).length) continue;   // a named group with no fields is a bare heading — never render one
+      grid.appendChild(groupCard(ctx,g,c));
+    }
+    // refresh bakes checklist — registry-driven, so a new bake appears on its own
+    if(spec.bakes){
+      const card=cardShell('Catalogs to bake',f.file,'refresh-bakes','catalogs bake checklist riftbound pokemon funko refresh');
+      const body=card.querySelector('.cbody');
+      body.appendChild(el('<div class="savenote" style="margin-bottom:8px;">Each registered catalog. Tick the ones the auto-refresh should keep fresh.</div>'));
+      ctx.bakesBox=el('<div></div>');
+      for(const b of (SETTINGS.bakes||[])){
+        const t=el('<label class="tog"><input type="checkbox" data-bake="'+esc(b.name)+'"><span class="sw"></span><span class="lbl"><b>'+esc(b.label||b.name)+'</b><span class="h-note">'+esc(b.name)+'</span></span></label>');
+        t.querySelector('input').checked=(c.bakes||[]).includes(b.name);
+        ctx.bakesBox.appendChild(t);
+      }
+      body.appendChild(ctx.bakesBox);
+      grid.appendChild(card);
+    }
+    // advanced JSON blob — inside a <details> that ships OPEN, so find-in-page still reaches it and
+    // Firefox (which does not auto-expand details on find) is never hiding anything by default.
+    if(spec.json){
+      const card=cardShell('Advanced: '+esc(spec.json),f.file,null,('advanced json '+spec.json+' '+stripTags(spec.jsonTip||'')).toLowerCase());
+      const body=card.querySelector('.cbody');
+      const det=el('<details class="blob" open><summary>'+esc(spec.json)+' (raw JSON)</summary></details>');
+      const cell=el('<div class="field jsonf wide"><label>'+esc(spec.json)+inf(spec.jsonTip||'')+'</label></div>');
+      ctx.jsonBox=document.createElement('textarea');
+      ctx.jsonBox.value=JSON.stringify(getP(c,spec.json)??{},null,2);
+      cell.appendChild(ctx.jsonBox); det.appendChild(cell); body.appendChild(det);
+      grid.appendChild(card);
+    }
+    // read-only companions (the grading tolerances) — same card language, no inputs
+    for(const x of (spec.extras||[])){
+      const card=cardShell(x.name,f.file+' · read-only',x.anchor,(x.name+' '+(x.find||'')).toLowerCase());
+      card.querySelector('.cbody').innerHTML=x.html(c);
+      grid.appendChild(card);
+    }
+    // A nudge, not a block. These config files are SERVER-OWNED and owner-edited, so a wording the
+    // owner changed by hand is theirs — rewriting it on their behalf would silently discard a
+    // decision. What the app can honestly do is point out when a saved template still promises
+    // something the shop no longer offers.
+    if(spec.warn){ const w=spec.warn(c); if(w) block.appendChild(el('<div style="margin-top:12px;"><span class="lock" style="color:var(--amber);border-color:rgba(240,192,74,.4);">⚠ '+esc(w)+'</span></div>')); }
+    if(spec.locked) block.appendChild(el('<div style="margin-top:12px;"><span class="lock">🔒 '+esc(spec.locked)+'</span></div>'));
+
+    // ONE bar per file. It says which file it writes, because the cards above it are spread across
+    // the section and the PUT replaces the whole thing.
+    const bar=el('<div class="savebar"><span class="who">'+esc(spec.title)+'</span>'+
+      '<span class="h-note">'+esc(f.file)+'</span>'+
+      '<span class="dcount">no changes</span><span class="savenote"></span>'+
+      '<button class="btn ghost" type="button">Revert</button>'+
+      '<button class="btn go" type="button">Save '+esc(spec.title.toLowerCase())+'</button></div>');
+    ctx.bar=bar; ctx.dirtyEl=bar.querySelector('.dcount'); ctx.note=bar.querySelector('.savenote');
+    const [revertBtn,saveBtn]=bar.querySelectorAll('button');
+    // Scoped to THIS file. Re-rendering everything would also throw away unsaved edits in a config
+    // the owner never touched — a revert has to mean the file whose bar you pressed.
+    revertBtn.onclick=()=>{
+      if(ctx.dirty && !window.confirm('Discard '+ctx.dirty+' unsaved change'+(ctx.dirty===1?'':'s')+' to '+f.file+'?')) return;
+      const after=block.nextSibling;
+      const fresh=buildFile(name,spec,f,host);   // appended at the end…
+      host.insertBefore(fresh.block,after);      // …then moved back into place
+      block.remove();
+      const i=FILECTX.indexOf(ctx); if(i>=0) FILECTX[i]=fresh;
+      buildRail(); applyFilter($('find')?$('find').value:'');
+    };
+    saveBtn.onclick=()=>saveFile(ctx,saveBtn);
+    block.appendChild(bar);
+    host.appendChild(block);
+    ctx.block=block;
+    ctx.baseline=snapshot(ctx);
+    block.addEventListener('input',()=>markDirty(ctx));
+    block.addEventListener('change',()=>markDirty(ctx));
+    return ctx;
+  }
+
+  async function saveFile(ctx,btn){
+    const {name,spec,f,note}=ctx;
+    btn.disabled=true;
+    const body=JSON.parse(JSON.stringify(f.content));   // start from disk → unknown keys survive
+    for(const [p,get] of Object.entries(ctx.inputs)) setP(body,p,get());
+    if(ctx.bakesBox) body.bakes=[...ctx.bakesBox.querySelectorAll('input:checked')].map(x=>x.dataset.bake);
+    if(ctx.jsonBox){ try{ setP(body,spec.json,JSON.parse(ctx.jsonBox.value)); }
+      catch(err){ note.style.color='var(--red)'; note.textContent='bad JSON: '+err.message; btn.disabled=false; return; } }
+    note.style.color='var(--faint)'; note.textContent='saving…';
+    try{
+      const r=await fetch('/api/settings/'+name,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+      const j=await r.json();
+      if(r.ok){
+        f.content=j.content;
+        note.style.color='var(--green)'; note.textContent='✓ '+(j.applied||'saved');
+        ctx.baseline=snapshot(ctx); markDirty(ctx);
+        refreshLive();
+      } else {
+        // A refused save is the whole point of the validator: the file on disk is byte-identical and
+        // the message says which invariant said no.
+        note.style.color='var(--red)'; note.textContent='refused — '+(j.error||('HTTP '+r.status));
+      }
+    }catch(err){ note.style.color='var(--red)'; note.textContent=String(err&&err.message||err); }
+    finally{ btn.disabled=false; }
+  }
+
+  let FILECTX=[];
+  function renderSettings(){
+    FILECTX=[];
+    for(const s of SECTIONS){ const h=$('host-'+s.id); if(h) h.innerHTML=''; }
+    const files=SETTINGS.files||{};
+    for(const [name,spec] of Object.entries(SPEC)){
+      const f=files[name]; if(!f||!f.content) continue;
+      const host=$('host-'+spec.section); if(!host) continue;
+      FILECTX.push(buildFile(name,spec,f,host));
+    }
+    renderRegistries();
+    buildRail();
+    applyFilter($('find')?$('find').value:'');
+  }
+  /* ---------------- system: databases, process health, read-only registries ---------------- */
+  function renderRegistries(){
+    const box=$('sysCards'); if(!box) return; box.innerHTML='';
+    const d=STATUS.dbs||{}, t=d.tracker||{}, inv=d.inventory||{}, rep=d.repricer||{}, ps=d.postsale||{};
+    const mb=(v)=>v==null?'—':v+' MB';
+    const db=el('<div class="card" id="c-databases"><h3><span class="ttl">Databases</span><span class="h-note">sqlite · live counts</span></h3>'+
+      '<div class="kvhead">tracker.db</div>'+
+      '<div class="kv"><span class="k">Watchlist / snapshots</span><span class="v">'+esc(t.watchlist??0)+' / '+esc(t.snapshots??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Signals unacknowledged</span><span class="v'+((t.signals_pending||0)>0?' warn':'')+'">'+esc(t.signals_pending??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Last collector pass</span><span class="v dim">'+esc(t.last_pass_at?ago(t.last_pass_at):'never')+'</span></div>'+
+      '<div class="kv"><span class="k">Stock items</span><span class="v">'+esc(inv.items??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Grading submissions open</span><span class="v">'+esc(inv.submissions_open??0)+'</span></div>'+
+      '<div class="kv"><span class="k">eBay listings active</span><span class="v">'+esc(inv.ebay_listings_active??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Size</span><span class="v dim">'+mb(t.size_mb)+'</span></div>'+
+      '<div class="kvhead">repricer.db</div>'+
+      '<div class="kv"><span class="k">Price checks</span><span class="v">'+esc(rep.price_checks??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Proposals pending</span><span class="v'+((rep.proposals_open||0)>0?' warn':'')+'">'+esc(rep.proposals_open??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Size</span><span class="v dim">'+mb(rep.size_mb)+'</span></div>'+
+      '<div class="kvhead">postsale.db</div>'+
+      '<div class="kv"><span class="k">Orders / buyers</span><span class="v">'+esc(ps.orders??0)+' / '+esc(ps.buyers??0)+'</span></div>'+
+      '<div class="kv"><span class="k">To pack</span><span class="v">'+esc(ps.to_pack??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Messages pending / awaiting</span><span class="v">'+esc(ps.messages_pending??0)+' / '+esc(ps.messages_awaiting??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Holds'+inf('An order that needs a decision before it can be packed. <b>Unacknowledged</b> means a pinned alert nobody has cleared.')+'</span><span class="v'+((ps.holds||0)>0?' warn':'')+'">'+esc(ps.holds??0)+' <span class="dim">('+esc(ps.unacked_holds??0)+' unacked)</span></span></div>'+
+      '<div class="kv"><span class="k">Cancelled / label bought</span><span class="v">'+esc(ps.cancelled??0)+' / '+esc(ps.label_bought??0)+'</span></div>'+
+      '<div class="kv"><span class="k">Size</span><span class="v dim">'+mb(ps.size_mb)+'</span></div></div>');
+    db.setAttribute('data-rail','Databases'); db.setAttribute('data-find','databases sqlite tracker repricer postsale rows size holds orders snapshots');
+    box.appendChild(db);
+
+    // Process health — both of these were in the payload and rendered nowhere.
+    const pl=STATUS.plugins||{}, li=(STATUS.subsystems||{}).listing_image||{}, v=STATUS.version||{};
+    const stale=pl.stale===true;
+    const liBad=!!(li.error||li.sharp===false||li.fontMismatch);
+    const ph=el('<div class="card" id="c-process"><h3><span class="ttl">Process health</span><span class="h-note">this running dev server</span></h3>'+
+      '<div class="kv"><span class="k">Version / commit</span><span class="v">'+esc(v.pkg||'—')+' · '+esc(v.commit||'—')+'</span></div>'+
+      '<div class="kv"><span class="k">Node / uptime</span><span class="v">'+esc(v.node||'—')+' · '+esc(Math.round((v.uptime_s||0)/60))+'m</span></div>'+
+      '<div class="kv"><span class="k">Route plugins'+inf('Which routes THIS PROCESS owns. <b>stale</b> means the sources on disk have moved past the running server — a pulled commit does nothing until it restarts, and every other signal (git commit, loaded config) reads current while the routes are still missing.')+'</span>'+
+        '<span class="v">'+esc(pl.count??(Array.isArray(pl.plugins)?pl.plugins.length:'—'))+' registered '+(stale?pill('warn','stale — restart'):pill('ok','current'))+'</span></div>'+
+      (pl.missing&&pl.missing.length?'<div class="kv"><span class="k">Missing</span><span class="v bad">'+esc(pl.missing.join(', '))+'</span></div>':'')+
+      '<div class="kv"><span class="k">Image compositor'+inf('Branded listing images fail SILENTLY at runtime — no sharp binary, missing rail art, a font family that does not match the TTF. This is where it says which one.')+'</span>'+
+        '<span class="v">'+(liBad?pill('bad','check it'):pill('ok','ready'))+'</span></div>'+
+      (li.error?'<div class="kv"><span class="k">Compositor error</span><span class="v bad">'+esc(li.error)+'</span></div>':'')+
+      (li.font?'<div class="kv"><span class="k">Font</span><span class="v dim">'+esc(li.font.family||li.font)+'</span></div>':'')+
+      (li.sharp!=null?'<div class="kv"><span class="k">sharp</span><span class="v">'+esc(String(li.sharp))+'</span></div>':'')+
+      '<div class="kv"><span class="k">Probe cache</span><span class="v dim">'+esc(STATUS.probe_ttl_min)+'m</span></div></div>');
+    ph.setAttribute('data-rail','Process health'); ph.setAttribute('data-find','process health plugins stale restart compositor sharp font version commit node uptime');
+    box.appendChild(ph);
+
+    // read-only registry cards (collectr + the slab company registry). `grading` is the same file as
+    // Grading economics above, so it is not repeated here.
+    const files=(SETTINGS&&SETTINGS.files)||{};
+    for(const name of ['collectr','grading-companies']){
+      const f=files[name]; if(!f) continue;
+      const c=f.content||{};
+      const rows=name==='grading-companies'
+        ? (Array.isArray(c.companies)?'<div class="kv"><span class="k">Companies</span><span class="v">'+c.companies.length+'</span></div>'+
+            '<div class="kv"><span class="k">Codes</span><span class="v dim">'+esc(c.companies.map(x=>x.code||x.id||x.name).filter(Boolean).join(' '))+'</span></div>':'')
+        : '<div class="kv"><span class="k">Market currency'+inf('The currency Collectr’s “Market Price” column is displayed in for THIS account. AUD means no FX is applied on import.')+'</span><span class="v">'+esc(c.market_currency||'—')+'</span></div>';
+      const card=el('<div class="card"><h3><span class="ttl">'+esc(name)+'</span><span class="h-note">'+esc(f.file)+' · read-only</span></h3>'+
+        '<div class="kv"><span class="k">Editing'+inf('Edited on disk by the owner, not through this UI. A PUT on it is refused with 403.')+'</span><span class="v dim">on disk</span></div>'+rows+'</div>');
+      card.setAttribute('data-find',(name+' registry read-only '+f.file).toLowerCase());
+      box.appendChild(card);
+    }
+  }
+
+  /* ---------------- eBay listing bootstrap card ---------------- */
   // The physical stock-label series. Unseeded is the interesting state: it means new items are still
   // getting BK-* labels, because AAA-001 is already on a shelf somewhere and re-issuing it would
   // point a label at the wrong card. Reading eBay is the one-click way to continue the series.
@@ -884,6 +1621,17 @@
           : (r.error||'import failed');
       }catch(err){ b.disabled=false; b.textContent='Import from eBay'; }
     };
+  }
+
+  function renderEbaySetupHost(){
+    const box=$('ebSetupHost'); if(!box) return; box.innerHTML='';
+    const ebCard=el('<div class="card" id="c-listing-setup"><h3><span class="ttl">eBay listing setup</span><span class="h-note">one-time · /api/listings/account</span></h3>'+
+      '<div class="ebset-body"></div>'+
+      '<div class="actions"><span class="savenote ebset-note"></span><button class="btn go ebset-run" disabled>Run eBay listing setup</button></div></div>');
+    ebCard.setAttribute('data-rail','eBay setup');
+    ebCard.setAttribute('data-find','ebay listing setup bootstrap opt-in policies merchant location ready to list identity store category stock label mirror import');
+    box.appendChild(ebCard);
+    renderEbayListingSetup(ebCard);
   }
 
   async function renderEbayListingSetup(card){
@@ -995,85 +1743,6 @@
       finally{ btn.disabled=false; renderEbayListingSetup(card); }
     };
   }
-
-  function renderSettings(){
-    const box=$('settingsBox'); box.innerHTML=''; const files=SETTINGS.files||{};
-    // one-time eBay listing bootstrap (opt-in + business policies + merchant location)
-    const ebCard=el('<div class="card"><h3><span>eBay listing setup</span><span class="h-note">one-time · /api/listings/account</span></h3>'+
-      '<div class="ebset-body"></div>'+
-      '<div class="actions"><span class="savenote ebset-note"></span><button class="btn go ebset-run" disabled>Run eBay listing setup</button></div></div>');
-    box.appendChild(ebCard); renderEbayListingSetup(ebCard);
-    for(const [name,spec] of Object.entries(SPEC)){
-      const f=files[name]; if(!f||!f.content) continue;
-      const c=JSON.parse(JSON.stringify(f.content));
-      const card=el('<div class="card"><h3><span>'+spec.title+'</span><span class="h-note">'+esc(f.file)+'</span></h3></div>');
-      const inputs={};
-      for(const g of spec.groups){
-        const grp=el('<div class="fgroup"></div>');
-        if(g.name) grp.appendChild(el('<div class="fgroup-h">'+g.name+'</div>'));
-        const rowGrid=el('<div class="frow"></div>'); let togWrap=null;
-        for(const fld of g.fields){
-          const {node,wide}=fieldCtl(fld,c,inputs);
-          if(fld.t==='toggle'){ node.classList.add('field'); node.style.gridColumn='1/-1'; rowGrid.appendChild(node); }
-          else rowGrid.appendChild(node);
-        }
-        grp.appendChild(rowGrid); card.appendChild(grp);
-      }
-      // refresh bakes checklist
-      let bakesBox=null;
-      if(spec.bakes){
-        bakesBox=el('<div class="fgroup"><div class="fgroup-h">Catalogs to bake '+inf('Each registered catalog. Tick the ones the auto-refresh should keep fresh.')+'</div></div>');
-        for(const b of (SETTINGS.bakes||[])){
-          const t=el('<label class="tog"><input type="checkbox" data-bake="'+esc(b.name)+'"><span class="sw"></span><span class="lbl"><b>'+esc(b.label||b.name)+'</b><span class="h-note">'+esc(b.name)+'</span></span></label>');
-          t.querySelector('input').checked=(c.bakes||[]).includes(b.name);
-          bakesBox.appendChild(t);
-        }
-        card.appendChild(bakesBox);
-      }
-      // json advanced field
-      let jsonBox=null;
-      if(spec.json){
-        const cell=el('<div class="fgroup"><div class="field jsonf wide"><label>'+esc(spec.json)+' (JSON)'+inf(spec.jsonTip||'')+'</label></div></div>');
-        // A dotted path, not just a top-level key: the one advanced blob that most needs an editor is
-        // postage.services, and it is nested. getP/setP already speak paths.
-        jsonBox=document.createElement('textarea'); jsonBox.value=JSON.stringify(getP(c,spec.json)??{},null,2);
-        cell.querySelector('.field').appendChild(jsonBox); card.appendChild(cell);
-      }
-      // A nudge, not a block. These config files are SERVER-OWNED and owner-edited, so a wording the
-      // owner changed by hand is theirs — rewriting it on their behalf would silently discard a
-      // decision. What the app can honestly do is point out when a saved template still promises
-      // something the shop no longer offers.
-      if(spec.warn){ const w=spec.warn(c); if(w) card.appendChild(el('<div style="margin-top:12px;"><span class="lock" style="color:var(--amber);border-color:rgba(240,192,74,.4);">⚠ '+esc(w)+'</span></div>')); }
-      if(spec.locked) card.appendChild(el('<div style="margin-top:12px;"><span class="lock">🔒 '+esc(spec.locked)+'</span></div>'));
-      const actions=el('<div class="actions"><span class="savenote"></span><button class="btn go">Save '+esc(name)+'</button></div>');
-      const note=actions.querySelector('.savenote');
-      actions.querySelector('button').onclick=async(e)=>{
-        const btn=e.currentTarget; btn.disabled=true;
-        const body=JSON.parse(JSON.stringify(f.content));   // start from disk → unknown keys survive
-        for(const [p,get] of Object.entries(inputs)) setP(body,p,get());
-        if(bakesBox) body.bakes=[...bakesBox.querySelectorAll('input:checked')].map(x=>x.dataset.bake);
-        if(jsonBox){ try{ setP(body,spec.json,JSON.parse(jsonBox.value)); }catch(err){ note.style.color='var(--red)'; note.textContent='bad JSON: '+err.message; btn.disabled=false; return; } }
-        try{
-          const r=await fetch('/api/settings/'+name,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-          const j=await r.json();
-          if(r.ok){ f.content=j.content; note.style.color='var(--green)'; note.textContent='✓ '+(j.applied||'saved'); refreshLive(); }
-          else { note.style.color='var(--red)'; note.textContent=j.error||('HTTP '+r.status); }
-        }catch(err){ note.style.color='var(--red)'; note.textContent=String(err&&err.message||err); }
-        finally{ btn.disabled=false; }
-      };
-      card.appendChild(actions);
-      box.appendChild(card);
-    }
-    // read-only registry cards
-    for(const name of ['collectr','grading','grading-companies']){
-      const f=files[name]; if(!f) continue;
-      box.appendChild(el('<div class="card"><h3><span>'+esc(name)+'</span><span class="h-note">'+esc(f.file)+' · read-only</span></h3>'+
-        '<div class="kv"><span class="k">Editing '+inf('These are edited on disk by the owner, not via this UI.')+'</span><span class="v dim">on disk</span></div>'+
-        (name==='grading-companies'&&Array.isArray(f.content&&f.content.companies)?'<div class="kv"><span class="k">Companies</span><span class="v">'+f.content.companies.length+'</span></div>':'')+
-        (name==='grading'&&f.content&&f.content.companies&&typeof f.content.companies==='object'?'<div class="kv"><span class="k">Tolerance sets</span><span class="v">'+esc(Object.keys(f.content.companies).join(' '))+'</span></div>':'')+'</div>'));
-    }
-  }
-
   /* ---------------- DIAG token ---------------- */
   const DIAG_KEY='tcg_diag_token';
   function getDiagToken(force){
@@ -1115,15 +1784,107 @@
   $('logClear').onclick=()=>{ clearBefore=lastMaxT||new Date().toISOString(); $('conBody').innerHTML='<div class="con-empty">cleared — new lines will stream in.</div>'; };
   $('logLevel').querySelectorAll('button').forEach(b=>b.onclick=()=>{ logLevel=b.dataset.lvl; clearBefore=null; $('logLevel').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); pollLogs(); });
 
-  /* ---------------- scrollspy ---------------- */
+  /* ---------------- the rail ----------------
+     Two levels: every section, and — for the section you are in — the cards inside it. It is the
+     section rule turned vertical. It navigates only; nothing is ever hidden to make it work. */
+  const SECTIONS=[
+    {id:'overview',label:'Overview'},
+    {id:'pregrade',label:'Pre-grader'},
+    {id:'listing',label:'Listing'},
+    {id:'pricing',label:'Pricing'},
+    {id:'postsale',label:'Post-sale'},
+    {id:'notify',label:'eBay push'},
+    {id:'data',label:'Baked data'},
+    {id:'sources',label:'Sources'},
+    {id:'system',label:'System'},
+  ];
+  let activeSection='overview';
+  function buildRail(){
+    const rail=$('rail'); if(!rail) return;
+    rail.innerHTML='';
+    for(const s of SECTIONS){
+      const sec=$(s.id); if(!sec) continue;
+      const grp=el('<div class="rgroup" data-sec="'+s.id+'"></div>');
+      const anchors=[...sec.querySelectorAll('[data-rail]')].filter(n=>n.id);
+      grp.appendChild(el('<a class="rl sec" href="#'+s.id+'">'+esc(s.label)+'<span class="dot"></span>'+
+        (anchors.length?'<span class="cnt">'+anchors.length+'</span>':'')+'</a>'));
+      if(anchors.length){
+        const box=el('<div class="sub"></div>');
+        for(const n of anchors) box.appendChild(el('<a class="rl" href="#'+esc(n.id)+'">'+esc(n.getAttribute('data-rail'))+'</a>'));
+        grp.appendChild(box);
+      }
+      rail.appendChild(grp);
+    }
+    setActive(activeSection);
+    updateRailDirty();
+  }
+  function setActive(id){
+    activeSection=id;
+    for(const g of document.querySelectorAll('.rgroup')) g.classList.toggle('on',g.dataset.sec===id);
+    for(const a of document.querySelectorAll('.rl.sec')) a.classList.toggle('active',a.getAttribute('href')==='#'+id);
+  }
+  // An edit made at the bottom of a long section must not be lost by scrolling away from it.
+  function updateRailDirty(){
+    const bySection={};
+    for(const ctx of FILECTX) if(ctx.dirty) bySection[ctx.section]=(bySection[ctx.section]||0)+ctx.dirty;
+    for(const a of document.querySelectorAll('.rl.sec')){
+      const id=a.getAttribute('href').slice(1);
+      a.classList.toggle('dirty',!!bySection[id]);
+      a.title=bySection[id]?(bySection[id]+' unsaved change'+(bySection[id]===1?'':'s')+' in this section'):'';
+    }
+  }
   function initSpy(){
-    const links=[...document.querySelectorAll('.nav a')];
-    const map={}; links.forEach(a=>map[a.getAttribute('href').slice(1)]=a);
     const obs=new IntersectionObserver((ents)=>{
-      ents.forEach(e=>{ if(e.isIntersecting){ links.forEach(a=>a.classList.remove('active')); map[e.target.id]&&map[e.target.id].classList.add('active'); } });
+      ents.forEach(e=>{ if(e.isIntersecting) setActive(e.target.id); });
     },{rootMargin:'-45% 0px -50% 0px'});
     document.querySelectorAll('section').forEach(s=>obs.observe(s));
   }
+
+  /* ---------------- the finder ----------------
+     Nothing is hidden until the owner types. `data-find` carries the tooltip text too, so the
+     explanations — which live in attributes and were never reachable by Ctrl+F — become searchable. */
+  function applyFilter(qRaw){
+    const q=String(qRaw||'').trim().toLowerCase();
+    const items=[...document.querySelectorAll('[data-find]')];
+    let shown=0;
+    for(const n of items){
+      const hit=!q||n.getAttribute('data-find').indexOf(q)>=0;
+      n.style.display=hit?'':'none';
+      if(hit) shown++;
+    }
+    for(const s of document.querySelectorAll('section')){
+      const any=[...s.querySelectorAll('[data-find]')].some(n=>n.style.display!=='none');
+      s.style.display=(!q||any)?'':'none';
+    }
+    const t=$('findTally');
+    if(t) t.textContent=q?(shown+' of '+items.length+' cards'):'';
+  }
+  (function initFinder(){
+    const f=$('find'); if(!f) return;
+    f.addEventListener('input',()=>applyFilter(f.value));
+    f.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ f.value=''; applyFilter(''); f.blur(); } });
+    document.addEventListener('keydown',(e)=>{
+      if(e.key==='/'&&!/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName||''))){ e.preventDefault(); f.focus(); f.select(); }
+    });
+  })();
+
+  // A deep link is only useful if it still lands after the page has finished filling in. `auto`
+  // rather than smooth: a 4,000px smooth scroll that starts and then gets re-aimed twice reads as a
+  // page that cannot make up its mind.
+  function honourHash(){
+    if(!location.hash) return;
+    let t=null; try{ t=document.querySelector(location.hash); }catch(e){ return; }
+    if(!t) return;
+    // behavior:'auto' inherits the page's CSS `scroll-behavior:smooth`, and a 4,000px smooth scroll
+    // that is re-aimed twice while it animates simply never arrives. This jump is not motion the
+    // reader asked for, so it is a jump.
+    const root=document.documentElement, prev=root.style.scrollBehavior;
+    root.style.scrollBehavior='auto';
+    window.scrollTo(0,Math.max(0,window.scrollY+t.getBoundingClientRect().top-70));
+    root.style.scrollBehavior=prev;
+    const sec=t.closest('section'); if(sec) setActive(sec.id);
+  }
+  window.addEventListener('hashchange',honourHash);
 
   /* ---------------- load ---------------- */
   function renderVerline(){
@@ -1131,30 +1892,53 @@
     $('verline').innerHTML='v<b>'+esc(v.pkg)+'</b> · commit <b>'+esc(v.commit||'—')+'</b> · node <b>'+esc(v.node)+'</b> · up <b>'+Math.round((v.uptime_s||0)/60)+'m</b> · probes cached '+esc(STATUS.probe_ttl_min)+'m';
   }
   // Live panels only — safe to re-render on the timer (they hold no user input).
-  function renderLive(){ renderVerline(); renderBanners(); renderVitals(); renderSystems(); $('liveDot').style.background='var(--green)'; }
+  function renderLive(){ renderVerline(); renderBanners(); renderVitals(); renderSystems(); renderNotifyState(); renderPregradeTiles(); $('liveDot').style.background='var(--green)'; }
   // Timer path: refresh the status snapshot + live panels. NEVER re-renders the settings forms,
   // source probes or baked cards — doing so would wipe in-progress edits, focus and selection.
   async function refreshLive(){
-    try{ STATUS=await fetch('/api/status').then(r=>r.json()); renderLive(); }
+    try{ STATUS=await fetch('/api/status').then(r=>r.json()); renderLive(); applyFilter($('find')?$('find').value:''); }
     catch(e){ $('liveDot').style.background='var(--red)'; }
   }
   // First load: fetch everything and render every panel once.
   async function load(){
+    // The two fetches and the rendering are caught SEPARATELY. Folding them together is how a null
+    // dereference in a card renderer reported itself as "status API unreachable" — a message that
+    // sends you to look at the server for a bug that is on this page.
+    let st,se;
     try{
-      const [st,se]=await Promise.all([
+      [st,se]=await Promise.all([
         fetch('/api/status').then(r=>r.json()),
         fetch('/api/settings').then(r=>r.json()),
       ]);
-      STATUS=st; SETTINGS=se;
-      renderLive(); renderQuickActions(); renderSources(); renderBaked(); renderSettings();
     }catch(e){
       $('verline').textContent='status API unreachable — is the server running? ('+(e&&e.message||e)+')';
       $('liveDot').style.background='var(--red)';
+      return;
+    }
+    try{
+      STATUS=st; SETTINGS=se;
+      renderLive(); renderQuickActions(); renderSources(); renderKeys(); renderBaked();
+      renderEbaySetupHost(); renderSettings();
+      // The pre-grader's two live reads. Both are cheap, neither is on the 10s timer: the scanner
+      // enumerates hardware and calibration runs a join, and neither answer moves minute to minute.
+      fetch('/api/scan').then(r=>r.json()).then(j=>{ SCAN=j; renderPregradeTiles(); renderPregradeCards(); }).catch(()=>{ SCAN=false; renderPregradeTiles(); renderPregradeCards(); });
+      fetch('/api/pregrade/calibration?recent=1').then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status)))
+        .then(j=>{ CALIB=j; renderPregradeTiles(); renderPregradeCards(); })
+        .catch(()=>{ CALIB=false; renderPregradeTiles(); renderPregradeCards(); });
+      renderPregradeCards();
+      // Cards render after the first paint, so the browser's own #hash jump happened before the
+      // target existed. Re-aim once the cards are in, and again after the two async pre-grader reads
+      // have changed the height above them.
+      honourHash(); setTimeout(honourHash,120); setTimeout(honourHash,600);
+    }catch(e){
+      console.error('[settings] render failed',e);
+      $('verline').innerHTML='<span style="color:var(--red)">the console loaded but a panel failed to render — '+esc(String(e&&e.message||e))+'</span>';
     }
   }
   load();
   setInterval(()=>{ if(document.visibilityState==='visible') refreshLive(); },10000);
   initSpy();
+  buildRail();
 })();
 </script>
 </body>
