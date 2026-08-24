@@ -288,9 +288,18 @@ if (discountCents >= beforeTotal0) {
     + `${(Math.min(Math.max(postage0 + 100, 300), Math.max(100, beforeTotal0 - 100)) / 100).toFixed(2)}.`);
 }
 
-// What the shipped builder would send. Deliberately NO shipping override: this probe isolates the
-// adjustment, so the postage line must stay exactly where it was or the arithmetic below is ambiguous.
-const payload = { orderId, currency: before.currency || 'AUD', discountCents, messageId: 'probe-' + Date.now() };
+// The shipping option is NOT optional on SendInvoice, even to leave it unchanged — omitting it fails
+// the whole call with Error 20188 "At least one shipping option is required" (confirmed live). So the
+// order's OWN current service/cost are echoed back verbatim: postage still doesn't move, but the call
+// is now valid, which is what actually isolates the adjustment.
+if (!before.shipService || before.shippingCents == null) {
+  refuse(`order has no shipping service on file (service=${before.shipService || '—'}, `
+    + `cost=${before.shippingCents}) — cannot echo it back, so SendInvoice cannot be tested here.`);
+}
+const payload = {
+  orderId, currency: before.currency || 'AUD', discountCents, messageId: 'probe-' + Date.now(),
+  shippingService: before.shipService, shippingCostCents: before.shippingCents,
+};
 const xml = buildSendInvoiceInner(payload);
 
 line('');
