@@ -23,10 +23,17 @@
 // within-cap adjustment vanishes, the field is inert on the OrderID path entirely and rung 2 would tell
 // you nothing. Rung 2 sends $6.90, outside the cap, and is the actual question.
 import process from 'node:process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { loadEnv } from 'vite';
 import { getOrders, sendInvoice, buildSendInvoiceInner, xmlField, xmlMoneyCents } from '../lib/ebay-trading.mjs';
 import { oauthStatus } from '../lib/ebay-oauth.mjs';
 
-const env = process.env;
+// The secrets live in .env and are read by Vite, never exported into the shell — so process.env is
+// empty for a standalone script and oauthStatus would report "not connected" on the very machine that
+// holds the token. Same loadEnv the dev server and scripts/check-ebay-aspects.mjs use.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const env = { ...loadEnv('development', ROOT, ''), ...process.env };
 const arg = (k, d = null) => {
   const hit = process.argv.find((a) => a.startsWith('--' + k + '='));
   return hit ? hit.slice(k.length + 3) : (process.argv.includes('--' + k) ? true : d);
@@ -58,7 +65,13 @@ if (!orderId) {
 
 const st = oauthStatus(env);
 if (!st.connected) {
-  console.error('eBay account not connected on this host — run this on the server that holds the token.');
+  console.error('eBay account not connected.');
+  console.error(`  read .env from: ${ROOT}`);
+  console.error(`  EBAY_APP_ID     ${env.EBAY_APP_ID ? 'set' : 'MISSING'}`);
+  console.error(`  EBAY_CERT_ID    ${env.EBAY_CERT_ID ? 'set' : 'MISSING'}`);
+  console.error(`  EBAY_REFRESH_TOKEN ${env.EBAY_REFRESH_TOKEN ? 'set' : 'not set (fine if data/ebay-oauth.json exists)'}`);
+  console.error(`  oauthStatus: ${JSON.stringify(st)}`);
+  console.error('Run this from the repo root on the machine that holds data/ebay-oauth.json.');
   process.exit(1);
 }
 
