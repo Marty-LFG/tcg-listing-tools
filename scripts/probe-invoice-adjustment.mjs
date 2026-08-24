@@ -45,7 +45,21 @@ const rule = () => line('─'.repeat(74));
 // Rung 1 is the control and rung 2 is the question. See the header.
 const RUNGS = { 1: 100, 2: 690 };
 
-const orderId = arg('order');
+// eBay has TWO OrderID shapes and Seller Hub shows neither of them plainly. A COMBINED (multi-line)
+// order is the numeric NN-NNNNN-NNNNN form; a SINGLE-line order's id is the legacy pair
+// "ItemID-TransactionID". The Seller Hub URL exposes itemid= and transId= separately, so a bare
+// transaction id pasted from there looks like an order id and is not one — GetOrders simply returns
+// nothing, with no hint as to why. Accept every form and assemble it.
+const rawOrder = arg('order');
+const itemArg = arg('item');
+const transArg = arg('trans');
+let orderId = rawOrder;
+if (!orderId && itemArg && transArg) orderId = `${itemArg}-${transArg}`;
+// A pasted Seller Hub URL: pull itemid + transId straight out of it.
+if (orderId && /[?&#]/.test(orderId)) {
+  const it = orderId.match(/itemid=(\d+)/i), tr = orderId.match(/transid=(\d+)/i);
+  if (it && tr) orderId = `${it[1]}-${tr[1]}`;
+}
 const rung = arg('rung');
 const live = arg('live') === true;
 // A blunt guard against a fat-fingered order id landing on a real sale. The probe order is meant to be
@@ -53,13 +67,50 @@ const live = arg('live') === true;
 const maxTotalCents = Math.round(parseFloat(arg('max-total', '50')) * 100);
 const discountCents = arg('adjust') ? Math.round(parseFloat(arg('adjust')) * 100) : RUNGS[rung];
 
+if (arg('list')) {
+  const days = Math.max(1, parseInt(arg('days', '30'), 10));
+  const to = new Date(), from = new Date(Date.now() - days * 86400000);
+  const res = await getOrders(env, { createTimeFrom: from.toISOString(), createTimeTo: to.toISOString(), entriesPerPage: 100 });
+  if (!res.ok) { console.error('GetOrders failed:', JSON.stringify(res.errors || res.ack)); process.exit(1); }
+  const all = res.orders || [];
+  const unpaid = all.filter((o) => !o.paidTime && !o.cancelStatus);
+  line(`${all.length} order(s) created in the last ${days} days · ${unpaid.length} UNPAID`);
+  line('');
+  if (!unpaid.length) {
+    line('No unpaid orders. To make a probe target: from a second account, cart two cheap cards,');
+    line('commit to buy, and do NOT pay. Then re-run --list.');
+    process.exit(0);
+  }
+  line('UNPAID — any of these can be probed:');
+  for (const o of unpaid) {
+    line(`  ${String(o.orderId).padEnd(30)} ${money(o.totalCents).padStart(9)}  ${(o.items || []).length} line(s)  @${o.buyerUsername || '?'}`);
+  }
+  line('');
+  line('Then:  --order=<the id above>');
+  process.exit(0);
+}
+
 if (!orderId) {
-  line('Usage: --order=NN-NNNNN-NNNNN [--rung=1|2 | --adjust=6.90] [--live] [--max-total=50]');
+  line('Usage: --order=<order id> [--rung=1|2 | --adjust=6.90] [--live] [--max-total=50]');
+  line('       --list [--days=30]     ← show recent UNPAID orders and their ids');
+  line('');
+  line('An order id is one of two shapes, and Seller Hub shows neither plainly:');
+  line('  combined (multi-line)   NN-NNNNN-NNNNN');
+  line('  single line             <ItemID>-<TransactionID>');
+  line('You can also pass --item= and --trans=, or paste a Seller Hub URL as --order=.');
   line('');
   line('  rung 1 = A$1.00  — INSIDE Seller Hub\'s cap. The control. Run this first.');
   line('  rung 2 = A$6.90  — OUTSIDE the cap. The actual question.');
   line('');
   line('Without --live it prints the order and the XML and sends nothing.');
+  process.exit(2);
+}
+
+if (orderId && /^\d{10,}$/.test(String(orderId))) {
+  line(`"${orderId}" looks like a TRANSACTION id, not an order id.`);
+  line('For a single-line order the OrderID is <ItemID>-<TransactionID>. From the Seller Hub URL,');
+  line('take itemid= and transId= and pass them as --item= and --trans=, or paste the whole URL.');
+  line('Or run --list to see the real ids.');
   process.exit(2);
 }
 
