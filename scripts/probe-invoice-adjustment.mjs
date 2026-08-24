@@ -67,12 +67,37 @@ const live = arg('live') === true;
 const maxTotalCents = Math.round(parseFloat(arg('max-total', '50')) * 100);
 const discountCents = arg('adjust') ? Math.round(parseFloat(arg('adjust')) * 100) : RUNGS[rung];
 
-if (arg('list')) {
+// Seller Hub's order panel shows a SALES RECORD NO. and no order id at all, so that number is the
+// only identifier a human can actually read off the screen. Look up by it.
+const salesRecord = arg('sales-record') || arg('sr');
+
+if (arg('list') || salesRecord) {
   const days = Math.max(1, parseInt(arg('days', '30'), 10));
-  const to = new Date(), from = new Date(Date.now() - days * 86400000);
+  // A day of headroom on the upper bound: eBay reports order dates in the SELLER's timezone while this
+  // window is built in UTC, so a sale made this evening can carry tomorrow's date and fall outside a
+  // window that ends at "now". A too-narrow window returns nothing and looks like a missing order.
+  const to = new Date(Date.now() + 86400000), from = new Date(Date.now() - days * 86400000);
   const res = await getOrders(env, { createTimeFrom: from.toISOString(), createTimeTo: to.toISOString(), entriesPerPage: 100 });
   if (!res.ok) { console.error('GetOrders failed:', JSON.stringify(res.errors || res.ack)); process.exit(1); }
   const all = res.orders || [];
+
+  if (salesRecord) {
+    const hit = all.find((o) => String(o.salesRecordNumber) === String(salesRecord));
+    if (!hit) {
+      console.error(`No order with sales record no. ${salesRecord} in the last ${days} days.`);
+      console.error(`Widen it with --days=90, or run --list to see what is there.`);
+      process.exit(1);
+    }
+    line(`sales record ${salesRecord} → order ${hit.orderId}`);
+    line(`  ${money(hit.totalCents)}  ${(hit.items || []).length} line(s)  @${hit.buyerUsername || '?'}  `
+      + `${hit.paidTime ? 'PAID ' + hit.paidTime : 'UNPAID'}`);
+    line('');
+    line(hit.paidTime
+      ? 'PAID, so it cannot be probed — SendInvoice needs an unpaid order.'
+      : `Probe it with:  --order=${hit.orderId}`);
+    process.exit(0);
+  }
+
   const unpaid = all.filter((o) => !o.paidTime && !o.cancelStatus);
   line(`${all.length} order(s) created in the last ${days} days · ${unpaid.length} UNPAID`);
   line('');
@@ -83,7 +108,8 @@ if (arg('list')) {
   }
   line('UNPAID — any of these can be probed:');
   for (const o of unpaid) {
-    line(`  ${String(o.orderId).padEnd(30)} ${money(o.totalCents).padStart(9)}  ${(o.items || []).length} line(s)  @${o.buyerUsername || '?'}`);
+    line(`  sr ${String(o.salesRecordNumber || '?').padEnd(6)} ${String(o.orderId).padEnd(30)} `
+      + `${money(o.totalCents).padStart(9)}  ${(o.items || []).length} line(s)  @${o.buyerUsername || '?'}`);
   }
   line('');
   line('Then:  --order=<the id above>');
@@ -92,7 +118,8 @@ if (arg('list')) {
 
 if (!orderId) {
   line('Usage: --order=<order id> [--rung=1|2 | --adjust=6.90] [--live] [--max-total=50]');
-  line('       --list [--days=30]     ← show recent UNPAID orders and their ids');
+  line('       --list [--days=30]           ← recent UNPAID orders, with sales record nos');
+  line('       --sales-record=1165          ← look up the order id from the number Seller Hub shows');
   line('');
   line('An order id is one of two shapes, and Seller Hub shows neither plainly:');
   line('  combined (multi-line)   NN-NNNNN-NNNNN');
