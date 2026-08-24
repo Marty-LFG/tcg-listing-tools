@@ -1,0 +1,199 @@
+// scripts/probe-invoice-adjustment.mjs — does Trading SendInvoice's AdjustmentAmount actually reduce
+// an order total, or is it capped at the postage like Seller Hub's form is?
+//
+// WHY THIS EXISTS. The owner tried to take AU$6.90 off AU$61.90 of cards on Seller Hub's "Send invoice"
+// screen and could not submit the form: with $0.00 postage it said "Discounts cannot be applied to
+// orders with free postage", and with $1.70 postage it said "Please enter a discount less than AU $1.70
+// (postage + sales tax)". That proves the UI caps the adjustment at the postage amount. It does NOT
+// prove the API does — eBay's own docs describe no bound on the field, and a UI being stricter than its
+// API is common. The whole invoice-discount feature lives or dies on this one answer, and reasoning from
+// what eBay's docs do not say has already killed two designs in this project.
+//
+// It deliberately calls the SHIPPED builder (buildSendInvoiceInner), not hand-rolled XML, so a pass here
+// is a pass for the code that would actually go live.
+//
+// Run on ALCSERVER, where the user token is:
+//   node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs --order=NN-NNNNN-NNNNN
+//   …prints the order, the XML it WOULD send, and stops. Nothing is sent without --live.
+//
+//   node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs --order=… --rung=1 --live
+//   node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs --order=… --rung=2 --live
+//
+// RUN RUNG 1 FIRST. It sends $1.00, which is INSIDE the UI's cap, and it is the control: if even a
+// within-cap adjustment vanishes, the field is inert on the OrderID path entirely and rung 2 would tell
+// you nothing. Rung 2 sends $6.90, outside the cap, and is the actual question.
+import process from 'node:process';
+import { getOrders, sendInvoice, buildSendInvoiceInner, xmlField, xmlMoneyCents } from '../lib/ebay-trading.mjs';
+import { oauthStatus } from '../lib/ebay-oauth.mjs';
+
+const env = process.env;
+const arg = (k, d = null) => {
+  const hit = process.argv.find((a) => a.startsWith('--' + k + '='));
+  return hit ? hit.slice(k.length + 3) : (process.argv.includes('--' + k) ? true : d);
+};
+const money = (c) => (c == null ? '—' : 'A$' + (c / 100).toFixed(2));
+const line = (s = '') => console.log(s);
+const rule = () => line('─'.repeat(74));
+
+// Rung 1 is the control and rung 2 is the question. See the header.
+const RUNGS = { 1: 100, 2: 690 };
+
+const orderId = arg('order');
+const rung = arg('rung');
+const live = arg('live') === true;
+// A blunt guard against a fat-fingered order id landing on a real sale. The probe order is meant to be
+// two ~$9.99 listings; anything dearer than this is almost certainly not it.
+const maxTotalCents = Math.round(parseFloat(arg('max-total', '50')) * 100);
+const discountCents = arg('adjust') ? Math.round(parseFloat(arg('adjust')) * 100) : RUNGS[rung];
+
+if (!orderId) {
+  line('Usage: --order=NN-NNNNN-NNNNN [--rung=1|2 | --adjust=6.90] [--live] [--max-total=50]');
+  line('');
+  line('  rung 1 = A$1.00  — INSIDE Seller Hub\'s cap. The control. Run this first.');
+  line('  rung 2 = A$6.90  — OUTSIDE the cap. The actual question.');
+  line('');
+  line('Without --live it prints the order and the XML and sends nothing.');
+  process.exit(2);
+}
+
+const st = oauthStatus(env);
+if (!st.connected) {
+  console.error('eBay account not connected on this host — run this on the server that holds the token.');
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Read the order BEFORE, and refuse anything that is not a safe probe target.
+// ---------------------------------------------------------------------------------------------
+const snapshot = async (label) => {
+  const res = await getOrders(env, { orderIds: [orderId] });
+  if (!res.ok) {
+    console.error(`GetOrders (${label}) failed:`, JSON.stringify(res.errors || res.ack));
+    process.exit(1);
+  }
+  const o = (res.orders || []).find((x) => String(x.orderId) === String(orderId));
+  if (!o) { console.error(`eBay did not return order ${orderId}`); process.exit(1); }
+  // AmountSaved is not in parseOrders and is corroborating evidence only — OrderType documents
+  // AdjustmentAmount as an adjustment made by the BUYER, so a zero there proves nothing either way.
+  o._amountSavedCents = xmlMoneyCents(res.xml, 'AmountSaved');
+  o._adjustmentCents = xmlMoneyCents(res.xml, 'AdjustmentAmount');
+  o._status = xmlField(res.xml, 'OrderStatus');
+  return o;
+};
+
+const show = (o, label) => {
+  line(`${label}`);
+  line(`  status        ${o.orderStatus || o._status}   checkout=${o.checkoutStatus || '—'}   paid=${o.paidTime ? 'YES ' + o.paidTime : 'no'}`);
+  line(`  subtotal      ${money(o.subtotalCents)}`);
+  line(`  postage       ${money(o.shippingCents)}   service=${o.shipService || '—'}`);
+  line(`  TOTAL         ${money(o.totalCents)}`);
+  line(`  AmountSaved   ${money(o._amountSavedCents)}      AdjustmentAmount ${money(o._adjustmentCents)}`);
+  line(`  lines         ${(o.items || []).length}   ship-to=${(o.ship && o.ship.country) || '?'}`);
+  for (const it of (o.items || [])) {
+    line(`     ${String(it.itemId || '').padEnd(14)} ×${it.quantity}  ${money(it.unitPriceCents)}  ${(it.title || '').slice(0, 40)}`);
+  }
+};
+
+const before = await snapshot('before');
+rule();
+show(before, 'ORDER BEFORE');
+rule();
+
+const refuse = (why) => { console.error('\nREFUSED: ' + why); process.exit(1); };
+if (before.paidTime) refuse('this order is already PAID. SendInvoice needs an unpaid order, and a probe must never touch a real sale.');
+if (before.cancelStatus) refuse('this order is cancelled.');
+if ((before.totalCents || 0) > maxTotalCents) {
+  refuse(`total ${money(before.totalCents)} is above the ${money(maxTotalCents)} safety ceiling. `
+    + 'If this really is the throwaway order, pass --max-total to raise it deliberately.');
+}
+if ((before.items || []).length < 2) {
+  line('NOTE: this order has one line. The probe still answers the cap question, but a multi-line order');
+  line('      is the real case, so prefer one with two.');
+}
+if (!Number.isInteger(discountCents) || discountCents <= 0) {
+  refuse('no adjustment given. Pass --rung=1 (control, A$1.00) or --rung=2 (the question, A$6.90).');
+}
+
+// What the shipped builder would send. Deliberately NO shipping override: this probe isolates the
+// adjustment, so the postage line must stay exactly where it was or the arithmetic below is ambiguous.
+const payload = { orderId, currency: before.currency || 'AUD', discountCents, messageId: 'probe-' + Date.now() };
+const xml = buildSendInvoiceInner(payload);
+
+line('');
+line(`ADJUSTMENT UNDER TEST   −${money(discountCents)}` + (rung ? `   (rung ${rung})` : ''));
+line(rung === '1' ? '  inside Seller Hub\'s cap — this is the CONTROL' : '  outside Seller Hub\'s cap — this is the QUESTION');
+line('');
+line('XML that will be sent (from the shipped buildSendInvoiceInner):');
+line(xml.replace(/></g, '>\n  <').replace(/^/, '  '));
+line('');
+
+const beforeTotal = before.totalCents || 0;
+const postage = before.shippingCents || 0;
+line('Outcomes to expect:');
+line(`  UNCAPPED       total becomes ${money(beforeTotal - discountCents)}  → build it`);
+line(`  CAPPED         total becomes ${money(beforeTotal - postage)}  (only the postage came off)`);
+line(`  SILENT DROP    total stays   ${money(beforeTotal)}  with Ack=Success  → the dangerous one`);
+line('  HARD REJECT    Ack=Failure with an error code');
+line('');
+
+if (!live) {
+  line('DRY RUN — nothing was sent. Re-run with --live to fire it.');
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Fire, then read back. The arithmetic is the primary evidence; the field values corroborate.
+// ---------------------------------------------------------------------------------------------
+line('sending…');
+const r = await sendInvoice(env, payload);
+line(`  ack=${r.ack}  http=${r.httpStatus}`);
+for (const e of (r.errors || [])) line(`  eBay ${e.severity || ''} ${e.code || ''}: ${e.longMessage || e.shortMessage || ''}`);
+
+if (!r.ok) {
+  rule();
+  line('VERDICT: HARD REJECT — eBay refused the call outright.');
+  line('Record the error code above. If it names a maximum, the API mirrors the UI cap and the');
+  line('invoice-discount design is dead; fall back to combined-postage rules + partial refund.');
+  process.exit(0);
+}
+
+// eBay can lag a moment before the order reflects the invoice.
+await new Promise((res) => setTimeout(res, 4000));
+const after = await snapshot('after');
+rule();
+show(after, 'ORDER AFTER');
+rule();
+
+const afterTotal = after.totalCents || 0;
+const moved = beforeTotal - afterTotal;
+line('');
+line(`total moved by   ${money(moved)}   (asked for ${money(discountCents)})`);
+line('');
+
+let verdict;
+if (moved === discountCents) {
+  verdict = 'UNCAPPED — the API applied the full adjustment. THE EXISTING BUILD IS THE ANSWER.';
+} else if (moved === 0) {
+  verdict = 'SILENT DROP — eBay accepted the call and changed nothing. The field is inert on this path.';
+} else if (moved === postage) {
+  verdict = `CAPPED AT THE POSTAGE LINE — exactly ${money(postage)} came off. The API mirrors the UI.`;
+} else if (moved > 0 && moved < discountCents) {
+  // Partial, but not the postage figure either. Do not claim it matches something it does not.
+  verdict = `CAPPED AT SOMETHING ELSE — ${money(moved)} came off, which is neither the ${money(discountCents)} `
+    + `asked for nor the ${money(postage)} postage. Read the invoice email before concluding anything.`;
+} else {
+  verdict = `UNEXPECTED — the total moved by ${money(moved)}, which is neither the adjustment nor the postage.`;
+}
+
+line('VERDICT: ' + verdict);
+line('');
+line('Now check the invoice email copy in the seller inbox (EmailCopyToSeller was on). What the BUYER');
+line('is asked to pay is the second witness, and it outranks any field on the order if they disagree.');
+if (rung === '1' && moved === 0) {
+  line('');
+  line('Rung 1 vanished, so the field does nothing on the OrderID path at all. Rung 2 would add nothing —');
+  line('skip it and go to the fallback design.');
+}
+line('');
+line('Remember to cancel this order as buyer-requested before payment, so no money moves and no fee is');
+line('charged.');
