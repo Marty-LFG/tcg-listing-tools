@@ -22,6 +22,16 @@
 // RUN RUNG 1 FIRST. It sends $1.00, which is INSIDE the UI's cap, and it is the control: if even a
 // within-cap adjustment vanishes, the field is inert on the OrderID path entirely and rung 2 would tell
 // you nothing. Rung 2 sends $6.90, outside the cap, and is the actual question.
+//
+// CONFIRMED (2026-08-24, live, twice): the API is uncapped. $1 and $3 adjustments both applied in full
+// on real orders. See memory ebay-sendinvoice-uncapped for the write-up.
+//
+// COMBINED-ORDER TEST — pass --ship-service=CODE --ship-cost=DOLLARS (together, or not at all) to
+// OVERRIDE postage to something OTHER than what eBay already computed for the cart, instead of the
+// default of echoing it back unchanged. This is the real question for a multi-item invoice: does eBay
+// accept a seller-chosen combined-postage figure, not just tolerate an echo of its own number.
+//   node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs --order=… \
+//     --adjust=3.00 --ship-service=AU_AusPostParcel --ship-cost=8.26 --live
 import process from 'node:process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +80,15 @@ const live = arg('live') === true;
 // two ~$9.99 listings; anything dearer than this is almost certainly not it.
 const maxTotalCents = Math.round(parseFloat(arg('max-total', '50')) * 100);
 const discountCents = arg('adjust') ? Math.round(parseFloat(arg('adjust')) * 100) : RUNGS[rung];
+
+// Default behaviour (no flags) ECHOES the order's own current shipping service/cost back unchanged —
+// that's what isolates the discount-only question the first two live runs answered. The combined-order
+// question is different: does SendInvoice actually let the SELLER override postage to something other
+// than what eBay already computed for the cart, which is the entire mechanism the real feature depends
+// on for "one lot of postage, sized to our own band, not eBay's per-line total." Pass both flags to
+// test that; passing only one is refused below, since a half override is not a real test of either.
+const shipServiceOverride = arg('ship-service');
+const shipCostOverride = arg('ship-cost') != null ? Math.round(parseFloat(arg('ship-cost')) * 100) : null;
 
 // Seller Hub's order panel shows a SALES RECORD NO. and no order id at all, so that number is the
 // only identifier a human can actually read off the screen. Look up by it.
@@ -296,22 +315,34 @@ if (discountCents >= beforeTotal0) {
 }
 
 // The shipping option is NOT optional on SendInvoice, even to leave it unchanged — omitting it fails
-// the whole call with Error 20188 "At least one shipping option is required" (confirmed live). So the
-// order's OWN current service/cost are echoed back verbatim: postage still doesn't move, but the call
-// is now valid, which is what actually isolates the adjustment.
-if (!before.shipService || before.shippingCents == null) {
+// the whole call with Error 20188 "At least one shipping option is required" (confirmed live). Default
+// is to echo the order's OWN current service/cost back verbatim, which isolates the discount-only
+// question. --ship-service + --ship-cost together instead OVERRIDE it — the combined-order question is
+// whether eBay actually accepts a seller-chosen postage figure that differs from what it already
+// computed for the cart, which is the real mechanism, not an echo.
+if (!!shipServiceOverride !== (shipCostOverride != null)) {
+  refuse('--ship-service and --ship-cost must be given together, or not at all. One without the other '
+    + 'is not a real test of the override.');
+}
+if (!shipServiceOverride && (!before.shipService || before.shippingCents == null)) {
   refuse(`order has no shipping service on file (service=${before.shipService || '—'}, `
     + `cost=${before.shippingCents}) — cannot echo it back, so SendInvoice cannot be tested here.`);
 }
+const shipService = shipServiceOverride || before.shipService;
+const shipCostCents = shipServiceOverride ? shipCostOverride : before.shippingCents;
 const payload = {
   orderId, currency: before.currency || 'AUD', discountCents, messageId: 'probe-' + Date.now(),
-  shippingService: before.shipService, shippingCostCents: before.shippingCents,
+  shippingService: shipService, shippingCostCents: shipCostCents,
 };
 const xml = buildSendInvoiceInner(payload);
 
 line('');
 line(`ADJUSTMENT UNDER TEST   −${money(discountCents)}` + (rung ? `   (rung ${rung})` : ''));
 line(rung === '1' ? '  inside Seller Hub\'s cap — this is the CONTROL' : '  outside Seller Hub\'s cap — this is the QUESTION');
+if (shipServiceOverride) {
+  line(`SHIPPING OVERRIDE   ${before.shipService || '—'} ${money(before.shippingCents)}  →  ${shipService} ${money(shipCostCents)}`);
+  line('  this is the COMBINED-POSTAGE question: does eBay accept OUR figure, not just echo its own?');
+}
 line('');
 line('XML that will be sent (from the shipped buildSendInvoiceInner):');
 line(xml.replace(/></g, '>\n  <').replace(/^/, '  '));
@@ -319,8 +350,15 @@ line('');
 
 const beforeTotal = beforeTotal0;
 const postage = postage0;
+// With a shipping override, "uncapped" no longer means beforeTotal - discount — postage itself moved
+// too. Expected total is subtotal (whatever it is) minus the discount plus the OVERRIDDEN postage.
+const expectedUncappedTotal = (beforeTotal0 - postage0) - discountCents + shipCostCents;
 line('Outcomes to expect:');
-line(`  UNCAPPED       total becomes ${money(beforeTotal - discountCents)}  → build it`);
+if (shipServiceOverride) {
+  line(`  UNCAPPED       total becomes ${money(expectedUncappedTotal)}  (subtotal − discount + overridden postage)  → build it`);
+} else {
+  line(`  UNCAPPED       total becomes ${money(beforeTotal - discountCents)}  → build it`);
+}
 line(`  CAPPED         total becomes ${money(beforeTotal - postage)}  (only the postage came off)`);
 line(`  SILENT DROP    total stays   ${money(beforeTotal)}  with Ack=Success  → the dangerous one`);
 line('  HARD REJECT    Ack=Failure with an error code');
@@ -372,23 +410,33 @@ rule();
 
 const afterTotal = after.totalCents || 0;
 const moved = beforeTotal - afterTotal;
+// With no override, shipCostCents === postage0, so this collapses to plain discountCents — same check
+// as before. With an override, "fully honoured" means BOTH the discount AND the new postage landed.
+const expectedMoved = postage0 - shipCostCents + discountCents;
 line('');
-line(`total moved by   ${money(moved)}   (asked for ${money(discountCents)})`);
+line(`total moved by   ${money(moved)}   (asked for ${money(discountCents)}` + (shipServiceOverride ? ` + postage ${money(postage0)}→${money(shipCostCents)}` : '') + ')');
 line('');
 
 let verdict;
-if (moved === discountCents) {
-  verdict = 'UNCAPPED — the API applied the full adjustment. THE EXISTING BUILD IS THE ANSWER.';
+if (moved === expectedMoved) {
+  verdict = shipServiceOverride
+    ? 'UNCAPPED + OVERRIDE HONOURED — the discount AND our postage figure both landed. THE COMBINED-INVOICE MECHANISM WORKS.'
+    : 'UNCAPPED — the API applied the full adjustment. THE EXISTING BUILD IS THE ANSWER.';
 } else if (moved === 0) {
   verdict = 'SILENT DROP — eBay accepted the call and changed nothing. The field is inert on this path.';
 } else if (moved === postage) {
-  verdict = `CAPPED AT THE POSTAGE LINE — exactly ${money(postage)} came off. The API mirrors the UI.`;
-} else if (moved > 0 && moved < discountCents) {
-  // Partial, but not the postage figure either. Do not claim it matches something it does not.
-  verdict = `CAPPED AT SOMETHING ELSE — ${money(moved)} came off, which is neither the ${money(discountCents)} `
-    + `asked for nor the ${money(postage)} postage. Read the invoice email before concluding anything.`;
+  verdict = shipServiceOverride
+    ? `POSTAGE OVERRIDE IGNORED — exactly the ORIGINAL ${money(postage)} came off; our ${money(shipCostCents)} figure was not honoured.`
+    : `CAPPED AT THE POSTAGE LINE — exactly ${money(postage)} came off. The API mirrors the UI.`;
+} else if (shipServiceOverride && moved === discountCents) {
+  verdict = `DISCOUNT LANDED, POSTAGE OVERRIDE DID NOT — the ${money(discountCents)} discount applied but `
+    + `postage stayed at the original ${money(postage)} instead of our ${money(shipCostCents)}.`;
+} else if (moved > 0 && moved < expectedMoved) {
+  // Partial, but not a figure this probe recognises. Do not claim it matches something it does not.
+  verdict = `CAPPED AT SOMETHING ELSE — ${money(moved)} came off, which matches neither the full ask `
+    + `(${money(expectedMoved)}) nor the original postage (${money(postage)}). Read the invoice email before concluding anything.`;
 } else {
-  verdict = `UNEXPECTED — the total moved by ${money(moved)}, which is neither the adjustment nor the postage.`;
+  verdict = `UNEXPECTED — the total moved by ${money(moved)}, which matches none of the figures this probe tracks.`;
 }
 
 line('VERDICT: ' + verdict);
