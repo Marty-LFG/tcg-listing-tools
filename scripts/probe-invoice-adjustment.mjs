@@ -244,7 +244,9 @@ rule();
 
 const refuse = (why) => { console.error('\nREFUSED: ' + why); process.exit(1); };
 if (before.paidTime) refuse('this order is already PAID. SendInvoice needs an unpaid order, and a probe must never touch a real sale.');
-if (before.cancelStatus) refuse('this order is cancelled.');
+// cancelState, NOT the raw field — same trap as the lister. "NotApplicable" is truthy, so a raw test
+// refuses every healthy order, which is exactly what it did.
+if (cancelState(before) === 'cancelled') refuse('this order is cancelled.');
 if ((before.totalCents || 0) > maxTotalCents) {
   refuse(`total ${money(before.totalCents)} is above the ${money(maxTotalCents)} safety ceiling. `
     + 'If this really is the throwaway order, pass --max-total to raise it deliberately.');

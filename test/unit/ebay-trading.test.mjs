@@ -7,7 +7,7 @@ import {
   xmlEscape, centsToXmlPrice, xmlMoneyCents, compatLevel, siteId,
   buildTradingBody, buildTradingHeaders,
   buildReviseInventoryStatusInner, buildReviseFixedPriceItemInner,
-  buildSendInvoiceInner,
+  buildSendInvoiceInner, parseOrders,
 } from '../../lib/ebay-trading.mjs';
 
 describe('XML parsers', () => {
@@ -224,5 +224,40 @@ describe('buildSendInvoiceInner', () => {
     const xml = buildSendInvoiceInner({ ...base, discountCents: 100, checkoutInstructions: 'a & b <c> "d"' });
     assert.ok(xml.includes('a &amp; b &lt;c&gt; &quot;d&quot;'));
     assert.ok(!xml.includes('<c>'));
+  });
+});
+
+// --- the sales record number, which Seller Hub shows and eBay names differently -------------------
+describe('parseOrders — SellingManagerSalesRecordNumber', () => {
+  const wrap = (orderInner) => '<GetOrdersResponse><OrderArray><Order>' + orderInner + '</Order></OrderArray></GetOrdersResponse>';
+  const tx = (inner = '') => `<TransactionArray><Transaction><TransactionID>t1</TransactionID>${inner}<Item><ItemID>9</ItemID></Item></Transaction></TransactionArray>`;
+  const sr = (n) => `<ShippingDetails><SellingManagerSalesRecordNumber>${n}</SellingManagerSalesRecordNumber></ShippingDetails>`;
+
+  it('reads it from ORDER level, as a combined order carries it', () => {
+    const o = parseOrders(wrap('<OrderID>22-1-1</OrderID>' + sr(1165) + tx())).orders[0];
+    assert.equal(o.salesRecordNumber, '1165');
+  });
+
+  it('reads it from the TRANSACTION, as a single-line order carries it', () => {
+    // The case that was silently null: eBay puts it inside the transaction on a single-line order, and
+    // parseOrders reads order-level scalars from a copy with TransactionArray spliced out.
+    const o = parseOrders(wrap('<OrderID>158-100</OrderID>' + tx(sr(1164)))).orders[0];
+    assert.equal(o.salesRecordNumber, '1164');
+  });
+
+  it('still reads a plain SalesRecordNumber, so nothing regresses', () => {
+    const o = parseOrders(wrap('<OrderID>22-1-1</OrderID><SalesRecordNumber>7</SalesRecordNumber>' + tx())).orders[0];
+    assert.equal(o.salesRecordNumber, '7');
+  });
+
+  it('is null when eBay sends none, rather than an empty string', () => {
+    assert.equal(parseOrders(wrap('<OrderID>22-1-1</OrderID>' + tx())).orders[0].salesRecordNumber, null);
+  });
+
+  it('prefers the ORDER-level number over a line-level one', () => {
+    // Same shadowing rule every other order-level scalar follows: a line item must not overwrite the
+    // order's own value.
+    const o = parseOrders(wrap('<OrderID>22-1-1</OrderID>' + sr(1000) + tx(sr(2000)))).orders[0];
+    assert.equal(o.salesRecordNumber, '1000');
   });
 });
