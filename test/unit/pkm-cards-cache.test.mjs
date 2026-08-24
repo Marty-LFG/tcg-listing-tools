@@ -16,7 +16,7 @@ import path from 'node:path';
 // fixture written into the real one would still be there next month.
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-cards-unit-'));
 process.env.PKM_CARDS_CACHE_DIR = DIR;
-const { isSetId, trimCard, isCompleteSet, decideCardsResponse, readSetCache, writeSetCache, hasDuplicateCards } = await import('../../lib/pkm-cards-cache.mjs');
+const { isSetId, trimCard, isCompleteSet, decideCardsResponse, readSetCache, writeSetCache, hasDuplicateCards, dedupeCards } = await import('../../lib/pkm-cards-cache.mjs');
 
 const NOW = '2026-08-03T00:00:00.000Z';
 const card = (n) => ({
@@ -188,5 +188,30 @@ describe('hasDuplicateCards — the self-heal for a pre-fix cached copy', () => 
   it('empty and junk are not duplicates', () => {
     assert.equal(hasDuplicateCards([]), false);
     assert.equal(hasDuplicateCards(null), false);
+  });
+});
+
+// Detecting the corrupt copy is only half of it. The refetch it triggers can fail — pokemontcg.io
+// answered 500 on 3 of 4 requests when this was measured — and the last-good fallback then hands
+// back the very rows just detected as duplicates. That was the gap in the first cut.
+describe('dedupeCards — a proven-corrupt copy is not fit to be the fallback either', () => {
+  it('keeps the first row per card id', () => {
+    const out = dedupeCards([{ id: 'me2pt5-1' }, { id: 'me2pt5-2' }, { id: 'me2pt5-1' }]);
+    assert.deepEqual(out.map((c) => c.id), ['me2pt5-1', 'me2pt5-2']);
+  });
+  it('turns the real me2pt5 shape into 250 real cards instead of 295 rows with 45 phantoms', () => {
+    const rows = [...Array.from({ length: 250 }, (_, i) => ({ id: 'me2pt5-' + (i + 1) })),
+      ...Array.from({ length: 45 }, (_, i) => ({ id: 'me2pt5-' + (i + 1) }))];
+    assert.equal(rows.length, 295);
+    assert.equal(dedupeCards(rows).length, 250);
+  });
+  it('still fails the completeness check afterwards, so upstream keeps being retried', () => {
+    const deduped = dedupeCards([{ id: 'a' }, { id: 'a' }]);
+    assert.equal(isCompleteSet(deduped, 295), false);
+  });
+  it('leaves a clean list untouched and passes junk through', () => {
+    const clean = [{ id: 'a' }, { id: 'b' }];
+    assert.deepEqual(dedupeCards(clean), clean);
+    assert.equal(dedupeCards(null), null);
   });
 });
