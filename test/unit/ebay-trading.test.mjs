@@ -7,7 +7,7 @@ import {
   xmlEscape, centsToXmlPrice, xmlMoneyCents, compatLevel, siteId,
   buildTradingBody, buildTradingHeaders,
   buildReviseInventoryStatusInner, buildReviseFixedPriceItemInner,
-  buildSendInvoiceInner, parseOrders,
+  buildSendInvoiceInner, buildAddOrderInner, parseOrders,
 } from '../../lib/ebay-trading.mjs';
 
 describe('XML parsers', () => {
@@ -139,6 +139,84 @@ describe('centsToXmlPrice — negatives, which SendInvoice depends on entirely',
     assert.equal(centsToXmlPrice(undefined), 'NaN');
     // Neither may reach the wire, so buildSendInvoiceInner refuses both rather than testing truthiness
     // (a `!x` test would also reject a legitimate 0).
+  });
+});
+
+describe('buildAddOrderInner', () => {
+  const lines = [{ itemId: '111', transactionId: '222' }, { itemId: '333', transactionId: '444' }];
+  const base = { lines, currency: 'AUD', totalCents: 3396, shippingService: 'AU_Regular', shippingCostCents: 826 };
+
+  it('emits Order as the sole root element, with the two lines under TransactionArray', () => {
+    const xml = buildAddOrderInner(base);
+    assert.ok(xml.startsWith('<Order>') && xml.endsWith('</Order>'));
+    assert.ok(xml.includes('<TransactionArray><Transaction><Item><ItemID>111</ItemID></Item>'
+      + '<TransactionID>222</TransactionID></Transaction><Transaction><Item><ItemID>333</ItemID></Item>'
+      + '<TransactionID>444</TransactionID></Transaction></TransactionArray>'));
+  });
+
+  it('WRAPS ShippingServiceOptions in ShippingDetails — the opposite of SendInvoice', () => {
+    // buildSendInvoiceInner has a whole test asserting this wrapper must NEVER appear there. Here it
+    // must always appear when a shipping override is given — the two calls disagree on purpose.
+    const xml = buildAddOrderInner(base);
+    assert.ok(xml.includes('<ShippingDetails><ShippingServiceOptions><ShippingService>AU_Regular</ShippingService>'
+      + '<ShippingServiceCost currencyID="AUD">8.26</ShippingServiceCost></ShippingServiceOptions></ShippingDetails>'));
+  });
+
+  it('omits ShippingDetails whole when no override is given, rather than emitting it empty', () => {
+    const xml = buildAddOrderInner({ lines, totalCents: 2796 });
+    assert.ok(!xml.includes('<ShippingDetails>'));
+    assert.ok(!xml.includes('<ShippingServiceOptions>'));
+  });
+
+  it('emits CreatingUserRole, PaymentMethods and Total ahead of TransactionArray', () => {
+    const xml = buildAddOrderInner(base);
+    const at = (t) => xml.indexOf(t);
+    assert.ok(at('<CreatingUserRole>') < at('<PaymentMethods>'));
+    assert.ok(at('<PaymentMethods>') < at('<Total'));
+    assert.ok(at('<Total') < at('<TransactionArray>'));
+  });
+
+  it('defaults CreatingUserRole to Seller and PaymentMethods to one vestigial value', () => {
+    const xml = buildAddOrderInner(base);
+    assert.ok(xml.includes('<CreatingUserRole>Seller</CreatingUserRole>'));
+    assert.equal((xml.match(/<PaymentMethods>/g) || []).length, 1);
+  });
+
+  it('accepts multiple PaymentMethods and a non-default CreatingUserRole', () => {
+    const xml = buildAddOrderInner({ ...base, paymentMethods: ['CCAccepted', 'PersonalCheck'], creatingUserRole: 'Buyer' });
+    assert.ok(xml.includes('<CreatingUserRole>Buyer</CreatingUserRole>'));
+    assert.ok(xml.includes('<PaymentMethods>CCAccepted</PaymentMethods><PaymentMethods>PersonalCheck</PaymentMethods>'));
+  });
+
+  it('takes currencyID from the argument rather than hardcoding AUD', () => {
+    const xml = buildAddOrderInner({ ...base, currency: 'USD' });
+    assert.ok(xml.includes('<Total currencyID="USD">'));
+    assert.ok(xml.includes('<ShippingServiceCost currencyID="USD">'));
+  });
+
+  it('refuses fewer than 2 lines, more than 40, and a line missing either id', () => {
+    assert.throws(() => buildAddOrderInner({ ...base, lines: [] }), /2-40 order lines/);
+    assert.throws(() => buildAddOrderInner({ ...base, lines: [lines[0]] }), /2-40 order lines/);
+    assert.throws(() => buildAddOrderInner({ ...base, lines: Array.from({ length: 41 }, () => lines[0]) }), /eBay's cap is 40/);
+    assert.throws(() => buildAddOrderInner({ ...base, lines: [{ itemId: '1' }, lines[1]] }), /itemId \+ transactionId/);
+    assert.throws(() => buildAddOrderInner({ ...base, lines: [{ transactionId: '1' }, lines[1]] }), /itemId \+ transactionId/);
+  });
+
+  it('refuses a missing or invalid totalCents rather than sending a silent zero', () => {
+    assert.throws(() => buildAddOrderInner({ lines }), /totalCents is required/);
+    assert.throws(() => buildAddOrderInner({ ...base, totalCents: NaN }), /number of cents/);
+    assert.throws(() => buildAddOrderInner({ ...base, totalCents: 1.5 }), /whole cents/);
+  });
+
+  it('escapes everything it interpolates', () => {
+    const xml = buildAddOrderInner({
+      ...base, paymentMethods: ['<x>'],
+      lines: [{ itemId: '<a>', transactionId: '<b>&' }, lines[1]],
+    });
+    assert.ok(xml.includes('<PaymentMethods>&lt;x&gt;</PaymentMethods>'));
+    assert.ok(xml.includes('<ItemID>&lt;a&gt;</ItemID>'));
+    assert.ok(xml.includes('<TransactionID>&lt;b&gt;&amp;</TransactionID>'));
+    assert.ok(!xml.includes('<x>') && !xml.includes('<a>') && !xml.includes('<b>'));
   });
 });
 

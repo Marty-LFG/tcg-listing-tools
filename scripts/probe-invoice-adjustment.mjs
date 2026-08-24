@@ -26,17 +26,38 @@
 // CONFIRMED (2026-08-24, live, twice): the API is uncapped. $1 and $3 adjustments both applied in full
 // on real orders. See memory ebay-sendinvoice-uncapped for the write-up.
 //
-// COMBINED-ORDER TEST — pass --ship-service=CODE --ship-cost=DOLLARS (together, or not at all) to
-// OVERRIDE postage to something OTHER than what eBay already computed for the cart, instead of the
+// SHIPPING OVERRIDE — pass --ship-service=CODE --ship-cost=DOLLARS (together, or not at all) to
+// OVERRIDE postage to something OTHER than what eBay already computed for the order, instead of the
 // default of echoing it back unchanged. This is the real question for a multi-item invoice: does eBay
 // accept a seller-chosen combined-postage figure, not just tolerate an echo of its own number.
 //   node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs --order=… \
-//     --adjust=3.00 --ship-service=AU_AusPostParcel --ship-cost=8.26 --live
+//     --adjust=3.00 --ship-service=AU_Regular --ship-cost=8.26 --live
+//
+// CODE MUST BE TRADING-VOCABULARY, NOT THE REST BAND TABLE'S. lib/shipping-bands.mjs's
+// 'AU_AusPostPriorityLetterWithTracking' ($8.26 tracked letter) is the REST/Sell-Account name for the
+// SAME service Trading calls 'AU_Regular' — echoing an already-on-the-order code sidesteps this, but
+// choosing a NEW tier does not. Guessing a REST-vocabulary code here risks error 20197. See the
+// AddOrder section of lib/ebay-trading.mjs for the fuller account of this trap.
+//
+// --combine=<itemId1>-<transId1>,<itemId2>-<transId2>[,...] — for TWO OR MORE separate unpaid
+// transactions (confirmed live: adding items to cart together does NOT auto-merge them into one
+// order). Calls AddOrder to merge them into a real Combined Invoice order first, THEN chains straight
+// into the SendInvoice flow above using the new OrderID — --ship-service/--ship-cost become REQUIRED
+// (there is no single existing order to echo postage from), and --adjust is checked against the
+// MERGED total, so a discount past what any single order's postage would have capped is exactly what
+// this tests:
+//   node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs \
+//     --combine=168633660463-10087339797818,168615215862-10084290487219 \
+//     --ship-service=AU_Regular --ship-cost=5.00 --adjust=12.96 --live
+// AddOrder has never been called from this repo before — see its header comment in
+// lib/ebay-trading.mjs for what is (WSDL-confirmed) and is not (best-effort guess) verified about it.
 import process from 'node:process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
-import { getOrders, sendInvoice, buildSendInvoiceInner, xmlField, xmlMoneyCents } from '../lib/ebay-trading.mjs';
+import {
+  getOrders, sendInvoice, buildSendInvoiceInner, addOrder, buildAddOrderInner, xmlField, xmlMoneyCents,
+} from '../lib/ebay-trading.mjs';
 import { oauthStatus } from '../lib/ebay-oauth.mjs';
 // cancelState is the CANONICAL reader for eBay's CancelStatus, and using it rather than the raw field
 // is the whole point: eBay returns <CancelStatus>NotApplicable</CancelStatus> on a perfectly ordinary
@@ -55,6 +76,9 @@ const arg = (k, d = null) => {
 const money = (c) => (c == null ? '—' : 'A$' + (c / 100).toFixed(2));
 const line = (s = '') => console.log(s);
 const rule = () => line('─'.repeat(74));
+// Moved up from beside the single-order guards below so --combine (which runs before those guards
+// even exist) can refuse through the same path instead of a second, inconsistent error style.
+const refuse = (why) => { console.error('\nREFUSED: ' + why); process.exit(1); };
 
 // Rung 1 is the control and rung 2 is the question. See the header.
 const RUNGS = { 1: 100, 2: 690 };
@@ -187,10 +211,114 @@ if (arg('list') || salesRecord) {
   process.exit(0);
 }
 
+// ---------------------------------------------------------------------------------------------
+// --combine — merge 2+ separate unpaid transactions (SAME buyer) into one Combined Invoice order
+// via AddOrder, THEN fall through into the ordinary single-order flow below unchanged, now pointed
+// at the new merged OrderID. This is the answer to "can we combine two carts AND still discount
+// past the postage cap": AddOrder has never been called from this repo before, and everything past
+// this block is the already-proven SendInvoice path — see the header and lib/ebay-trading.mjs's
+// AddOrder section for what is and is not confirmed.
+// ---------------------------------------------------------------------------------------------
+const combineArg = arg('combine');
+if (combineArg) {
+  const combineLines = String(combineArg).split(',').map((s) => s.trim()).filter(Boolean).map((p) => {
+    const m = p.match(/^(\d+)-(\d+)$/);
+    if (!m) { console.error(`--combine: "${p}" is not <ItemID>-<TransactionID>. Get these from --list.`); process.exit(2); }
+    return { itemId: m[1], transactionId: m[2] };
+  });
+  if (combineLines.length < 2) refuse('--combine needs 2+ comma-separated <ItemID>-<TransactionID> pairs.');
+
+  const st0 = oauthStatus(env);
+  if (!st0.connected) { console.error('eBay account not connected. Run on the machine that holds data/ebay-oauth.json.'); process.exit(1); }
+
+  // AddOrder needs a Total (eBay's own docs call it an estimate, computed from subtotal + whatever
+  // costs are specified here) and there is no single existing order to echo postage from — two
+  // different transactions may not even carry the same service. So, unlike the single-order path,
+  // the shipping override is not optional here.
+  if (!shipServiceOverride || shipCostOverride == null) {
+    console.error('--combine also needs --ship-service + --ship-cost. AddOrder has no order to echo');
+    console.error('postage from — merging separate transactions IS the point, so there is no "unchanged"');
+    console.error('figure to fall back on. Use --ship-service=AU_Regular for a ~$8.26 tracked letter —');
+    console.error('the Trading-vocabulary code confirmed to exist for that tier (see lib/ebay-trading.mjs).');
+    process.exit(2);
+  }
+
+  line(`MERGING ${combineLines.length} lines into one Combined Invoice order via AddOrder:`);
+  let subtotalCents = 0;
+  for (const l of combineLines) {
+    const pseudoId = `${l.itemId}-${l.transactionId}`;
+    const res = await getOrders(env, { orderIds: [pseudoId] });
+    const o = res.ok && (res.orders || []).find((x) => String(x.orderId) === pseudoId);
+    if (!o) { console.error(`eBay did not return order ${pseudoId} — check the ItemID-TransactionID pair.`); process.exit(1); }
+    if (o.paidTime) refuse(`${pseudoId} is already PAID — cannot merge a paid line into a new order.`);
+    if (cancelState(o) === 'cancelled') refuse(`${pseudoId} is cancelled.`);
+    line(`  ${pseudoId}  ${money(o.subtotalCents).padStart(9)}  ${((o.items[0] || {}).title || '').slice(0, 45)}`);
+    subtotalCents += (o.subtotalCents || 0);
+  }
+  const combineTotalCents = subtotalCents + shipCostOverride;
+  line(`  subtotal ${money(subtotalCents)}  +  postage ${shipServiceOverride} ${money(shipCostOverride)}  =  `
+    + `Total(estimate) ${money(combineTotalCents)}`);
+  line('');
+
+  const addOrderOpts = {
+    lines: combineLines, currency: 'AUD', totalCents: combineTotalCents,
+    shippingService: shipServiceOverride, shippingCostCents: shipCostOverride,
+  };
+  line('AddOrder XML (from the shipped buildAddOrderInner):');
+  line(buildAddOrderInner(addOrderOpts).replace(/></g, '>\n  <').replace(/^/, '  '));
+  line('');
+
+  if (!live) {
+    line('DRY RUN — AddOrder was not sent. Re-run with --live to actually merge these into one order');
+    line('(this creates a real combined order on eBay — not obviously reversible by un-merging).');
+    process.exit(0);
+  }
+
+  line('sending AddOrder…');
+  const added = await addOrder(env, addOrderOpts);
+  line(`  ack=${added.ack}  http=${added.httpStatus}`);
+  for (const e of (added.errors || [])) line(`  eBay ${e.severity || ''} ${e.code || ''}: ${e.longMessage || e.shortMessage || ''}`);
+  if (!added.ok || !added.orderId) {
+    console.error('');
+    console.error('AddOrder failed or returned no OrderID — cannot chain into SendInvoice.');
+    console.error('If the error names a field/sequence problem rather than a business rule, the field');
+    console.error('order in buildAddOrderInner (lib/ebay-trading.mjs) is an inferred best guess, not');
+    console.error('WSDL-confirmed — see its header comment for what to try reordering first.');
+    process.exit(1);
+  }
+  line(`  merged → new combined OrderID: ${added.orderId}  (created ${added.createdTime || '?'})`);
+  line('');
+
+  // The new order may not be immediately readable by ID — same write-then-read lag already proven
+  // for SendInvoice. Confirm it resolves BEFORE falling through to the snapshot() below, which is
+  // fatal on a miss; better a clear retry here than an unhelpful crash right after a real merge.
+  let mergedVisible = null;
+  const mergeWaits = [3000, 3000, 6000];
+  for (let i = 0; i < mergeWaits.length && !mergedVisible; i++) {
+    await new Promise((res) => setTimeout(res, mergeWaits[i]));
+    const res = await getOrders(env, { orderIds: [added.orderId] });
+    mergedVisible = res.ok && (res.orders || []).find((x) => String(x.orderId) === String(added.orderId));
+    if (!mergedVisible && i < mergeWaits.length - 1) line(`  (waiting for the merged order to become readable, attempt ${i + 1}/${mergeWaits.length}…)`);
+  }
+  if (!mergedVisible) {
+    console.error(`AddOrder ack'd Success but ${added.orderId} still won't read back after `
+      + `${mergeWaits.reduce((a, b) => a + b, 0) / 1000}s. It likely exists — check Seller Hub directly `
+      + `for order ${added.orderId} rather than assuming the merge failed.`);
+    process.exit(1);
+  }
+  line('merged order confirmed readable — continuing into the invoice flow below.');
+  rule();
+
+  orderId = added.orderId;   // fall through into the existing single-order flow, unchanged from here.
+}
+
 if (!orderId) {
   line('Usage: --order=<order id> [--rung=1|2 | --adjust=6.90] [--live] [--max-total=50]');
   line('       --list [--days=30]           ← recent UNPAID orders, with sales record nos');
   line('       --sales-record=1165          ← look up the order id from the number Seller Hub shows');
+  line('       --combine=<itemId1>-<transId1>,<itemId2>-<transId2>[,...] --ship-service=… --ship-cost=…');
+  line('                                     ← merge separate unpaid transactions first (AddOrder),');
+  line('                                       then chain straight into the invoice flow below');
   line('');
   line('An order id is one of two shapes, and Seller Hub shows neither plainly:');
   line('  combined (multi-line)   NN-NNNNN-NNNNN');
@@ -268,7 +396,6 @@ rule();
 show(before, 'ORDER BEFORE');
 rule();
 
-const refuse = (why) => { console.error('\nREFUSED: ' + why); process.exit(1); };
 if (before.paidTime) refuse('this order is already PAID. SendInvoice needs an unpaid order, and a probe must never touch a real sale.');
 // cancelState, NOT the raw field — same trap as the lister. "NotApplicable" is truthy, so a raw test
 // refuses every healthy order, which is exactly what it did.
