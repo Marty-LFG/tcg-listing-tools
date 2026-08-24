@@ -208,14 +208,21 @@ if (!st.connected) {
 // ---------------------------------------------------------------------------------------------
 // Read the order BEFORE, and refuse anything that is not a safe probe target.
 // ---------------------------------------------------------------------------------------------
-const snapshot = async (label) => {
+// fatal=true (the pre-flight read) dies immediately on a miss — there is nothing left to test without
+// an order. fatal=false (the post-send readback) returns null instead, because a miss right after a
+// WRITE is ambiguous — eBay lag vs. something structural — and the caller decides whether to retry.
+const snapshot = async (label, { fatal = true } = {}) => {
   const res = await getOrders(env, { orderIds: [orderId] });
   if (!res.ok) {
+    if (!fatal) return null;
     console.error(`GetOrders (${label}) failed:`, JSON.stringify(res.errors || res.ack));
     process.exit(1);
   }
   const o = (res.orders || []).find((x) => String(x.orderId) === String(orderId));
-  if (!o) { console.error(`eBay did not return order ${orderId}`); process.exit(1); }
+  if (!o) {
+    if (!fatal) return null;
+    console.error(`eBay did not return order ${orderId}`); process.exit(1);
+  }
   // AmountSaved is not in parseOrders and is corroborating evidence only — OrderType documents
   // AdjustmentAmount as an adjustment made by the BUYER, so a zero there proves nothing either way.
   o._amountSavedCents = xmlMoneyCents(res.xml, 'AmountSaved');
@@ -340,9 +347,25 @@ if (!r.ok) {
   process.exit(0);
 }
 
-// eBay can lag a moment before the order reflects the invoice.
-await new Promise((res) => setTimeout(res, 4000));
-const after = await snapshot('after');
+// eBay can lag before a write shows up on a read-by-id — confirmed live: the first real run here got
+// Ack=Success and then a bare miss on the very next read, at a single fixed 4s wait. Retry with backoff
+// instead of treating one miss as the answer; a transient lag and a structural problem look identical
+// after exactly one try.
+let after = null;
+const waits = [4000, 4000, 8000, 8000];
+for (let i = 0; i < waits.length && !after; i++) {
+  await new Promise((res) => setTimeout(res, waits[i]));
+  after = await snapshot('after', { fatal: false });
+  if (!after && i < waits.length - 1) line(`  (readback ${i + 1}/${waits.length} found nothing yet, retrying…)`);
+}
+if (!after) {
+  rule();
+  const totalWait = waits.reduce((a, b) => a + b, 0) / 1000;
+  line(`VERDICT: UNKNOWN — eBay ack'd the call (Ack=Success) but would not read order ${orderId} back`);
+  line(`by ID after ${totalWait}s of retries. This is NOT the same as "nothing happened" — check Seller`);
+  line('Hub directly for this order before concluding anything about the cap.');
+  process.exit(0);
+}
 rule();
 show(after, 'ORDER AFTER');
 rule();
