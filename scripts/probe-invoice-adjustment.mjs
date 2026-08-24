@@ -71,21 +71,51 @@ const discountCents = arg('adjust') ? Math.round(parseFloat(arg('adjust')) * 100
 // only identifier a human can actually read off the screen. Look up by it.
 const salesRecord = arg('sales-record') || arg('sr');
 
+// GetOrders returns ONE page and reports hasMore; the caller must walk it. Reading page 1 and stopping
+// is how "100 order(s) · 0 UNPAID" gets printed for an account with three orders awaiting payment —
+// exactly 100 is the page size, which is the tell. The cap is a runaway guard, and a truncated read
+// says so out loud rather than quietly answering from a slice.
+async function fetchOrders({ orderStatus = null, days = 30, maxPages = 25 } = {}) {
+  // A WEEK of headroom on the upper bound. eBay stamps orders in the seller's timezone and this window
+  // is built from the local clock, so any skew between the two silently truncates the newest orders —
+  // the ones a probe is looking for. Cheap to be generous; a too-narrow window is indistinguishable
+  // from an order that does not exist.
+  const to = new Date(Date.now() + 7 * 86400000).toISOString();
+  const from = new Date(Date.now() - days * 86400000).toISOString();
+  const out = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await getOrders(env, { createTimeFrom: from, createTimeTo: to, orderStatus, page, entriesPerPage: 100 });
+    if (!res.ok) return { ok: false, errors: res.errors, ack: res.ack };
+    out.push(...(res.orders || []));
+    if (!res.hasMore) return { ok: true, orders: out, pages: page, truncated: false };
+  }
+  return { ok: true, orders: out, pages: maxPages, truncated: true };
+}
+
 if (arg('list') || salesRecord) {
   const days = Math.max(1, parseInt(arg('days', '30'), 10));
-  // A day of headroom on the upper bound: eBay reports order dates in the SELLER's timezone while this
-  // window is built in UTC, so a sale made this evening can carry tomorrow's date and fall outside a
-  // window that ends at "now". A too-narrow window returns nothing and looks like a missing order.
-  const to = new Date(Date.now() + 86400000), from = new Date(Date.now() - days * 86400000);
-  const res = await getOrders(env, { createTimeFrom: from.toISOString(), createTimeTo: to.toISOString(), entriesPerPage: 100 });
+
+  // Ask eBay for awaiting-payment orders directly rather than pulling everything and filtering.
+  // 'Active' is Trading's word for unpaid. Fall back to a full scan if that returns nothing, so a
+  // wrong status name cannot masquerade as "you have no unpaid orders".
+  let via = 'OrderStatus=Active';
+  let res = await fetchOrders({ orderStatus: 'Active', days });
+  if (res.ok && !(res.orders || []).length) {
+    via = 'full scan';
+    res = await fetchOrders({ days });
+  }
   if (!res.ok) { console.error('GetOrders failed:', JSON.stringify(res.errors || res.ack)); process.exit(1); }
   const all = res.orders || [];
+  line(`read ${all.length} order(s) over ${res.pages} page(s) via ${via}, window ${days}d`
+    + (res.truncated ? '  ⚠ TRUNCATED at the page cap — widen nothing, this is a bug' : ''));
+  line('');
 
   if (salesRecord) {
     const hit = all.find((o) => String(o.salesRecordNumber) === String(salesRecord));
     if (!hit) {
-      console.error(`No order with sales record no. ${salesRecord} in the last ${days} days.`);
-      console.error(`Widen it with --days=90, or run --list to see what is there.`);
+      console.error(`No order with sales record no. ${salesRecord} among the ${all.length} read `
+        + `(${res.pages} page(s), ${days}d window, via ${via}).`);
+      console.error('Widen it with --days=90, or run --list to see what is there.');
       process.exit(1);
     }
     line(`sales record ${salesRecord} → order ${hit.orderId}`);
@@ -102,8 +132,9 @@ if (arg('list') || salesRecord) {
   line(`${all.length} order(s) created in the last ${days} days · ${unpaid.length} UNPAID`);
   line('');
   if (!unpaid.length) {
-    line('No unpaid orders. To make a probe target: from a second account, cart two cheap cards,');
-    line('commit to buy, and do NOT pay. Then re-run --list.');
+    line(`No unpaid orders among the ${all.length} read. If Seller Hub disagrees, the window is wrong —`);
+    line('try --days=90. Otherwise, to make a probe target: from a second account, cart two cheap');
+    line('cards, commit to buy, and do NOT pay. Then re-run --list.');
     process.exit(0);
   }
   line('UNPAID — any of these can be probed:');
