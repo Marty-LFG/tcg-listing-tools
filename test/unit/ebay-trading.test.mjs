@@ -158,8 +158,17 @@ describe('buildAddOrderInner', () => {
     // buildSendInvoiceInner has a whole test asserting this wrapper must NEVER appear there. Here it
     // must always appear when a shipping override is given — the two calls disagree on purpose.
     const xml = buildAddOrderInner(base);
-    assert.ok(xml.includes('<ShippingDetails><ShippingServiceOptions><ShippingService>AU_Regular</ShippingService>'
+    assert.ok(xml.includes('<ShippingDetails><ShippingServiceOptions><ShippingServicePriority>1</ShippingServicePriority>'
+      + '<ShippingService>AU_Regular</ShippingService>'
       + '<ShippingServiceCost currencyID="AUD">8.26</ShippingServiceCost></ShippingServiceOptions></ShippingDetails>'));
+  });
+
+  it('always sends ShippingServicePriority=1 when a shipping override is given — confirmed live', () => {
+    // Error 37 "Input data for tag ShippingServicePriority is invalid or missing" on the first real
+    // AddOrder call — eBay's own reference marks the field optional, AddOrder disagrees in practice.
+    const xml = buildAddOrderInner(base);
+    assert.ok(xml.includes('<ShippingServicePriority>1</ShippingServicePriority>'));
+    assert.ok(xml.indexOf('<ShippingServicePriority>') < xml.indexOf('<ShippingService>AU_Regular'));
   });
 
   it('omits ShippingDetails whole when no override is given, rather than emitting it empty', () => {
