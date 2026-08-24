@@ -255,8 +255,37 @@ if ((before.items || []).length < 2) {
   line('NOTE: this order has one line. The probe still answers the cap question, but a multi-line order');
   line('      is the real case, so prefer one with two.');
 }
+const beforeTotal0 = before.totalCents || 0;
+const postage0 = before.shippingCents || 0;
+
+// No adjustment yet? Then this run is an inspection, which is exactly what a first look should be.
+// Suggest amounts sized to THIS order rather than the generic $1.00/$6.90: the default rung 2 of $6.90
+// exceeds a $6.68 order outright, so on small orders the canned figure is unusable.
 if (!Number.isInteger(discountCents) || discountCents <= 0) {
-  refuse('no adjustment given. Pass --rung=1 (control, A$1.00) or --rung=2 (the question, A$6.90).');
+  const inside = Math.max(1, Math.min(100, postage0));                       // within the postage cap
+  const outside = Math.min(Math.max(postage0 + 100, 300), Math.max(100, beforeTotal0 - 100));
+  line('');
+  line('No adjustment given, so this was a look at the order. Next:');
+  line('');
+  line(`  CONTROL   inside the postage cap (${money(postage0)}) — does the field do ANYTHING?`);
+  line(`    node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs \\`);
+  line(`      --order=${orderId} --adjust=${(inside / 100).toFixed(2)} --live`);
+  line('');
+  line('  THE QUESTION   outside the cap — does it discount the CARDS?');
+  line(`    node --disable-warning=ExperimentalWarning scripts/probe-invoice-adjustment.mjs \\`);
+  line(`      --order=${orderId} --adjust=${(outside / 100).toFixed(2)} --live`);
+  line('');
+  line(`Run the control first. If ${money(inside)} vanishes, the field is inert on this path and the`);
+  line('second run tells you nothing new.');
+  process.exit(0);
+}
+
+// An adjustment bigger than the order is not a test of anything — eBay would have to refuse it whatever
+// the cap turns out to be, so it cannot distinguish the outcomes this probe exists to separate.
+if (discountCents >= beforeTotal0) {
+  refuse(`${money(discountCents)} is the whole ${money(beforeTotal0)} order or more. Pick something under `
+    + `the total and over the ${money(postage0)} postage — try --adjust=`
+    + `${(Math.min(Math.max(postage0 + 100, 300), Math.max(100, beforeTotal0 - 100)) / 100).toFixed(2)}.`);
 }
 
 // What the shipped builder would send. Deliberately NO shipping override: this probe isolates the
@@ -272,8 +301,8 @@ line('XML that will be sent (from the shipped buildSendInvoiceInner):');
 line(xml.replace(/></g, '>\n  <').replace(/^/, '  '));
 line('');
 
-const beforeTotal = before.totalCents || 0;
-const postage = before.shippingCents || 0;
+const beforeTotal = beforeTotal0;
+const postage = postage0;
 line('Outcomes to expect:');
 line(`  UNCAPPED       total becomes ${money(beforeTotal - discountCents)}  → build it`);
 line(`  CAPPED         total becomes ${money(beforeTotal - postage)}  (only the postage came off)`);
