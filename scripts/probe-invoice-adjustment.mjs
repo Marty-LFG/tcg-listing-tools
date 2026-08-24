@@ -28,6 +28,10 @@ import { fileURLToPath } from 'node:url';
 import { loadEnv } from 'vite';
 import { getOrders, sendInvoice, buildSendInvoiceInner, xmlField, xmlMoneyCents } from '../lib/ebay-trading.mjs';
 import { oauthStatus } from '../lib/ebay-oauth.mjs';
+// cancelState is the CANONICAL reader for eBay's CancelStatus, and using it rather than the raw field
+// is the whole point: eBay returns <CancelStatus>NotApplicable</CancelStatus> on a perfectly ordinary
+// order, so a truthiness test on the raw value marks every healthy order as cancelled.
+import { cancelState } from '../lib/postsale.mjs';
 
 // The secrets live in .env and are read by Vite, never exported into the shell — so process.env is
 // empty for a standalone script and oauthStatus would report "not connected" on the very machine that
@@ -128,7 +132,24 @@ if (arg('list') || salesRecord) {
     process.exit(0);
   }
 
-  const unpaid = all.filter((o) => !o.paidTime && !o.cancelStatus);
+  // Only a GENUINE cancellation disqualifies an order. cancelState maps NotApplicable/Invalid/
+  // CustomCode to 'none' — all of which are truthy strings on the raw field, which is what previously
+  // filtered away three healthy unpaid orders and reported "0 UNPAID".
+  const probeable = (o) => !o.paidTime && cancelState(o) !== 'cancelled';
+  const unpaid = all.filter(probeable);
+
+  // Show the fields the decision was made on. A filter that silently disagrees with Seller Hub has
+  // already cost two rounds here; its working belongs on screen.
+  if (all.length && all.length <= 40) {
+    line('what was read, and how each was judged:');
+    for (const o of all) {
+      line(`  sr ${String(o.salesRecordNumber || '?').padEnd(6)} ${String(o.orderId).padEnd(30)} `
+        + `${money(o.totalCents).padStart(9)}  ${probeable(o) ? 'PROBEABLE ' : 'skipped   '}`
+        + `paid=${o.paidTime || 'null'}  cancel=${o.cancelStatus || 'null'}→${cancelState(o) || 'null'}  `
+        + `order=${o.orderStatus || '?'}  checkout=${o.checkoutStatus || '?'}`);
+    }
+    line('');
+  }
   line(`${all.length} order(s) created in the last ${days} days · ${unpaid.length} UNPAID`);
   line('');
   if (!unpaid.length) {
