@@ -25,6 +25,10 @@
 //   node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --dry-run        (server-side dry run)
 //   node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --live           (really publish)
 //   node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --ids 12,13,14
+//   node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --include-listed
+//       ...also takes rows currently listed on eBay. Real stock, and D-023 re-catalogs all of it — but
+//       publishing one puts a single card live on two channels at once, so it is opt-in. See the
+//       selection query, and EBAY-RESET R1's same-day reconciliation rules.
 // DatabaseSync directly, not openDbAt — that runs migrations, and a tool whose only job is to SELECT
 // twenty ids has no business writing schema to the box that trades. DB_PATH is just a resolved path.
 import { DatabaseSync } from 'node:sqlite';
@@ -42,6 +46,10 @@ const BASE = val('--base', `http://127.0.0.1:${PORT}`);
 const LIVE = has('--live');
 const DRY = has('--dry-run');
 const FORCE = has('--force');
+// 'listed' means listed on eBay. Including those is a dual-live decision (see the selection query), so
+// it is opt-in rather than the default.
+const INCLUDE_LISTED = has('--include-listed');
+const STATUSES = INCLUDE_LISTED ? ['in_stock', 'listed'] : ['in_stock'];
 const API = BASE + '/api/shopify';
 
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
@@ -71,11 +79,19 @@ const json = async (path, body) => { const r = await api(path, body); const t = 
 async function main() {
   // --- 1. which rows -----------------------------------------------------------------------------
   //
-  // Read-only, and deliberately conservative: in_stock, has a price, has a quantity, and is not already
-  // mirrored as live on Shopify. `status` is the tool's own lifecycle ('in_stock'|'listed'|'sold') and a
-  // 'listed' row is on EBAY, not Shopify — so it is still a candidate here. Anything questionable is
-  // left for the server's preflight to refuse rather than filtered out silently, because a row that
-  // vanishes between the DB and the run is a row nobody knows to ask about.
+  // Read-only, and deliberately conservative: priced, in stock, and not already mirrored as live on
+  // Shopify.
+  //
+  // `status` is the tool's own lifecycle ('in_stock'|'listed'|'sold'), and 'listed' means listed ON
+  // EBAY. Those rows are real physical stock and D-023 will re-catalog every one of them into Shopify,
+  // so they are legitimate candidates — but publishing one puts the same single card live on two
+  // channels at once, which is the dual-live window EBAY-RESET R1 governs with same-day manual
+  // reconciliation. That is a decision, not a default, so it takes --include-listed. Against the dev
+  // store it costs nothing either way; against live it is the difference between a clean cutover and
+  // an oversell on a one-of-one.
+  //
+  // Anything else questionable is left for the server's preflight to refuse rather than filtered out
+  // here, because a row that vanishes between the DB and the run is a row nobody knows to ask about.
   const db = new DatabaseSync(DB_PATH, { readOnly: true });
   let rows;
   if (IDS.length) {
@@ -86,21 +102,28 @@ async function main() {
       SELECT i.id, i.sku, i.game, i.name, i.condition, i.status, i.quantity, i.target_price_cents
       FROM inventory_items i
       LEFT JOIN shopify_listings s ON s.kind = 'inventory' AND s.item_id = i.id AND s.state = 'live'
-      WHERE i.game = ? AND i.status = 'in_stock' AND i.quantity > 0
+      WHERE i.game = ? AND i.status IN (${STATUSES.map(() => '?').join(',')}) AND i.quantity > 0
         AND i.target_price_cents IS NOT NULL AND i.target_price_cents > 0
         AND s.sku IS NULL
       ORDER BY i.id
-      LIMIT ?`).all(GAME, LIMIT);
+      LIMIT ?`).all(GAME, ...STATUSES, LIMIT);
   }
 
   const totals = db.prepare('SELECT COUNT(*) n FROM inventory_items').get().n;
   const mirrored = db.prepare("SELECT COUNT(*) n FROM shopify_listings WHERE state = 'live'").get().n;
-  db.close();
 
   console.log(bold('\nShopify batch — ' + (LIVE ? red('LIVE') : DRY ? yellow('server dry run') : 'preview')));
   console.log(dim(`  database   ${DB_PATH}`));
   console.log(dim(`  stock      ${totals} inventory_items · ${mirrored} already live on Shopify`));
-  console.log(dim(`  selected   ${rows.length}${IDS.length ? ' by id' : ` × ${GAME}, in_stock, priced, not yet on Shopify`}`));
+  console.log(dim(`  selected   ${rows.length}${IDS.length ? ' by id' : ` × ${GAME}, ${STATUSES.join('/')}, priced, not yet on Shopify`}`));
+  if (!IDS.length && !INCLUDE_LISTED) {
+    const held = db.prepare(`SELECT COUNT(*) n FROM inventory_items i
+      LEFT JOIN shopify_listings s ON s.kind = 'inventory' AND s.item_id = i.id AND s.state = 'live'
+      WHERE i.game = ? AND i.status = 'listed' AND i.quantity > 0
+        AND i.target_price_cents IS NOT NULL AND i.target_price_cents > 0 AND s.sku IS NULL`).get(GAME).n;
+    if (held) console.log(dim(`             ${held} more are listed on eBay — --include-listed adds them (dual-live; see EBAY-RESET R1)`));
+  }
+  db.close();
 
   if (!rows.length) {
     console.log(red('\nnothing to publish — no row matched. Try --game, --limit, or --ids.\n'));
@@ -112,8 +135,21 @@ async function main() {
 
   // --- 2. the free preflight ---------------------------------------------------------------------
   const itemIds = rows.map((r) => r.id);
-  const { status: pfStatus, j: pf } = await json('/publish/preflight', { itemIds });
-  if (pfStatus !== 200 || !pf) { console.error(red(`\npreflight failed (HTTP ${pfStatus})`)); { process.exitCode = 2; return; } }
+  const { status: pfStatus, j: pf, t: pfText } = await json('/publish/preflight', { itemIds });
+  if (pfStatus !== 200 || !pf) {
+    console.error(red(`\npreflight failed (HTTP ${pfStatus})${pf && pf.error ? ': ' + pf.error : ''}`));
+    // The one that will happen most, and the one a bare status code explains worst. Vite binds plugin
+    // middleware in configureServer at BOOT — lib/shopify.mjs is not hot-reloaded — so a server started
+    // before a pull answers on /api/shopify but has never heard of a route added by it. Reads as a
+    // mysterious 404 against code you can see on disk.
+    if (pf && pf.code === 'unknown_route') {
+      console.error(yellow('\n  This route exists in the checkout but not in the server that is running.'));
+      console.error(yellow('  Vite loads plugin code once, at boot — restart `pnpm dev` and run this again.'));
+    } else if (!pf && pfText) {
+      console.error(dim(`  the server said: ${String(pfText).slice(0, 200)}`));
+    }
+    process.exitCode = 2; return;
+  }
 
   console.log(bold('\npreflight'));
   console.log(`  store        ${pf.store === 'live' ? red(bold('LIVE — the real shop')) : pf.store}${pf.pins.missing.length ? red(' — NOT PINNED: ' + pf.pins.missing.join(', ')) : ''}`);
