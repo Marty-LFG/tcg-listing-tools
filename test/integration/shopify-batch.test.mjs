@@ -93,10 +93,14 @@ async function stub(url, init = {}) {
   if (q.includes('inventoryItem(id:')) { calls.push({ op: 'readLevel' }); return resp(200, { data: { inventoryItem: { inventoryLevels: { nodes: [] } } } }); }
   if (q.includes('inventoryActivate')) {
     calls.push({ op: 'activate' });
+    // bend.inventory models step 3 failing AFTER productSet has already created the product — the
+    // shape that makes a naive retry mint a new label.
+    if (bend.inventory) return resp(200, { data: { inventoryActivate: { userErrors: [{ field: null, message: bend.inventory }] } } });
     return resp(200, { data: { inventoryActivate: { inventoryLevel: { id: 'gid://shopify/InventoryLevel/1', quantities: [{ name: 'available', quantity: v.available }] }, userErrors: [] } } });
   }
   if (q.includes('publishablePublish')) {
     calls.push({ op: 'publish' });
+    if (bend.publish) return resp(200, { data: { publishablePublish: { userErrors: [{ field: null, message: bend.publish }] } } });
     return resp(200, { data: { publishablePublish: { publishable: { availablePublicationsCount: { count: 1 } }, userErrors: [] } } });
   }
   if (q.includes('node(id:')) {
@@ -366,10 +370,14 @@ describe('preflight', () => {
     const c = r.json.collisions[0];
     assert.equal(c.count, 3);
     assert.deepEqual(c.itemIds.sort((a, b) => a - b), ids.sort((a, b) => a - b));
+    // An ERROR, not a warning: a collision that is reported and then published anyway is worse than
+    // one never detected, because the run claims three successes while two cards are overwritten.
     for (const row of r.json.rows) {
-      assert.ok(row.warnings.some((w) => /same product handle/.test(w)), 'every colliding row must say so');
+      assert.equal(row.ok, false, 'a colliding row must not be publishable');
+      assert.ok(row.errors.some((e) => /same product handle/.test(e)), 'every colliding row must say so');
       assert.equal(row.collidesWith.length, 2);
     }
+    assert.equal(r.json.publishable, 0);
   });
 
   it('does not flag distinct cards, or one card in different conditions', async () => {
@@ -473,6 +481,102 @@ describe('the live store is a separate switch', () => {
     writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
     const r = await (async () => { const x = await fetch(base + API + '/config'); return x.json(); })();
     assert.equal(r.allowLive, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The retry path. publishProduct fails at step 3 (inventory) and step 4 (publish) with productGid
+// ALREADY SET — the product exists on the store — and runShopifyPublish returns before
+// commitShelfLabel, so inventory_items.sku is still STG-*. On the re-run labelTaken sees this row's
+// OWN claim row in shopify_listings and reports the label taken, so the retry would take the NEXT
+// label. That label is the custom.id productSet upserts on, while `handle` is sent explicitly from
+// identity+condition — so a retry under a new label is a CREATE at a handle the orphan already owns.
+// Both drivers print "a re-run never duplicates, it upserts" on exactly these rows.
+describe('a retry must reuse the label it already claimed', () => {
+  it('keeps the same SKU after a failure that already created the product', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+
+    bend.inventory = 'the location will not stock this';
+    const first = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(first.rows[0].status, 'failed');
+    const m1 = mirror('AAC-097');
+    assert.ok(m1 && m1.product_gid, 'the product was created before the failure — that is the premise');
+    assert.equal(db.prepare('SELECT sku FROM inventory_items WHERE id = ?').get(a).sku.startsWith('STG-'), true,
+      'the label was never committed, so the stock row is still provisional');
+
+    bend.inventory = null;
+    const second = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(second.rows[0].status, 'published');
+    assert.equal(second.rows[0].sku, 'AAC-097', 'the retry must reuse the claimed label, or it creates a second product');
+
+    const sets = calls.filter((c) => c.op === 'productSet');
+    assert.equal(sets[sets.length - 1].sku, 'AAC-097', 'the customId sent on the retry is the upsert key');
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM shopify_listings WHERE item_id = ?').get(a).n, 1,
+      'one card, one mirror row — a second row means a second product');
+  });
+
+  it('does not strand the row when the publish step is what failed', async () => {
+    const a = addItem({ name: 'Beta', number: '59/102' });
+    bend.publish = 'channel unavailable';
+    await postStream('/publish/batch', { itemIds: [a] });
+    bend.publish = null;
+    const second = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(second.rows[0].sku, 'AAC-097');
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM shopify_listings WHERE item_id = ?').get(a).n, 1);
+  });
+
+  // A half-published row is not a fresh row, and the preflight collapsing the mirror to
+  // state==='live' loses exactly that distinction.
+  it('preflight reports a half-published row rather than calling it publishable', async () => {
+    const a = addItem({ name: 'Gamma', number: '60/102' });
+    bend.inventory = 'nope';
+    await postStream('/publish/batch', { itemIds: [a] });
+    bend.inventory = null;
+
+    const pf = await post('/publish/preflight', { itemIds: [a] });
+    const row = pf.json.rows[0];
+    assert.equal(row.halfPublished, true, 'a row with a product on the store but no successful publish is not fresh');
+    assert.ok(row.warnings.some((w) => /already exists/i.test(w)));
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('a row marked sold must never publish', () => {
+  // The harmful shape is sold-at-quantity-1, not sold-at-zero: every manual sold-marking path leaves
+  // quantity at its NOT NULL DEFAULT 1, and quantity 0 is only a warning. So a card sold at a show
+  // comes back from the preflight clean and publishes ACTIVE, available 1, DENY — a purchasable
+  // one-of-one that does not exist (bk-shopify invariant 3).
+  it('refuses it in validation, so every caller is covered', async () => {
+    const a = addItem({ name: 'Sold Card', number: '61/102', status: 'sold' });
+    const pf = await post('/publish/preflight', { itemIds: [a] });
+    assert.equal(pf.json.refused, 1);
+    assert.equal(pf.json.publishable, 0);
+    assert.ok(pf.json.rows[0].errors.some((e) => /sold/i.test(e)));
+  });
+
+  it('and the batch refuses it even when asked directly by id', async () => {
+    const a = addItem({ name: 'Sold Card', number: '61/102', status: 'sold' });
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(r.rows[0].status, 'refused');
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('colliding rows are gated, not merely announced', () => {
+  it('refuses every row of a collision rather than publishing them onto one handle', async () => {
+    const ids = [1, 2, 3].map(() => addItem({ name: 'Radiant Gardevoir', number: '69/196' }));
+    const r = await postStream('/publish/batch', { itemIds: ids });
+    assert.equal(r.summary.published, 0, 'none may publish — the last would silently win');
+    assert.equal(r.summary.refused, 3);
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 0);
+  });
+
+  it('does not count colliding rows as publishable', async () => {
+    const ids = [1, 2].map(() => addItem({ name: 'Radiant Gardevoir', number: '69/196' }));
+    const pf = await post('/publish/preflight', { itemIds: ids });
+    assert.equal(pf.json.publishable, 0);
+    assert.equal(pf.json.refused, 2);
   });
 });
 

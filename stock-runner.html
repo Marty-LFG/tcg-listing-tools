@@ -2144,7 +2144,7 @@ async function runShopifyBatch(itemIds, dryRun) {
   stat($('runStatus'), held ? 'warn' : 'ok',
     (dryRun ? s.published + ' would publish' : s.published + ' published to ' + esc(s.store || SHOPIFY.store))
     + (s.skipped ? ' · ' + s.skipped + ' already live' : '')
-    + (held ? ' · <b>' + held + ' held</b> — fix and press Shopify again; a re-run never duplicates.' : '')
+    + (held ? ' · <b>' + held + ' held</b> — fix and press Shopify again. A retry reuses the label it already claimed, so a row that failed after its product was created is revised, not duplicated.' : '')
     + (s.cancelled ? ' · stopped when the page closed' : ''));
   // Publishing spends shelf labels, so the upcoming run has moved. Refetch before the rows repaint,
   // or the ones still queued would preview numbers that were just taken.
