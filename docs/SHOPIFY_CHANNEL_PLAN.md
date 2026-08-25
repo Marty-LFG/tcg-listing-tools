@@ -399,11 +399,31 @@ sibling in canonical order.** Two things block it, neither of them code:
    real stock is on **ALCSERVER**, so the gate has to run there. AGENTS.md's claim that ALCSERVER exposes
    only the app port with no shell is **out of date** — Marty confirmed shell access on 2026-08-25.
 
-Suggested order on ALCSERVER: copy the four `SHOPIFY_*` keys into its `.env` → `node scripts/check-shopify.mjs`
-(expect 5/5) → confirm `data/shopify.config.json` carries the dev pins → stage 20 real Pokémon singles in the
-Batch Runner → press 🛍 Shopify for the **dry run** and read every row → set `publish.enabled: true` and
-`status: "DRAFT"` → press it again → review the drafts in the Shopify admin → flip to `ACTIVE` and re-push
-with force. Then the PDP check on the dev storefront, and `check-product-status.ps1`.
+**The Batch Runner button cannot reach existing stock, and that is not a bug to fix in it.** The Runner's
+queue is localStorage — cards caught in this browser session and staged — so 🛍 Shopify publishes what the
+tab is holding, never a row that is already in `inventory_items`. On ALCSERVER that is all 265 of them. The
+second driver is `scripts/publish-shopify.mjs`, which selects from the DB and posts to the same routes:
+
+```
+node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --limit 20        # preview, sends nothing
+node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --limit 20 --dry-run
+node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --limit 20 --live
+```
+
+It needs `pnpm dev` running on the same box — not laziness but necessity: the publish path self-fetches the
+image compositor at `/api/listing-image/build`, and going through the routes means every guard, the
+shelf-label claim and the audit row are the *same* code the button uses rather than a second path with its
+own bugs.
+
+Order on ALCSERVER: copy the four `SHOPIFY_*` keys into its `.env` → `node scripts/check-shopify.mjs`
+(expect 5/5) → `pnpm dev` → `publish-shopify.mjs --limit 20` to see the selection and the preflight →
+`--dry-run` to have the server map and validate all 20 → set `publish.enabled: true` and `status: "DRAFT"`
+→ `--live` → review the drafts in the Shopify admin → flip to `ACTIVE` and re-run with `--force`. Then the
+PDP condition-selector check on the dev storefront, and `check-product-status.ps1`.
+
+⚠ **A dry run does not exercise media or `productSet`** — `runShopifyPublish` skips compose and upload when
+`dryRun`. So a clean dry run says the data is good, not that the store round-trip works. The first armed
+`DRAFT` run is the real test, which is exactly why `status` starts at `DRAFT`.
 
 ### Interlude — the D-023 eBay reset
 
