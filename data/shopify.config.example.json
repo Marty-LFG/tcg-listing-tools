@@ -19,7 +19,9 @@
   "publish": {
     "_comment": "enabled is the master switch for writing to Shopify at all. It ships FALSE: until the first supervised dev-store publish has been eyeballed, /api/shopify/publish refuses with a 409 and only /preview (which is local and calls nothing) will run. `status` is what a published product is set to; DRAFT is a useful setting for a supervised first run because a draft cannot be bought even if publishing misfires.",
     "enabled": false,
-    "status": "ACTIVE"
+    "status": "ACTIVE",
+    "_comment_allowLive": "SEPARATE from enabled, and fails closed. storeFor() reads ?store= straight off the query string with no allowlist, and `enabled` is one global switch — so without this, arming the dev-store gate also arms live and the only thing between ?store=live and a real product on the real shop is that nobody typed it. Blank live pins catch it today, but that is safety by ABSENCE, and this repo has already paid for that lesson once (the 2026-08-23 incident). Dry runs are exempt: they return before the first network call and write nothing anywhere.",
+    "allowLive": false
   },
 
   "sync": {

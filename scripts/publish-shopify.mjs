@@ -116,7 +116,13 @@ async function main() {
   if (pfStatus !== 200 || !pf) { console.error(red(`\npreflight failed (HTTP ${pfStatus})`)); { process.exitCode = 2; return; } }
 
   console.log(bold('\npreflight'));
-  console.log(`  store        ${pf.store}${pf.pins.missing.length ? red(' — NOT PINNED: ' + pf.pins.missing.join(', ')) : ''}`);
+  console.log(`  store        ${pf.store === 'live' ? red(bold('LIVE — the real shop')) : pf.store}${pf.pins.missing.length ? red(' — NOT PINNED: ' + pf.pins.missing.join(', ')) : ''}`);
+  // There is no --store flag: the target comes from defaultStore in the config. Saying so out loud
+  // matters most in the case where someone has changed it and forgotten.
+  if (pf.store === 'live') {
+    console.log(red('               ^ this is not the dev store. publish.allowLive must also be true,'));
+    console.log(red('                 and it is a separate switch from publish.enabled on purpose.'));
+  }
   console.log(`  publishing   ${pf.publishEnabled ? green('ARMED') : yellow('off — the server will only dry run')}  ·  new products land as ${bold(pf.publishStatus)}`);
   console.log(`  labels       ${pf.nextLabel ? 'from ' + bold(pf.nextLabel) : 'rows already carry theirs'}`);
   console.log(`  publishable  ${green(String(pf.publishable))}   already live ${pf.alreadyLive}   refused ${pf.refused ? red(String(pf.refused)) : '0'}`);
