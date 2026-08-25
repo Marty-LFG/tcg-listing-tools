@@ -20,7 +20,12 @@ import http from 'node:http';
 import { openDbAt } from '../../lib/db.mjs';
 import { seedStockLabels } from '../../lib/inventory.mjs';
 
+// SHOPIFY_SHOP is set here deliberately, and it is what makes the live-guard tests mean anything.
+// Without it guardCredentials refuses store=live as not_connected and the guard below is never
+// reached — which is the state of a developer box, and NOT the state of the box that trades. ALCSERVER
+// carries both shops in its .env, so the tests model that and not the safer accident.
 const ENV = {
+  SHOPIFY_SHOP: 'gkrnva-1k',
   SHOPIFY_DEV_SHOP: 'binders-keepers-dev',
   SHOPIFY_CLIENT_ID: 'fake-client-id',
   SHOPIFY_CLIENT_SECRET: 'fake-client-secret',
@@ -355,6 +360,90 @@ describe('preflight', () => {
     const r = await post('/publish/preflight', { itemIds: [a] });
     assert.equal(r.status, 200);
     assert.deepEqual(r.json.pins.missing.sort(), ['locationGid', 'publicationGid']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The live store is opt-in on its own. storeFor() reads ?store= off the query string with no
+// allowlist, so without this guard arming publish.enabled for the dev gate also arms live, and the
+// only thing between ?store=live and a real product on the real shop is that nobody typed it.
+describe('the live store is a separate switch', () => {
+  const LIVE_PINNED = {
+    ...CFG,
+    stores: { ...CFG.stores, live: { locationGid: 'gid://shopify/Location/9', publicationGid: 'gid://shopify/Publication/9' } },
+  };
+
+  it('refuses a live batch even when publishing is armed', async () => {
+    writeConfig({ ...LIVE_PINNED, publish: { enabled: true, status: 'ACTIVE' } });   // allowLive absent
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await post('/publish/batch?store=live', { itemIds: [a] });
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'live_not_allowed');
+    assert.equal(calls.length, 0, 'nothing may reach the store');
+  });
+
+  it('refuses a live single publish the same way', async () => {
+    writeConfig({ ...LIVE_PINNED, publish: { enabled: true, status: 'ACTIVE' } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await post('/publish?store=live', { itemId: a });
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'live_not_allowed');
+  });
+
+  // rebuildIdentity always performs a metaobjectUpsert, so on live it is a real write however invoked.
+  it('refuses a live identity rebuild, with no dry-run escape', async () => {
+    writeConfig({ ...LIVE_PINNED, publish: { enabled: true, status: 'ACTIVE' } });
+    const r = await post('/identity/rebuild?store=live', { handle: 'pokemon-base1-58-base-en' });
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'live_not_allowed');
+    assert.equal(calls.length, 0);
+  });
+
+  it('fails CLOSED — an absent allowLive is not permission', async () => {
+    const cfg = { ...LIVE_PINNED, publish: { enabled: true, status: 'ACTIVE' } };
+    assert.equal(cfg.publish.allowLive, undefined, 'the key is deliberately absent in this fixture');
+    writeConfig(cfg);
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    assert.equal((await post('/publish/batch?store=live', { itemIds: [a] })).json.code, 'live_not_allowed');
+  });
+
+  it('is not satisfied by a truthy non-true value', async () => {
+    writeConfig({ ...LIVE_PINNED, publish: { enabled: true, status: 'ACTIVE', allowLive: 'yes' } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    assert.equal((await post('/publish/batch?store=live', { itemIds: [a] })).json.code, 'live_not_allowed');
+  });
+
+  // A dry run returns before publishProduct's first network call, so it writes nothing anywhere —
+  // and "what would live receive" is a fair question to ask without arming anything.
+  it('allows a live DRY RUN, which writes nothing', async () => {
+    writeConfig({ ...LIVE_PINNED, publish: { enabled: false, status: 'ACTIVE' } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch?store=live', { itemIds: [a], dryRun: true });
+    assert.equal(r.rows[0].status, 'would_publish');
+    assert.equal(r.summary.store, 'live');
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 0, 'a dry run must not reach the store');
+    assert.equal(mirror('AAC-097'), undefined, 'and must not write a mirror row');
+  });
+
+  it('lets a live batch through once allowLive is explicitly true', async () => {
+    writeConfig({ ...LIVE_PINNED, publish: { enabled: true, status: 'ACTIVE', allowLive: true } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch?store=live', { itemIds: [a] });
+    assert.equal(r.rows[0].status, 'published');
+    assert.equal(r.summary.store, 'live');
+  });
+
+  it('never affects the dev store', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });   // allowLive absent
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(r.rows[0].status, 'published', 'the dev path must be untouched by the live guard');
+  });
+
+  it('reports allowLive on /config so a client can show it', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
+    const r = await (async () => { const x = await fetch(base + API + '/config'); return x.json(); })();
+    assert.equal(r.allowLive, false);
   });
 });
 
