@@ -167,7 +167,23 @@ async function main() {
     console.log(red(`  ✖ ${r.item_id}`) + `  ${(r.name || '').slice(0, 40)}`);
     for (const e of r.errors) console.log(`      ${e}`);
   }
-  const warned = pf.rows.filter((x) => x.ok && x.warnings.length);
+  // Loud, and above the per-row warnings, because it is the one problem here that is a property of the
+  // BATCH rather than of any row in it — every row involved looks perfectly fine on its own.
+  for (const c of pf.collisions || []) {
+    console.log(red(bold(`\n  ⚠ ${c.count} rows map to ONE product handle: ${c.handle}`)));
+    console.log(red(`    ${c.name} — items ${c.itemIds.join(', ')}`));
+    console.log(dim(`    ${c.skus.join(' · ')}`));
+    console.log(dim('    Ungraded handles are identity + condition, so copies of one card in one'));
+    console.log(dim('    condition collide. D-012 wants ONE product with quantity ' + c.count + ', not ' + c.count + ' products.'));
+    console.log(dim('    Publishing as-is would upsert them all onto the same handle, in order, and the'));
+    console.log(dim('    last one would win. Use --ids to take a single copy, or fix the stock rows.'));
+  }
+
+  // The collision warning is on every colliding row by design (an API consumer reading one row should
+  // learn about it), but the block above has already said it once with the full list — so repeating it
+  // per row here would bury the row-specific warnings under six copies of the same sentence.
+  const notCollision = (w) => !/same product handle/.test(w);
+  const warned = pf.rows.map((r) => ({ ...r, warnings: r.warnings.filter(notCollision) })).filter((x) => x.ok && x.warnings.length);
   for (const r of warned) console.log(yellow(`  ! ${r.item_id}`) + `  ${(r.name || '').slice(0, 40)} — ${r.warnings.join(' · ')}`);
 
   if (!pf.publishable) { console.log(red('\nnothing publishable. Fix the refusals above and run again.\n')); { process.exitCode = 1; return; } }
