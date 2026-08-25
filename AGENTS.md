@@ -200,6 +200,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `data/funko_pop.json` | Vendored, filtered Funko catalog (~11k Pop vinyls). Built by `scripts/build-funko-data.mjs` from the MIT `kennymkchan/funko-pop-data` dump. Frozen at 2021. Fetched same-origin (no proxy). |
 | `scripts/build-funko-data.mjs` | Rebuilds `data/funko_pop.json` from upstream (filter to Pop! vinyl, derive franchise/exclusive/chase). |
 | `data/riftbound.json` | Baked Riftbound catalog (~1164 cards, every released set), built by `scripts/build-riftbound-data.mjs` from the **official LoL card gallery** (keyless). Keyed by lowercase set code **in Riot's release order**; per-set `{name,code,total,cards}` where `total` is the printed set total; per-card `{k,num,name,rarity,type,domain,e,p,m,img}`. Fetched same-origin (gzipped by the `dataGzip` middleware, ETag-cached client-side via `TCG.cachedJSON`). Default Riftbound source. |
+| `lib/riftbound-cards.mjs` | Serves the baked catalog to the two stock tools at `/api/riftbound/sets`, `/set/:id/cards` (with the keyless price join) and `/cards/:set/:num`. No upstream, no cache — the bake IS the source. **Must be registered before `riftboundPricesPlugin()`** (§17). |
 | `scripts/build-riftbound-data.mjs` | Rebuilds `data/riftbound.json`: scrapes the gallery Next.js `buildId`, fetches `card-gallery.json`, slims + groups by set. **Self-updating** — set codes, names, printed totals and release order come from the gallery's own `sets.items` roster, so a NEW SET needs no code change here or in the builder (`lib/refresh.mjs` Telegram-alerts via the returned `newSets`). Derives the variant treatment from the printed number and freezes it into the card name (see §6). |
 | `extras.js` | Shared `TCG.*` module. **Images** (`renderExtras`): each image is `{label, display:[fast/small urls — raced, quickest shown], download:bestQualityUrl, fallback}`; the download button is ALWAYS best quality (back-compat `{url,fallback}` still works). **`TCG.activity(label)`** → `{update,done,fail}` renders a bottom-left toast stack with a live elapsed timer so every network op is visible. **`TCG.ebayComps({query,container,status,filter?})`** — shared eBay AU delivered-comps engine (sold-first via Marketplace Insights → asking fallback; delivered totals = item + shipping; AU vs Worldwide; undercut; auto-drives an activity toast). Plus prices/graph panel, FX, title-fitting, `condCode`/`langCode`, `legoCondToken`/`funkoCondToken`, `renderItemSpecifics`. Loaded via `<script src="/extras.js">`. |
 | `listing-image-lab.html` | Tuning harness for the branded listing image (§19). Drop a photo, drag rail-width / padding / canvas / text sliders, check it at thumbnail size, copy or save the config. Sliders are request-scoped — saving is a separate button through `/api/settings`. |
@@ -934,7 +935,7 @@ That `ShippingDetails` omission is **why the repricer cannot move a listing betw
 
 Sold and unsold history reaches back about 90 days, so the mirror is complete for active listings and partial for history. Migrating the hand-made listings into the Inventory model (`bulkMigrateListing`) would collapse this into one population, but it is **one-way** — Trading `Revise*` is permanently blocked afterwards — so it is a deliberate decision, not a default.
 
-## 17. eBay stock uploader (Sell Inventory API) — Pokémon, Magic and Lorcana
+## 17. eBay stock uploader (Sell Inventory API) — Pokémon, Magic, Lorcana and Riftbound
 
 Brings the listing builders and the eBay inventory together: pick a card + qty → verify price +
 Best-Offer → one button → the card is **created live on eBay**, and local stock stays in sync as it
@@ -1005,7 +1006,7 @@ scope, so it cannot `import`. The module shim at the bottom hands over `lib/ebay
 top, because a module runs after the document is parsed and every URL boot touches comes out of the
 adapter. `test/invariants/ebay-links-single-source.test.mjs` pins the arrangement.
 
-### Two games, one page (`lib/stock-games.mjs`)
+### Four games, one page (`lib/stock-games.mjs`)
 
 Both stock tools read a per-game adapter table — the third in the repo, beside `MAPPERS`
 (`lib/normalize.mjs`, price extraction) and `ENUMERATORS` (`lib/enumerate.mjs`, set → rows). Adding
@@ -1019,7 +1020,56 @@ tokens, the rarity classes, `normalizeCard` → `invRowFrom` (the inventory row 
 them back — one source, so the pages' ↗ links cannot drift from the search the price came from.
 
 `STOCK_GAME_IDS` is deliberately a SUBSET of `GAMES`: a game only belongs here once its eBay aspects
-have been checked against the live Taxonomy, which so far is Pokémon, Magic and Lorcana.
+have been checked against the live Taxonomy, which so far is Pokémon, Magic, Lorcana and Riftbound.
+
+### Riftbound (`lib/riftbound-cards.mjs`, added 2026-08-25)
+
+Joined on its own live probe (`--game "Riftbound"`), which confirmed the `Game` member and then
+settled a long list of **absences** — the aspect code and `test/unit/ebay-aspects-riftbound.test.mjs`
+are written around them, and each one is a decision someone could later "fix" by reaching for
+another game's word. Only `Spell` has a Card Type member (Unit/Gear/Legend/Battlefield/Rune do not,
+and `Gear` is **not** sent as Magic's `Equipment`); Epic and Showcase have no Rarity member and the
+enum's `Legendary` is not Riftbound's Epic; none of the six domains is an Attribute/Colour member, so
+they go verbatim with only `Colorless` → `Colourless` (a spelling, not a translation) and the FIRST
+domain winning on the 175 dual-domain cards; `Riot Games` is not a Manufacturer member; Overnumbered,
+Signature and Ultimate have no Features member and are forfeited there because the title already
+carries them at priority 82. **Year Manufactured stays unset** — Riot's set roster is
+`{id, name, collectorNumberMax}` and carries no release date at all (probed live), so there is
+nothing to derive.
+
+**No upstream, so the routes SERVE the bake.** `/api/riftbound/sets`, `/api/riftbound/set/:id/cards`
+and `/api/riftbound/cards/:set/:num` read `data/riftbound.json` through `iterateRiftboundSet` /
+`resolveRiftboundCard` — the same iterator `ENUMERATORS.riftbound` uses, which is what keeps the
+runner and the bulk tool incapable of drifting. The set route **joins the keyless TCGplayer price
+index** onto every card: the batch runner's disagreement detector is Riftbound's only independent
+second opinion, and without a market figure every row would come back `unverified`. A missing price
+index still serves the catalogue (priced `null`); a missing catalogue is a `503 catalog_missing`.
+⚠ `riftboundCardsPlugin()` must be registered **before** `riftboundPricesPlugin()` in
+`vite.config.js` — the prices plugin mounts at the bare `/api/riftbound` prefix and never calls
+`next()`, so anything after it is unreachable, silently. `test/invariants/riftbound-route-order.test.mjs`
+pins the order and proves the reason.
+
+⚠ **`variant` holds the TREATMENT, not a printing.** For every other game it is `Holo` / `Etched
+Foil`; for Riftbound it is `Alternate Art` / `Overnumbered` / `Signature` / `Ultimate`, which
+`titleParts` renders at priority 82 because it is a 10-100× price differentiator. `baseRow` computes
+`variantToken(edition, finish)` and `stock-uploader.html` passes its own inline finish→variant ladder
+as `ui.variant`, so the adapter's `invRowFrom` **overrides** both. Left alone, every Epic and Showcase
+card stores `variant:'Foil'`, which deletes `(Signature)` from the title and forks the `stockKey` away
+from the row the bulk enumerator writes for the same physical card. For the same reason
+`ebayFinish` reads `rowIn.finish` rather than falling back to the variant, and `card_facts` persists
+the finish — `finish` is not an `inventory_items` column and `itemToListing` back-fills it from
+`variant`.
+
+Two smaller ones: **every Riftbound set code is a catch-line token** (OGN/OGS/SFD/UNL/VEN are none of
+them number-shaped, the exact opposite of Lorcana's numbered sets), and the **printing token table is
+empty** because the bake is single-printing per card — the runner's grammar strip drops the chip
+rather than advertising a control with one answer. The **Character** aspect comes from
+`riftboundCharacter` (`lib/listing-copy.mjs`), which splits Riot's `"<Champion>, <Epithet>"` name and
+is gated on `type === 'Unit'`: counted over the bake, 296 of the 297 comma names are Units and the one
+that is not (`Heisho, Shell of the World`, a Battlefield) has a PLACE before the comma. It is a NEW
+export rather than a change to `championTag`, which splits on `" - "` and is under the GR9 mirror.
+The bake also now keeps the **artist** as `a` (100% coverage, 101 studios), which lights up the
+Illustrator aspect.
 
 ### Pokémon in five languages (`lib/pokemon-intl.mjs`)
 

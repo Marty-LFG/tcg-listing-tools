@@ -48,7 +48,10 @@ describe('the registry', () => {
   it('lists exactly the games whose eBay aspects have been checked live', () => {
     // Lorcana joined 2026-08-14 after its own live Taxonomy run — which is what found that its
     // required Game aspect had never matched the enum ('Disney Lorcana' vs 'Disney Lorcana TCG').
-    assert.deepEqual(STOCK_GAME_IDS, ['pokemon', 'mtg', 'lorcana']);
+    // Riftbound joined 2026-08-25 after its own run (--game "Riftbound"); the enum member was
+    // already right by then, and what the probe settled was the long list of aspects Riftbound has
+    // NO member for — see test/unit/ebay-aspects-riftbound.test.mjs, which pins each absence.
+    assert.deepEqual(STOCK_GAME_IDS, ['pokemon', 'mtg', 'lorcana', 'riftbound']);
     for (const id of STOCK_GAME_IDS) assert.ok(STOCK_GAME_ADAPTERS[id], id + ' is listed but has no adapter');
   });
 
@@ -73,6 +76,8 @@ describe('the registry', () => {
   it('the SKU codes match GAMECODE in lib/inventory.mjs', () => {
     assert.equal(STOCK_GAME_ADAPTERS.pokemon.code, 'PKM');
     assert.equal(STOCK_GAME_ADAPTERS.mtg.code, 'MTG');
+    assert.equal(STOCK_GAME_ADAPTERS.lorcana.code, 'LOR');
+    assert.equal(STOCK_GAME_ADAPTERS.riftbound.code, 'RB');
   });
 
   // Not cosmetic. Templating this key would orphan every browser's cached set list, and that cache

@@ -673,6 +673,11 @@ function cardRow(){
     // that persists the printing, and it is part of UNIQUE(game, identity_key, variant).
     // "Non-holo" contains "holo", so it MUST be tested before the holo branch or a plain card is
     // stored (and listed) as Holo.
+    // ⚠ NOT universal. A game whose `variant` column holds something OTHER than a printing has to
+    // override this in its own invRowFrom — Riftbound does exactly that, because its variant is the
+    // printing TREATMENT (Alternate Art / Overnumbered / Signature / Ultimate) and collapsing those
+    // onto 'Foil' deletes the title token that makes a US$3,000 card findable. Moving this ladder
+    // onto the adapter is the right eventual refactor; until then, check what a new game stores.
     variant:(function(v){return /reverse/i.test(v)?'Reverse Holo':/non[-\s]?(holo|foil)/i.test(v)?'Base':/surge/i.test(v)?'Surge Foil':/etched/i.test(v)?'Etched Foil':/holo/i.test(v)?'Holo':/foil/i.test(v)?'Foil':'Base';})($('finish').value),
     language:card.language||'EN',
     storeCategories:storePick.slice(0,STORE_MAX),

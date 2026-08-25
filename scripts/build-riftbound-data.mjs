@@ -159,6 +159,15 @@ export function groupCards(rawCards, roster = [], prior = {}) {
     const domain = (c.domain && Array.isArray(c.domain.values) ? c.domain.values.map((v) => v.label).filter(Boolean).join(';') : '')
     const e = idOf(c.energy), p = idOf(c.power), m2 = idOf(c.might)
     const img = (c.cardImage && c.cardImage.url) || ''
+    // The ARTIST. Riot ships it on every card in the gallery payload (counted 2026-08-25: 1189 of
+    // 1189, 102 distinct studios), and eBay's Illustrator aspect is a live FREE_TEXT enum that
+    // Pokemon, Magic and Lorcana all fill. A card arriving WITHOUT one therefore signals an upstream
+    // shape change, not an ordinary absence — it degrades to '' rather than failing the bake (GR7),
+    // and the coverage assertion lives in test/data/riftbound-character.test.mjs.
+    // `values` is an array because the field is shaped like domain/illustrator multi-selects; every
+    // card observed carries exactly one, and the FIRST is the credited artist.
+    const artist = (c.illustrator && Array.isArray(c.illustrator.values) && c.illustrator.values[0]
+      && c.illustrator.values[0].label) || ''
 
     const key = code.toLowerCase()
     const set = (sets[key] ||= { name: meta.get(code).name, code, total: meta.get(code).total, cards: [] })
@@ -170,6 +179,7 @@ export function groupCards(rawCards, roster = [], prior = {}) {
       p: p != null ? String(p) : '',
       m: m2 != null ? String(m2) : '',
       img,
+      a: artist,                         // the illustrator, one short key beside `img`
     })
     kept++
   }

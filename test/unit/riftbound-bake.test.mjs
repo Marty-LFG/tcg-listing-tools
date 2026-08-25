@@ -23,6 +23,9 @@ const card = (publicCode, name, o = {}) => ({
   power: { value: { id: o.p != null ? o.p : 1 } },
   might: { value: { id: o.m != null ? o.m : 4 } },
   cardImage: { url: o.img || 'https://cmsassets.rgpub.io/x.png' },
+  // The gallery credits an artist on every card. `illustrator` is shaped like the other
+  // multi-select fields even though every card observed carries exactly one value.
+  ...(o.artist === null ? {} : { illustrator: { values: [{ label: o.artist || 'Envar Studio' }] } }),
 });
 const ROSTER = [
   { id: 'OGN', name: 'Origins', collectorNumberMax: 298 },
@@ -66,6 +69,28 @@ describe('groupCards — variant derivation from the printed number', () => {
   it('the * card is over the total too, so ordering the two rules matters', () => {
     // Guard against a regression to "over-total wins": that relabels every Signature.
     assert.ok(299 > 298 && find(out, 'ogn', '299*').name.endsWith('(Signature)'));
+  });
+});
+
+describe('groupCards — the artist', () => {
+  // Added because eBay's Illustrator aspect is a live FREE_TEXT enum that Pokémon, Magic and
+  // Lorcana all fill, and Riot publishes the credit on every card (1189 of 1189 when probed
+  // 2026-08-25). It rides as the short key `a` beside `img`.
+  it('keeps the credited artist on the baked card', () => {
+    const out = groupCards([card('OGN-001/298', 'Blazing Scorcher', { artist: 'Kudos Productions' })], ROSTER);
+    assert.equal(find(out, 'ogn', '1').a, 'Kudos Productions');
+  });
+  it('takes the FIRST value, which is the credited one', () => {
+    const c = card('OGN-002/298', 'Brazen Buccaneer');
+    c.illustrator = { values: [{ label: 'Six More Vodka' }, { label: 'Someone Else' }] };
+    assert.equal(find(groupCards([c], ROSTER), 'ogn', '2').a, 'Six More Vodka');
+  });
+  it('degrades to an empty string rather than failing the bake (GR7)', () => {
+    // A card with no credit signals an upstream shape change, not an ordinary absence — which is
+    // what test/data/riftbound-character.test.mjs and the aspect's own absence make visible. It
+    // must not take the whole catalog down with it.
+    const out = groupCards([card('OGN-003/298', 'Chemtech Enforcer', { artist: null })], ROSTER);
+    assert.equal(find(out, 'ogn', '3').a, '');
   });
 });
 

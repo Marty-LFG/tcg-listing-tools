@@ -6,10 +6,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  numKeys, numRank, cmpRank, printingOrder, printingsFor, mtgPrintingsFor, finishFromRarity, pickPrinting,
+  numKeys, numRank, cmpRank, printingOrder, printingsFor, mtgPrintingsFor, riftboundPrintingsFor,
+  finishFromRarity, pickPrinting,
   parseCatch, isNearMint, medianOf, flagsFor, deriveState, isPublishable, rowKey,
   refuseRow, blockingRefusals, scaleGeometry, atMechanicalUndercut, SPREAD_WIDE,
-  PRICE_CEILING_AUD, MEDIAN_MULT, MTG_PRINTING_TOKENS,
+  PRICE_CEILING_AUD, MEDIAN_MULT, MTG_PRINTING_TOKENS, RIFTBOUND_PRINTING_TOKENS,
 } from '../../lib/runner-core.mjs';
 import { variantToken } from '../../lib/listing-copy.mjs';
 
@@ -219,6 +220,70 @@ describe('printingsFor — the matrix comes from DATA, not a rarity regex (GR5)'
     assert.deepEqual(printingsFor({}), []);
     assert.deepEqual(printingsFor(null), []);
     assert.deepEqual(printingsFor({ tcgplayer: {} }), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('riftboundPrintingsFor — one printing, and the treatment it carries', () => {
+  // Riftbound's bake is single-printing per card: an Alternate Art, an Overnumbered and a Signature
+  // are each their OWN collector number, not a second finish of the number beside them. And the
+  // finish follows the treatment, so there is never a choice to offer.
+  const SIG = { finish: 'Foil', variant: 'Signature', marketUsd: 3085.16 };
+  const BASE = { finish: 'Non-foil', variant: '', marketUsd: 0.08 };
+
+  it('returns exactly one entry, in the shared { key, finish, edition, variant, marketUsd } shape', () => {
+    assert.deepEqual(riftboundPrintingsFor(SIG), [{
+      key: 'foil', finish: 'Foil', edition: '', variant: 'Signature', marketUsd: 3085.16,
+    }]);
+    assert.deepEqual(riftboundPrintingsFor(BASE), [{
+      key: 'normal', finish: 'Non-foil', edition: '', variant: 'Base', marketUsd: 0.08,
+    }]);
+  });
+
+  // THE ONE THAT MATTERS. For every other game `variant` is a printing token, and variantToken('',
+  // 'Foil') is 'Foil'. For Riftbound it is the TREATMENT, which titleParts renders at priority 82 —
+  // above the rarity token and the condition code, because it is a 10-100x price differentiator.
+  // Collapse it to a finish and a US$3,000 Signature lists with 'M/NM' where '(Signature)' belongs.
+  it('carries the TREATMENT in `variant`, never variantToken()', () => {
+    assert.equal(riftboundPrintingsFor(SIG)[0].variant, 'Signature');
+    assert.notEqual(riftboundPrintingsFor(SIG)[0].variant, variantToken('', 'Foil'));
+    assert.equal(riftboundPrintingsFor({ finish: 'Foil', variant: 'Alternate Art' })[0].variant, 'Alternate Art');
+    assert.equal(riftboundPrintingsFor({ finish: 'Foil', variant: 'Ultimate' })[0].variant, 'Ultimate');
+  });
+
+  it('passes the market figure through, and null is a real answer', () => {
+    // A Vendetta alt-art with no sales yet genuinely has no TCGplayer price. The row then carries
+    // the `unverified` flag rather than a made-up number (GR4).
+    assert.equal(riftboundPrintingsFor({ finish: 'Foil', variant: '', marketUsd: null })[0].marketUsd, null);
+    assert.equal(riftboundPrintingsFor({ finish: 'Foil', variant: '' })[0].marketUsd, null);
+    assert.equal(riftboundPrintingsFor({ finish: 'Foil', variant: '', marketUsd: '4.28' })[0].marketUsd, 4.28);
+  });
+
+  it('degrades to a plain Non-foil Base rather than throwing (GR7)', () => {
+    assert.deepEqual(riftboundPrintingsFor(null), [{
+      key: 'normal', finish: 'Non-foil', edition: '', variant: 'Base', marketUsd: null,
+    }]);
+  });
+
+  it('sorts foil above normal through the SHARED printingOrder, with no new keys', () => {
+    assert.equal(printingOrder('normal'), 0);
+    assert.equal(printingOrder('foil'), 2);
+  });
+
+  it('has an EMPTY token table, so parseCatch never claims a printing letter', () => {
+    // One printing per card means a printing letter is a control with one answer. parseCatch must
+    // fall straight through to the number branch, and the grammar strip drops the chip entirely.
+    assert.deepEqual(RIFTBOUND_PRINTING_TOKENS, {});
+    const p = parseCatch('27a n f h', { printingTokens: RIFTBOUND_PRINTING_TOKENS });
+    assert.equal(p.printing, null);
+    assert.equal(p.num, '27a');
+    assert.deepEqual(p.unknown, ['n', 'f', 'h'], 'a typed letter is reported, not silently eaten');
+  });
+
+  it('still lets pickPrinting answer, since there is only ever one', () => {
+    assert.equal(pickPrinting(riftboundPrintingsFor(SIG), null).key, 'foil');
+    assert.equal(pickPrinting(riftboundPrintingsFor(BASE), 'foil').key, 'normal',
+      'asking for a printing the card does not have returns the one it does');
   });
 });
 

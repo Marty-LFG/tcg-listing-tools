@@ -608,7 +608,11 @@ function applyGameChrome() {
   // usually would: `egSet` documents a set switch, and for Lorcana the numbered sets deliberately
   // contribute no token, so a wrong example here would advertise something that does nothing.
   const ex = GA.catchExample || {}, eg = ex.num || '125', egSet = ex.setCode || '';
-  $('grammar').innerHTML = '<span><b>' + esc(eg) + '</b> number</span><span><b>' + esc(toks) + '</b> printing</span>'
+  // The printing chip is CONDITIONAL: Riftbound's printingTokens is deliberately empty (one baked
+  // printing per card), and an unconditional chip renders a bare '<b></b> printing' — a control with
+  // no answer, advertised. Same rule as egSet below and as the empty rarity list further down.
+  $('grammar').innerHTML = '<span><b>' + esc(eg) + '</b> number</span>'
+    + (toks ? '<span><b>' + esc(toks) + '</b> printing</span>' : '')
     + '<span><b>x3</b> quantity</span><span><b>@12.50</b> price</span><span><b>lp mp hp</b> condition</span>'
     + '<span><b>*name</b> search</span>'
     + (egSet ? '<span><b>' + esc(egSet) + '</b> switch set</span>' : '');
