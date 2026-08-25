@@ -353,6 +353,35 @@ describe('preflight', () => {
     assert.equal(r.json.rows[0].ok, true, 'already live is not a validation failure');
   });
 
+  // The batch-level check. productHandleFor for an ungraded card is identityHandle + condition code
+  // and carries nothing distinguishing one physical copy from another, so N copies of one card in one
+  // condition collide on a single handle while carrying N different SKUs as the customId. Every row
+  // passes validation on its own; only looking at the batch reveals it. Found on real stock — six
+  // Radiant Gardevoirs.
+  it('flags rows in the same batch that map to one product handle', async () => {
+    const ids = [1, 2, 3].map(() => addItem({ name: 'Radiant Gardevoir', number: '69/196' }));
+    const r = await post('/publish/preflight', { itemIds: ids });
+
+    assert.equal(r.json.collisions.length, 1, 'three copies of one card in one condition is one collision');
+    const c = r.json.collisions[0];
+    assert.equal(c.count, 3);
+    assert.deepEqual(c.itemIds.sort((a, b) => a - b), ids.sort((a, b) => a - b));
+    for (const row of r.json.rows) {
+      assert.ok(row.warnings.some((w) => /same product handle/.test(w)), 'every colliding row must say so');
+      assert.equal(row.collidesWith.length, 2);
+    }
+  });
+
+  it('does not flag distinct cards, or one card in different conditions', async () => {
+    const ids = [
+      addItem({ name: 'Alpha', number: '58/102' }),
+      addItem({ name: 'Beta', number: '59/102' }),
+      addItem({ name: 'Alpha', number: '58/102', condition: 'Lightly Played' }),
+    ];
+    const r = await post('/publish/preflight', { itemIds: ids });
+    assert.deepEqual(r.json.collisions, [], 'different cards and different conditions are different products');
+  });
+
   // Same reasoning as /preview: this is most useful precisely when the store is misconfigured.
   it('still answers when the store is not pinned', async () => {
     writeConfig({ ...CFG, stores: { dev: { locationGid: '', publicationGid: '' } } });
