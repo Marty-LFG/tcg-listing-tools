@@ -291,6 +291,7 @@
       <button class="btn sm" id="canaryBtn" disabled title="Dry-run a few representative rows against eBay before sending the lot">Canary</button>
       <button class="btn" id="stageBtn" disabled>Stage to inventory</button>
       <button class="btn primary" id="pubBtn" disabled>Publish</button>
+      <button class="btn" id="shopBtn" disabled title="Publish the ticked, staged rows to Shopify (S)">🛍 Shopify</button>
       <button class="btn danger" id="stopBtn" style="display:none;" title="Stops after the card currently being sent">■ Stop</button>
     </div>
     <div class="status" id="runStatus"></div>
@@ -1300,6 +1301,17 @@ function refreshNow() {
   // of naming one is that the sleeves are already written.
   $('pubBtn').disabled = !staged.length || !connected || !acctReady || !START_LABEL_OK;
   $('pubBtn').textContent = staged.length ? 'Publish ' + staged.length : 'Publish';
+  // Shopify is gated on ITS OWN readiness, never eBay's. The two channels are independent, and a box
+  // with no eBay consent must still be able to publish to the store — that is the whole point of
+  // Shopify being the source of truth.
+  const shopReady = SHOPIFY.connected && !SHOPIFY.pins.missing.length && START_LABEL_OK;
+  $('shopBtn').disabled = !staged.length || !shopReady;
+  $('shopBtn').textContent = (staged.length ? '🛍 Shopify ' + staged.length : '🛍 Shopify')
+    + (shopReady && !SHOPIFY.publishEnabled ? ' (dry run)' : '');
+  $('shopBtn').title = !SHOPIFY.connected ? 'No Shopify credentials on this box — see .env'
+    : SHOPIFY.pins.missing.length ? 'The ' + SHOPIFY.store + ' store is not pinned: ' + SHOPIFY.pins.missing.join(', ')
+    : SHOPIFY.publishEnabled ? 'Publish the ticked, staged rows to the ' + SHOPIFY.store + ' store (S)'
+    : 'publish.enabled is false — this will DRY RUN against ' + SHOPIFY.store + ' and write nothing';
   syncHdr();
   applyVisibility();
   saveQueue();
@@ -1366,10 +1378,13 @@ function applyVisibility() {
 }
 $('verifyBtn').addEventListener('click', () => { VERIFY = !VERIFY; if (!VERIFY) DISAGREE_ONLY = false; applyVisibility(); });
 document.addEventListener('keydown', (e) => {
-  // 'v' toggles verify mode, but only when the owner is not typing into something.
-  if (e.key !== 'v' && e.key !== 'V') return;
+  // 'v' toggles verify mode, 's' publishes to Shopify — but only when the owner is not typing into
+  // something. 's' deliberately opens the confirm modal rather than acting: it is a channel write.
+  const k = e.key;
+  if (k !== 'v' && k !== 'V' && k !== 's' && k !== 'S') return;
   const t = e.target;
   if (t && (t.id === 'catch' || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+  if (k === 's' || k === 'S') { if (!$('shopBtn').disabled) $('shopBtn').click(); return; }
   VERIFY = !VERIFY; if (!VERIFY) DISAGREE_ONLY = false; applyVisibility();
 });
 
@@ -1992,6 +2007,151 @@ function overridesFor(r) {
 // No throttle of our own either side: lib/ebay-rest.mjs already serialises every Sell-API call
 // app-wide at 120ms + jitter and honours Retry-After.
 let RUNNING = false, JOB_ID = null;
+// ---------------------------------------------------------------------------
+// SHOPIFY
+//
+// A deliberately separate lane from the eBay flow above. It shares the queue, the grid and
+// consumeNdjson, and nothing else: the two channels have different readiness, different failure
+// modes and different recovery, and entangling their state is how one channel's outage disables the
+// other. Shopify is also the SOURCE OF TRUTH (bk-shopify CLAUDE.md invariant 1), so it must never be
+// gated behind eBay being reachable.
+//
+// No detached job here, unlike eBay. /api/shopify/publish/batch streams the run inside the request
+// because productSet upserts on customId — an interrupted run is recovered by pressing the button
+// again, and rows that landed are no-op revises rather than duplicates.
+let SHOPIFY = { connected: false, publishEnabled: false, store: 'dev', shop: null, pins: { missing: [] } };
+
+async function loadShopifyState() {
+  try {
+    const j = await fetch('/api/shopify/config').then((x) => x.json());
+    SHOPIFY = {
+      connected: !!j.connected, publishEnabled: !!j.publishEnabled,
+      store: j.store || 'dev', shop: j.shop || null,
+      pins: j.pins || { missing: [] }, status: (j.config && j.config.publish && j.config.publish.status) || 'ACTIVE',
+    };
+  } catch {
+    // The plugin being down must not take the Runner down with it (GR7) — eBay still works.
+    SHOPIFY = { connected: false, publishEnabled: false, store: 'dev', shop: null, pins: { missing: ['plugin unreachable'] } };
+  }
+  refresh();
+}
+
+$('shopBtn').addEventListener('click', async () => {
+  if (RUNNING) { toast('A run is already going'); return; }
+  const rows = QUEUE.filter((r) => r.staged && rowInBatch(r));
+  if (!rows.length) { toast('Nothing staged and ticked'); return; }
+
+  // The free preflight: maps and validates every row server-side, calls Shopify not at all. Run it
+  // immediately before the modal so what the modal promises is what the server has just agreed to.
+  let pf;
+  try {
+    pf = await fetch('/api/shopify/publish/preflight', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ itemIds: rows.map((r) => r.itemId) }),
+    }).then((x) => x.json());
+  } catch (e) { stat($('runStatus'), 'err', 'Shopify preflight failed: ' + esc(String(e && e.message || e))); return; }
+
+  const byId = new Map(rows.map((r) => [r.itemId, r]));
+  for (const pr of pf.rows || []) {
+    const r = byId.get(pr.item_id);
+    if (r) { r.shopBlocked = pr.ok ? null : (pr.errors || []); patchRow(r); }
+  }
+  const go = (pf.rows || []).filter((x) => x.ok && !x.alreadyLive);
+  const dry = !pf.publishEnabled;
+
+  if (!go.length) {
+    stat($('runStatus'), 'warn', pf.alreadyLive === pf.total
+      ? 'Every ticked row is already live on Shopify. Nothing to do.'
+      : 'None of these can publish — ' + pf.refused + ' refused by validation. See the held rows.');
+    refresh(); return;
+  }
+
+  modal('<h4>' + (dry ? 'Dry run' : 'Publish') + ' ' + go.length + ' card' + (go.length === 1 ? '' : 's') + ' to Shopify</h4>'
+    + '<div class="kv"><span>Store</span><span class="mono">' + esc(pf.store) + (SHOPIFY.shop ? ' · ' + esc(SHOPIFY.shop) : '') + '</span></div>'
+    + '<div class="kv"><span>Product status</span><span class="mono">' + esc(pf.publishStatus) + '</span></div>'
+    + '<div class="kv"><span>Shelf labels</span><span class="mono">' + (pf.nextLabel ? 'from ' + esc(pf.nextLabel) : 'rows already carry theirs') + '</span></div>'
+    + (pf.alreadyLive ? '<div class="kv"><span>Already live</span><span class="mono">' + pf.alreadyLive + ' skipped</span></div>' : '')
+    + (pf.refused ? '<div class="kv"><span style="color:var(--red)">Refused</span><span class="mono">' + pf.refused + ' will not be sent</span></div>' : '')
+    + '<p class="muted" style="margin-top:12px;">'
+      + (dry ? '<b>publish.enabled is false</b>, so this maps and validates every card and writes nothing — no product, no image, no label spent.'
+             : 'The server publishes <b>one card at a time</b> — that is a correctness requirement, not a throttle: the shelf label is the upsert key. '
+               + 'Closing this page <b>stops</b> the run, and re-running is safe — Shopify upserts, so a finished card is revised, never duplicated.')
+    + '</p>'
+    + '<div class="acts"><button class="btn" id="mCancel">Cancel</button><button class="btn primary" id="mGo">'
+      + (dry ? 'Dry run' : 'Publish ' + go.length) + '</button></div>');
+  $('mCancel').addEventListener('click', closeModal);
+  $('mGo').addEventListener('click', () => { closeModal(); runShopifyBatch(go.map((x) => x.item_id), dry); });
+});
+
+async function runShopifyBatch(itemIds, dryRun) {
+  const byId = new Map(QUEUE.map((r) => [r.itemId, r]));
+  let resp;
+  try {
+    resp = await fetch('/api/shopify/publish/batch', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ itemIds, dryRun }),
+    });
+  } catch (e) { stat($('runStatus'), 'err', esc(String(e && e.message || e))); return; }
+  if (!resp.ok) {
+    const j = await resp.json().catch(() => ({}));
+    stat($('runStatus'), 'err', esc(j.error || ('Shopify refused the batch (' + resp.status + ')')));
+    return;
+  }
+
+  RUNNING = true; $('shopBtn').disabled = true; $('pubBtn').disabled = true; $('stageBtn').disabled = true;
+  const act = TCG.activity ? TCG.activity(dryRun ? 'Shopify dry run' : 'Publishing to Shopify') : null;
+  const stats = { published: 0, failed: 0, refused: 0, skipped: 0 };
+  let summary = null, done = 0;
+
+  try {
+    await consumeNdjson(resp, (o) => {
+      if (o.start) {
+        stat($('runStatus'), 'load', (dryRun ? 'Dry-running ' : 'Publishing ') + o.start.total + ' to Shopify (' + esc(o.start.store) + ')…');
+        return;
+      }
+      if (o.summary) { summary = o.summary; return; }
+      if (!o.row) return;
+      const r = byId.get(o.row.item_id); done++;
+      if (r) {
+        r.shopBlocked = null;
+        if (o.row.status === 'published') { r.shopPublished = true; r.shopHandle = o.row.handle || null; r.sku = o.row.sku || r.sku; r.shopFailed = null; }
+        else if (o.row.status === 'would_publish') { r.shopFailed = null; r.note = 'would publish as ' + (o.row.sku || '—'); }
+        else if (o.row.status === 'skipped') { r.shopPublished = true; r.note = o.row.error || 'already live on Shopify'; }
+        else if (o.row.status === 'refused') { r.shopFailed = o.row.error || 'refused'; r.shopBlocked = [o.row.error]; }
+        else { r.shopFailed = o.row.error || 'publish failed'; r.lastShopFailure = o.row; }
+        patchRow(r);
+      }
+      const k = o.row.status === 'published' || o.row.status === 'would_publish' ? 'published'
+        : o.row.status === 'refused' ? 'refused' : o.row.status === 'skipped' ? 'skipped' : 'failed';
+      stats[k]++;
+      act && act.update(stats.published + ' done · ' + (stats.failed + stats.refused) + ' held');
+      if (done % 5 === 0) refresh();
+    });
+  } catch (e) {
+    // Unlike eBay there is no detached job to re-attach to — losing the connection IS losing the run.
+    // Say that plainly, and say the recovery, which is simply to press it again.
+    RUNNING = false;
+    act && act.fail('lost');
+    stat($('runStatus'), 'err', 'Lost the Shopify run (' + esc(String(e && e.message || e)) + '). '
+      + 'Anything already published stayed published — press Shopify again to carry on, it skips what is live.');
+    refresh(); return;
+  }
+
+  RUNNING = false;
+  act && act.done(stats.published + ' done');
+  const s = summary || stats;
+  const held = (s.failed || 0) + (s.refused || 0);
+  stat($('runStatus'), held ? 'warn' : 'ok',
+    (dryRun ? s.published + ' would publish' : s.published + ' published to ' + esc(s.store || SHOPIFY.store))
+    + (s.skipped ? ' · ' + s.skipped + ' already live' : '')
+    + (held ? ' · <b>' + held + ' held</b> — fix and press Shopify again; a re-run never duplicates.' : '')
+    + (s.cancelled ? ' · stopped when the page closed' : ''));
+  // Publishing spends shelf labels, so the upcoming run has moved. Refetch before the rows repaint,
+  // or the ones still queued would preview numbers that were just taken.
+  if (!dryRun) { try { await loadLabelState(); } catch { /* best effort */ } }
+  refresh();
+}
+
 async function runPublish(rows) {
   const body = {
     item_ids: rows.map((r) => r.itemId),
@@ -2271,6 +2431,9 @@ window.addEventListener('beforeunload', (e) => {
   await loadLabelState();
   loadStoreCats();
   loadComposeState();
+  // Not awaited: Shopify readiness only paints a button, and a slow or missing plugin must not hold
+  // the page's first render (GR7). refresh() is called again when it lands.
+  loadShopifyState();
   offerRestore();
   refresh();
   attachIfRunning();

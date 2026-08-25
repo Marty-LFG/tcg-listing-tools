@@ -1,0 +1,375 @@
+// test/integration/shopify-batch.test.mjs — the Shopify BATCH publish path, through the routes.
+//
+// shopify-publish.test.mjs already covers one card end to end, and the batch calls that same
+// runShopifyPublish unchanged. What only this test can catch is the behaviour a batch ADDS:
+//   · one bad row never takes the rest of the run with it (GR7)
+//   · rows are published ONE AT A TIME — the shelf-label claim is the upsert key, so overlap would
+//     silently overwrite a product rather than fail, and nothing downstream would notice
+//   · a refusal (never reached the store) is reported differently from a failure (did reach it)
+//   · an already-live row is skipped by default and re-pushed under force
+//   · the run is audited in channel_exports, and a dry run is NOT
+//   · preflight answers without credentials, pins, or a single network call
+//
+// Same harness shape as shopify-publish.test.mjs: own temp DB, own stubbed fetch, own config path.
+import { describe, it, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import http from 'node:http';
+import { openDbAt } from '../../lib/db.mjs';
+import { seedStockLabels } from '../../lib/inventory.mjs';
+
+const ENV = {
+  SHOPIFY_DEV_SHOP: 'binders-keepers-dev',
+  SHOPIFY_CLIENT_ID: 'fake-client-id',
+  SHOPIFY_CLIENT_SECRET: 'fake-client-secret',
+};
+
+// Set before importing lib/shopify.mjs, so its module-level const sees the temp path and the
+// operator's real data/shopify.config.json is never touched.
+const CONFIG_PATH = path.join(os.tmpdir(), 'tcg-shopify-batch-cfg-' + process.pid + '.json');
+process.env.TCG_SHOPIFY_CONFIG = CONFIG_PATH;
+const { makeShopifyRouter, shopifyBatchPreflight } = await import('../../lib/shopify.mjs');
+
+let db, tmpDir, server, base, calls, bend, inFlight, maxInFlight;
+
+function resp(status, json) {
+  return {
+    ok: status >= 200 && status < 300, status,
+    headers: { get: (k) => (String(k).toLowerCase() === 'content-type' ? 'application/json' : null) },
+    text: async () => (json == null ? '' : JSON.stringify(json)),
+  };
+}
+
+// Plays Shopify plus the image lab's /build route, which the publish path self-fetches.
+// `productSet` is where overlap would show, so the concurrency watermark is taken around it.
+async function stub(url, init = {}) {
+  const u = String(url);
+
+  if (u.includes('/api/listing-image/build')) {
+    calls.push({ op: 'compose' });
+    const sku = /sku=([A-Z0-9-]+)/.exec(u)?.[1] || 'AAC-097';
+    return resp(200, {
+      manifest: {
+        sku, alt: 'front',
+        images: [{ position: 1, view: 'front', filename: sku + '-1-front.jpg', alt: 'front', contentHash: 'h-front', composeVersion: 'v1', width: 1512, height: 2112, bytes: 16 }],
+        social: { view: 'og', filename: sku + '-og.jpg', alt: 'og', contentHash: 'h-og', composeVersion: 'v1', width: 1200, height: 630, bytes: 16 },
+      },
+      warnings: [],
+    });
+  }
+  if (u.includes('/admin/oauth/access_token')) return resp(200, { access_token: 't', scope: 'write_products', expires_in: 86399 });
+
+  const body = JSON.parse(init.body);
+  const q = body.query, v = body.variables;
+
+  if (q.includes('metaobjectUpsert')) {
+    calls.push({ op: q.includes('BkIdentityListings') ? 'identityListings' : 'identity' });
+    return resp(200, { data: { metaobjectUpsert: { metaobject: { id: 'gid://shopify/Metaobject/9', handle: v.handle.handle }, userErrors: [] } } });
+  }
+  if (q.includes('productSet')) {
+    inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      const sku = v.input.variants[0].sku;
+      calls.push({ op: 'productSet', sku });
+      // Yield, so that IF two rows were ever in flight together the watermark would see it. Without
+      // an await here a synchronous stub could never expose overlap even if the batch had it.
+      await new Promise((r) => setTimeout(r, 1));
+      if (bend.productSetFor && bend.productSetFor.has(sku)) {
+        return resp(200, { data: { productSet: { userErrors: [{ field: null, message: 'the store said no', code: 'INVALID' }] } } });
+      }
+      return resp(200, { data: { productSet: { product: {
+        id: 'gid://shopify/Product/' + sku, handle: v.input.handle, status: v.input.status,
+        variants: { nodes: [{ id: 'gid://shopify/ProductVariant/' + sku, sku, inventoryItem: { id: 'gid://shopify/InventoryItem/' + sku } }] },
+      }, userErrors: [] } } });
+    } finally { inFlight--; }
+  }
+  if (q.includes('inventoryItem(id:')) { calls.push({ op: 'readLevel' }); return resp(200, { data: { inventoryItem: { inventoryLevels: { nodes: [] } } } }); }
+  if (q.includes('inventoryActivate')) {
+    calls.push({ op: 'activate' });
+    return resp(200, { data: { inventoryActivate: { inventoryLevel: { id: 'gid://shopify/InventoryLevel/1', quantities: [{ name: 'available', quantity: v.available }] }, userErrors: [] } } });
+  }
+  if (q.includes('publishablePublish')) {
+    calls.push({ op: 'publish' });
+    return resp(200, { data: { publishablePublish: { publishable: { availablePublicationsCount: { count: 1 } }, userErrors: [] } } });
+  }
+  if (q.includes('node(id:')) {
+    calls.push({ op: 'verify' });
+    return resp(200, { data: {
+      location: { id: v.loc, name: 'Shop location', isActive: true, fulfillsOnlineOrders: true, shipsInventory: true },
+      publication: { id: v.pub, name: 'Online Store' },
+    } });
+  }
+  throw new Error('unstubbed call: ' + (q || u).slice(0, 90));
+}
+
+function seedMediaCache() {
+  for (const [h, gid] of [['h-front', 'gid://shopify/MediaImage/1'], ['h-og', 'gid://shopify/MediaImage/2']]) {
+    db.prepare(`INSERT INTO shopify_files (content_hash, file_gid, status, ready_at) VALUES (?,?,'ready',datetime('now'))
+                ON CONFLICT(content_hash) DO UPDATE SET file_gid = excluded.file_gid, status = 'ready'`).run(h, gid);
+  }
+}
+
+const CFG = {
+  defaultStore: 'dev',
+  stores: { dev: { locationGid: 'gid://shopify/Location/1', publicationGid: 'gid://shopify/Publication/2' } },
+  publish: { enabled: true, status: 'ACTIVE' },
+  sync: { enabled: false },
+  collections: {},
+};
+function writeConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); }
+
+// One in_stock Pokémon single. `number` varies so each row is its own identity unless told otherwise.
+//
+// The provisional SKU must be STG- followed by DIGITS. reserveShelfLabel only treats that exact shape
+// as staged; anything else (STG-Alpha) is read as a row that already carries its real label, so no
+// label is reserved and validateProduct then refuses it on "provisional SKU". Cost me an afternoon.
+let stgSeq = 0;
+function addItem({ name, number = '58/102', price = 1299, condition = 'Near Mint', status = 'in_stock', game = 'pokemon' } = {}) {
+  const sku = 'STG-' + String(++stgSeq).padStart(6, '0');
+  const r = db.prepare(`INSERT INTO inventory_items
+    (sku, game, identity_key, name, set_name, number, rarity, variant, language, condition, quantity, target_price_cents, image_url, status)
+    VALUES (?,?,?,?,'Base Set',?,'Common','Regular','EN',?,1,?,'https://images.pokemontcg.io/base1/58.png',?)`)
+    .run(sku, game, 'base1-' + number.replace('/', '-'), name, number, condition, price, status);
+  return Number(r.lastInsertRowid);
+}
+
+before(async () => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-shopify-batch-'));
+  db = openDbAt(path.join(tmpDir, 'tracker.db'));
+  const route = '/api/shopify';
+  const fn = makeShopifyRouter({ env: ENV, db, base: 'http://127.0.0.1:1', fetchImpl: stub });
+  server = http.createServer((req, res) => {
+    const p = String(req.url).split('?')[0];
+    if (p !== route && !p.startsWith(route + '/')) { res.statusCode = 404; return res.end('{}'); }
+    req.url = req.url.slice(route.length) || '/';
+    fn(req, res, () => { res.statusCode = 404; res.end('{}'); });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  base = 'http://127.0.0.1:' + server.address().port;
+}, { timeout: 60_000 });
+
+after(async () => {
+  await new Promise((r) => server.close(r));
+  try { db.close(); } catch { /* already closed */ }
+  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* best effort */ }
+  try { fs.unlinkSync(CONFIG_PATH); } catch { /* already gone */ }
+});
+
+beforeEach(() => {
+  calls = []; bend = {}; inFlight = 0; maxInFlight = 0; stgSeq = 0;
+  writeConfig(CFG);
+  db.exec('DELETE FROM inventory_items; DELETE FROM shopify_listings; DELETE FROM shopify_files; DELETE FROM sku_counter; DELETE FROM channel_exports;');
+  seedStockLabels(db, 294);   // next free label is AAC-097
+  seedMediaCache();
+});
+
+const API = '/api/shopify';
+const post = async (p, body) => {
+  const r = await fetch(base + API + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch { /* ndjson or empty */ }
+  return { status: r.status, json: j, text: t };
+};
+// The batch answers NDJSON, so the records are parsed per line.
+const postStream = async (p, body) => {
+  const r = await post(p, body);
+  const events = r.text.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  return {
+    status: r.status, events,
+    start: (events.find((e) => e.start) || {}).start,
+    rows: events.filter((e) => e.row).map((e) => e.row),
+    summary: (events.find((e) => e.summary) || {}).summary,
+  };
+};
+const mirror = (sku) => db.prepare('SELECT * FROM shopify_listings WHERE sku = ?').get(sku);
+
+// ---------------------------------------------------------------------------
+describe('runShopifyBatchPublish — the happy path', () => {
+  it('publishes every row and closes with one summary', async () => {
+    const ids = [addItem({ name: 'Alpha', number: '58/102' }), addItem({ name: 'Beta', number: '59/102' })];
+    const r = await postStream('/publish/batch', { itemIds: ids });
+
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.start.total, 2);
+    assert.equal(r.rows.length, 2);
+    assert.deepEqual(r.rows.map((x) => x.status), ['published', 'published']);
+    assert.equal(r.summary.published, 2);
+    assert.equal(r.summary.failed, 0);
+    assert.equal(r.summary.skipped, 0);
+  });
+
+  it('gives each row its own shelf label, in order', async () => {
+    const ids = [addItem({ name: 'Alpha', number: '58/102' }), addItem({ name: 'Beta', number: '59/102' })];
+    const r = await postStream('/publish/batch', { itemIds: ids });
+    assert.deepEqual(r.rows.map((x) => x.sku), ['AAC-097', 'AAC-098']);
+    assert.equal(mirror('AAC-097').state, 'live');
+    assert.equal(mirror('AAC-098').state, 'live');
+  });
+
+  // The load-bearing one. Two rows in flight at once would peek the same free label, and the second
+  // productSet would overwrite the first row's product with no error anywhere — 19 products from 20
+  // cards. Nothing else in the suite would catch that, so it is asserted directly.
+  it('never has two rows in flight at once', async () => {
+    const ids = [1, 2, 3, 4].map((n) => addItem({ name: 'C' + n, number: n + '/102' }));
+    await postStream('/publish/batch', { itemIds: ids });
+    assert.equal(maxInFlight, 1, 'productSet overlapped — the shelf-label claim is no longer safe');
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 4);
+  });
+
+  it('audits the run in channel_exports under the shopify channel', async () => {
+    const ids = [addItem({ name: 'Alpha', number: '58/102' })];
+    await postStream('/publish/batch', { itemIds: ids });
+    const row = db.prepare("SELECT * FROM channel_exports WHERE channel = 'shopify'").get();
+    assert.ok(row, 'the run left no audit trail');
+    assert.equal(row.marketplace, 'dev');
+    assert.deepEqual(JSON.parse(row.item_ids), ids);
+    assert.equal(JSON.parse(row.result).published, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('one bad row never takes the run with it (GR7)', () => {
+  it('keeps going after a row the store refuses, and counts it as failed', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const b = addItem({ name: 'Beta', number: '59/102' });
+    const c = addItem({ name: 'Gamma', number: '60/102' });
+    bend.productSetFor = new Set(['AAC-098']);   // the second label, i.e. Beta
+
+    const r = await postStream('/publish/batch', { itemIds: [a, b, c] });
+    assert.deepEqual(r.rows.map((x) => x.status), ['published', 'failed', 'published']);
+    assert.equal(r.summary.published, 2);
+    assert.equal(r.summary.failed, 1);
+  });
+
+  it('reports a missing stock row without stopping', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch', { itemIds: [999999, a] });
+    assert.equal(r.rows[0].status, 'failed');
+    assert.match(r.rows[0].error, /not found/);
+    assert.equal(r.rows[1].status, 'published');
+    assert.equal(r.summary.published, 1);
+  });
+
+  // A row refused locally never reached Shopify; a row that failed at the store did. Collapsing the
+  // two would tell an operator to go looking at the store for a problem in their own data.
+  it('separates a local refusal from a store failure', async () => {
+    const bad = addItem({ name: 'Sealed', number: '61/102', game: 'sealed-thing' });
+    const r = await postStream('/publish/batch', { itemIds: [bad] });
+    assert.equal(r.rows[0].status, 'refused');
+    assert.equal(r.summary.refused, 1);
+    assert.equal(r.summary.failed, 0, 'a refusal is not a failure');
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 0, 'a refused row must not reach the store');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('already-live rows', () => {
+  it('skips a row that is already live, by default', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    calls = [];
+
+    const again = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(again.rows[0].status, 'skipped');
+    assert.equal(again.summary.skipped, 1);
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 0, 'a skip must cost no round trip');
+  });
+
+  it('re-pushes the same row under force — productSet upserts, so this is a revise not a duplicate', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    calls = [];
+
+    const again = await postStream('/publish/batch', { itemIds: [a], force: true });
+    assert.equal(again.rows[0].status, 'published');
+    const sets = calls.filter((c) => c.op === 'productSet');
+    assert.equal(sets.length, 1);
+    assert.equal(sets[0].sku, 'AAC-097', 'the re-push must reuse the same label, or it is a new product');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('the dry run', () => {
+  it('reports what would publish, writes no mirror row, and leaves no audit', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch', { itemIds: [a], dryRun: true });
+    assert.equal(r.rows[0].status, 'would_publish');
+    assert.equal(mirror('AAC-097'), undefined, 'a dry run must not write a mirror row');
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM channel_exports WHERE channel = 'shopify'").get().n, 0,
+      'channel_exports records what we SENT, and a dry run sent nothing');
+  });
+
+  it('runs even when publishing is disarmed — that is the point of it', async () => {
+    writeConfig({ ...CFG, publish: { enabled: false, status: 'ACTIVE' } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const dry = await postStream('/publish/batch', { itemIds: [a], dryRun: true });
+    assert.equal(dry.rows[0].status, 'would_publish');
+
+    const real = await post('/publish/batch', { itemIds: [a] });
+    assert.equal(real.status, 409, 'a disarmed store must refuse a real batch');
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('preflight', () => {
+  it('answers without a single network call', async () => {
+    const ids = [addItem({ name: 'Alpha', number: '58/102' }), addItem({ name: 'Beta', number: '59/102' })];
+    const r = await post('/publish/preflight', { itemIds: ids });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.total, 2);
+    assert.equal(r.json.publishable, 2);
+    assert.equal(calls.length, 0, 'preflight must call nothing');
+  });
+
+  it('names the rows that would be refused, and does not count them publishable', async () => {
+    const ok = addItem({ name: 'Alpha', number: '58/102' });
+    const bad = addItem({ name: 'Sealed', number: '61/102', game: 'sealed-thing' });
+    const r = await post('/publish/preflight', { itemIds: [ok, bad] });
+    assert.equal(r.json.publishable, 1);
+    assert.equal(r.json.refused, 1);
+    const row = r.json.rows.find((x) => x.item_id === bad);
+    assert.equal(row.ok, false);
+    assert.ok(row.errors.length, 'a refused row must say why');
+  });
+
+  it('reports a missing stock row rather than throwing', async () => {
+    const r = await post('/publish/preflight', { itemIds: [999999] });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.rows[0].missing, true);
+  });
+
+  it('flags already-live rows without refusing them', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    const r = await post('/publish/preflight', { itemIds: [a] });
+    assert.equal(r.json.alreadyLive, 1);
+    assert.equal(r.json.publishable, 0);
+    assert.equal(r.json.rows[0].ok, true, 'already live is not a validation failure');
+  });
+
+  // Same reasoning as /preview: this is most useful precisely when the store is misconfigured.
+  it('still answers when the store is not pinned', async () => {
+    writeConfig({ ...CFG, stores: { dev: { locationGid: '', publicationGid: '' } } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await post('/publish/preflight', { itemIds: [a] });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.pins.missing.sort(), ['locationGid', 'publicationGid']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('the route contract', () => {
+  it('refuses an empty batch with a message rather than streaming nothing', async () => {
+    const r = await post('/publish/batch', { itemIds: [] });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /itemIds/);
+  });
+
+  it('deduplicates ids, so a double-clicked row publishes once', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch', { itemIds: [a, a, a] });
+    assert.equal(r.start.total, 1);
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 1);
+  });
+});
