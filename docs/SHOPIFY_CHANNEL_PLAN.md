@@ -369,12 +369,41 @@ eBay is the business until Shopify launches. Nothing in Phase 1 changes eBay beh
 | **S2** | ~~`migrateShopify(db)`~~ **DONE 2026-08-22** — `shopify_listings`, `channel_intent`, `sync_jobs`, `channel` columns, `idx_inv_ebay_listing`, backfill | `lib/db.mjs`, `lib/postsale-db.mjs` | `test/unit/shopify-schema.test.mjs`, 13 tests. Rehearsed on a copy of the real DB: clean, idempotent across three opens, no data loss. **Backfill volume unverified — this box's tracker.db holds no inventory or eBay rows; confirm on ALCSERVER** | — | M |
 | **S3** | ~~`lib/channels/shopify-map.mjs`~~ **DONE 2026-08-22** — `toShopifyProduct` + `validateProduct` off `buildRowIn`; identity handles; full `bkc.*`; `tracked:true` + `DENY`; own description | `lib/channels/shopify-map.mjs`, `lib/listing-copy.mjs` (+`pkmRarityAbbrev`) | `test/unit/shopify-map.test.mjs` (39) + `test/invariants/shopify-no-ebay-postage.test.mjs` (16). Mirror-parity harness still green | S2 | L |
 | **S4** | ~~Extract the shelf-label peek/commit → `lib/shelf-label.mjs`~~ **DONE 2026-08-22** — `reserveShelfLabel` / `commitShelfLabel`, channel-neutral | `lib/shelf-label.mjs`, `lib/listings.mjs` (−25/+19) | `deferred-label.test.mjs` green **unchanged**, 27/27; new `test/unit/shelf-label.test.mjs` (9) covers both channels, the dry run, the double commit and the failed commit | — | M |
-| **S5** | Images — compositor `shopify` block, `buildImageSet()` → `stagedUploadsCreate` → `fileCreate` → poll READY, `bkc.og_image` | `lib/shopify-media.mjs` | A dev product carries the ordered manifest, position 1 is the real card, the OG card scrapes. **Before S6 deliberately** | S1,A6 | M |
-| **S6** | `lib/channels/shopify-product-api.mjs` + `lib/shopify.mjs` plugin — the five-step sequence, `identity.rebuild` | new, `vite.config.js` | 20 real Pokémon singles live on **dev**; the PDP condition selector renders every sibling in canonical order; `check-product-status.ps1` clean; `test/integration/shopify-publish.test.mjs` exists | S3,S4,S5 | L |
+| **S5** | ~~Images — compositor `shopify` block, `buildImageSet()` → `stagedUploadsCreate` → `fileCreate` → poll READY, `bkc.og_image`~~ **DONE** — `lib/channels/shopify-media.mjs` (328 lines) + 22 unit tests | `lib/channels/shopify-media.mjs` | — | S1,A6 | M |
+| **S6** | ~~`lib/channels/shopify-product-api.mjs` + `lib/shopify.mjs` plugin — the five-step sequence, `identity.rebuild`~~ **CODE DONE** — routes `/config` `/status` `/preview` `/publish` `/identity/rebuild` `/listing/:sku`; `test/integration/shopify-publish.test.mjs` (525 lines) green | new, `vite.config.js` | ⚠ **Gate NOT met:** the 20-real-singles run on dev has never happened — see S6b | S3,S4,S5 | L |
+| **S6b** | ~~Operator surface + batch~~ **DONE 2026-08-25** — the plan never tasked either, and the audit found the publish path had no way to be driven: no Publish button anywhere, and `/publish` took one item at a time. Adds `shopifyBatchPreflight` + `runShopifyBatchPublish`, routes `POST /publish/preflight` and `POST /publish/batch` (NDJSON), and the 🛍 Shopify button on the Batch Runner | `lib/shopify.mjs`, `stock-runner.html`, `test/integration/shopify-batch.test.mjs` (18 tests) | 18 green; full suite 4174/4175 (the one failure is the pre-existing `pokemon-set-reachability`, unrelated) | S6 | M |
+
+**Notes from the S6b build, so the next reader does not rediscover them:**
+
+- **The batch is sequential, and that is correctness rather than throttling.** `runShopifyPublish` peeks a shelf label and claims it by writing a `pending` mirror row, because the label IS the `customId` that `productSet` upserts on. Two rows in flight peek the same free label and the second `productSet` silently *overwrites* the first row's product — no error anywhere, just 19 products from 20 cards. `shopify-batch.test.mjs` asserts a concurrency watermark of 1 for exactly this.
+- **No detached job, unlike `/api/listings/batch`.** That machinery exists on the eBay side because a dropped connection can strand an offer nothing in this repo can delete. Shopify upserts, so the recovery for an interrupted run is to press the button again — finished rows are no-op revises. `runShopifyBatchPublish` already takes `emit` + `shouldCancel`, so wrapping it in the job machinery later needs no change to it.
+- **Preflight must peek the shelf label before mapping.** Mapping the raw stock row makes every staged card fail validation on "provisional SKU" — a refusal that would never happen at publish. The peek does not advance, so all rows peek the *same* label; the preflight therefore reports `nextLabel` once at the top and sets each row's `sku` to null with `willAssignLabel: true`, rather than promising twenty cards one number.
+- **A provisional SKU is `STG-` followed by DIGITS.** `reserveShelfLabel` reads anything else (`STG-Alpha`) as a row that already carries its real label, reserves nothing, and validation then refuses it. Cost an afternoon in a test fixture.
+- **Gate A2 was never met until 2026-08-25** — this repo's `.env` had no `SHOPIFY_*` keys at all. That, not `publish.enabled:false`, is why nothing had ever published. Copied from `../bk-shopify/.env` per `.env.example` (one app, both repos); `scripts/check-shopify.mjs` now passes 5/5.
+- **`data/shopify.config.json` said to measure the live pins with `check-shopify.mjs`.** That script is dev-store-only by construction — no `--store` flag, no live branch, and it refuses if the resolved shop equals `SHOPIFY_SHOP` — so the instruction was impossible. Live pins were measured with `bk-shopify/scripts/gql.ps1 -Store live` instead and the comment corrected.
 
 **Milestone M1 — Shopify publish works.** A card goes builder → Shopify with correct variant data, images,
 metafields, identity and collection, published and visible on the dev storefront. eBay is untouched and
 `pnpm verify` is green. **The D-023 reset can now start.**
+
+**M1 status, 2026-08-25 — the code is done; the RUN is not.** Everything M1 needs now exists and is
+tested: credentials (A2), pins verified against the real dev store by `/status`, the single-card path,
+the batch path, and an operator surface to drive both. What has still never happened is the gate itself —
+**20 real Pokémon singles published to the dev store, with the PDP condition selector rendering every
+sibling in canonical order.** Two things block it, neither of them code:
+
+1. **`publish.enabled` is still `false`**, by design. It is armed only after a supervised dry run has been
+   eyeballed — which is what the 🛍 Shopify button does today: with the switch off it dry-runs, mapping
+   and validating every card and writing nothing.
+2. **This workstation's `tracker.db` holds zero `inventory_items`** (21 MB of catalog cache, no stock). The
+   real stock is on **ALCSERVER**, so the gate has to run there. AGENTS.md's claim that ALCSERVER exposes
+   only the app port with no shell is **out of date** — Marty confirmed shell access on 2026-08-25.
+
+Suggested order on ALCSERVER: copy the four `SHOPIFY_*` keys into its `.env` → `node scripts/check-shopify.mjs`
+(expect 5/5) → confirm `data/shopify.config.json` carries the dev pins → stage 20 real Pokémon singles in the
+Batch Runner → press 🛍 Shopify for the **dry run** and read every row → set `publish.enabled: true` and
+`status: "DRAFT"` → press it again → review the drafts in the Shopify admin → flip to `ACTIVE` and re-push
+with force. Then the PDP check on the dev storefront, and `check-product-status.ps1`.
 
 ### Interlude — the D-023 eBay reset
 
