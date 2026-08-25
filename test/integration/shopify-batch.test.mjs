@@ -477,6 +477,23 @@ describe('the live store is a separate switch', () => {
     assert.equal(r.rows[0].status, 'published', 'the dev path must be untouched by the live guard');
   });
 
+  // "Disarmed" has to mean disarmed for every route that writes. /identity/rebuild was passing only
+  // credentials and the live guard, so with publish.enabled false it still performed a metaobjectUpsert
+  // against the store while /publish returned 409.
+  it('refuses an identity rebuild while publishing is disarmed', async () => {
+    writeConfig({ ...CFG, publish: { enabled: false, status: 'ACTIVE' } });
+    const r = await post('/identity/rebuild', { handle: 'pokemon-base1-58-base-en' });
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'publish_disabled');
+    assert.equal(calls.length, 0, 'nothing may reach the store while disarmed');
+  });
+
+  it('allows an identity rebuild once armed', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
+    const r = await post('/identity/rebuild', { handle: 'pokemon-base1-58-base-en' });
+    assert.equal(r.status, 200);
+  });
+
   it('reports allowLive on /config so a client can show it', async () => {
     writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
     const r = await (async () => { const x = await fetch(base + API + '/config'); return x.json(); })();

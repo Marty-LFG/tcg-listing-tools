@@ -2045,10 +2045,24 @@ $('shopBtn').addEventListener('click', async () => {
   // immediately before the modal so what the modal promises is what the server has just agreed to.
   let pf;
   try {
-    pf = await fetch('/api/shopify/publish/preflight', {
+    const resp = await fetch('/api/shopify/publish/preflight', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ itemIds: rows.map((r) => r.itemId) }),
-    }).then((x) => x.json());
+    });
+    pf = await resp.json().catch(() => null);
+    // resp.ok must be checked. Every server refusal returns a JSON body with no rows/total keys, so
+    // piping it straight through left `go` empty and the "nothing to do" branch below comparing
+    // undefined to undefined — which is TRUE, and printed the single most reassuring sentence
+    // possible about a total failure. The stale-server 404 (Vite binds plugin middleware at boot, so
+    // a server started before a pull has never heard of this route) hits exactly this path.
+    if (!resp.ok || !pf || !Array.isArray(pf.rows)) {
+      const why = (pf && pf.error) || ('the server answered ' + resp.status);
+      stat($('runStatus'), 'err', 'Shopify preflight failed: ' + esc(why)
+        + (pf && pf.code === 'unknown_route'
+          ? ' <b>Restart the dev server</b> — this route exists in the checkout but not in the running process.'
+          : ''));
+      return;
+    }
   } catch (e) { stat($('runStatus'), 'err', 'Shopify preflight failed: ' + esc(String(e && e.message || e))); return; }
 
   const byId = new Map(rows.map((r) => [r.itemId, r]));
