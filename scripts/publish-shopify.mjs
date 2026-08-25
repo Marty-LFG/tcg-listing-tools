@@ -195,6 +195,8 @@ async function main() {
 
   // --- 3. the run --------------------------------------------------------------------------------
   const go = pf.rows.filter((x) => x.ok && (FORCE || !x.alreadyLive)).map((x) => x.item_id);
+  // Which rows are still waiting on a shelf label, per row — the preflight already worked it out.
+  const willAssign = new Map(pf.rows.map((x) => [x.item_id, !!x.willAssignLabel]));
   console.log(bold(`\n${LIVE ? 'publishing' : 'dry running'} ${go.length}…\n`));
 
   const resp = await api('/publish/batch', { itemIds: go, dryRun: !LIVE, force: FORCE });
@@ -221,12 +223,17 @@ async function main() {
       if (!o.row) continue;
       const r = o.row;
       const mark = r.status === 'published' ? green('✔') : r.status === 'would_publish' ? green('·') : r.status === 'skipped' ? dim('–') : red('✖');
-      // On a dry run the sku is a PEEK, and a peek does not advance — so every row reports the same
-      // next-free label. Printing it per row would show three cards sharing one SKU, which is not what
-      // a real run does and not a thing anyone should have to reason about at 2am. The label series is
-      // stated once, by the preflight above.
-      const skuCol = LIVE ? (r.sku || '—') : dim('(at publish)');
-      console.log(`  ${mark} ${String(r.item_id).padStart(5)}  ${skuCol.padEnd(LIVE ? 14 : 22)} ${String(r.name || '').slice(0, 34).padEnd(34)} ${r.status}`
+      // On a dry run the sku is a PEEK, and a peek does not advance — so every row that still NEEDS a
+      // label reports the same next-free one. Printing that per row would show a dozen cards sharing
+      // one SKU, which is not what a real run does. But a row that already carries its own label is
+      // not guessing: its sku is final either way, and hiding it behind a placeholder implies a label
+      // will be spent when none will. The placeholder is therefore used only where the number is
+      // genuinely not knowable yet.
+      // Pad the PLAIN text and colour afterwards — dim() wraps the string in ANSI escapes, so padding
+      // the coloured form counts invisible characters and the column drifts.
+      const known = LIVE || !willAssign.get(r.item_id);
+      const skuCol = known ? (r.sku || '—').padEnd(14) : dim('(at publish)'.padEnd(14));
+      console.log(`  ${mark} ${String(r.item_id).padStart(5)}  ${skuCol} ${String(r.name || '').slice(0, 34).padEnd(34)} ${r.status}`
         + (r.handle ? dim('  /products/' + r.handle) : '') + (r.error ? red('  ' + r.error) : ''));
       for (const w of r.warnings || []) console.log(yellow(`        ! ${w}`));
     }
@@ -239,7 +246,7 @@ async function main() {
   if (s.cancelled) console.log(yellow('  the run was cancelled'));
   if (s.aborted) console.log(red('  aborted: ' + s.aborted));
   if (LIVE && s.published) console.log(dim(`\n  check them: https://admin.shopify.com/store/${pf.store === 'live' ? 'binderskeepers' : 'binders-keepers-dev'}/products`));
-  console.log(held ? yellow('\n  fix the held rows and run again — a re-run never duplicates, it upserts.\n') : '\n');
+  console.log(held ? yellow('\n  fix the held rows and run again. A retry reuses the label it already claimed, so a row that\n  failed AFTER its product was created is revised rather than duplicated.\n') : '\n');
   // exitCode, not exit(). process.exit() while the NDJSON response is still tearing down trips a libuv
   // assertion on Windows (UV_HANDLE_CLOSING) and reports 127 — a crash banner on a run that in fact
   // succeeded. Setting the code and letting node drain naturally is quieter and more honest.
