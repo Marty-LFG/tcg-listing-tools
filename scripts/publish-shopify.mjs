@@ -36,11 +36,35 @@ import { DB_PATH } from '../lib/db.mjs';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
-const val = (f, d) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
+// A flag's value must not be another flag. `--ids --live` previously read '--live' as the id list,
+// parseInt-filtered it to [], and fell through to the DEFAULT selection — then published it for real,
+// because --live was still in argv. A typo that silently publishes twenty cards nobody named is not a
+// parsing nicety.
+const val = (f, d) => {
+  const i = argv.indexOf(f);
+  if (i < 0) return d;
+  const next = argv[i + 1];
+  if (next === undefined || next.startsWith('--')) die(`${f} needs a value`);
+  return next;
+};
+function die(msg) {
+  console.error(`\x1b[31m\n${msg}\x1b[0m\n`);
+  process.exit(2);   // before any request or DB handle exists, so there is nothing to drain
+}
 
 const LIMIT = Math.max(1, parseInt(val('--limit', '20'), 10) || 20);
 const GAME = val('--game', 'pokemon');
-const IDS = val('--ids', '').split(',').map((x) => parseInt(x, 10)).filter(Number.isFinite);
+// Parsed strictly: a junk token is refused rather than dropped. `--ids 1O5` (letter O) silently
+// selecting nothing and falling back to the default 20 rows is exactly the shape that publishes cards
+// nobody named. `--ids 105 106` with spaces is caught too — the second id is not part of the value.
+const IDS_RAW = val('--ids', '');
+const IDS = IDS_RAW
+  ? IDS_RAW.split(',').map((x) => {
+      const n = Number(x.trim());
+      if (!Number.isInteger(n) || n <= 0) die(`--ids: "${x.trim()}" is not a stock item id. Use comma-separated numbers, no spaces: --ids 105,111,113`);
+      return n;
+    })
+  : [];
 const PORT = val('--port', process.env.PORT || '5273');
 const BASE = val('--base', `http://127.0.0.1:${PORT}`);
 const LIVE = has('--live');

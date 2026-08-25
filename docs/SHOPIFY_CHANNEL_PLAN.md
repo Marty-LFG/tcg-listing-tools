@@ -421,6 +421,49 @@ Order on ALCSERVER: copy the four `SHOPIFY_*` keys into its `.env` → `node scr
 → `--live` → review the drafts in the Shopify admin → flip to `ACTIVE` and re-run with `--force`. Then the
 PDP condition-selector check on the dev storefront, and `check-product-status.ps1`.
 
+### Open defects found by the 2026-08-25 pre-publish review — NOT yet fixed
+
+Three blockers and three cheap ones were fixed on the day (see git log). These survived adversarial
+verification and are still open. None blocks the **dev** gate; the first is the one that must not be
+forgotten, because the dev rehearsal is what creates its problem.
+
+1. **`shopify_listings` has no `store` column, so the dev rehearsal poisons the live cutover.**
+   The table is keyed on `sku` alone, and its own schema comment records the assumption the new code
+   broke — *"a second Shopify store would be a different install, not a different row"* — but
+   `storeFor()` now reads `?store=` per request and `guardLiveStore` exists precisely so one install
+   can reach both. Every mirror consumer is store-blind: `rebuildIdentity`'s query, the batch's
+   already-live skip, the preflight's `alreadyLive`, and the CLI's LEFT JOIN. After the M1 dev
+   rehearsal the same `tracker.db` holds `state='live'` rows carrying **dev** product GIDs, so at
+   cutover the live run skips those cards as "already live" and `rebuildIdentity` mixes dev GIDs into
+   live identities. **Must be fixed before any live publish** — a `store` column plus a migration that
+   stamps existing rows `dev`, and every consumer scoped by it. Cheaper to do before R1 than to
+   untangle during it.
+2. **No server-side single-flight on `/publish/batch`.** Sequential *within* a batch is enforced and
+   tested; nothing stops two batches overlapping. The eBay route has a process-wide job lock
+   (`code:'job_running'`); the Shopify route goes straight from its guards to the loop, and the only
+   defence is a per-tab in-memory `RUNNING` flag that a second tab does not share — and that the eBay
+   lane clears while a Shopify batch is still streaming. Two concurrent runs double-publish the
+   overlapping rows.
+3. **The Runner's Shopify status fields are write-only.** `shopPublished`, `shopFailed`, `shopBlocked`,
+   `shopHandle` and `lastShopFailure` are assigned in seven places and read in none — `patchRow`
+   branches on the eBay `serverBlocked`/`note`, and `deriveState` keys on `row.published`/`row.failed`.
+   So a refusal paints nothing on the grid while the status bar says "See the held rows", and a publish
+   failure paints nothing while it says "N held — fix and press Shopify again". The CLI reports
+   correctly; only the browser lane is blind.
+4. **The 500-row cap truncates silently.** `runShopifyBatchPublish` slices to `SHOPIFY_BATCH_MAX` and
+   derives every stat from the sliced list, so no `{row}` is emitted for a dropped id and the summary
+   is internally consistent about a run that did part of the work. Both signals are dead: `truncated`
+   is read by neither driver and is computed post-dedup so it fires on the double-click test, and
+   `overMax` returns the constant rather than the overflow count. `shopifyBatchPreflight` never applies
+   the cap at all, so preflight and batch disagree above 500. Matters for R1, not for the gate.
+
+Minor, recorded so they are not rediscovered: the collision report's `skus` list is always empty for
+the rows it describes (built from `r.sku`, which is deliberately null while a label is pending); the
+post-publish admin link hardcodes `binderskeepers` for live where `.env` has `gkrnva-1k`; the shelf-label
+claim row is written eight lines before validation, so a row refused by the v1 scope gate permanently
+retires a label; and the CLI's NDJSON reader decodes each chunk independently, so a multibyte character
+split across a chunk boundary becomes U+FFFD in a card name.
+
 ⚠ **A dry run does not exercise media or `productSet`** — `runShopifyPublish` skips compose and upload when
 `dryRun`. So a clean dry run says the data is good, not that the store round-trip works. The first armed
 `DRAFT` run is the real test, which is exactly why `status` starts at `DRAFT`.
