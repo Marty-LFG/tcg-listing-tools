@@ -14,6 +14,7 @@ import { listingsPlugin } from './lib/listings.mjs'
 import { shopifyPlugin } from './lib/shopify.mjs'
 import { statusPlugin } from './lib/status.mjs'
 import { catalogPlugin } from './lib/catalog.mjs'
+import { ebayTestbedPlugin } from './lib/ebay-testbed.mjs'
 import { pkmSetsPlugin } from './lib/pkm-sets-cache.mjs'
 import { pkmCardsPlugin } from './lib/pkm-cards-cache.mjs'
 import { lorcanaCardsPlugin } from './lib/lorcana-cards-cache.mjs'
@@ -170,10 +171,19 @@ function ebayProxy(env) {
             throw e
           }
           console.log('[api/ebay]', req.url)
+          // Postage is only computed when eBay knows where the buyer is. Without this header 17% of
+          // AU card listings come back with no shippingOptions at all, and lib/comps-singles.mjs
+          // discards a row whose delivered price it cannot work out — so those listings vanish from
+          // every valuation. That is not a neutral loss: measured over 347 AU listings, the median
+          // item price of a no-postage row was A$790.70 against A$50.00 for the rest, because the
+          // expensive cards are the ones sellers arrange postage on. Dropping them biased every
+          // comp cheap, hardest on exactly the cards where being wrong costs most.
+          const ctx = (env.EBAY_BUYER_POSTCODE || '').trim()
           const r = await fetch('https://api.ebay.com' + req.url, {
             headers: {
               Authorization: 'Bearer ' + tok,
               'X-EBAY-C-MARKETPLACE-ID': (env.EBAY_MARKETPLACE || 'EBAY_AU').trim(),
+              ...(ctx ? { 'X-EBAY-C-ENDUSERCTX': 'contextualLocation=country%3DAU%2Czip%3D' + encodeURIComponent(ctx) } : {}),
               'Content-Type': 'application/json',
             },
           })
@@ -387,7 +397,7 @@ export default defineConfig(({ mode }) => {
     // report which routes this PROCESS actually owns — and flag when the sources on disk are newer
     // than the running server (a `git pull` with no restart). One wrapper, so a plugin added later
     // is covered without anyone remembering to.
-    plugins: withRegistry([dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), listingsPlugin(env), shopifyPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundPricesPlugin(), scanPlugin(env), pregradePlugin(env)]),
+    plugins: withRegistry([dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), listingsPlugin(env), shopifyPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundPricesPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env)]),
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

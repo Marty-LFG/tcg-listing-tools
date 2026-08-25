@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eBay Testbed</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
+    --text:#eef1fb;--gold:#f0c020;--gold-dim:#8a7016;--field:#0a1230;--green:#36d399;--red:#f06262;--amber:#f0c04a;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1560px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .card h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);font-weight:700;
+    display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+  .card h3 .h-note{color:var(--muted);font-size:11px;letter-spacing:0;text-transform:none;font-weight:400;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  input,select{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line);border-radius:9px;color:var(--text);font-size:14px;outline:none;font-family:inherit;}
+  input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(240,192,32,.12);}
+  input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:17px;height:17px;min-width:17px;padding:0;margin:0;
+    border:1.5px solid var(--muted);border-radius:5px;background:var(--field);cursor:pointer;position:relative;vertical-align:middle;display:inline-block;box-shadow:none;}
+  input[type="checkbox"]:hover{border-color:var(--gold);}
+  input[type="checkbox"]:checked{background:var(--gold);border-color:var(--gold);}
+  input[type="checkbox"]:checked::after{content:'';position:absolute;left:4.5px;top:1px;width:4.5px;height:9px;border:solid #0c1430;border-width:0 2.5px 2.5px 0;transform:rotate(43deg);}
+  input[type="checkbox"]:disabled{opacity:.35;cursor:not-allowed;}
+  .btn{padding:8px 14px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;font:inherit;font-size:13px;cursor:pointer;}
+  .btn:hover{border-color:var(--gold);}
+  .btn.primary{background:var(--gold);border-color:var(--gold);color:#0c1430;font-weight:800;}
+  .btn.sm{padding:3px 9px;font-size:12px;border-radius:7px;}
+  .btn:disabled{opacity:.42;cursor:not-allowed;}
+  .status{font-size:12.5px;min-height:18px;margin:6px 0;}
+  .status.ok{color:var(--green);}.status.warn{color:var(--gold);}.status.err{color:var(--red);}.status.load{color:var(--muted);}
+  .muted{color:var(--muted);font-size:11.5px;line-height:1.5;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;}
+  .banner{background:#2a1a10;border:1px solid var(--gold-dim);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--gold);margin-bottom:16px;}
+  .banner a{color:var(--gold);font-weight:700;}
+
+  .cols{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:16px;align-items:start;}
+  @media(max-width:1100px){.cols{grid-template-columns:1fr;}}
+  .idgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+  .fld{min-width:0;}
+  .sticky{position:sticky;top:20px;}
+
+  /* the query readout */
+  .qbox{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:12.5px;
+    line-height:1.65;word-break:break-word;max-height:200px;overflow:auto;}
+  .qbox .inc{color:var(--text);font-weight:600;}
+  .qbox .grp{color:var(--amber);}
+  .qbox .exc{color:var(--muted);}
+  .qhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 5px;}
+  .qhead .n{font-size:11px;color:var(--muted);}
+  .chars{font-size:11px;color:var(--muted);}
+  .chars.big{color:var(--amber);}
+
+  /* packs */
+  .pack{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;}
+  .pack > summary{padding:8px 11px;cursor:pointer;font-size:12.5px;background:var(--panel2);list-style:none;display:flex;justify-content:space-between;gap:8px;align-items:center;}
+  .pack > summary::-webkit-details-marker{display:none;}
+  .pack .terms{padding:9px 11px;display:flex;flex-wrap:wrap;gap:5px;}
+  .chip{font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);background:var(--field);color:var(--muted);
+    font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;}
+  .chip.safe{border-color:#1e5c40;color:#8fe0bd;}
+  .chip.unsafe{border-color:#6b2626;color:#f0a0a0;text-decoration:line-through;cursor:help;}
+  .rdt{font-size:10.5px;color:var(--green);}
+
+  /* lanes */
+  .gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;}
+  table.grid{width:100%;border-collapse:collapse;font-size:12.5px;min-width:900px;}
+  table.grid th{background:var(--panel2);color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.6px;
+    padding:8px 9px;text-align:left;position:sticky;top:0;white-space:nowrap;}
+  table.grid td{padding:8px 9px;border-top:1px solid var(--line);vertical-align:top;}
+  table.grid tr.win td{background:rgba(54,211,153,.07);}
+  .num{text-align:right;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .pill{display:inline-block;font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);}
+  .pill.high{border-color:#1e5c40;color:#8fe0bd;}.pill.medium{border-color:var(--gold-dim);color:var(--gold);}
+  .pill.low{border-color:#6b2626;color:#f0a0a0;}
+  .dim{color:var(--muted);}
+  .delta.up{color:var(--green);}.delta.down{color:var(--red);}
+  a.ext{color:var(--gold);text-decoration:none;font-weight:700;}
+  a.ext:hover{text-decoration:underline;}
+
+  .bar{height:7px;border-radius:4px;background:var(--panel2);overflow:hidden;min-width:60px;}
+  .bar > i{display:block;height:100%;background:var(--gold);}
+  .fillrow{display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0;}
+  .fillrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-block;margin-bottom:10px;font-size:12px;text-decoration:none;color:var(--gold);">&larr; All tools</a>
+  <div class="tag">Query bench</div>
+  <h1>eBay Testbed</h1>
+  <p class="sub">Build the same search four ways, run all of them, and see which one actually prices the card.</p>
+
+  <div class="banner" id="primer">
+    <b>Rank on <span class="mono">comps</span>, not <span class="mono">total</span>.</b>
+    The engine refuses below 4 comparable listings, so a query returning 6 results prices nothing while a loose one
+    returning 200 and filtering to 12 prices well. Fewest results is the opposite of the goal.
+    <span class="dim" style="display:block;margin-top:5px;color:var(--muted);">
+      Note: any <span class="mono">-exclusion</span> switches eBay to literal matching, which is why the exclusion modes
+      drop the game word and set name — measured, keeping them took a real card 38&nbsp;&rarr;&nbsp;6.
+    </span>
+  </div>
+
+  <!-- ============ identity ============ -->
+  <div class="card">
+    <h3>1 &middot; The card <span class="h-note" id="idNote">type one, or load from stock</span></h3>
+    <div class="idgrid">
+      <div class="fld"><label>Game</label><select id="f_game">
+        <option value="pokemon">Pokémon</option><option value="mtg">Magic</option>
+        <option value="lorcana">Lorcana</option><option value="onepiece">One Piece</option>
+        <option value="swu">Star Wars Unlimited</option><option value="riftbound">Riftbound</option>
+      </select></div>
+      <div class="fld"><label>Name</label><input id="f_name" value="Charizard ex" spellcheck="false"></div>
+      <div class="fld"><label>Number</label><input id="f_number" value="199/165" spellcheck="false"></div>
+      <div class="fld"><label>Set</label><input id="f_setName" value="Scarlet &amp; Violet 151" spellcheck="false"></div>
+      <div class="fld"><label>Language</label><select id="f_lang">
+        <option value="en">English</option><option value="ja">Japanese</option>
+        <option value="zh-cn">Chinese</option><option value="ko">Korean</option>
+      </select></div>
+      <div class="fld"><label>Finish</label><select id="f_finish">
+        <option value="">any</option><option value="foil">Foil / Holo</option><option value="nonfoil">Non-foil</option>
+      </select></div>
+      <div class="fld"><label>Condition</label><select id="f_condition">
+        <option value="">any</option><option value="Near Mint" selected>Near Mint</option>
+        <option value="Lightly Played">Lightly Played</option><option value="Moderately Played">Moderately Played</option>
+        <option value="Heavily Played">Heavily Played</option>
+      </select></div>
+      <div class="fld"><label>Grader</label><select id="f_company"><option value="">raw (ungraded)</option></select></div>
+      <div class="fld"><label>Grade</label><select id="f_grade"><option value="">—</option></select></div>
+      <div class="fld"><label>Load from stock</label>
+        <div style="display:flex;gap:6px;"><input id="f_sku" placeholder="SKU or id" spellcheck="false"><button class="btn" id="loadBtn">Load</button></div>
+      </div>
+    </div>
+    <div class="status" id="idStatus"></div>
+  </div>
+
+  <div class="cols">
+    <!-- ============ knobs ============ -->
+    <div>
+      <div class="card">
+        <h3>2 &middot; How to ask <span class="h-note" id="modeNote"></span></h3>
+        <label>Mode</label>
+        <select id="f_mode" style="margin-bottom:12px;"></select>
+        <div id="modeWhy" class="muted" style="margin-bottom:12px;"></div>
+
+        <label>Exclusion packs <span style="text-transform:none;letter-spacing:0;">(only used by modes that exclude)</span></label>
+        <div id="packs"></div>
+
+        <label style="margin-top:12px;">Sort the ↗ link by</label>
+        <select id="f_sort"></select>
+      </div>
+
+      <div class="card">
+        <h3>Aspect fill <span class="h-note">why some filters are trusted and others aren't</span></h3>
+        <p class="muted" style="margin:0 0 10px;">
+          An aspect filter only narrows the market if sellers filled the field in. Below the line, filtering deletes
+          more real listings than wrong ones, so the title regexes stay the better instrument.
+        </p>
+        <div id="fills"></div>
+        <button class="btn sm" id="discoverBtn" style="margin-top:10px;">Discover live for this card</button>
+        <div class="status" id="aspStatus"></div>
+        <div id="aspOut"></div>
+      </div>
+    </div>
+
+    <!-- ============ readout + lanes ============ -->
+    <div>
+      <div class="card sticky">
+        <h3>3 &middot; The query <span class="h-note" id="planNote"></span></h3>
+        <div class="qhead"><span class="n">keywords sent to eBay</span><span class="chars" id="qChars"></span></div>
+        <div class="qbox mono" id="qOut"></div>
+        <div id="qWarn" style="margin-top:8px;"></div>
+        <div class="qhead" style="margin-top:12px;"><span class="n">structured filters</span></div>
+        <div class="qbox mono" id="fOut"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <a class="ext" id="webLink" href="#" target="_blank" rel="noopener">↗ Open on eBay AU</a>
+          <span class="dim" style="flex:1;"></span>
+          <button class="btn sm" id="countBtn">Count all modes</button>
+          <button class="btn primary" id="runBtn">Run lanes</button>
+        </div>
+        <div class="status" id="runStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ lanes ============ -->
+  <div class="card">
+    <h3>4 &middot; What each way of asking actually bought <span class="h-note" id="laneNote">comps and price lead; total is context</span></h3>
+    <div class="gridwrap">
+      <table class="grid">
+        <thead><tr>
+          <th>Lane</th><th class="num">Comps</th><th class="num">Recommended</th><th class="num">Δ vs today</th>
+          <th>Confidence</th><th class="num">Fair</th><th class="num">Fetched</th><th class="num">Total</th>
+          <th class="num">Chars</th><th>Query</th><th></th>
+        </tr></thead>
+        <tbody id="laneBody"><tr><td colspan="11" class="dim" style="padding:14px;">Run the lanes to fill this in.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="muted" style="margin-top:9px;">
+      <b>Δ vs today</b> is the difference from the Production lane — that is the money question.
+      A lane with fewer comps than 4 refuses to price at all, which is correct behaviour, not a failure.
+    </div>
+  </div>
+
+  <!-- ============ ablation ============ -->
+  <div class="card">
+    <h3>5 &middot; What each token costs <span class="h-note">removes one at a time and re-counts</span></h3>
+    <button class="btn" id="ablateBtn">Run ablation</button>
+    <span class="muted" id="ablateCost" style="margin-left:8px;"></span>
+    <div class="status" id="ablStatus"></div>
+    <div id="ablOut" style="margin-top:8px;"></div>
+  </div>
+
+  <p class="muted" id="callNote" style="text-align:right;"></p>
+</div>
+
+<script src="/extras.js"></script>
+<script type="module">
+import { searchUrl } from '/lib/ebay-links.mjs';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const money = (a) => (a == null || !isFinite(a)) ? '—' : 'A$' + (Math.round(a * 100) / 100).toFixed(2);
+const stat = (el, cls, msg) => { el.className = 'status ' + cls; el.innerHTML = msg; };
+const post = async (p, body) => (await fetch('/api/testbed' + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+const get = async (p) => (await fetch('/api/testbed' + p)).json();
+
+let VOCAB = null, PLAN = null, LAST = null;
+
+function identity() {
+  const grade = $('f_grade').value;
+  return {
+    game: $('f_game').value,
+    name: $('f_name').value.trim(),
+    number: $('f_number').value.trim(),
+    setName: $('f_setName').value.trim(),
+    lang: $('f_lang').value,
+    finish: $('f_finish').value || null,
+    condition: $('f_condition').value || '',
+    graded: !!$('f_company').value,
+    company: $('f_company').value || null,
+    grade: grade === '' ? null : parseFloat(grade),
+  };
+}
+function packState() {
+  const out = {};
+  document.querySelectorAll('input[data-pack]').forEach((c) => { out[c.dataset.pack] = c.checked; });
+  return out;
+}
+const opts = () => ({ mode: $('f_mode').value, packs: packState(), sort: +$('f_sort').value });
+
+// ---- vocabulary -----------------------------------------------------------
+async function boot() {
+  VOCAB = await get('/vocab');
+  $('f_mode').innerHTML = VOCAB.modes.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
+  $('f_mode').value = 'structured';
+  $('f_sort').innerHTML = Object.entries(VOCAB.sorts).map(([k, v]) => `<option value="${v}">${esc(k)}</option>`).join('');
+  $('f_sort').value = VOCAB.sorts.priceLow;
+
+  $('f_company').innerHTML = '<option value="">raw (ungraded)</option>'
+    + Object.keys(VOCAB.graderValues).map((c) => `<option value="${c}">${esc(c)}</option>`).join('');
+  const grades = [10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6, 5, 4, 3, 2, 1];
+  $('f_grade').innerHTML = '<option value="">—</option>' + grades.map((g) => `<option value="${g}">${g}</option>`).join('');
+
+  // Packs. An unsafe term is shown struck through with its collision on hover rather than hidden —
+  // the point is to teach why the obvious exclusion list is wrong, not to quietly drop it.
+  $('packs').innerHTML = VOCAB.packs.map((p) => {
+    const on = ['graders', 'gradedWords', 'authenticity', 'fakes'].includes(p.id);
+    const chips = p.terms.map((t) => {
+      const g = VOCAB.graders.find((x) => x.code.toLowerCase() === t.toLowerCase());
+      const why = g && g.unsafeWhy;
+      return `<span class="chip ${why ? 'unsafe' : 'safe'}"${why ? ` title="${esc(why)}"` : ''}>-${esc(t)}</span>`;
+    }).join('');
+    return `<details class="pack"><summary>
+        <span><input type="checkbox" data-pack="${p.id}"${on ? ' checked' : ''}> ${esc(p.label)}</span>
+        <span class="dim mono" style="font-size:11px;">${p.terms.length}</span>
+      </summary><div class="terms">${chips}</div></details>`;
+  }).join('');
+  document.querySelectorAll('input[data-pack]').forEach((c) => c.addEventListener('change', refresh));
+
+  // Fill-rate bars, sorted, with the trust line drawn where the measured data has its natural gap.
+  const fills = Object.entries(VOCAB.aspectFill).sort((a, b) => b[1].fill - a[1].fill);
+  $('fills').innerHTML = fills.map(([name, a]) => {
+    const trusted = a.fill >= VOCAB.trustFill;
+    return `<div class="fillrow">
+      <span class="nm" style="color:${trusted ? 'var(--text)' : 'var(--muted)'}">${esc(name)}${a.basis === 'graded' ? ' <span class="dim" style="font-size:10px;">(of slabs)</span>' : ''}</span>
+      <span class="bar" style="width:90px;"><i style="width:${a.fill}%;background:${trusted ? 'var(--green)' : 'var(--line)'}"></i></span>
+      <span class="mono dim" style="width:46px;text-align:right;">${a.fill}%</span>
+    </div>`;
+  }).join('') + `<div class="muted" style="margin-top:6px;">Trusted at or above ${VOCAB.trustFill}%.</div>`;
+
+  ['f_game', 'f_name', 'f_number', 'f_setName', 'f_lang', 'f_finish', 'f_condition', 'f_company', 'f_grade', 'f_mode', 'f_sort']
+    .forEach((id) => { $(id).addEventListener('input', refresh); $(id).addEventListener('change', refresh); });
+  refresh();
+}
+
+// ---- the live readout -----------------------------------------------------
+let _t = null;
+function refresh() {
+  const m = VOCAB && VOCAB.modes.find((x) => x.id === $('f_mode').value);
+  if (m) {
+    $('modeNote').textContent = m.excludes ? `core capped at ${m.coreFields} fields` : (m.structured ? 'structured filters' : 'no exclusions');
+    $('modeWhy').innerHTML = m.id === 'recall'
+      ? 'What we send today: the full identity, stemmed matching, everything filtered afterwards in code.'
+      : m.id === 'structured'
+        ? 'Short core plus category and aspect filters. eBay does the narrowing exactly, instead of us guessing from titles.'
+        : m.id === 'hybrid'
+          ? 'Structured filters <i>and</i> the safe keyword exclusions, to see whether the keywords add anything the filters did not.'
+          : 'The Card Ladder shape: short core, long exclusion tail, no structured filters.';
+  }
+  clearTimeout(_t);
+  _t = setTimeout(async () => {
+    PLAN = await post('/plan', { identity: identity(), opts: opts() });
+    if (!PLAN || PLAN.error) return;
+    const parts = PLAN.nkw.split(' ').map((w) => w.startsWith('-') ? `<span class="exc">${esc(w)}</span>`
+      : w.startsWith('(') ? `<span class="grp">${esc(w)}</span>` : `<span class="inc">${esc(w)}</span>`);
+    $('qOut').innerHTML = parts.join(' ') || '<span class="dim">(empty)</span>';
+    $('qChars').textContent = PLAN.nkwLength + ' chars';
+    $('qChars').className = 'chars' + (PLAN.nkwLength > 300 ? ' big' : '');
+
+    const b = PLAN.browse;
+    $('fOut').innerHTML = [
+      b.category_ids ? `<span class="inc">category_ids</span> = ${esc(b.category_ids)}` : '<span class="dim">no category filter</span>',
+      `<span class="inc">filter</span> = ${esc(b.filter)}`,
+      b.aspect_filter ? `<span class="inc">aspect_filter</span> = ${esc(b.aspect_filter)}` : '<span class="dim">no aspect filter</span>',
+    ].join('<br>');
+
+    const notes = [];
+    for (const d of ((PLAN.core && PLAN.core.dropped) || [])) {
+      notes.push(d.replacedBy
+        ? `<span style="color:var(--green)">dropped <b>${esc(d.field)}</b> &rarr; ${esc(d.replacedBy)}</span>`
+        : `<span style="color:var(--amber)">dropped <b>${esc(d.field)}</b> &ldquo;${esc(d.value)}&rdquo;</span>`);
+    }
+    for (const w of (PLAN.warnings || []).slice(0, 4)) notes.push(`<span class="dim">${esc(w)}</span>`);
+    $('qWarn').innerHTML = notes.length ? `<div class="muted">${notes.join('<br>')}</div>` : '';
+
+    $('webLink').href = PLAN.webUrl || searchUrl(PLAN.nkw) || '#';
+    $('planNote').textContent = PLAN.mode;
+  }, 350);
+}
+
+// ---- counting + lanes -----------------------------------------------------
+$('countBtn').addEventListener('click', async () => {
+  stat($('runStatus'), 'load', 'counting all modes…');
+  const r = await post('/count', { identity: identity(), opts: opts() });
+  if (!r.lanes) return stat($('runStatus'), 'err', 'count failed');
+  stat($('runStatus'), 'ok', r.lanes.map((l) =>
+    `<b>${esc(l.label)}</b> ${l.total != null ? l.total : '<span style="color:var(--red)">' + esc(l.reason || 'err') + '</span>'}`).join(' &nbsp;·&nbsp; '));
+  noteCalls(r);
+});
+
+$('runBtn').addEventListener('click', async () => {
+  $('runBtn').disabled = true;
+  stat($('runStatus'), 'load', 'running every lane through the real comps engine…');
+  const r = await post('/run', { identity: identity(), opts: opts() });
+  $('runBtn').disabled = false;
+  if (!r.lanes) return stat($('runStatus'), 'err', esc(r.detail || 'run failed'));
+  LAST = r.lanes;
+  const prod = r.lanes.find((l) => l.id === 'production');
+  const best = r.lanes.reduce((a, b) => (b.comparable > (a ? a.comparable : -1) ? b : a), null);
+  $('laneBody').innerHTML = r.lanes.map((l) => {
+    const d = (l.recommended != null && prod && prod.recommended != null) ? l.recommended - prod.recommended : null;
+    return `<tr class="${best && l.id === best.id && l.comparable > 0 ? 'win' : ''}">
+      <td><b>${esc(l.label)}</b></td>
+      <td class="num">${l.comparable || '<span class="dim">0</span>'}</td>
+      <td class="num">${l.recommended != null ? money(l.recommended) : '<span class="dim">' + esc(l.reason || '—') + '</span>'}</td>
+      <td class="num ${d == null ? '' : (d > 0 ? 'delta up' : d < 0 ? 'delta down' : '')}">${d == null ? '<span class="dim">—</span>' : (d > 0 ? '+' : '') + money(d).replace('A$', '$')}</td>
+      <td>${l.confidence ? `<span class="pill ${esc(l.confidence)}">${esc(l.confidence)}</span>${l.reliable ? '' : ' <span class="dim" title="cluster too wide or confidence low">unreliable</span>'}` : '<span class="dim">—</span>'}</td>
+      <td class="num">${l.fair != null ? money(l.fair) : '<span class="dim">—</span>'}</td>
+      <td class="num dim">${l.sampleSize != null ? l.sampleSize : '—'}</td>
+      <td class="num dim">${l.total != null ? l.total : esc(l.countReason || '—')}</td>
+      <td class="num dim">${l.nkwLength}</td>
+      <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(l.nkw)}">${esc(l.nkw)}</td>
+      <td>${l.webUrl ? `<a class="ext" href="${esc(l.webUrl)}" target="_blank" rel="noopener">↗</a>` : ''}</td>
+    </tr>`;
+  }).join('');
+  stat($('runStatus'), 'ok', 'done — ranked by comparable listings, not by result count.');
+  noteCalls(r);
+});
+
+// ---- ablation -------------------------------------------------------------
+$('ablateBtn').addEventListener('click', async () => {
+  $('ablateBtn').disabled = true;
+  stat($('ablStatus'), 'load', 'removing one token at a time…');
+  const r = await post('/ablate', { identity: identity(), opts: opts() });
+  $('ablateBtn').disabled = false;
+  if (!r.terms) return stat($('ablStatus'), 'err', 'ablation failed');
+  const max = Math.max(1, ...r.terms.map((t) => Math.abs(t.delta || 0)));
+  $('ablOut').innerHTML = `<div class="muted" style="margin-bottom:6px;">Baseline ${r.baseline} results. A big bar means that token is doing most of the filtering — for good or ill.</div>`
+    + r.terms.map((t) => `<div class="fillrow">
+        <span class="nm mono">${esc(t.label)}</span>
+        <span class="bar" style="width:150px;"><i style="width:${Math.round(100 * Math.abs(t.delta || 0) / max)}%;background:${(t.delta || 0) > 0 ? 'var(--amber)' : 'var(--line)'}"></i></span>
+        <span class="mono dim" style="width:74px;text-align:right;">${t.delta == null ? '—' : (t.delta > 0 ? '+' : '') + t.delta}</span>
+        <span class="mono dim" style="width:52px;text-align:right;">${t.total == null ? '' : t.total}</span>
+      </div>`).join('')
+    + (r.truncated ? '<div class="muted" style="margin-top:6px;">Exclusion list truncated to keep the call count sane.</div>' : '');
+  stat($('ablStatus'), 'ok', 'removing a token that costs nothing is free precision; one that costs a lot is a landmine.');
+  noteCalls(r);
+});
+
+// ---- aspect discovery -----------------------------------------------------
+// The ✓/✗ is the point. A wrongly-cased aspect value is not rejected by eBay — it is ignored, and
+// the search returns everything, which looks exactly like a filter that matched everything. The
+// only way to tell is to compare the filtered total against the value's own reported count.
+$('discoverBtn').addEventListener('click', async () => {
+  stat($('aspStatus'), 'load', 'asking eBay what this search actually has…');
+  const q = [identity().name, identity().number].filter(Boolean).join(' ') || 'pokemon';
+  const r = await get('/aspects?q=' + encodeURIComponent(q));
+  if (!r.ok) return stat($('aspStatus'), 'err', 'discovery failed: ' + esc(r.reason || ''));
+  $('aspOut').innerHTML = `<div class="muted" style="margin:8px 0 6px;">${r.total} listings. Live fill for this card, next to the baked figure:</div>`
+    + r.aspects.slice(0, 12).map((a) => {
+      const trusted = a.fill != null && a.fill >= r.trustFill;
+      return `<div class="fillrow">
+        <span class="nm" style="color:${trusted ? 'var(--text)' : 'var(--muted)'}">${esc(a.name)}</span>
+        <span class="mono dim" style="width:52px;text-align:right;">${a.fill == null ? '—' : a.fill + '%'}</span>
+        <span class="mono dim" style="width:52px;text-align:right;">${a.baked ? a.baked.fill + '%' : ''}</span>
+        <span class="dim" style="flex:2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;">${a.values.slice(0, 3).map((v) => esc(v.value) + ' ' + v.count).join(' · ')}</span>
+      </div>`;
+    }).join('');
+  stat($('aspStatus'), 'ok', 'left column is this card, right is the baked average.');
+});
+
+// ---- stock prefill --------------------------------------------------------
+$('loadBtn').addEventListener('click', async () => {
+  const v = $('f_sku').value.trim();
+  if (!v) return;
+  stat($('idStatus'), 'load', 'loading…');
+  const r = await get('/item?' + (/^\d+$/.test(v) ? 'id=' : 'sku=') + encodeURIComponent(v));
+  if (!r.identity) return stat($('idStatus'), 'err', esc(r.error || 'not found'));
+  const i = r.identity;
+  $('f_game').value = i.game || 'pokemon'; $('f_name').value = i.name || '';
+  $('f_number').value = i.number || ''; $('f_setName').value = i.setName || '';
+  $('f_lang').value = i.lang || 'en'; $('f_finish').value = i.finish || '';
+  $('f_condition').value = i.condition || ''; $('f_company').value = i.company || '';
+  $('f_grade').value = i.grade != null ? String(i.grade) : '';
+  stat($('idStatus'), 'ok', 'loaded ' + esc(r.row.sku || r.row.id) + ' — ' + esc(r.row.title || ''));
+  refresh();
+});
+
+function noteCalls(r) {
+  if (r.calls == null) return;
+  $('callNote').innerHTML = `${r.calls} eBay calls this session`
+    + (r.overBudget ? ` <span style="color:var(--amber)">— past the ${r.softCap} soft budget</span>` : '');
+}
+
+boot();
+</script>
+</body>
+</html>

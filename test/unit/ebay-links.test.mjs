@@ -7,7 +7,7 @@
 // the other half — it stops a page quietly growing its own copy again.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { itemUrl, searchUrl, compsQuery } from '../../lib/ebay-links.mjs';
+import { itemUrl, searchUrl, compsQuery, browseSearchUrl, SOP, MAX_IPG, REACHABLE_CAP } from '../../lib/ebay-links.mjs';
 
 describe('itemUrl', () => {
   it('builds the AU item URL', () => {
@@ -60,6 +60,77 @@ describe('searchUrl', () => {
   });
   it('is null on an empty query', () => {
     for (const v of ['', '   ', null, undefined]) assert.equal(searchUrl(v), null);
+  });
+});
+
+// The wider options (added for ebay-testbed.html). The two literal assertions above are the
+// regression proof for every pre-existing caller: if they still pass untouched, nothing moved.
+describe('searchUrl — the composable options', () => {
+  it('an out-of-range sort or location folds to the safe default rather than being passed through', () => {
+    // LH_PrefLoc=3 is "North America" on the US site and simply does not resolve on AU — it comes
+    // back with no result count at all, which reads as "no stock" rather than as a bad parameter.
+    assert.equal(new URL(searchUrl('x', { prefLoc: 3 })).searchParams.get('LH_PrefLoc'), '1');
+    assert.equal(new URL(searchUrl('x', { sort: 99 })).searchParams.get('_sop'), '15');
+    assert.equal(new URL(searchUrl('x', { sort: SOP.newlyListed })).searchParams.get('_sop'), '10');
+    assert.equal(new URL(searchUrl('x', { prefLoc: 2 })).searchParams.get('LH_PrefLoc'), '2');
+  });
+
+  it('never emits _sacat without _dcat — an aspect will not bind to a lone _sacat', () => {
+    const u = new URL(searchUrl('x', { category: 183454 }));
+    assert.equal(u.searchParams.get('_sacat'), '183454');
+    assert.equal(u.searchParams.get('_dcat'), '183454', 'the pair is what makes aspect params bind');
+  });
+
+  // Measured live: eBay stops serving past 4,000 results deep. _ipg=240&_pgn=16 is the last page
+  // that returns anything; _pgn=17 returns none. Clamp rather than refuse (GR7) — a null URL would
+  // turn a paging bug into a dead link.
+  it('clamps paging to what eBay will actually serve', () => {
+    const u = new URL(searchUrl('x', { perPage: 9999, page: 999 }));
+    assert.equal(u.searchParams.get('_ipg'), String(MAX_IPG));
+    assert.equal(u.searchParams.get('_pgn'), String(Math.floor(REACHABLE_CAP / MAX_IPG)), '16 is the last page that serves; 17 returns nothing');
+    assert.equal(new URL(searchUrl('x', { perPage: 60, page: 999 })).searchParams.get('_pgn'), '66');
+  });
+
+  // A wrongly-encoded aspect is NOT an error — eBay ignores it and returns the unfiltered set,
+  // which is indistinguishable from a filter that matched everything. This literal was copied off a
+  // working live search, so it is the only thing standing between us and a silent no-op filter.
+  it('double-encodes aspect params exactly as the live search page does', () => {
+    const u = searchUrl('Charizard ex 199', {
+      category: 183454,
+      aspects: { 'Professional Grader': ['Professional Sports Authenticator (PSA)'], Grade: ['8'] },
+    });
+    assert.ok(u.includes('Professional%2520Grader=Professional%2520Sports%2520Authenticator%2520%2528PSA%2529'),
+      'parentheses must be escaped too — encodeURIComponent leaves them alone but eBay wants %2528/%2529\n' + u);
+    assert.ok(u.includes('&Grade=8'));
+  });
+
+  it('repeats the key for a multi-select facet', () => {
+    const u = searchUrl('x', { aspects: { Grade: ['8', '9'] } });
+    assert.ok(u.includes('&Grade=8&Grade=9'));
+  });
+
+  it('auction and BIN are independent, and the default is still BIN-only', () => {
+    assert.equal(new URL(searchUrl('x')).searchParams.get('LH_Auction'), null);
+    const u = new URL(searchUrl('x', { bin: false, auction: true }));
+    assert.equal(u.searchParams.get('LH_BIN'), null);
+    assert.equal(u.searchParams.get('LH_Auction'), '1');
+  });
+});
+
+describe('browseSearchUrl', () => {
+  // The same identity as a Browse API call. Verified live: this exact path returns the same total
+  // as the equivalent hand-built request (32 for PSA-graded Charizard ex 199 in AU).
+  it('builds a proxy-relative Browse path', () => {
+    const p = browseSearchUrl('Charizard ex 199', { limit: 1, categoryIds: 183454, filter: 'itemLocationCountry:AU' });
+    assert.ok(p.startsWith('/api/ebay/buy/browse/v1/item_summary/search?'), p);
+    const q = new URLSearchParams(p.split('?')[1]);
+    assert.equal(q.get('q'), 'Charizard ex 199');
+    assert.equal(q.get('category_ids'), '183454');
+    assert.equal(q.get('filter'), 'itemLocationCountry:AU');
+    assert.equal(q.get('limit'), '1');
+  });
+  it('is null on an empty query, like its sibling', () => {
+    for (const v of ['', '   ', null, undefined]) assert.equal(browseSearchUrl(v), null);
   });
 });
 
