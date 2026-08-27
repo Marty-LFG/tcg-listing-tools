@@ -444,10 +444,20 @@
     var ps = orders.map(function (o) { return o.postage || {}; }).filter(function (p) { return p && p.tier; });
     if (!ps.length) return '';
     var tier = strongestTier(ps.map(function (p) { return p.tier; }));
-    var lead = ps[0];
+    // The block's WORD is the strongest tier across the orders, so the service line and the tracking
+    // number printed under it have to come from THAT order or the sheet contradicts itself — a
+    // combined slip would shout EXPRESS over the name and number of whichever plain letter happened
+    // to be listed first. The fallback cannot fire while `tier` is drawn from this same list; it is
+    // there so a future change to strongestTier cannot produce an empty lead.
+    var lead = ps.filter(function (p) { return p.tier === tier; })[0] || ps[0];
     var paid = orders.reduce(function (n, o) { return n + (+(o.postage && o.postage.paid_cents) || 0); }, 0);
 
     var line = esc(lead.label || 'Standard delivery');
+    // The buyer paid for one service and the parcel went on a better one. Both halves belong on the
+    // slip: the name is what they were charged for and what their invoice says, and eBay tells us
+    // nothing about what the upgraded label was actually called (see attachPostage), so the second
+    // half describes it rather than naming it.
+    if (lead.tracked_evidence) line += ', sent tracked';
     // ", free" is gone: nothing is free postage any more, and printing it on a paid order is the kind
     // of contradiction a buyer notices. A zero here now means we genuinely have no amount, so the line
     // simply says what the service was.
@@ -861,8 +871,18 @@
   function upgradeBanner(meta) {
     var ups = (meta && meta.upgrades) || [];
     var total = (meta && meta.order_count) || ups.length;
-    return bannerBlock('upg',
-      ups.length + ' of ' + total + (total === 1 ? ' order needs' : ' orders need') + ' a postage upgrade',
+    // An order whose label is ALREADY BOUGHT is not a job. It still belongs on the banner — the parcel
+    // needs a satchel rather than an envelope, and the row tells the packer the number — but counting
+    // it in the heading sends somebody to Seller Hub to buy a second label for a parcel that already
+    // has one. A banner box on this sheet means stop and do something, so the number in it has to be
+    // the number of things left to do. Same split runSummary() makes in orders.html.
+    var need = ups.filter(function (u) { return !u.tracking; }).length;
+    var bought = ups.length - need;
+    var headline = need
+      ? need + ' of ' + total + (total === 1 ? ' order needs' : ' orders need') + ' a postage upgrade'
+        + (bought ? ' · ' + bought + ' already ' + (bought === 1 ? 'has a label' : 'have labels') : '')
+      : bought + (bought === 1 ? ' order has' : ' orders have') + ' a postage label already bought';
+    return bannerBlock('upg', headline,
       ups.map(function (u) {
         var paid = u.paid_cents ? money(u.paid_cents, u.currency) : '';
         // The chip already carries the tier, so a label that IS the tier phrase (which is what we fall

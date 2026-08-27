@@ -149,9 +149,13 @@ describe('postsale — picked (pulled + packed, still to post)', () => {
 
   it('GET /orders?picked= filters both ways', async () => {
     const yes = await get('/api/postsale/orders?picked=1');
-    assert.deepEqual(yes.json.orders.map((o) => o.order_id), ['T-2']);
+    // T-1 as well as T-2, and it is T-1 that is the interesting one: it was dispatched through
+    // POST /orders/:id/shipped further up, and a successful dispatch now stamps picked_at. It used to
+    // leave it NULL, which kept a fully dispatched order sitting in the pack queue.
+    assert.deepEqual(yes.json.orders.map((o) => o.order_id), ['T-1', 'T-2']);
     const no = await get('/api/postsale/orders?picked=0');
     assert.ok(!no.json.orders.some((o) => o.order_id === 'T-2'));
+    assert.ok(!no.json.orders.some((o) => o.order_id === 'T-1'));
   });
 
   it('picked:false puts it back on the pull list', async () => {

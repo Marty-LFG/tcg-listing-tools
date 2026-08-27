@@ -16,7 +16,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { openPostsaleDbAt } from '../../lib/postsale-db.mjs';
 import { ingestOrder, refreshOrder, enqueueMessage, attachPostage, observedServices,
   inQueue, isLabelBought, attachFulfilment } from '../../lib/postsale.mjs';
-import { DEFAULT_POSTAGE_CONFIG } from '../../lib/postage.mjs';
+import { DEFAULT_POSTAGE_CONFIG, tierPhrase } from '../../lib/postage.mjs';
 
 const CFG = { labels: false, messaging: true, postage: DEFAULT_POSTAGE_CONFIG };
 const CFG_NO_MSG = { ...CFG, messaging: false };
@@ -104,23 +104,26 @@ describe('refreshOrder', () => {
     assert.ok(after.tracking_seen_at, 'tracking_seen_at should stamp when WE first saw it');
   });
 
-  it('marks the order shipped and stamps nothing else when eBay was merely TICKED dispatched', () => {
-    // The bulk "mark as dispatched" in Seller Hub: ShippedTime, no tracking, untracked letter. The
-    // parcel has already gone, so there is no work left and the order must leave the queue on its own.
+  it('holds an UNTRACKED label in the queue, because that is what an eBay label looks like here', () => {
+    // ShippedTime, no tracking, untracked letter. This used to read as the Seller Hub bulk "mark as
+    // dispatched" — a parcel that had already gone — and settled the order straight to posted. But an
+    // eBay-bought Australia Post Regular Letter label looks exactly like this on the wire, and it is
+    // the most ordinary label this shop buys, so the orders that vanished off the fulfilment page the
+    // moment their label was paid for were the untracked ones. Now the flip alone holds it.
     const db = freshDb();
     ingestOrder(db, mkOrder('O1'), CFG);
     const r = refreshOrder(db, mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' }), CFG);
 
     assert.equal(r.becameShipped, true);
-    assert.equal(r.settledViaEbay, true);
-    assert.equal(r.labelBought, false);
+    assert.equal(r.settledAlreadyOurs, false);
+    assert.equal(r.labelBought, true);
     const o = row(db, 'O1');
     assert.equal(o.shipped_status, 'shipped');
     assert.equal(o.dispatch_source, 'ebay', 'provenance is still recorded — the "via eBay" badge reads it');
-    assert.equal(o.label_bought_at, null, 'no label was bought, so nothing pins it to the queue');
+    assert.ok(o.label_bought_at, 'eBay flipped it and nothing here did, so a label was bought');
     assert.equal(o.picked_at, null, 'a poll may not assert that a human packed something');
-    assert.equal(inQueue(o), false);
-    assert.equal(attachFulfilment([o])[0].fulfilment_state, 'posted');
+    assert.equal(inQueue(o), true, 'the cards are still on the shelf');
+    assert.equal(attachFulfilment([o])[0].fulfilment_state, 'label_bought');
   });
 
   it('still holds an order in the queue when a label really was bought', () => {
@@ -131,7 +134,7 @@ describe('refreshOrder', () => {
     }), CFG);
 
     assert.equal(r.labelBought, true);
-    assert.equal(r.settledViaEbay, false);
+    assert.equal(r.settledAlreadyOurs, false);
     const o = row(db, 'O1');
     assert.ok(o.label_bought_at);
     assert.equal(inQueue(o), true, 'the cards are still on the shelf');
@@ -148,30 +151,44 @@ describe('refreshOrder', () => {
     }), CFG);
 
     assert.equal(r.labelBought, true);
-    assert.equal(r.settledViaEbay, false);
+    assert.equal(r.settledAlreadyOurs, false);
     assert.equal(inQueue(row(db, 'O1')), true);
   });
 
-  it('a settled order is not re-stamped by the next poll', () => {
+  it('a stamped order is not re-stamped by the next poll', () => {
+    // becameShipped is guarded on prev.shipped_status !== 'shipped', so the branch fires once and the
+    // timestamp it wrote is the one that stays. Without that the stamp would creep forward on every
+    // poll and "bought yesterday" would read as "bought a minute ago" forever.
     const db = freshDb();
     ingestOrder(db, mkOrder('O1'), CFG);
     const shipped = mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' });
     refreshOrder(db, shipped, CFG);
+    const stamped = row(db, 'O1').label_bought_at;
+    assert.ok(stamped);
+
     const second = refreshOrder(db, shipped, CFG);
     assert.equal(second.updated, false);
-    assert.equal(second.settledViaEbay, false);
-    assert.equal(row(db, 'O1').label_bought_at, null);
+    assert.equal(second.settledAlreadyOurs, false);
+    assert.equal(row(db, 'O1').label_bought_at, stamped, 'and the stamp does not move');
   });
 
-  it('a service override that declares the tier tracked flips the verdict on a fresh transition', () => {
-    // The classification is re-derived from config on every refresh, so correcting a service in
-    // settings changes what the NEXT transition decides — no re-poll of eBay needed.
-    const db = freshDb();
+  it('the stamp no longer consults the postage classification at all', () => {
+    // It used to: a tracked TIER was half the old discriminator, so correcting a service in settings
+    // changed what the next transition decided. The rule is now "eBay flipped it and nothing here
+    // did", and this pins that — the same transition stamps identically whether or not the service is
+    // declared tracked. Anyone re-introducing a postage dependency here breaks this test, which is the
+    // point: postage describes the parcel, it cannot answer who marked the order shipped.
+    const declared = freshDb();
     const cfg = { ...CFG, postage: { ...DEFAULT_POSTAGE_CONFIG, services: { AU_AusPostStandardLetter: { tracked: true, tier: 'tracked' } } } };
-    ingestOrder(db, mkOrder('O1'), cfg);
-    const r = refreshOrder(db, mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' }), cfg);
-    assert.equal(r.labelBought, true, 'a tracked service gets a label, so hold it');
-    assert.equal(inQueue(row(db, 'O1')), true);
+    ingestOrder(declared, mkOrder('O1'), cfg);
+    const r = refreshOrder(declared, mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' }), cfg);
+    assert.equal(r.labelBought, true);
+    assert.equal(inQueue(row(declared, 'O1')), true);
+
+    const plain = freshDb();
+    ingestOrder(plain, mkOrder('O1'), CFG);
+    refreshOrder(plain, mkOrder('O1', { shippedTime: '2026-08-02T05:00:00.000Z' }), CFG);
+    assert.ok(row(plain, 'O1').label_bought_at, 'the undeclared service stamps identically');
   });
 
   it('queues exactly one dispatch message, on the transition and never again', () => {
@@ -294,6 +311,67 @@ describe('attachPostage / observedServices (read paths)', () => {
     assert.equal(o.postage.tier, 'standard');
     assert.equal(o.postage.upgrade, false);
     assert.equal(o.postage.tracking_url, null);
+  });
+
+  it('a tracking number outranks the service the buyer chose at checkout', () => {
+    // eBay never rewrites ShippingServiceSelected when the seller buys a different label, so a $1.70
+    // Regular letter that was upgraded to a tracked service still reports AU_AusPostStandardLetter for
+    // the life of the order. The tracking number is the only evidence we get about the label actually
+    // bought, and it beats the checkout claim — this is what stopped the packing slip and the buyer's
+    // dispatch message describing a service the parcel was not travelling on.
+    const db = freshDb();
+    ingestOrder(db, mkOrder('O1', { shippingCents: 170 }), CFG);
+    refreshOrder(db, mkOrder('O1', {
+      shippingCents: 170, trackingNumber: 'EBA03022670501000830906', carrier: 'Australia Post',
+      shippedTime: '2026-08-02T05:00:00.000Z',
+    }), CFG);
+
+    const [o] = attachPostage([row(db, 'O1')], CFG);
+    assert.equal(o.postage.tier, 'tracked');
+    assert.equal(o.postage.tracked, true);
+    assert.equal(o.postage.upgrade, true);
+    assert.equal(o.postage.tracked_evidence, true);
+    assert.equal(o.postage.label, 'Regular letter', 'the name is what the buyer paid for, and it stays');
+  });
+
+  it('evidence raises the tier and never lowers it, and never invents a service name', () => {
+    const db = freshDb();
+    // Express keeps express — a tracking number proves tracked, it does not prove express, and
+    // clamping the other way would demote every express parcel the moment its number arrived.
+    ingestOrder(db, mkOrder('O1', { shipService: 'AU_Express', shippingCents: 1295, expedited: true }), CFG);
+    refreshOrder(db, mkOrder('O1', { shipService: 'AU_Express', shippingCents: 1295, expedited: true, trackingNumber: '36LB1' }), CFG);
+    const [ex] = attachPostage([row(db, 'O1')], CFG);
+    assert.equal(ex.postage.tier, 'express');
+    assert.equal(ex.postage.tracked_evidence, false, 'it was already an upgrade, so nothing was inferred');
+
+    // An unreadable code with a number is promoted, but its NAME still falls back to the phrase for
+    // the tier the BUYER chose — 'paid', because they paid $1.70 — and not to the lifted one. A
+    // tracking number is evidence about the parcel; it is not permission to rename somebody's service
+    // to "Tracked parcel". The tracked half is said by tracked_evidence instead.
+    ingestOrder(db, mkOrder('O2', { shipService: 'AU_SomeService', shippingCents: 170 }), CFG);
+    refreshOrder(db, mkOrder('O2', { shipService: 'AU_SomeService', shippingCents: 170, trackingNumber: 'EBA1' }), CFG);
+    const [unknown] = attachPostage([row(db, 'O2')], CFG);
+    assert.equal(unknown.postage.tier, 'tracked');
+    assert.equal(unknown.postage.tracked_evidence, true);
+    assert.equal(unknown.postage.label, 'Paid postage');
+    assert.notEqual(unknown.postage.label, tierPhrase('tracked'));
+  });
+
+  it('the stored columns and the service summary are left alone by the evidence rule', () => {
+    // This is the test that keeps the rule OUT of classifyPostage. postageColumns writes
+    // postage_tier/postage_tracked to the row, and observedServices groups by them to tell the
+    // settings UI when one service code has classified more than one way — its `mixed` flag, which is
+    // the only signal that a service is being mis-read. Push per-parcel evidence through there and
+    // every ordinary letter service starts reporting itself as mixed.
+    const db = freshDb();
+    ingestOrder(db, mkOrder('O1', { shippingCents: 170 }), CFG);
+    ingestOrder(db, mkOrder('O2', { shippingCents: 170 }), CFG);
+    refreshOrder(db, mkOrder('O1', { shippingCents: 170, trackingNumber: 'EBA1', shippedTime: '2026-08-02T05:00:00.000Z' }), CFG);
+
+    assert.equal(row(db, 'O1').postage_tier, 'standard', 'the column describes the SERVICE, not the parcel');
+    assert.equal(row(db, 'O1').postage_tracked, 0);
+    const letter = observedServices(db, CFG).find((s) => s.code === 'AU_AusPostStandardLetter');
+    assert.equal(letter.mixed, null, 'so one bought label does not make the whole service look mis-read');
   });
 
   it('lists every service actually sold under, with its current tier', () => {

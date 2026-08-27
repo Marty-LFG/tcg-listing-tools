@@ -185,6 +185,37 @@ test('combined slip: mixed tiers get a per-order marker so one Express cannot vo
   assert.match(html, /class="opost"/)
 })
 
+test('combined slip: the service line and the number come from the order that EARNED the tier', () => {
+  // The reverse of the pair above, and it failed before the lead was picked by tier: the block took
+  // its WORD from the strongest tier across the orders but its service name, ETA and tracking number
+  // from whichever order happened to be listed first. A sheet shouting EXPRESS over the name and
+  // number of a plain letter is worse than either fact on its own.
+  const html = LR.packingSlipHTML([{ ...O1, postage: POST() }, { ...O2, postage: EXPRESS }])
+  assert.match(html, /class="postage t-express up"/)
+  assert.match(html, /Express Post/)
+  assert.doesNotMatch(html, /<div class="pline">Standard delivery/)
+})
+
+test('packing slip: a label upgraded after checkout says what was paid for AND how it went', () => {
+  // eBay never rewrites ShippingServiceSelected when the seller buys a different label, so the slip
+  // used to print "Regular letter" over the tracking number of a parcel that went tracked. Both halves
+  // belong here: the name is what the buyer was charged for, and eBay tells us nothing about what the
+  // upgraded label was called, so the second half describes it rather than naming it.
+  const html = LR.packingSlipHTML({ ...O1, postage: POST({
+    tier: 'tracked', upgrade: true, tracked: true, tracked_evidence: true,
+    label: 'Regular letter', paid_cents: 170,
+    tracking: 'EBA03022670501000830906', carrier: 'Australia Post' }) })
+  assert.match(html, /Regular letter, sent tracked/)
+  assert.match(html, /class="postage t-tracked up"/)
+  assert.match(html, /Tracking &middot; <b>EBA03022670501000830906<\/b>/)
+})
+
+test('packing slip: an ordinary letter is not told it was sent tracked', () => {
+  const html = LR.packingSlipHTML({ ...O1, postage: LETTER })
+  assert.match(html, /Regular letter/)
+  assert.doesNotMatch(html, /sent tracked/)
+})
+
 test('combined slip: when every order is the same tier there is no per-order noise', () => {
   const html = LR.packingSlipHTML([{ ...O1, postage: POST() }, { ...O2, postage: POST() }])
   assert.doesNotMatch(html, /class="otier/)
@@ -220,6 +251,22 @@ test('pick sheet: once the label is bought the banner says so instead of repeati
   ] })
   assert.match(html, /Label bought · 36LB1234567890/)
   assert.doesNotMatch(html, /Buy the label on eBay/)
+  // And the HEADING must not count it as outstanding either. A banner box on this sheet means stop
+  // and do something, so a bought label counted in that number sends the packer to Seller Hub to buy
+  // a second one. Now that a tracking number promotes an order's tier, these rows are the common case.
+  assert.doesNotMatch(html, /needs? a postage upgrade/i)
+  assert.match(html, /1 order has a postage label already bought/i)
+})
+
+test('pick sheet: a mixed run counts only the labels still to buy', () => {
+  const html = LR.pickSheetHTML([], { order_count: 9, upgrades: [
+    { order_id: '27-1', tier: 'express', label: 'Express Post', tracked: true },
+    { order_id: '27-2', tier: 'tracked', label: 'Regular letter', tracked: true, tracking: '36LB1234567890' },
+  ] })
+  assert.match(html, /1 of 9 orders need a postage upgrade/i)
+  assert.match(html, /1 already has a label/i)
+  assert.match(html, /Buy the label on eBay/)              // the one that genuinely needs it
+  assert.match(html, /Label bought · 36LB1234567890/)      // and the one that does not
 })
 
 test('no tier marker relies on a printed background fill', () => {

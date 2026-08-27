@@ -244,6 +244,15 @@ describe('dispatchOrder (shared by the API route and the digest button)', () => 
     assert.equal(o.tracking_number, '36LB1234567890');
     assert.equal(o.carrier, 'Australia Post');
     assert.ok(o.tracking_seen_at);
+    // Supplying tracking skips the already-shipped short-circuit, so this goes through the flip
+    // branch — which used to leave picked_at NULL and the order in the pack queue after a dispatch
+    // that had actually succeeded, needing a second tap to clear.
+    assert.ok(o.picked_at, 'a successful dispatch takes the order out of the queue, however it got here');
+    assert.equal(inQueue(o), false);
+    // ISO-Z, the same shape nowSql() writes on the short-circuit path. SQLite's datetime('now') gives
+    // '2026-08-27 07:31:49', which JS parses as LOCAL time — ten hours out in Sydney — so two spellings
+    // in one column would make the dashboard's "Pulled + packed" tooltip wrong for whichever branch ran.
+    assert.match(o.picked_at, /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/, 'picked_at is unambiguous UTC on every path');
   });
 });
 
@@ -355,9 +364,12 @@ describe('buying an eBay postage label does not delete the order from the day', 
     assert.equal(row(db, '1').label_bought_at, null);
   });
 
-  it('a bare "mark as dispatched" on eBay settles the order with no tap at all', () => {
-    // No tracking, untracked letter: the seller ticked a parcel that had already gone. This is the
-    // case that used to stamp label_bought and park the order on the digest forever.
+  it('an UNTRACKED eBay label holds the order and keeps it on the day', () => {
+    // ShippedTime and nothing else. This used to be read as the seller bulk-ticking a parcel that had
+    // already gone, so the order settled to posted and fell off the digest — but it is also exactly
+    // what an eBay-bought Australia Post Regular Letter label looks like, and that is the label this
+    // shop buys most. Those orders left the fulfilment page the moment the label was paid for, before
+    // anybody had printed a packing slip for them.
     const db = freshDb();
     ingestOrder(db, mkOrder('1'), CFG);
     const id = createDigest(db, TODAY, ['1']);
@@ -365,10 +377,10 @@ describe('buying an eBay postage label does not delete the order from the day', 
 
     const o = row(db, '1');
     assert.equal(o.shipped_status, 'shipped');
-    assert.equal(o.label_bought_at, null);
-    assert.equal(inQueue(o), false);
-    assert.equal(attachFulfilment([o])[0].fulfilment_state, 'posted');
-    assert.deepEqual(digestOrders(db, id), [], 'and it is off the morning digest');
+    assert.ok(o.label_bought_at);
+    assert.equal(inQueue(o), true);
+    assert.equal(attachFulfilment([o])[0].fulfilment_state, 'label_bought');
+    assert.deepEqual(digestOrders(db, id).map((x) => x.order_id), ['1'], 'and it stays on the morning digest');
   });
 
   it('never drags a historical order back into the queue', () => {

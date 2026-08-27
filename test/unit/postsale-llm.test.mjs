@@ -570,6 +570,23 @@ describe('buildFollowUpContext', () => {
   it('the delivered context states the parcel arrived', () => {
     assert.match(buildFollowUpContext({ order, items, kind: 'delivered' }), /has been delivered/);
   });
+  it('tells the model an upgraded order went tracked, so it cannot repeat the checkout service', () => {
+    // Handed "Postage service: Regular letter" beside "There IS a tracking number" the model wrote
+    // exactly what those two facts say together — a plain letter that somehow has tracking — and that
+    // went to real buyers. eBay never rewrites the checkout service when the seller buys a better
+    // label, and it gives no name for what was bought, so the instruction has to describe it.
+    const c = buildFollowUpContext({
+      order, items, kind: 'dispatch',
+      postage: { label: 'Regular letter', tracked: true, tracked_evidence: true, tracking: 'EBA0302' },
+    });
+    assert.match(c, /gone\s+TRACKED/);
+    assert.match(c, /Do not call it a plain, standard or regular letter/);
+    assert.match(c, /not name the upgraded service/);
+  });
+  it('an ordinary letter is not told it was upgraded', () => {
+    const c = buildFollowUpContext({ order, items, postage: { label: 'Regular letter' }, kind: 'dispatch' });
+    assert.doesNotMatch(c, /TRACKED/);
+  });
 });
 
 describe('fallbackFollowUp', () => {
@@ -589,6 +606,20 @@ describe('fallbackFollowUp', () => {
   it('dispatch: says nothing about tracking when there is none', () => {
     const d = fallbackFollowUp({ order, items, postage: {}, cfg: {} });
     assert.doesNotMatch(d.body, /tracking/i);
+  });
+
+  it('dispatch: an upgraded order is never told the service it was bought under', () => {
+    // "It's going Regular letter." printed directly above a tracking number is the sentence that
+    // started this. The buyer picked a plain letter and we posted it tracked; eBay does not say what
+    // the bought label was called, so the message says the true and useful half instead.
+    const d = fallbackFollowUp({
+      order, items, cfg: { signature: '-BK' },
+      postage: { label: 'Regular letter', tracked: true, tracked_evidence: true, tracking: 'EBA0302' },
+    });
+    assert.equal(d.ok, true);
+    assert.match(d.body, /We've sent it tracked\./);
+    assert.doesNotMatch(d.body, /Regular letter/);
+    assert.match(d.body, /tracking number is at the bottom/);
   });
 
   it('both follow-ups invite a future offer, and never a bundle on a parcel already sealed', () => {

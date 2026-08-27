@@ -310,9 +310,10 @@ describe('parseOrders — postage + shipment', () => {
   });
 
   it('a bulk "mark as dispatched" is ShippedTime and nothing else', () => {
-    // The exact input refreshOrder's discriminator keys on: eBay says sent, but no label was ever
-    // bought, so there is no tracking element at all — not an empty one. This is what the seller
-    // ticking a batch of already-posted letters in Seller Hub looks like on the wire.
+    // eBay says sent and there is no tracking element at all — not an empty one. This is what BOTH a
+    // seller ticking already-posted letters in Seller Hub AND an eBay-bought Australia Post Regular
+    // Letter label look like on the wire, which is exactly why refreshOrder no longer tries to tell
+    // them apart from the shipment block. What is asserted here is the PARSE: absent means null.
     const o = by['TICKED-NO-LABEL'];
     assert.equal(o.shippedTime, '2026-08-02T00:18:12.000Z');
     assert.equal(o.trackingNumber, null);

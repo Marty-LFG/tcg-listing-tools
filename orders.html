@@ -199,7 +199,7 @@
     <div class="trow">
       <div class="tabs" id="tabs">
         <div class="tab active" data-tab="unshipped">To pack <span class="n" id="n_unshipped"></span></div>
-        <div class="tab" data-tab="upgrades" title="Orders where the buyer paid for something better than a plain letter">Upgrades <span class="n" id="n_upgrades"></span></div>
+        <div class="tab" data-tab="upgrades" title="Orders going better than a plain letter — either the buyer paid for it at checkout, or a tracked label was bought for it afterwards">Upgrades <span class="n" id="n_upgrades"></span></div>
         <div class="tab" data-tab="held" title="Orders that need a decision before they can be packed — a cancellation the buyer has asked for, or a payment that failed after eBay said it was paid">Held <span class="n" id="n_held"></span></div>
         <div class="tab" data-tab="label_bought" title="eBay marked these dispatched when the postage label was bought. The cards still need pulling and the parcel still needs lodging — nothing else clears them, so they get their own tab rather than sitting unnoticed in the queue.">Label bought <span class="n" id="n_label_bought"></span></div>
         <div class="tab" data-tab="all">All <span class="n" id="n_all"></span></div>
@@ -353,11 +353,17 @@ function postageCell(o) {
 function runSummary(rows) {
   const ups = rows.filter(o => o.postage && o.postage.upgrade);
   const exp = ups.filter(o => o.postage.tier === 'express').length;
+  // An upgrade whose label is ALREADY BOUGHT is not outstanding work, and counting it as such is how
+  // a finished job stays on the summary line all day. Both numbers are worth saying: one is a job to
+  // do, the other is the reason the parcel needs a satchel rather than an envelope.
+  const bought = ups.filter(o => o.postage.tracking).length;
+  const need = ups.length - bought;
   const dues = rows.filter(o => o.in_queue).map(dueInfo).filter(Boolean).sort((a,b)=>a.left-b.left);
   const bits = [`<span><b>${rows.length}</b> order${rows.length===1?'':'s'}</span>`];
   if (ups.length) {
     bits.push('<span class="sep"></span>');
-    bits.push(`<span class="up"><b class="up">${ups.length}</b> need${ups.length===1?'s':''} a postage upgrade</span>`);
+    if (need) bits.push(`<span class="up"><b class="up">${need}</b> need${need===1?'s':''} a postage upgrade</span>`);
+    if (bought) bits.push(`<span>${bought} label${bought===1?'':'s'} already bought</span>`);
     if (exp) bits.push(`<span class="exp">${exp} express</span>`);
   } else if (rows.length) {
     bits.push('<span class="sep"></span><span>all standard postage</span>');
@@ -429,6 +435,12 @@ function renderOrders() {
         // point is that nobody packs it without deciding to.
         + (o.on_hold?` <span class="pill hold" title="${esc(cancelWhy || 'Sort this out on eBay before packing')}">⛔ ${esc(o.hold_reason || 'on hold')}</span>`:'')
         + (fs==='label_bought'?' <span class="pill queued">still to pack</span>':'')
+        // Two things are true at once on a label-bought row and the row has to say both, or the label
+        // gets bought a second time: eBay considers this order SHIPPED (it flipped the instant the
+        // label was paid for) and the parcel has NOT gone. The "still to pack" pill beside this one
+        // carries the second half. Now that an untracked letter label parks here too, this is the only
+        // place the eBay-side truth is stated at all.
+        + (o.dispatch_source==='ebay'&&fs==='label_bought'?` <span class="pill printed" title="eBay flipped this to dispatched when the postage label was bought, so eBay counts it as sent. The label is paid for — do not buy another. The parcel still has to be packed and lodged.">eBay says shipped</span>`:'')
         + (o.dispatch_source==='ebay'&&fs==='posted'?` <span class="pill printed" title="eBay marked this dispatched when the postage label was bought — pulled back on the order poll">via eBay</span>`:'')
         + (o.picked_at?` <span class="pill picked" title="Pulled + packed ${esc(when(o.picked_at))}">picked ✓</span>`:'')
         + (o.label_status==='printed'?' <span class="pill printed">label ✓</span>':'');
@@ -439,7 +451,13 @@ function renderOrders() {
         : (o.in_queue ? `<button class="act ship" data-ship="${esc(o.order_id)}">✓ Mark shipped</button>` : '');
       // Picked = pulled off the shelf and packed, still waiting to be posted. Local only — no eBay write.
       const pickBtn = o.picked_at
-        ? `<button class="act pick" data-unpick="${esc(o.order_id)}" title="Put this back on the pull list">↺ Unpick</button>`
+        // Only offered while the order is STILL IN THE QUEUE. label_bought_at is never cleared, so
+        // un-picking a posted order does not merely take it off the pull list — IN_QUEUE_SQL matches
+        // it again and it reappears in the pack queue and on tomorrow's digest, off the back of a
+        // button whose toast says only "back on the pull list". That was survivable while the stamp
+        // was rare; now that every eBay-flipped order carries it, it would be one stray click on the
+        // All tab away from exactly the "these have come back" symptom this work started from.
+        ? (o.in_queue ? `<button class="act pick" data-unpick="${esc(o.order_id)}" title="Put this back on the pull list">↺ Unpick</button>` : '')
         : (o.in_queue ? `<button class="act pick" data-pick="${esc(o.order_id)}" title="Pulled + packed — drop it off the pull list, keep it here to dispatch">✓ Picked</button>` : '');
       const grp = STATE.groupOf && STATE.groupOf.get(o.order_id);
       const buyerBadge = grp ? ` <span class="pill combo" title="This buyer has ${grp.length} orders to the same address">×${grp.length}</span>` : '';
@@ -633,7 +651,10 @@ function printAllLabels(){
   const skipped = ships.filter(isTrackedShipment);
   const going = ships.filter(g => !isTrackedShipment(g));
   const skipNote = skipped.length
-    ? ` · ${skipped.length} tracked parcel${skipped.length===1?'':'s'} skipped — buy those labels on eBay.` : '';
+    // Deliberately does not say "buy those labels on eBay" any more. An order can be tracked BECAUSE
+    // the label was already bought (a tracking number now promotes the tier — see attachPostage), and
+    // telling the owner to go and buy one is how a parcel ends up carrying two.
+    ? ` · ${skipped.length} tracked parcel${skipped.length===1?'':'s'} skipped — those travel on an eBay label.` : '';
   if (!going.length){
     setStatus('warn', 'Nothing to print — every ticked order is going tracked, so its label is bought on eBay.'); return;
   }
