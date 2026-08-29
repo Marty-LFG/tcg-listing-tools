@@ -191,6 +191,22 @@ describe('postsale — safety', () => {
     assert.ok(r.json && r.json.error);
   });
 
+  it('the member-message probe is DIAG_TOKEN-gated — it reads real buyer correspondence', async () => {
+    // Read-only, but it puts buyers' words and usernames in the response, so it is gated like the
+    // rest of the diagnostics rather than left open on the LAN.
+    const r = await get('/api/postsale/diag/member-messages?type=All&hours=72');
+    assert.ok([401, 403, 503].includes(r.status), 'expected the probe to be gated, got ' + r.status);
+    assert.ok(r.json && r.json.error);
+  });
+
+  it('reports whether inbox alerts are armed, without leaking the chat it would post to', async () => {
+    const { status, json, text } = await get('/api/postsale/config');
+    assert.equal(status, 200);
+    assert.equal(typeof json.state.reply_poll.inbox_alerts, 'boolean', 'the settings job card reads this');
+    assert.ok(['All', 'AskSellerQuestion'].includes(json.state.reply_poll.message_types));
+    assert.doesNotMatch(text, /TELEGRAM_CHAT_ID/i);
+  });
+
   it('the label-bought backfill is DIAG_TOKEN-gated — it clears a column on live orders', async () => {
     const r = await post('/api/postsale/diag/settle-label-bought?apply=1');
     assert.ok([401, 403, 503].includes(r.status), 'expected the backfill to be gated, got ' + r.status);

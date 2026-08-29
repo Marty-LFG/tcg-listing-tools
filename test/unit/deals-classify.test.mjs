@@ -6,7 +6,7 @@
 // "offer" and "best" — because each is unremarkable English in this inbox.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyDealAsk, normaliseForMatch, DEAL_RULE_NAMES } from '../../lib/deals.mjs';
+import { classifyDealAsk, normaliseForMatch, DEAL_RULE_NAMES, stripQuotedHistory } from '../../lib/deals.mjs';
 
 const kindOf = (s, b) => classifyDealAsk(s, b).kind;
 const asks = (s, b) => classifyDealAsk(s, b).ask;
@@ -132,5 +132,33 @@ describe('classifyDealAsk — mechanics', () => {
   it('is case and punctuation tolerant', () => {
     assert.equal(asks('', 'BEST PRICE???'), true);
     assert.equal(asks('', 'Any   Discount?'), true);
+  });
+});
+
+describe('stripQuotedHistory — the buyer’s words, not ours quoted back', () => {
+  it('cuts the quoted history eBay staples under a reply', () => {
+    const body = 'Yeah go on then.\n> Thanks for your order! Ask us for a bundle price any time.\n> -BK';
+    assert.equal(stripQuotedHistory(body), 'Yeah go on then.');
+  });
+
+  it('cuts at the separators too', () => {
+    assert.equal(stripQuotedHistory('ok\n--- Original Message ---\nour old note'), 'ok');
+    assert.equal(stripQuotedHistory('ok\n_______\nour old note'), 'ok');
+    assert.equal(stripQuotedHistory('ok\nOn Tuesday BindersKeepers wrote:\nour old note'), 'ok\n');
+  });
+
+  it('keeps the shape of what they actually wrote', () => {
+    // Unlike normaliseForMatch this is for DISPLAY, so it must not lowercase or collapse the text.
+    assert.equal(stripQuotedHistory('Is This The Alt Art?\nCheers'), 'Is This The Alt Art?\nCheers');
+  });
+
+  it('never throws', () => {
+    assert.equal(stripQuotedHistory(null), '');
+    assert.equal(stripQuotedHistory(undefined), '');
+  });
+
+  it('is the same strip the classifier uses, so a card and a match can never disagree', () => {
+    const body = 'best price?\n> ask us for a bundle';
+    assert.equal(normaliseForMatch('', body), stripQuotedHistory(body).replace(/\s+/g, ' ').trim().toLowerCase());
   });
 });

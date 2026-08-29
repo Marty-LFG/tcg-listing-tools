@@ -15,7 +15,7 @@
   "same_day_text": "later today",
   "different_day_wording": "weekday",
   "signature": "-BK",
-  "brand_voice": "Casual, warm, a little playful — an Aussie Pokémon/TCG store owner who genuinely cares about the hobby.",
+  "brand_voice": "Casual, warm, a little playful \u2014 an Aussie Pok\u00e9mon/TCG store owner who genuinely cares about the hobby.",
   "style_notes": "Thank them, name the card(s) by title, give the ship timing, and invite them to ask for a total on anything else. Keep it short and human.",
   "invite_offers": true,
   "quiet_hours": {
@@ -31,6 +31,17 @@
   "listings_sync": true,
   "fees": false,
   "cases": true,
+  "inbox_alerts": {
+    "enabled": false,
+    "message_types": "All",
+    "max_alerts_per_run": 10,
+    "preview_chars": 400,
+    "mark_read_button": true,
+    "nag_after_hours": 6,
+    "nag_max": 2,
+    "nag_window_hours": 168,
+    "inbox_url": ""
+  },
   "deals": {
     "enabled": false,
     "detect_from_messages": true,
@@ -53,7 +64,7 @@
     "seller_hub_order_url": "https://www.ebay.com.au/sh/ord/details?orderid={orderId}",
     "seller_hub_fallback_url": "https://www.ebay.com.au/sh/ord?filter=status:AWAITING_SHIPMENT",
     "tracking_url": "https://auspost.com.au/mypost/track/details/{tracking}",
-    "_services_comment": "Every service a buyer can actually pick across the three band policies, read live off eBay 2026-08-14. Checked BEFORE every regex. Two of these MUST be here: AU_Regular matches none of the classifier's patterns so it would read as a plain paid letter, and AU_AusPostPriorityLetterWithTracking matches /priorit/ so it would read as EXPRESS — it is a Priority letter with tracking, not Express Post. Band 1 is the store's normal band, so tier 'standard' even though the buyer paid $1.70: a plain letter needs nothing different from the packer.",
+    "_services_comment": "Every service a buyer can actually pick across the three band policies, read live off eBay 2026-08-14. Checked BEFORE every regex. Two of these MUST be here: AU_Regular matches none of the classifier's patterns so it would read as a plain paid letter, and AU_AusPostPriorityLetterWithTracking matches /priorit/ so it would read as EXPRESS \u2014 it is a Priority letter with tracking, not Express Post. Band 1 is the store's normal band, so tier 'standard' even though the buyer paid $1.70: a plain letter needs nothing different from the packer.",
     "services": {
       "AU_AusPostStandardLetter": {
         "label": "Regular letter",

@@ -4,7 +4,8 @@
 // paragraph you had to re-read to pull from.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { shortTitle, renderPullList, renderDispatchSummary, renderSaleAlert, renderHoldAlert } from '../../lib/telegram-cards.mjs';
+import { shortTitle, renderPullList, renderDispatchSummary, renderSaleAlert, renderHoldAlert,
+  renderInboxMessage, renderInboxNag } from '../../lib/telegram-cards.mjs';
 import { buildPickSheet } from '../../lib/postsale.mjs';
 
 describe('shortTitle', () => {
@@ -175,5 +176,92 @@ describe('renderHoldAlert', () => {
     assert.doesNotMatch(t, /<script>/);
     assert.match(t, /&lt;script&gt;/);
     assert.match(t, /A &amp; B/);
+  });
+});
+
+describe('renderInboxMessage — the eBay inbox card', () => {
+  const base = {
+    senderId: 'buyer_bob', subject: 'Is this the alt art?',
+    preview: 'Hi mate, is this the alt art version or the regular one?',
+    itemTitle: 'Pokemon Charizard VMAX 020/189 Darkness Ablaze Ultra Rare EN M/NM',
+    status: 'Unanswered', receivedText: '4 min ago', unread: true,
+  };
+
+  it('leads with who it is from and what it is about', () => {
+    const s = renderInboxMessage(base);
+    assert.match(s, /📬 <b>eBay MESSAGE<\/b>/);
+    assert.match(s, /@buyer_bob/);
+    assert.match(s, /Is this the alt art\?/);
+    assert.match(s, /alt art version/, 'the body is the point — there is no per-message deep link');
+  });
+
+  it('runs the item title through shortTitle, not raw', () => {
+    const s = renderInboxMessage(base);
+    assert.match(s, /re: Charizard VMAX 020\/189 Darkness Ablaze/);
+    assert.doesNotMatch(s, /M\/NM/, 'condition and language noise identify nothing here');
+  });
+
+  it('escapes everything a buyer can type', () => {
+    const s = renderInboxMessage({
+      ...base, senderId: 'bob<script>', subject: 'a & b', preview: '<b>hi</b> & bye',
+    });
+    assert.match(s, /bob&lt;script&gt;/);
+    assert.match(s, /a &amp; b/);
+    assert.match(s, /&lt;b&gt;hi&lt;\/b&gt; &amp; bye/);
+    assert.doesNotMatch(s, /<script>/, 'an unescaped tag is a broken card at best');
+  });
+
+  it('truncates the preview to previewChars, on a word boundary', () => {
+    const s = renderInboxMessage({ ...base, previewChars: 20 });
+    assert.match(s, /…/);
+    assert.doesNotMatch(s, /regular one/, 'the tail is gone');
+  });
+
+  it('stays inside Telegram’s limit even on a wall of text', () => {
+    const s = renderInboxMessage({ ...base, preview: 'x'.repeat(9000), previewChars: 9000 });
+    assert.ok(s.length <= 3800, `card was ${s.length} chars; Telegram refuses over 4096`);
+  });
+
+  it('says whether it still needs answering, which is the only reason to act', () => {
+    assert.match(renderInboxMessage(base), /unanswered/);
+    assert.match(renderInboxMessage(base), /unread/);
+    assert.doesNotMatch(renderInboxMessage({ ...base, unread: false }), /unread/);
+    // eBay did not say — which is not the same as "read", and must not be rendered as either.
+    assert.doesNotMatch(renderInboxMessage({ ...base, unread: undefined }), /unread/);
+  });
+
+  it('survives a message with nothing in it', () => {
+    assert.doesNotThrow(() => renderInboxMessage());
+    assert.match(renderInboxMessage({}), /@unknown/);
+  });
+
+  it('carries the decided footer once a button has been tapped', () => {
+    const s = renderInboxMessage(base, { icon: '✔️', status: 'Handled', who: 'marty' });
+    assert.match(s, /✔️ <b>Handled<\/b> by marty/);
+  });
+});
+
+describe('renderInboxNag — the second ask', () => {
+  const base = { senderId: 'buyer_bob', subject: 'Is this the alt art?', itemTitle: 'Charizard VMAX 020/189', waitingText: '7 hours' };
+
+  it('says how long it has been waiting, which the first card could not', () => {
+    const s = renderInboxNag(base);
+    assert.match(s, /⏰ <b>STILL UNANSWERED<\/b>/);
+    assert.match(s, /waiting 7 hours/);
+  });
+
+  it('does not repeat the body — a duplicate trains you to swipe both away', () => {
+    const s = renderInboxNag({ ...base, preview: 'the whole message body again' });
+    assert.doesNotMatch(s, /the whole message body again/);
+  });
+
+  it('numbers the nudges after the first', () => {
+    assert.doesNotMatch(renderInboxNag({ ...base, nagCount: 1 }), /nudge/);
+    assert.match(renderInboxNag({ ...base, nagCount: 2 }), /2nd nudge/);
+    assert.match(renderInboxNag({ ...base, nagCount: 3 }), /3rd nudge/);
+  });
+
+  it('names the off switch, because unanswered only clears when a reply goes out on eBay', () => {
+    assert.match(renderInboxNag(base), /Handled/);
   });
 });

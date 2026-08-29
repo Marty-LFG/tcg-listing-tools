@@ -177,11 +177,25 @@ describe('there is no second pipeline', () => {
     }
   });
 
-  it('reaches the pipeline through runOrderPoll and nothing else', () => {
-    const reaches = [...src.matchAll(/['"]\.\/postsale\.mjs['"]/g)];
-    assert.equal(reaches.length, 1, 'exactly one route into postsale.mjs');
-    assert.match(src, /const \{ runOrderPoll \} = await import\('\.\/postsale\.mjs'\)/,
-      'runOrderPoll is the whole interface: every alert and stock move must stay the poll’s own');
+  // Widened from "exactly one route" when message topics were added, WITHOUT loosening what it
+  // guards: the rule was never about the count, it was that this module may only ask a poll to run.
+  // So every route is checked against the allowlist of poll entry points, and a new import that
+  // pulled in ingestOrder or fireSaleAlert still fails here even though the count would look fine.
+  const POLL_ENTRY_POINTS = ['runOrderPoll', 'runMemberMessagePoll'];
+
+  it('reaches the pipeline through a poll entry point and nothing else', () => {
+    const reaches = [...src.matchAll(/const \{ ([^}]*) \} = await import\('\.\/postsale\.mjs'\)/g)];
+    const all = [...src.matchAll(/['"]\.\/postsale\.mjs['"]/g)];
+    assert.equal(reaches.length, all.length,
+      'every mention of postsale.mjs must be a destructured dynamic import — a bare one hides what it took');
+    assert.ok(reaches.length >= 1, 'at least one route into postsale.mjs');
+    for (const m of reaches) {
+      for (const name of m[1].split(',').map((x) => x.trim()).filter(Boolean)) {
+        assert.ok(POLL_ENTRY_POINTS.includes(name),
+          `imported ${name}() from postsale.mjs — only ${POLL_ENTRY_POINTS.join('/')} may be reached from here, ` +
+          'because every alert and stock move has to stay the poll’s own');
+      }
+    }
   });
 
   it('writes to notify_events and nothing else', () => {

@@ -184,3 +184,34 @@ describe('grading.config.json (pre-grader tolerances)', () => {
     }
   });
 });
+
+describe('postsale.config.example.json — inbox alerts', () => {
+  const c = cfg('postsale.config.example.json');
+  const ia = c.inbox_alerts;
+
+  it('ships OFF, like every other capability that starts talking to people', () => {
+    assert.equal(ia.enabled, false);
+  });
+
+  it('asks eBay for a message type eBay actually accepts', () => {
+    // A typo here does not error — GetMemberMessages returns nothing, which looks exactly like a
+    // quiet inbox. These are the only two values eBay documents for MailMessageType.
+    assert.ok(['All', 'AskSellerQuestion'].includes(ia.message_types));
+  });
+
+  it('keeps the nag small enough to stay worth reading', () => {
+    assert.ok(Number.isInteger(ia.nag_max) && ia.nag_max >= 0 && ia.nag_max <= 5);
+    assert.ok(Number.isInteger(ia.nag_after_hours) && ia.nag_after_hours >= 1 && ia.nag_after_hours <= 168);
+    assert.ok(ia.nag_window_hours >= ia.nag_after_hours, 'a window shorter than the gap can never nag at all');
+  });
+
+  it('caps the cards per run, and shows enough of a message to answer it', () => {
+    assert.ok(ia.max_alerts_per_run >= 1 && ia.max_alerts_per_run <= 50);
+    // There is no public per-message deep link, so the preview is often the whole card.
+    assert.ok(ia.preview_chars >= 100, 'too short to answer from the notification defeats the point');
+  });
+
+  it('leaves the inbox URL blank so lib/ebay-links.mjs stays the single source', () => {
+    assert.equal(ia.inbox_url, '');
+  });
+});
