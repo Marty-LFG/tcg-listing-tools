@@ -67,16 +67,25 @@ describe('only the reserve module knows what the reservation states mean', () =>
 
   const files = libFiles();
 
+  // Comments are stripped first. A file SAYING "go through runs-reserve.mjs rather than touching
+  // run_reservations" is the outcome this test wants, and failing it for saying so would teach the
+  // next person to delete the explanation rather than the query.
+  const code = (f) => src(f)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+    .join('\n');
+
   it('finds the modules to check', () => assert.ok(files.length > 20));
 
   for (const f of files) {
     if (OWNERS.has(f)) continue;
     it(`${f} does not query run_reservations itself`, () => {
-      assert.ok(!src(f).includes('run_reservations'),
+      assert.ok(!code(f).includes('run_reservations'),
         `${f} reads run_reservations directly — go through lib/${OWNER} so the state sets stay single-source`);
     });
     it(`${f} does not restate a reservation state`, () => {
-      assert.ok(!src(f).includes("'committed'"),
+      assert.ok(!code(f).includes("'committed'"),
         `${f} names a reservation state literally — lib/${OWNER} owns that vocabulary`);
     });
   }

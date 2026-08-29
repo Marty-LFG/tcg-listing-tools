@@ -1171,6 +1171,20 @@
       {p:'shopify.og.cardPaddingX',l:'Social card padding X',t:'number',min:0,max:300,tip:'Gap between the rails’ inner edge and the card. The gradient shows through it, so this is a mat of plum rather than white.'},
     ]}]},
 
+    // Keeper's Runs. Only the switches an operator legitimately flips live here: the two public
+    // guardrails are refused by the server's validator whichever way they arrive, and the verification
+    // constants (blob entry length, PBKDF2 iterations, code length) are not settings at all — a run's
+    // header commits to them and every buyer's verifier depends on them, so changing one would
+    // invalidate commitments already timestamped into Bitcoin.
+    runs:{ title:'Keeper&rsquo;s Runs', section:'system',
+      locked:'Prices are never customer-facing, and contents are never published before a run closes — both are refused on save',
+      groups:[{name:'Arming &amp; anchoring',anchor:'runs',fields:[
+        {p:'publish.enabled',l:'Publish runs',t:'toggle',tip:'Arm this module to publish a run to Shopify. <b>Separate from the singles publish flag on purpose</b> — that one is already on, and building runs must not silently inherit it. Even armed, a run still needs a locked manifest and a confirmed anchor before it can go anywhere.'},
+        {p:'publish.store',l:'Target store',t:'select',opts:['dev','live'],tip:'Which storefront a run publishes to. <b>live</b> additionally needs the live location/publication pins and the account-wide live switch, so setting it here alone changes nothing on its own.'},
+        {p:'anchor.mode',l:'Anchoring',t:'select',opts:['stub','opentimestamps'],tip:'<b>stub</b> writes a synthetic receipt for tests and local iteration, and is refused for the live store. <b>opentimestamps</b> timestamps the run into Bitcoin <b>mainnet</b> — keyless and free, because calendars aggregate thousands of digests into a single transaction, so there is no wallet, key or coin involved. There is deliberately no testnet option: no public calendar runs on it, and its resets and deep reorgs would rehearse behaviour production does not have.'},
+        {p:'anchor.upgrade_interval_min',l:'Upgrade check (min)',t:'number',min:5,max:1440,tip:'How often to ask the calendars whether a pending timestamp has made it into a block. A run may not open for sale until its timestamp is <b>confirmed</b>, so this is the loop that decides how soon that happens.'},
+      ]}]},
+
     backup:{ title:'Backups', section:'system', groups:[{name:'Snapshots',anchor:'backup',fields:[
       {p:'enabled',l:'Scheduled backups',t:'toggle',tip:'Take VACUUM-INTO snapshots of the money-bearing databases on a timer.'},
       {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to snapshot the databases.'},

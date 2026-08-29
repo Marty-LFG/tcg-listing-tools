@@ -113,6 +113,10 @@ data/listing-image.config.json
 # location and publication gids per store; re-seeded from the tracked
 # data/shopify.config.example.json on boot (lib/shopify.mjs ensureConfigSeeded).
 data/shopify.config.json
+# Keeper's Runs config — SERVER-OWNED, same reasoning. Holds this module's OWN publish arming flag,
+# deliberately separate from the singles one, plus the anchoring mode. Re-seeded from the tracked
+# data/runs.config.example.json on boot (lib/runs-config.mjs ensureRunsConfigSeeded).
+data/runs.config.json
 # Composed listing images, content-addressed by the compose hash. Pure derived output: every file is
 # reproducible from its source image plus the layout config, exactly like data/img-cache/.
 data/composed/

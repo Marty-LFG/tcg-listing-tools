@@ -1,0 +1,310 @@
+// test/integration/runs-api.test.mjs — the Keeper's Runs API on the REAL dev server: create a run,
+// declare its composition, claim stock, bind it to a numbered bundle, and confirm the answer sheet is
+// gated while the shape of the run is not.
+//
+// Boots the whole of vite.config.js against temp databases, so this also proves the plugin is actually
+// registered — a route that exists in lib/ but never reaches withRegistry is a file nobody can call,
+// and every other signal (imports resolve, unit tests pass) reads green while it is missing.
+//
+// The stock is created through the real inventory API rather than by INSERT, because the reservation
+// guards this run exercises are the ones that fire on real rows.
+import { describe, it, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { bootServer } from '../helpers/boot-server.mjs';
+
+let srv;
+before(async () => { srv = await bootServer(); }, { timeout: 60_000 });
+after(async () => { await srv?.close(); });
+
+const req = async (method, p, body, headers = {}) => {
+  const r = await fetch(srv.base + p, {
+    method,
+    headers: body ? { 'content-type': 'application/json', ...headers } : headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  let json = null; try { json = JSON.parse(text); } catch { /* html/plain */ }
+  return { status: r.status, json, text };
+};
+const get = (p, h) => req('GET', p, null, h);
+const post = (p, b, h) => req('POST', p, b || {}, h);
+
+// Edition 1's shape, as DATA. Nothing about slab/packs/art is hardcoded in the schema, the hash format
+// or the API — this object is the whole of it, which is the property that makes a differently-shaped
+// Edition 2 a configuration change rather than a migration.
+const E1_SLOTS = [
+  { slot: 'slab', label: 'Graded slab', kind: 'inventory', qty_per_bundle: 1, singleton: true, requires_cert: true, is_chase_slot: true },
+  { slot: 'packs', label: 'Sealed boosters', kind: 'sealed', qty_per_bundle: 3, max_lines: 3 },
+  { slot: 'art', label: 'Art card', kind: 'inventory', qty_per_bundle: 1, singleton: true },
+];
+
+let slabItem, artItem;
+
+describe('creating a run', () => {
+  it('refuses a dev run whose identifier does not say so', async () => {
+    const r = await post('/api/runs', { public_id: 'E9', mode: 'dev', edition: 9, name: 'Nope', unit_count: 3, slots: E1_SLOTS });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /must start with DEV-/);
+  });
+
+  it('refuses a composition with no chase slot — a chase REPLACES the base, so it needs somewhere to land', async () => {
+    const slots = E1_SLOTS.map((s) => ({ ...s, is_chase_slot: false }));
+    const r = await post('/api/runs', { public_id: 'DEV-E9', mode: 'dev', edition: 9, name: 'Nope', unit_count: 3, slots });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /exactly one slot must be is_chase_slot; 0 were/);
+  });
+
+  it('refuses a slot name that could not become an attribute name', async () => {
+    const slots = [{ ...E1_SLOTS[0], slot: 'Graded Slab' }, E1_SLOTS[1], E1_SLOTS[2]];
+    const r = await post('/api/runs', { public_id: 'DEV-E9', mode: 'dev', edition: 9, name: 'Nope', unit_count: 3, slots });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /attribute names inside the hash/);
+  });
+
+  it('creates the run, its composition and every bundle in one go', async () => {
+    const r = await post('/api/runs', {
+      public_id: 'DEV-E1', mode: 'dev', edition: 1, name: 'Rehearsal Edition One', unit_count: 3, slots: E1_SLOTS,
+    });
+    assert.equal(r.status, 201);
+    assert.equal(r.json.bundles, 3);
+    assert.equal(r.json.slots.length, 3);
+    // sort_order is the canonical serialisation order and is NEVER reordered after lock, so it is
+    // taken from declaration order rather than from anything the database chose.
+    assert.deepEqual(r.json.slots.map((s) => s.slot), ['slab', 'packs', 'art']);
+
+  });
+
+  it('numbers and labels the bundles from the run identifier', async () => {
+    const r = await get('/api/runs/DEV-E1');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.bundles.map((b) => b.label), ['DEV-E1-001', 'DEV-E1-002', 'DEV-E1-003']);
+    assert.ok(r.json.fill.every((b) => b.complete === false), 'a fresh run is entirely unbuilt');
+    assert.deepEqual(r.json.fill[0].slots.slab, { want: 1, have: 0, complete: false });
+    assert.deepEqual(r.json.fill[0].slots.packs, { want: 3, have: 0, complete: false });
+  });
+
+  it('never serves a bundle secret, even on an internal route', async () => {
+    const r = await get('/api/runs/DEV-E1');
+    // salt_hex and verify_code are bearer secrets and seal_serial addresses a parcel. The column list
+    // is the control: a field that is never selected cannot be forgotten by a filter.
+    for (const key of ['salt_hex', 'verify_code', 'seal_serial']) {
+      assert.ok(!(key in r.json.bundles[0]), `${key} must not be selected`);
+    }
+    assert.ok(!('unit_price_cents' in r.json.run), 'the schema has one money column and this API never selects it');
+  });
+});
+
+describe('claiming and binding stock', () => {
+  before(async () => {
+    const slab = await post('/api/inventory/items', {
+      game: 'pokemon', name: 'Sample Slab Alpha', quantity: 1, status: 'in_stock',
+      grading_company: 'PSA', grade: 10, cert_number: 'TESTCERT01',
+    });
+    const art = await post('/api/inventory/items', {
+      game: 'pokemon', name: 'Sample Art Card', quantity: 1, status: 'in_stock',
+    });
+    slabItem = slab.json.id; artItem = art.json.id;
+    assert.ok(slabItem && artItem, 'fixture stock was not created: ' + slab.text + ' | ' + art.text);
+  });
+
+  it('offers only stock the SPEC can take — the slab slot wants a cert, the art slot does not', async () => {
+    const slab = await get('/api/runs/DEV-E1/candidates?slot=slab');
+    assert.equal(slab.status, 200);
+    const ids = slab.json.candidates.map((c) => c.id);
+    assert.ok(ids.includes(slabItem), 'the certified slab is a candidate for the slab slot');
+    assert.ok(!ids.includes(artItem), 'the uncertified art card is not — requires_cert is a spec flag, not a slot name');
+
+    const art = await get('/api/runs/DEV-E1/candidates?slot=art');
+    assert.ok(art.json.candidates.map((c) => c.id).includes(artItem));
+  });
+
+  it('names the slots it does have when asked for one it does not', async () => {
+    const r = await get('/api/runs/DEV-E1/candidates?slot=booster_box');
+    assert.equal(r.status, 404);
+    assert.deepEqual(r.json.slots, ['slab', 'packs', 'art']);
+  });
+
+  let reservationId;
+  it('holds stock for the run before any bundle is chosen', async () => {
+    const r = await post('/api/runs/DEV-E1/hold', { kind: 'inventory', item_id: slabItem });
+    assert.equal(r.status, 201);
+    reservationId = r.json.id;
+
+    const pool = await get('/api/runs/DEV-E1/pool');
+    assert.equal(pool.json.pool.length, 1);
+    assert.equal(pool.json.pool[0].cert_number, 'TESTCERT01');
+  });
+
+  // Proven through the INVENTORY API rather than a listing publish. The eBay and Shopify paths refuse
+  // for want of credentials in this environment (boot-server blanks every one of them, deliberately)
+  // long before they reach the reservation, so asserting on them would pass for the wrong reason.
+  // Marking a card sold needs no network and is the same guard on the same ledger.
+  it('a pool hold already blocks the item everywhere else, before it has a bundle', async () => {
+    const sold = await req('PATCH', `/api/inventory/items/${slabItem}`, { status: 'sold' });
+    assert.equal(sold.status, 409);
+    assert.equal(sold.json.code, 'reserved_for_run');
+    assert.match(sold.json.error, /reserved for run DEV-E1/);
+
+    const gone = await req('DELETE', `/api/inventory/items/${slabItem}`);
+    assert.equal(gone.status, 409, 'nor can it be deleted out from under the run');
+  });
+
+  it('an unrelated edit to a reserved row is still fine — only the destructive shapes are guarded', async () => {
+    const r = await req('PATCH', `/api/inventory/items/${slabItem}`, { notes: 'typo fixed' });
+    assert.equal(r.status, 200);
+  });
+
+  it('?force=1 is the way past, and it leaves a record', async () => {
+    const r = await req('PATCH', `/api/inventory/items/${slabItem}?force=1`, { status: 'sold' });
+    assert.equal(r.status, 200);
+    const back = await req('PATCH', `/api/inventory/items/${slabItem}`, { status: 'in_stock' });
+    assert.equal(back.status, 200, 'putting it back is not a destructive shape');
+  });
+
+  it('refuses to hold the same physical object twice', async () => {
+    const r = await post('/api/runs/DEV-E1/hold', { kind: 'inventory', item_id: slabItem });
+    assert.equal(r.status, 409);
+  });
+
+  it('promotes the hold onto a numbered bundle — an UPDATE, never a second row', async () => {
+    const r = await post(`/api/runs/reservations/${reservationId}/assign`, { bundle_no: 2, slot: 'slab' });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.bundle, 'DEV-E1-002');
+
+    const run = await get('/api/runs/DEV-E1');
+    assert.deepEqual(run.json.fill[1].slots.slab, { want: 1, have: 1, complete: true });
+    assert.deepEqual(run.json.fill[0].slots.slab, { want: 1, have: 0, complete: false });
+    const pool = await get('/api/runs/DEV-E1/pool');
+    assert.equal(pool.json.pool.length, 0, 'it left the pool rather than being duplicated into a slot');
+  });
+
+  it('refuses a slot whose kind does not match the stock', async () => {
+    const hold = await post('/api/runs/DEV-E1/hold', { kind: 'inventory', item_id: artItem });
+    const r = await post(`/api/runs/reservations/${hold.json.id}/assign`, { bundle_no: 1, slot: 'packs' });
+    assert.equal(r.status, 409);
+    assert.match(r.json.error, /takes sealed stock/);
+  });
+
+  it('releasing puts the item back on sale', async () => {
+    const hold = await post('/api/runs/DEV-E1/hold', { kind: 'inventory', item_id: slabItem });
+    assert.equal(hold.status, 409, 'still held from the assignment above');
+    const held = await get('/api/runs/DEV-E1/candidates?slot=slab');
+    const row = held.json.candidates.find((c) => c.id === slabItem);
+    assert.equal(row.available, 0);
+    assert.equal(row.reserved_by.bundle, 'DEV-E1-002');
+
+    const r = await post(`/api/runs/reservations/${row.reserved_by.reservation_id}/release`, { reason: 'test' });
+    assert.equal(r.status, 200);
+    const after = await get('/api/runs/DEV-E1/candidates?slot=slab');
+    assert.equal(after.json.candidates.find((c) => c.id === slabItem).available, 1);
+    const sold = await req('PATCH', `/api/inventory/items/${slabItem}`, { status: 'sold' });
+    assert.equal(sold.status, 200, 'a released item is disposable again');
+    await req('PATCH', `/api/inventory/items/${slabItem}`, { status: 'in_stock' });
+  });
+});
+
+describe('the manifest is the one gated route', () => {
+  it('refuses without a bearer token', async () => {
+    const r = await get('/api/runs/DEV-E1/manifest');
+    // 503 when DIAG_TOKEN is unset in this environment, 401 when it is set but nothing was supplied.
+    // Either way the pre-sale answer sheet did not come back, which is the whole assertion.
+    assert.ok([401, 503].includes(r.status), 'manifest answered ' + r.status);
+    assert.equal(r.json.code, 'manifest_gated');
+    assert.ok(!r.text.includes('TESTCERT01'), 'a refusal must not carry the contents it refused');
+  });
+
+  it('an invalid token is refused too', async () => {
+    const r = await get('/api/runs/DEV-E1/manifest?token=not-the-token');
+    assert.ok([401, 403, 503].includes(r.status));
+  });
+
+  it('but the run SHAPE stays open — counts leak nothing about which bundle holds what', async () => {
+    const r = await get('/api/runs/DEV-E1');
+    assert.equal(r.status, 200);
+    assert.ok(!r.text.includes('TESTCERT01'));
+  });
+});
+
+describe('the module reports itself', () => {
+  it('/api/runs/config ships disarmed', async () => {
+    const r = await get('/api/runs/config');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.publish.enabled, false);
+    assert.equal(r.json.public.no_prices, true);
+    assert.equal(r.json.public.publish_contents_before_close, false);
+  });
+
+  it('/api/status lists the plugin and what dev runs are sitting on', async () => {
+    const r = await get('/api/status');
+    assert.equal(r.status, 200);
+    assert.ok(JSON.stringify(r.json.plugins).includes('runs'), 'the runs plugin is not registered in vite.config.js');
+    const s = r.json.subsystems.runs;
+    assert.ok(s && !s.error, 'runs subsystem: ' + JSON.stringify(s));
+    assert.equal(s.publish_enabled, false);
+    assert.equal(s.by_status.draft, 1);
+    // The number this block exists for. A dev rehearsal holds REAL stock and blocks real listings, so
+    // silently locked inventory is the failure mode of rehearsing against the live database.
+    assert.equal(typeof s.dev_hold_units, 'number');
+    assert.ok(s.dev_holds.every((h) => h.run.startsWith('DEV-')));
+  });
+
+  it('/api/runs/holdings agrees with it', async () => {
+    const r = await get('/api/runs/holdings');
+    const st = await get('/api/status');
+    assert.equal(r.json.units, st.json.subsystems.runs.dev_hold_units);
+  });
+});
+
+// The settings surface is the arming switch, so its refusals are load-bearing rather than cosmetic:
+// this is the one place a human can change what the module is allowed to do, and two of the values in
+// the file are promises made to buyers rather than preferences.
+describe('the settings gate', () => {
+  it('lists runs as an editable setting', async () => {
+    const r = await get('/api/settings');
+    assert.ok(r.json.files.runs, 'runs is not in the settings registry');
+    assert.equal(r.json.files.runs.editable, true);
+  });
+
+  it('refuses a save that would let a price reach a customer', async () => {
+    const cur = (await get('/api/settings/runs')).json.content;
+    const r = await req('PUT', '/api/settings/runs', { ...cur, public: { ...cur.public, no_prices: false } });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /no_prices/);
+  });
+
+  it('refuses a save that would publish contents before a run closes', async () => {
+    const cur = (await get('/api/settings/runs')).json.content;
+    const r = await req('PUT', '/api/settings/runs', { ...cur, public: { ...cur.public, publish_contents_before_close: true } });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /publish_contents_before_close/);
+  });
+
+  it('refuses arming the live store against a stub anchor', async () => {
+    const cur = (await get('/api/settings/runs')).json.content;
+    const r = await req('PUT', '/api/settings/runs', {
+      ...cur, publish: { enabled: true, store: 'live' }, anchor: { ...cur.anchor, mode: 'stub' },
+    });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /stub anchor/);
+  });
+
+  it('takes a legitimate change and the module reads it back without a restart', async () => {
+    const cur = (await get('/api/settings/runs')).json.content;
+    const r = await req('PUT', '/api/settings/runs', { ...cur, anchor: { ...cur.anchor, upgrade_interval_min: 30 } });
+    assert.equal(r.status, 200);
+    // loadRunsConfig() is called per request precisely so an arming change needs no restart.
+    assert.equal((await get('/api/runs/config')).json.anchor.upgrade_interval_min, 30);
+    await req('PUT', '/api/settings/runs', cur);
+  });
+});
+
+describe('abandoning a rehearsal', () => {
+  it('releases everything and marks the run dead', async () => {
+    const r = await post('/api/runs/DEV-E1/abandon', { reason: 'end of test' });
+    assert.equal(r.status, 200);
+    const run = await get('/api/runs/DEV-E1');
+    assert.equal(run.json.run.status, 'abandoned');
+    const sold = await req('PATCH', `/api/inventory/items/${artItem}`, { status: 'sold' });
+    assert.equal(sold.status, 200, 'abandon must free the stock, not just mark the run dead');
+  });
+});

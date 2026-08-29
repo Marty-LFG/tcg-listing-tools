@@ -1,0 +1,23 @@
+{
+  "_comment": "Keeper's Runs. Seeded to data/runs.config.json on first boot; the runtime copy is gitignored and server-owned, so edit it through settings.html rather than here. See docs/RUNS_PLAN.md.",
+  "publish": {
+    "_comment": "This module's OWN arming flag, deliberately separate from shopify.publish.enabled — that one is already true for singles, and building this must not silently inherit 'armed'. store=live additionally needs the live pins, allowLive, and a CONFIRMED anchor.",
+    "enabled": false,
+    "store": "dev"
+  },
+  "anchor": {
+    "_comment": "stub = a synthetic receipt for tests and local iteration, refused for store=live. opentimestamps = Bitcoin MAINNET, keyless and free — calendars aggregate thousands of digests into one transaction, so there is no wallet, key or coin anywhere in this. There is deliberately no testnet option: no public calendar infrastructure exists for it, and testnet's resets and deep reorgs would rehearse behaviour production does not have.",
+    "mode": "stub",
+    "calendars": [
+      "https://a.pool.opentimestamps.org",
+      "https://b.pool.opentimestamps.org",
+      "https://finney.calendar.eternitywall.com"
+    ],
+    "upgrade_interval_min": 60
+  },
+  "public": {
+    "_comment": "Guardrails, not preferences. Both are pinned by test/data/configs.test.mjs and refused by the settings validator, so turning either off is a deliberate edit to a test rather than a checkbox.",
+    "no_prices": true,
+    "publish_contents_before_close": false
+  }
+}
