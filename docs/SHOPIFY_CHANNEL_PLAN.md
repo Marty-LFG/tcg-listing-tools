@@ -457,6 +457,18 @@ forgotten, because the dev rehearsal is what creates its problem.
    `overMax` returns the constant rather than the overflow count. `shopifyBatchPreflight` never applies
    the cap at all, so preflight and batch disagree above 500. Matters for R1, not for the gate.
 
+5. **Every product will weigh 0 kg, because no birth path sets weight.** Confirmed on the first real
+   publish (AAC-089, dev store): `measurement.weight` reads `0 KILOGRAMS`. `toShopifyProduct` never
+   emits a weight and nothing downstream supplies one, so this is systemic rather than one bad row.
+   It breaks AusPost/Shopify Shipping label purchase and any weight-based rate — and "tracking upload"
+   is an explicit step of the roadmap's Phase 5 dress rehearsal. A single is ~2 g plus packaging;
+   whatever the number, it has to come from somewhere before anything ships.
+6. **One image per product, where the manifest offers more.** The first real publish carries a single
+   front frame in `media` plus the OG card as a `bkc.og_image` file reference. That may be correct for
+   a raw single photographed once — but the plan's S5 gate says "a dev product carries the ordered
+   manifest, position 1 is the real card", which implies a set. Confirm against a card that genuinely
+   has front and back frames before concluding the media layer is right.
+
 Minor, recorded so they are not rediscovered: the collision report's `skus` list is always empty for
 the rows it describes (built from `r.sku`, which is deliberately null while a label is pending); the
 post-publish admin link hardcodes `binderskeepers` for live where `.env` has `gkrnva-1k`; the shelf-label
