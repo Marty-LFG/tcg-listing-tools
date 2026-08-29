@@ -57,6 +57,12 @@ describe('composeMetaFor', () => {
   });
 
   const symbolsBaked = fs.existsSync(path.join(ROOT, 'data', 'pokemon-set-symbols.json'));
+  // The other two gitignored bakes these assertions read. Same rule as symbolsBaked: a host
+  // without the artifact SKIPS, because each of these tests would otherwise go green on the very
+  // fallback value it exists to rule out — the English set's identity on a Japanese rail, or a
+  // set code badge that silently vanished.
+  const intlBaked = fs.existsSync(path.join(ROOT, 'data', 'pokemon-intl-sets.json'));
+  const riftboundBaked = fs.existsSync(path.join(ROOT, 'data', 'riftbound.json'));
 
   describe('Black Star Promo sets: boxed mark right, PROMO star left', () => {
     // The owner-approved promo design: every promo listing wears the (unbranded) PROMO star in the
@@ -104,22 +110,25 @@ describe('composeMetaFor', () => {
   describe('non-English cards resolve against the JP index, not the English one', () => {
     // A JP card is a different product, not a translation: its own set name, its own card count and
     // therefore its own printed number. The English set's identity on a JP rail is simply wrong.
-    it('uses the romanised JP set name for a JP row saved under its English set', () => {
-      const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'M5', number: '102', language: 'JP' });
-      assert.equal(m.language, 'Japanese');
-      assert.equal(m.setName, 'Abyss Eye', 'a JP card is not in "Pitch Black"');
-    });
-    it('numbers it out of the JAPANESE card count', () => {
-      // JP Abyss Eye holds 81 cards, so a secret rare prints 102/081 — a number that does not exist
-      // in the 84-card English set.
-      const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'M5', number: '102', language: 'JP' });
-      assert.equal(m.cardNumber, '102/081');
-    });
-    it('resolves by the native name and by the English equivalent too', () => {
-      for (const name of ['Abyss Eye', 'アビスアイ', 'Pitch Black']) {
-        assert.equal(composeMetaFor({ set_name: name, number: '1', language: 'JP' }).setName, 'Abyss Eye', `failed for ${name}`);
-      }
-    });
+    it('uses the romanised JP set name for a JP row saved under its English set',
+      { skip: !intlBaked && 'data/pokemon-intl-sets.json not built on this host' }, () => {
+        const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'M5', number: '102', language: 'JP' });
+        assert.equal(m.language, 'Japanese');
+        assert.equal(m.setName, 'Abyss Eye', 'a JP card is not in "Pitch Black"');
+      });
+    it('numbers it out of the JAPANESE card count',
+      { skip: !intlBaked && 'data/pokemon-intl-sets.json not built on this host' }, () => {
+        // JP Abyss Eye holds 81 cards, so a secret rare prints 102/081 — a number that does not
+        // exist in the 84-card English set.
+        const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'M5', number: '102', language: 'JP' });
+        assert.equal(m.cardNumber, '102/081');
+      });
+    it('resolves by the native name and by the English equivalent too',
+      { skip: !intlBaked && 'data/pokemon-intl-sets.json not built on this host' }, () => {
+        for (const name of ['Abyss Eye', 'アビスアイ', 'Pitch Black']) {
+          assert.equal(composeMetaFor({ set_name: name, number: '1', language: 'JP' }).setName, 'Abyss Eye', `failed for ${name}`);
+        }
+      });
     it('English rows are untouched by any of this', () => {
       const m = composeMetaFor({ set_name: 'Pitch Black', set_code: 'PBL', number: '006/084', language: 'EN' });
       assert.equal(m.setName, 'Pitch Black');
@@ -142,11 +151,18 @@ describe('composeMetaFor', () => {
       const m = composeMetaFor({ set_name: 'Triplet Beat', set_code: 'CS1A', number: '5', language: 'JP' });
       assert.equal(m.setName, 'Triplet Beat', 'the owner’s stored name must win over a suspect upstream one');
     });
-    it('resolves the JP set logo by code as well as by name', () => {
-      // Bulbapedia files them as SV3a_Raging_Surf_Logo.png — findable from either identity.
-      const byCode = composeMetaFor({ set_name: 'Raging Surf', set_code: 'SV3a', number: '50', language: 'JP' });
-      if (byCode.setLogoUrl) assert.match(byCode.setLogoUrl, /Raging_Surf_Logo/);
-    });
+    // Needs BOTH bakes: the intl index to reach the JP path at all, the logo bake to answer it.
+    // The old `if (byCode.setLogoUrl)` went green on a host with neither, and it hid the one
+    // state that matters — with the intl index cold a JP row falls through to the ENGLISH path
+    // and resolves SV3_Logo_EN.png, the English wordmark on a Japanese card. That is the exact
+    // wrong-language failure this block exists to catch, so the assertion is unconditional now
+    // and the host question is answered by a skip instead.
+    it('resolves the JP set logo by code as well as by name',
+      { skip: !(intlBaked && symbolsBaked) && 'data/pokemon-intl-sets.json + data/pokemon-set-symbols.json not both built on this host' }, () => {
+        // Bulbapedia files them as SV3a_Raging_Surf_Logo.png — findable from either identity.
+        const byCode = composeMetaFor({ set_name: 'Raging Surf', set_code: 'SV3a', number: '50', language: 'JP' });
+        assert.match(byCode.setLogoUrl, /Raging_Surf_Logo/, 'a JP row must never wear the English wordmark');
+      });
   });
 
   describe('every JP set in the bake produces rail-drawable output', () => {
@@ -184,10 +200,26 @@ describe('composeMetaFor', () => {
       // Whatever symbol it does get must be Magic's own (Phase E), or none at all on a cold cache.
       if (m.setSymbolUrl) assert.match(m.setSymbolUrl, /svgs\.scryfall\.io/);
     });
-    it('the SAME code still resolves for an actual Pokémon row — the guard is on game, not on LTR', () => {
-      const m = composeMetaFor({ game: 'pokemon', set_name: 'Legendary Treasures', set_code: 'LTR', number: '1' });
-      assert.equal(m.setSymbolUrl, 'https://images.pokemontcg.io/bw11/symbol.png');
-    });
+    // Two sources can answer this, and WHICH one does is a property of the host, not of the guard:
+    // the compositor takes pokemontcg.io's symbol off the sets cache and falls back to the
+    // Bulbapedia bake (lib/listings.mjs). Both are gitignored runtime artifacts, so an exact URL
+    // here pins whichever happened to be warm the day it was written — a cold sets cache flipped
+    // this to archives.bulbagarden.net with nothing in the repo having changed. A fixture is no
+    // help either: composeMetaFor resolves the set through a module-level import with no seam, so
+    // faking one would mean writing over the server-owned cache from a unit test.
+    // What the guard actually owes us is the shape — a real Pokémon row still gets THIS set's own
+    // Pokémon art — so each source is spelled out by the set it identifies (bw11 IS Legendary
+    // Treasures), and neither branch can be satisfied by some other set's symbol.
+    const legendaryTreasuresSymbol = /^https:\/\/images\.pokemontcg\.io\/bw11\/symbol\.png$|^https:\/\/archives\.bulbagarden\.net\/\S+\/SetSymbolLegendary_Treasures\.png$/;
+    const symbolSourced = symbolsBaked || fs.existsSync(path.join(ROOT, 'data', 'pkm-cache', 'sets.json'));
+    it('the SAME code still resolves for an actual Pokémon row — the guard is on game, not on LTR',
+      { skip: !symbolSourced && 'no Pokémon set-art source on this host (data/pkm-cache/sets.json, data/pokemon-set-symbols.json)' }, () => {
+        // A skip, not an if: a host with neither source resolves '' for every set, which would
+        // pass a "did not borrow the MTG symbol" assertion while proving nothing about the guard.
+        const m = composeMetaFor({ game: 'pokemon', set_name: 'Legendary Treasures', set_code: 'LTR', number: '1' });
+        assert.match(m.setSymbolUrl, legendaryTreasuresSymbol,
+          'the MTG collision guard must not cost the Pokémon row its own symbol');
+      });
     it('Magic has no set wordmark, and Scryfall exposes no printed total', () => {
       const m = composeMetaFor({ game: 'mtg', set_name: 'The Hobbit', set_code: 'HOB', number: '1' });
       assert.equal(m.setLogoUrl, '');
@@ -268,12 +300,17 @@ describe('composeMetaFor', () => {
         assert.equal(m.setLogoAsset, 'logos/rail/swu.png');
       });
 
-    it('Riftbound wears its code badge off the baked roster, number untouched', () => {
-      const m = composeMetaFor({ game: 'riftbound', name: 'Jinx, Demolitionist', set_name: 'Origins (OGN)', number: '030/298', language: 'EN' });
-      assert.equal(m.setAbbrev, 'OGN');
-      assert.equal(m.cardNumber, '030/298');
-      assert.equal(m.setLogoAsset, 'logos/rail/riftbound.png');
-    });
+    // The roster is data/riftbound.json, NOT data/riftbound-set-art.json — Riftbound is the one
+    // game whose code badge comes off findRiftboundSetMeta, so baked() above is the wrong probe
+    // for it. Unbaked, the confirmed code is '' and the badge correctly disappears (a code the
+    // roster cannot confirm is never drawn), so there is nothing to assert on such a host.
+    it('Riftbound wears its code badge off the baked roster, number untouched',
+      { skip: !riftboundBaked && 'data/riftbound.json not built on this host' }, () => {
+        const m = composeMetaFor({ game: 'riftbound', name: 'Jinx, Demolitionist', set_name: 'Origins (OGN)', number: '030/298', language: 'EN' });
+        assert.equal(m.setAbbrev, 'OGN');
+        assert.equal(m.cardNumber, '030/298');
+        assert.equal(m.setLogoAsset, 'logos/rail/riftbound.png');
+      });
 
     it('One Piece: the card code is the whole badge, the game logo dresses the left rail', () => {
       const m = composeMetaFor({ game: 'onepiece', name: 'Shanks', set_name: 'Romance Dawn (OP-01)', number: 'OP01-120', language: 'EN' });
