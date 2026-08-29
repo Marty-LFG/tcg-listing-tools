@@ -223,7 +223,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `scripts/start-tcg-tools.cmd` | Double-click / Task Scheduler entry point for Windows. |
 | `scripts/WINDOWS_SERVICE.md` | pnpm setup + NSSM / firewall instructions for Windows LAN hosting + the daily Claude analysis task. |
 | `tracker.html` | Price-tracker dashboard: opportunities / downtrends / momentum / review-queue / all-tracked, with sparklines (reuses `TCG.lineGraph`). Linked from `index.html`. |
-| `lib/db.mjs` | `node:sqlite` store — opens `data/tracker.db`, PRAGMAs + idempotent DDL (`watchlist` / `price_snapshots` / `signals` / `card_cache`, plus the inventory tables `inventory_items` / `inventory_valuations` / `grading_submissions` / `sku_counter`, §13) + an additive `image_url` migration. All DB access funnels here. |
+| `lib/db.mjs` | `node:sqlite` store — opens `data/tracker.db`, PRAGMAs + idempotent DDL (`watchlist` / `price_snapshots` / `signals` / `card_cache`, plus the inventory tables `inventory_items` / `inventory_valuations` / `grading_submissions` / `sku_counter`, §13; the purchasing tables `purchase_orders` / `purchase_lines` / `purchase_line_placements` / `purchase_payments` / `purchase_receipts`, §22) + additive `migrateX` passes run every boot. All DB access funnels here. |
 | `lib/normalize.mjs` | Server-side mirror of each builder's price extraction + FX math + per-game lookup paths (see Golden Rule 9). `lookupPath`/`pricePath` return **null** for a namespaced non-English Pokémon key — pokemontcg.io has no such card and TCGdex publishes no prices (§17). |
 | `lib/pokemon-intl.mjs` | The non-English Pokémon vocabulary (§17): the `LANGS` table, the lane-namespaced `intlIdentityKey`, the five-way set matcher, `englishCardName`/`nativeInfo`, `intlPrintingsFor` (off TCGdex `variants`), `pcSearchUrl`. Pure browser-safe ESM — both stock pages import it, the server publishes through it, and `pokemon-listing-builder.html` mirrors it inline under `scripts/check-listing-copy.mjs`. |
 | `lib/pricecharting.mjs` | Keyless PriceCharting scraper (Pokémon graded/raw/pop). Parses the public card + population pages server-side; matches by exact collector number + name + fuzzy set. Powers `/api/pc` (display-only; not wired into the tracker/collector). |
@@ -235,6 +235,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `lib/tracker.mjs` | Vite plugin: owns the DB, exposes `/api/tracker/*`, starts the collector. Registered in `vite.config.js` `plugins`. |
 | `inventory.html` | **Graded-card inventory dashboard** ("Binders Keepers"). Stock list (filters + value sparklines), P/L summary tiles, add/edit modal (with PSA cert auto-fill), and the grading-submission pipeline (create → promote to stock). Reuses `TCG.lineGraph`/`ebayComps`/`toAUD`. Linked from `index.html`. See §13. |
 | `lib/inventory.mjs` | Vite plugin: owns the inventory tables (in the same `data/tracker.db`), exposes `/api/inventory/*` (items CRUD, valuation refresh, submissions + promote, `/summary`). Mirrors `lib/tracker.mjs`. Registered in `vite.config.js` `plugins`. |
+| `lib/purchasing.mjs` | Vite plugin: owns the purchasing tables and `/api/purchasing/*` — orders, lines, payments, settlement, the restock picker, and the receive transaction. Writes stock **only** through `receiveSealed` (`lib/sealed.mjs`) and `receiveInventory` (`lib/inventory.mjs`); never touches `sealed_placements` or `sku_counter` directly. Registered in `vite.config.js` `plugins`. See §22. |
+| `lib/purchasing-money.mjs` | Pure money maths for §22: `apportion` (largest-remainder, exact to the cent), `splitEvenly`, `allocateCharges`, `perUnitFeesCents`, `blendUnitCents`, `effectiveFx`, `toAudCents`, `paidCents`, `paymentStatus`. No DOM, no fetch, no DB — the `lib/fees.mjs` shape. |
 | `lib/certlookup.mjs` | Multi-company cert-lookup registry powering `/api/cert`. Dispatches to a per-company provider (PSA only today) else returns `{matched:false, verifyUrl}` (official cert page) for manual entry. Reads `data/grading-companies.json`. The single extension point for adding new company lookups. |
 | `lib/psa.mjs` | PSA public cert-verification provider (`lookupCert`) used by `lib/certlookup.mjs`. Needs `PSA_API_TOKEN`; `{matched:false}` on missing token/any failure. Field mapping UNVERIFIED against a live token. |
 | `data/grading-companies.json` | Inventory-facing grading-company registry (12: PSA/BGS/CGC/SGC/TAG majors, plus ARK, TCG Grading, Card Grading Australia, PCG (Western Premier Card Grading), PCGCN (unrelated Chinese PCG, pcgcard.cn), EMC (Encapsulated Memories Company), JBH (Joyful Box House)): label, scale, cert format, official `certUrl` (nullable when no public page), `lookup` flag, region. Add a company here by appending a row — dropdowns are data-driven. **Broader** than the pre-grader's tolerance set in `grading.config.json` (which stays PSA/BGS/CGC/SGC/TAG — don't add companies there without real tolerances, Golden Rule 4). Shared by server (`certlookup.mjs`) + client (`inventory.html`). |
@@ -260,6 +262,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `data/repricer.config.json` | Repricer guardrails + cadence (up-only thresholds, min comps/confidence, TTL). Tracked (like `tracker.config.json`). |
 | `data/ebay-oauth.json` | Encrypted eBay refresh token + metadata (gitignored). Written after the one-time consent. |
 | `orders.html` | **Fulfilment** dashboard: the to-pack queue with one-tap packing slip / combined slip / address label / pick sheet, plus Mark picked and Mark shipped. Tabs are `To pack` / `Upgrades` / `All`; the pack queue is ordered by eBay's **dispatch deadline** (`HandleByTime`), not by paid date. Each row carries its postage tier as a chip, a tinted left rail and a draining deadline bar, and an upgraded order swaps its primary action to **Buy label on eBay ↗** (Seller Hub deep link) while the thermal address label demotes — see §4 postage below. |
+| `purchasing.html` | **Purchase orders / incoming stock** — the INBOUND mirror of `orders.html`. Register (`Outstanding` / `Preorders` / `To reconcile` / `Received` / `Cancelled` / `All`) with a status-coloured rail and a payment pill; an order drawer with a receipt-style totals ledger, the payments block and the settled-AUD entry; a filtered picker over held stock for restock lines; and the **receiving bench** — count, reason codes, per-line splittable storage spots, then a preview of exactly which SKUs get `+N` before anything moves. House gold. See §22. |
 | `postsale.html` | Post-Sale Messenger: the buyer-message queue (draft / approve / send / reply handoff) with an edit modal. |
 | `lib/postsale.mjs` | Vite plugin: owns `data/postsale.db` and `/api/postsale/*`, runs the order poll, reply poll and pack digest, reconciles orders to stock, and drafts/routes buyer messages. `ingestOrder` adopts a new order; **`refreshOrder` keeps one current** — that is the path every eBay-side dispatch comes back through, whether a Seller Hub postage label was bought (eBay writes the tracking number onto the order and marks it shipped by itself) or the seller simply bulk-ticked "mark as dispatched". `attachPostage` decorates every read with the postage view the dashboard and both print docs consume. `dispatchOrder` is the single hand-dispatch path shared by the API route and the digest button. Registered in `vite.config.js` `plugins`. |
 | — the daily digest's bulk buttons | The morning digest's two messages carry **Mark all N picked** (local, one tap) and **Mark all N shipped** (a CompleteSale per order, so it asks first). Membership is **frozen in `pack_digests` + `pack_digest_orders` before either message is sent**, and the buttons carry that digest's id — nothing is re-derived at tap time, so a tap can only ever touch the orders its own message named. Two digests the same day (the DIAG trigger allows it) each keep their own list. Bulk dispatch holds an atomic claim on `pack_digests.dispatch_started_at` against a double tap and releases it in a `finally`; a failed eBay write leaves that order unshipped so it returns in the next digest. Callback prefixes `psp:` / `psdq:` / `psdy:` / `psdn:` + digest id; they must not collide with the approve/skip `psa:` / `pss:` + message id. |
@@ -307,6 +310,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/pregrade` | `pregradePlugin` (`lib/pregrade.mjs`) | Saved pre-grade reports. `POST /` create · `POST /:id/images` (ONE image per request, 28MB cap) · `GET /` list (LEFT-JOINs the linked submission's `submission_id` + `actual_grade`) · `GET/PATCH /:id` · `DELETE /:id` (refcounted byte unlink) · `GET /file/<sha>.<ext>` (immutable content-addressed image bytes). See §21. |
 | `/api/cert` | (middleware) | **Multi-company** graded-slab cert lookup (`lib/certlookup.mjs`) for the inventory add form. `GET /api/cert?company=PSA&cert=…` → `{matched, identity, grade, company, verifyUrl, …}`; `GET /api/cert/providers` → the company registry. PSA auto-fills (`PSA_API_TOKEN`); every other company has no public API ⇒ `{matched:false, verifyUrl}` (official page, or null) + manual entry (Golden Rule 7). |
 | `/api/inventory` | (plugin) | Graded-card **inventory** API (`lib/inventory.mjs`): `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `POST /items/:id/refresh-value` (PriceCharting graded value), `POST /items/:id/value-manual`, `POST /items/:id/fetch-image` (resolve+cache card image), `GET /items/:id/valuations`, `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote`, `GET /summary`, `GET /export`. See §13. |
+| `/api/purchasing` | (plugin) | **Purchase orders** (`lib/purchasing.mjs`): `GET/POST /orders`, `GET/PATCH/DELETE /orders/:id`, `POST /orders/:id/lines`, `PATCH/DELETE /lines/:id`, `POST /lines/:id/count`, `GET/POST /orders/:id/payments`, `DELETE /payments/:id`, `POST /orders/:id/settle`, `POST /orders/:id/receive[?dry=1]`, `GET /orders/:id/receipt`, `POST /orders/:id/close`, `GET /stock` (restock picker), `GET /suppliers`, `GET /statuses`, `GET /discrepancy-codes`, `GET /summary`. See §22. |
 | `/api/print` | (middleware) | Streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `POST {jobs, speed?, density?}` — top-level `speed`/`density` (one per batch) are clamped and merged over config before `buildJob`. `GET` returns `{enabled,dpi,ip,page,offXmm,offYmm,speed,density}` so `shipping-label.html` / `pdf-print.html` can enable Print, pick rasterise DPI, and seed the Darkness/Speed steppers. **`offXmm`/`offYmm` are the ADDRESS-label calibration only** — `shipping-label.html` and `orders.html` both resolve it the same way (localStorage `ship_offx`/`ship_offy` wins, else this GET) and apply it to the printed raster only, never the preview or the PNG fallback; their 5mm margin absorbs the shift. `pdf-print.html` deliberately ignores it and keeps its own nudge (localStorage `pdfprint_offx`/`offy`, default 0) because dropped PDFs are often full-bleed, and its Fit modes shrink the page to reserve room so a nudge can never clip ink. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
 | `/api/repricer` | `repricerPlugin` (`lib/repricer.mjs`) | Store repricer + Telegram. `/config`, `/me`, `/chatid`, `/proposals`, `POST /test-alert`; `/oauth`, `/oauth/start`, `POST /oauth/exchange`, `/oauth/status`, `POST /oauth/test` (eBay user-token consent). Owns `data/repricer.db` + the Telegram long-poll loop. See §15. |
 | `/api/listings` | `listingsPlugin` (`lib/listings.mjs`) | **eBay stock uploader** (Sell Inventory API). `GET /config`; `GET /account/status`, `POST /account/bootstrap` (opt-in business policies + create AU payment/return/fulfilment policies + merchant location), `GET /account/privileges`; `POST /preview` (dry-run: build+validate+resolve descriptors+upload EPS images+listing fees), `POST /publish` (create→offer→publish, idempotent on SKU, writes back `ebay_listing_id`/`ebay_offer_id`/`channel_status` + the `ebay_listings` mirror + a `listing_pushes` audit row), `POST /price` (eBay AU singles comps → suggested list price, own listings excluded), `POST /photos` + `DELETE /:id/photos` (owner photos → eBay EPS, base64), `POST /:id/revise-price`, `POST /:id/withdraw`, `GET /:id`, `GET /reconcile-state`, `POST /reconcile` (DIAG-gated — check our mirrored listings vs eBay, mark ended/out-of-stock drift). UI: `stock-uploader.html`. Config `data/ebay-listing.config.json` (server-owned). See §17. |
@@ -2155,3 +2159,153 @@ makes the card edge out-contrast the sleeve. Sleeved cards are fine to scan.
       PDF and persistence all see the straightened card).
 - [ ] ALCSERVER post-deploy check: scan buttons must hide (no scanner there), NSSM service
       restart after pull, then `/api/status` `plugins.stale` (§20).
+
+
+---
+
+## 22. Purchase orders / incoming stock (`purchasing.html`)
+
+`orders.html` is the OUTBOUND fulfilment queue. This is the inbound side: stock **bought but not yet
+held** — where it came from, what it cost, what is still owed, and the check-in that turns a carton
+into inventory. `purchasing.html` / `lib/purchasing.mjs` / `lib/purchasing-money.mjs`,
+`/api/purchasing/*`, five tables in `data/tracker.db`.
+
+**Nothing in these tables is stock.** They record an intent to buy. Stock exists only once a receive
+COMMITS, at which point the units are written through the two seams below and the line is stamped
+with what it produced.
+
+### Why the same DB
+
+The receive writes `purchase_lines` AND `sealed_items` / `sealed_placements` / `inventory_items` in
+**one transaction**, and SQLite cannot span two database files. `lib/postsale-db.mjs` is the
+precedent for a subsystem owning its own store; purchasing must not follow it. Same DB is a
+correctness requirement here, not a preference.
+
+### The two seams — and the invariant they protect
+
+`sealed_items.quantity` is a cached SUM of `sealed_placements` and `sealed_items.location` its
+primary spot. Any writer that skips the sealed module's own placement helpers corrupts that mirror
+**silently** — the item still reads fine, it just stops agreeing with the shelf. So purchasing never
+writes raw INSERTs into stock:
+
+- `receiveSealed(db, {...})` — `lib/sealed.mjs`. Creates or merges, routing every unit through
+  `addStock` / `setPlacements` so the mirror is re-derived.
+- `receiveInventory(db, {...})` — `lib/inventory.mjs`. The twin for singles and slabs. There is no
+  placements table there, so **one line lands in one spot**; splitting is a sealed-only capability
+  and the gate refuses it elsewhere rather than dropping spots.
+
+Both take **AUD cents**. See the money section below for why that is not a GR3 violation.
+
+### The lifecycle
+
+`draft → preorder | ordered | cancelled`, `preorder → ordered`, `ordered → in_transit | arrived`,
+`in_transit → arrived`, `arrived → (receive) → received → closed`, and `cancelled → draft`
+(cancelling is sometimes a mistake). Enforced server-side by `TRANSITIONS`, and served at
+`GET /statuses` so the page's dropdown can disable what the server would refuse.
+
+**`received` appears in no transition list.** It is a claim that stock exists, and only a committed
+receive can make that true — the same discipline as `grading_submissions` reaching `graded` only
+through promote. A PATCH asking for it gets `409 receive_via_endpoint`.
+
+**A preorder needs a `release_date`**, because a preorder is an order whose product does not exist
+yet. It is its own tab and stays out of `Outstanding`, so a six-month-out preorder never clutters
+"where is my stuff".
+
+### Receiving
+
+`POST /orders/:id/receive?dry=1` builds the plan and writes **nothing**; the same call without `dry`
+rebuilds it from the same rows and applies it, so what the owner approved is what happens.
+
+`reconcileGate` blocks the WHOLE order on: an uncounted line, a count differing from the order with
+no reason code, a split that does not sum to the count, a split on a line that cannot split, or a
+lot that has not said how many items came out. Every unready line is reported at once.
+
+**Idempotency is `purchase_receipts.UNIQUE(order_id)`**, and the receipt INSERT is the transaction's
+first statement — a double tap, a retried fetch or a second tab throws on the constraint and rolls
+back before one unit has moved. A repeat request returns `{already:true}` with the original result.
+
+**A dead restock link is a warning, not a blocker** (GR7). The ladder is: the row exists and its
+`link_sku` still matches → merge; it is gone but exactly ONE in-stock row matches the snapshot →
+merge and flag `link_repaired`; otherwise create and flag `link_broken`. Deliberately conservative:
+guessing which of two similar rows a delivery belongs to is worse than creating one the owner can
+merge by hand. Either way the goods get put away, because they are physically on the floor.
+
+### Money
+
+- Amounts are stored in **the currency the order was placed in** and never pre-converted (GR3).
+  `purchase_orders.currency` is the sibling for the order and every line; payments carry their own
+  plus `fx_to_order`, because a USD invoice settled off an AUD card is the normal case here.
+- **The one place a conversion is written is the stock row at receiving, and that is deliberate.**
+  `sealed_items.cost_cents` has NO currency column, and `sealed.html`'s `dcAud` already converts in
+  the browser before it POSTs — the field is literally labelled "stored in AUD". Every existing
+  reader (`summarizeSealed`, `summarizeInventory`, `/locations/contents`, the repricer floor, the
+  deal engine) assumes AUD, so receiving must match or it silently mixes currencies. The native
+  truth is preserved forever on the purchase line, and `sealed_items.po_line_id` /
+  `inventory_items.po_line_id` is the pointer back to it plus the rate used. This is also standard
+  cost-basis accounting: you paid what you paid on the day.
+- **FX has one accessor**, `effectiveFx`: the settled rate once the bank figure is known, the live
+  estimate until then. An unsettled foreign order is labelled `EST FX` on screen (GR4). A foreign
+  order with **no** rate refuses to receive (`fx_required`) rather than inventing one.
+- **Charges allocate BY VALUE.** These cartons hold six booster boxes and four hundred raw singles;
+  by quantity the singles would carry nearly all the freight and a 20c common would claim to have
+  cost 60c. `?basis=qty` exists for the heavy-and-cheap case, and which ran is on the receipt.
+- **`apportion` is largest-remainder and sums to its input exactly**, for every input including a
+  negative pot (a discount can legitimately exceed the freight). Asserted over 500 random cases in
+  `test/unit/purchasing-money.test.mjs`. The same primitive splits a bulk lot, which is the owner's
+  stated rule: a lump over N items must sum back to the lump, to the cent.
+- **Per-unit fees round UP.** One `acq_fees_cents` column cannot say "3 at 34c, 2 at 33c", so the
+  error is bounded by (qty − 1) cents and points at *over*stating cost, which understates profit —
+  the safe direction for a price floor. The exact figure stays on `purchase_lines.alloc_fees_cents`
+  and the preview shows the residue rather than hiding it.
+- **A restock blends to a weighted average**, separately on `cost_cents` and `acq_fees_cents`, so
+  `cost_cents × quantity` stays a true statement about the pile — which is exactly what both
+  summarizers assume. A null is not a zero: an unknown old cost adopts the new figure rather than
+  being halved by an unknown one.
+
+### Line shapes
+
+- **`unit`** — N identical units into one stock row (or merged into an existing one).
+- **`lot`** — a lump price whose contents are sorted later. On receipt the lump plus its freight
+  share splits evenly across `lot_units`, producing **one or two** `inventory_items` rows (two when
+  it does not divide) sharing a `po_line_id`. **Anything reading a lot must group on `po_line_id`,
+  not `received_item_id`, which names only the first row.** They take the `BK-RAW-*` namespace, not
+  a shelf label: §16b is explicit that a lot is one object rather than a slot on the singles shelf,
+  and the shelf counter never rewinds.
+- **`grading`** — you already own the cards and are buying a service. Creates no stock; the fee
+  lands on `grading_submissions.grading_cost_cents`, which promote already folds into
+  `acq_fees_cents` (§13). No new plumbing.
+
+### Storage location
+
+Chosen at **receiving**, which is the point of the feature. Named spots win; otherwise the order's
+`default_location`; otherwise unassigned. A sealed unit line can split across several spots
+(`purchase_line_placements`, the same shape `sealed_placements` takes). New spots are created inline
+against `POST /api/sealed/locations` — **locations have one owner** (§16) and are not re-served here.
+
+### What this deliberately does NOT do
+
+Stated so nobody "helpfully" adds them later — these are the owner's calls:
+
+- **No partial-receipt / backorder engine.** An order arrives once. A shortfall is a reason code on
+  a line, not a second open receipt; goods that genuinely turn up later are a new order.
+- **No suppliers table and no supplier admin page.** The name is free text and `GET /suppliers` is
+  DISTINCT over past orders UNION the `source_vendor` already on stock — so the first purchase order
+  offers names typed into `sealed.html` for months.
+- **No CSV import, no paste-parse, no barcode scan.** Every line is typed, or picked off held stock.
+- **No restatement of an already-received order** when settlement lands late. The receive screen
+  warns on an unsettled foreign order so the owner can settle first. Known limitation.
+
+### Sharp edges
+
+- **`po_line_id`, `link_item_id` and `received_item_id` carry no FK**, for the reason
+  `migrateSealedListing` spells out: `sealed_items.id` and `inventory_items.id` are independent
+  sequences, so an FK would pass against the wrong table. The `*_kind` discriminators are what make
+  the pairs mean anything, and `link_sku` is the extra guard against a restored-from-backup id
+  collision.
+- **`nextSku` in `lib/inventory.mjs` routes through the monotonic `nextStockLabel`** (§16b). Label
+  allocation happens inside the receive transaction, so a rollback un-burns them — but nothing may
+  allocate during a *preview*, which is why the preview writes nothing at all.
+- **A future "keeper's runs / mystery bundle" is not blocked.** `line_kind` is validated against a
+  const array, so adding one is an entry plus a receive branch; a bundle's cost basis is the `lot`
+  split already built. `lib/channels/shopify-map.mjs` already maps `bundle: 'Mystery Bundle'`.
+
