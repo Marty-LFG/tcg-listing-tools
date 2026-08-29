@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Run intake · Binders Keepers</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;--purple:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;min-height:100vh;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1320px;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;} a:hover{text-decoration:underline;text-underline-offset:3px;}
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);}
+  .sub .dot{color:var(--faint);margin:0 7px;}
+  .actions{display:flex;gap:9px;}
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s ease;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);} .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn.sm{padding:6px 10px;font-size:11.5px;border-radius:8px;}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  .btn.ghost:hover{color:var(--text);border-color:var(--line2);background:rgba(255,255,255,.03);}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.go:hover{background:rgba(67,214,160,.17);border-color:var(--green);}
+  select,input,textarea{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--sans);transition:.15s;}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  input::placeholder,textarea::placeholder{color:var(--faint);}
+  label{display:block;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:5px;}
+  .sec-h{font-family:var(--sans);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);font-weight:700;}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 17px;margin-bottom:18px;}
+  .tabs{display:flex;gap:7px;margin-bottom:18px;}
+  .tabs button{font-family:var(--sans);padding:9px 17px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s;}
+  .tabs button.on{color:var(--gold);border-color:var(--gold-soft);background:var(--gold-soft);}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
+  .fld{min-width:130px;}
+  .note{color:var(--muted);font-size:12px;line-height:1.65;margin:0 0 13px;}
+  .note b{color:var(--text);font-weight:600;}
+  .warn{border:1px solid rgba(240,192,74,.35);background:rgba(240,192,74,.07);border-radius:12px;padding:11px 14px;margin-bottom:14px;color:var(--amber);font-size:12.5px;line-height:1.6;}
+  .warn b{color:#ffd97a;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:left;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:0 8px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  td input,td select{padding:5px 7px;font-size:12px;border-radius:7px;width:100%;}
+  .mono{font-family:var(--mono);font-size:11.5px;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;font-family:var(--mono);white-space:nowrap;border:1px solid var(--line2);color:var(--muted);}
+  .pill.ok{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.09);}
+  .pill.bad{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.08);}
+  .pill.wait{color:var(--faint);}
+  .pill.busy{color:var(--blue);border-color:rgba(106,176,255,.4);background:rgba(106,176,255,.08);}
+  .empty{color:var(--muted);font-size:13px;padding:26px;text-align:center;border:1px dashed var(--line);border-radius:14px;background:rgba(255,255,255,.012);}
+  .foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:15px;padding-top:14px;border-top:1px solid var(--line);}
+  .chk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);cursor:pointer;}
+  .chk input{width:auto;}
+  .hide{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Binders Keepers <span class="thin">Run intake</span></h1>
+        <p class="sub"><a href="/inventory.html">← inventory</a><span class="dot">·</span>build a run's pool<span class="dot">·</span><span id="held">—</span></p>
+      </div>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" href="/">all tools</a>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button id="tabGraded" class="on" onclick="setTab('graded')">Graded slabs</button>
+    <button id="tabSealed" onclick="setTab('sealed')">Sealed</button>
+  </div>
+
+  <!-- ============================ GRADED ============================ -->
+  <section id="paneGraded">
+    <div class="card">
+      <p class="note">
+        Paste or scan certification numbers, one per line. Each is resolved against the grader's own
+        record, so the name, set and grade come from the source of truth rather than from typing.
+        <b>Rarity does not</b> — a cert record has no rarity field, so it is yours to set, and it is
+        checked live against the run vocabulary below.
+      </p>
+      <div class="row" style="margin-bottom:12px;">
+        <div class="fld"><label>Grader</label><select id="company" style="width:120px;"></select></div>
+        <div class="fld"><label>Game</label><select id="game" style="width:140px;"></select></div>
+        <div class="fld"><label>Language</label><input id="lang" value="JA" style="width:80px;"></div>
+        <div class="fld"><label>Default rarity</label><select id="defRarity" style="width:190px;"></select></div>
+        <div class="fld"><label>Cost each (A$)</label><input id="cost" type="number" step="0.01" min="0" placeholder="optional" style="width:120px;"></div>
+      </div>
+      <div class="fld" style="width:100%;">
+        <label>Certification numbers</label>
+        <textarea id="certs" rows="5" style="width:100%;font-family:var(--mono);font-size:12.5px;"
+          placeholder="one per line — a scanner that ends each read with Enter works as-is"></textarea>
+      </div>
+      <div class="foot">
+        <button class="btn" id="btnResolve" onclick="resolveCerts()">Resolve certs</button>
+        <span id="resolveMsg" class="mono" style="color:var(--muted);font-size:11.5px;"></span>
+      </div>
+    </div>
+
+    <div id="unmapped" class="warn hide"></div>
+
+    <div class="card" id="gradedCard">
+      <div id="gradedEmpty" class="empty">Nothing resolved yet.</div>
+      <div id="gradedTable" class="hide" style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th>Cert</th><th style="min-width:190px;">Card</th><th style="min-width:150px;">Set</th>
+            <th style="width:80px;">No.</th><th style="min-width:170px;">Rarity</th><th>Class</th>
+            <th style="width:70px;">Grade</th><th style="width:70px;">Lang</th><th>Result</th><th></th>
+          </tr></thead>
+          <tbody id="gradedRows"></tbody>
+        </table>
+      </div>
+      <div class="foot">
+        <label class="chk"><input type="checkbox" id="holdGraded" checked> Hold for runs on arrival</label>
+        <button class="btn go" id="btnAddGraded" onclick="addGraded()">Add to stock</button>
+        <span id="gradedMsg" class="mono" style="color:var(--muted);font-size:11.5px;"></span>
+      </div>
+      <p class="note" style="margin:12px 0 0;">
+        A hold blocks the row everywhere — it cannot be published, listed, repriced, marked sold or
+        deleted while it stands. It is not tied to a run yet: that is the point of holding first and
+        arranging second.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================ SEALED ============================ -->
+  <section id="paneSealed" class="hide">
+    <div class="card">
+      <p class="note">
+        Sealed stock is a <b>pool</b>, not a row per booster. One sealed row backs both a run and the
+        shop, and the run's share is subtracted from what the shop may sell rather than blocking the
+        whole product — so the quantity here is the number of units arriving, not the number of bundles.
+      </p>
+      <div class="row">
+        <div class="fld"><label>Game</label><select id="s_game" style="width:140px;" onchange="fillSealedTypes()"></select></div>
+        <div class="fld"><label>Product type</label><select id="s_type" style="width:180px;"></select></div>
+        <div class="fld" style="flex:1;min-width:220px;"><label>Name</label><input id="s_name" style="width:100%;" placeholder="e.g. Mega Brave booster pack"></div>
+        <div class="fld"><label>Set</label><input id="s_set" style="width:150px;" placeholder="optional"></div>
+        <div class="fld"><label>Language</label><input id="s_lang" value="JA" style="width:80px;"></div>
+        <div class="fld"><label>Quantity</label><input id="s_qty" type="number" min="1" step="1" value="75" style="width:100px;"></div>
+        <div class="fld"><label>Cost each (A$)</label><input id="s_cost" type="number" step="0.01" min="0" placeholder="optional" style="width:120px;"></div>
+      </div>
+      <div class="foot">
+        <label class="chk"><input type="checkbox" id="holdSealed" checked> Hold the whole quantity for runs</label>
+        <button class="btn go" onclick="addSealed()">Add to stock</button>
+        <span id="sealedMsg" class="mono" style="color:var(--muted);font-size:11.5px;"></span>
+      </div>
+    </div>
+    <div class="card">
+      <div id="sealedLog" class="empty">Nothing added in this session.</div>
+    </div>
+  </section>
+</div>
+
+<script src="/extras.js"></script>
+<script type="module">
+// The rarity vocabulary is IMPORTED, not reimplemented. Whether a source string maps to a committed
+// class is the same question the lock will ask, and a page that answered it with its own copy of the
+// table would show a green tick for a card the lock later refuses — after the pool was bought.
+import { rarityClass, RARITY_CLASSES, RARITY_SOURCES } from '/lib/runs-rarity.mjs';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const jget = async (u) => { const r = await fetch(u); return { status: r.status, json: await r.json().catch(() => null) }; };
+const jpost = async (u, b) => {
+  const r = await fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, json: await r.json().catch(() => null) };
+};
+
+let rows = [];
+let VOCAB = { games: [], sealed_types: [], sealed_types_by_game: {} };
+
+window.setTab = (which) => {
+  $('tabGraded').classList.toggle('on', which === 'graded');
+  $('tabSealed').classList.toggle('on', which === 'sealed');
+  $('paneGraded').classList.toggle('hide', which !== 'graded');
+  $('paneSealed').classList.toggle('hide', which !== 'sealed');
+};
+
+async function boot() {
+  const [vocab, providers] = await Promise.all([
+    jget('/api/runs/vocab'),
+    jget('/api/cert/providers'),
+  ]);
+  VOCAB = vocab.json || VOCAB;
+
+  const list = Array.isArray(providers.json) ? providers.json : (providers.json?.providers || []);
+  $('company').innerHTML = (list.length ? list : [{ code: 'PSA', name: 'PSA' }])
+    .map((p) => `<option value="${esc(p.code || p)}">${esc(p.name || p.code || p)}</option>`).join('');
+
+  const games = (VOCAB.games || []).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  $('game').innerHTML = games;
+  $('s_game').innerHTML = games;
+  $('game').value = 'pokemon';
+  $('s_game').value = 'pokemon';
+  fillSealedTypes();
+
+  // Offered as the SOURCE strings the table maps, not as class names. The operator is recording what
+  // the card says, and the class is derived — offering classes directly would invite picking one that
+  // no source string supports.
+  $('defRarity').innerHTML = '<option value="">— set per row —</option>'
+    + Object.keys(RARITY_SOURCES).sort().map((s) => `<option value="${esc(s)}">${esc(s)} → ${esc(RARITY_CLASSES[RARITY_SOURCES[s]])}</option>`).join('');
+
+  refreshHeld();
+}
+
+async function refreshHeld() {
+  const r = await jget('/api/runs/holdings');
+  const units = r.json?.units;
+  $('held').textContent = units ? `${units} unit(s) held by dev runs` : 'nothing held by dev runs';
+}
+
+// ---- graded ----------------------------------------------------------------------------------
+
+window.resolveCerts = async () => {
+  const certs = $('certs').value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+  if (!certs.length) return;
+  const company = $('company').value;
+  const seen = new Set(rows.map((r) => r.cert_number));
+  $('btnResolve').disabled = true;
+
+  let n = 0;
+  for (const cert of certs) {
+    n++;
+    // A cert already on the grid is skipped rather than duplicated: a scanner that double-reads is
+    // ordinary, and two rows for one slab would become two stock rows and an impossible manifest.
+    if (seen.has(cert)) continue;
+    seen.add(cert);
+    $('resolveMsg').textContent = `resolving ${n}/${certs.length} — ${cert}`;
+    const { json } = await jget(`/api/cert?company=${encodeURIComponent(company)}&cert=${encodeURIComponent(cert)}`);
+    const id = json?.identity || {};
+    rows.push({
+      cert_number: cert,
+      grading_company: json?.grading_company || company,
+      // A lookup that did not match still lands on the grid, blank and editable. It is a real slab
+      // either way, and dropping it silently would leave a hole in the pool nobody notices.
+      matched: !!json?.matched,
+      name: id.name || '',
+      set_name: id.set_name || '',
+      number: id.number || '',
+      variant: id.variant || '',
+      language: id.language || $('lang').value || '',
+      grade: json?.grade == null ? '' : String(json.grade),
+      rarity: $('defRarity').value || '',
+      image_url: json?.image_url || null,
+      status: json?.matched ? 'ready' : 'manual',
+      result: json?.matched ? '' : (json?.reason || 'not found — fill it in'),
+    });
+    renderGraded();
+  }
+  $('resolveMsg').textContent = `${rows.length} row(s) on the grid`;
+  $('btnResolve').disabled = false;
+  $('certs').value = '';
+};
+
+window.editRow = (i, field, value) => {
+  rows[i][field] = value;
+  if (field === 'rarity') renderGraded();
+};
+window.dropRow = (i) => { rows.splice(i, 1); renderGraded(); };
+
+function renderGraded() {
+  $('gradedEmpty').classList.toggle('hide', rows.length > 0);
+  $('gradedTable').classList.toggle('hide', rows.length === 0);
+
+  const sources = Object.keys(RARITY_SOURCES).sort();
+  $('gradedRows').innerHTML = rows.map((r, i) => {
+    const cls = rarityClass(r.rarity);
+    const clsCell = r.rarity
+      ? (cls ? `<span class="pill ok">${esc(RARITY_CLASSES[cls])}</span>` : '<span class="pill bad">unmapped</span>')
+      : '<span class="pill wait">—</span>';
+    const result = r.status === 'added' ? `<span class="pill ok">${esc(r.result)}</span>`
+      : r.status === 'error' ? `<span class="pill bad">${esc(r.result)}</span>`
+      : r.status === 'busy' ? '<span class="pill busy">adding…</span>'
+      : r.result ? `<span class="pill bad">${esc(r.result)}</span>` : '<span class="pill wait">ready</span>';
+    const ro = r.status === 'added' ? ' disabled' : '';
+    return `<tr>
+      <td class="mono">${esc(r.cert_number)}</td>
+      <td><input value="${esc(r.name)}"${ro} onchange="editRow(${i},'name',this.value)"></td>
+      <td><input value="${esc(r.set_name)}"${ro} onchange="editRow(${i},'set_name',this.value)"></td>
+      <td><input value="${esc(r.number)}"${ro} onchange="editRow(${i},'number',this.value)"></td>
+      <td><input list="raritySources" value="${esc(r.rarity)}"${ro} onchange="editRow(${i},'rarity',this.value)" placeholder="as printed"></td>
+      <td>${clsCell}</td>
+      <td><input value="${esc(r.grade)}"${ro} onchange="editRow(${i},'grade',this.value)"></td>
+      <td><input value="${esc(r.language)}"${ro} onchange="editRow(${i},'language',this.value)"></td>
+      <td>${result}</td>
+      <td>${r.status === 'added' ? '' : `<button class="btn sm ghost" onclick="dropRow(${i})">✕</button>`}</td>
+    </tr>`;
+  }).join('') + `<datalist id="raritySources">${sources.map((s) => `<option value="${esc(s)}">`).join('')}</datalist>`;
+
+  // The count that matters before a run is built. An unmapped rarity is not a cosmetic gap: it has no
+  // committed class, so it satisfies no claim, and the lock refuses the whole run rather than quietly
+  // treating the card as conforming.
+  const bad = rows.filter((r) => r.rarity && !rarityClass(r.rarity));
+  const blank = rows.filter((r) => !r.rarity);
+  const box = $('unmapped');
+  if (!bad.length && !blank.length) { box.classList.add('hide'); return; }
+  box.classList.remove('hide');
+  box.innerHTML = [
+    bad.length ? `<b>${bad.length} card(s) carry a rarity the run vocabulary does not map</b>: `
+      + bad.map((r) => esc(r.rarity)).filter((v, j, a) => a.indexOf(v) === j).join(', ')
+      + '. An unmapped rarity has no committed class, so it satisfies no guarantee and a run holding one cannot lock.' : '',
+    blank.length ? `<b>${blank.length} card(s) have no rarity yet.</b> A grader's record does not carry one, so it has to come from the card.` : '',
+  ].filter(Boolean).join('<br>');
+}
+
+window.addGraded = async () => {
+  const pending = rows.filter((r) => r.status !== 'added');
+  if (!pending.length) return;
+  const game = $('game').value;
+  const costEach = $('cost').value ? Math.round(parseFloat($('cost').value) * 100) : null;
+  const hold = $('holdGraded').checked;
+  $('btnAddGraded').disabled = true;
+
+  for (const r of rows) {
+    if (r.status === 'added') continue;
+    if (!r.name) { r.status = 'error'; r.result = 'a name is required'; renderGraded(); continue; }
+    r.status = 'busy'; renderGraded();
+
+    // One physical slab, one row, quantity 1 — never a stacked row. A run binds a specific object to a
+    // numbered bundle, and a quantity-3 row cannot answer which of the three is in bundle 7.
+    const body = {
+      game, name: r.name, set_name: r.set_name || null, number: r.number || null,
+      variant: r.variant || null, rarity: r.rarity || null, language: r.language || null,
+      grading_company: r.grading_company, grade: r.grade === '' ? null : Number(r.grade),
+      cert_number: r.cert_number, quantity: 1, status: 'in_stock',
+      cost_cents: costEach, image_url: r.image_url || null,
+    };
+    const made = await jpost('/api/inventory/items', body);
+    if (made.status >= 400 || !made.json?.id) {
+      r.status = 'error'; r.result = made.json?.error || `HTTP ${made.status}`; renderGraded(); continue;
+    }
+    r.item_id = made.json.id;
+    r.result = made.json.sku || `#${made.json.id}`;
+
+    if (hold) {
+      const held = await jpost('/api/runs/hold', { kind: 'inventory', item_id: made.json.id });
+      if (held.status >= 400) {
+        // The row EXISTS — it just is not held. Said plainly rather than reported as a failure, because
+        // retrying the add would create a second row for the same slab.
+        r.status = 'error';
+        r.result = `${r.result} · added but NOT held: ${held.json?.error || held.status}`;
+        renderGraded(); continue;
+      }
+      r.result += ' · held';
+    }
+    r.status = 'added';
+    renderGraded();
+  }
+  $('gradedMsg').textContent = `${rows.filter((r) => r.status === 'added').length} of ${rows.length} in stock`;
+  $('btnAddGraded').disabled = false;
+  refreshHeld();
+};
+
+// ---- sealed ----------------------------------------------------------------------------------
+
+window.fillSealedTypes = () => {
+  const list = VOCAB.sealed_types_by_game?.[$('s_game').value] || VOCAB.sealed_types || [];
+  $('s_type').innerHTML = list.map((t) => `<option value="${esc(t)}">${esc(t.replace(/_/g, ' '))}</option>`).join('');
+};
+
+const sealedLog = [];
+window.addSealed = async () => {
+  const name = $('s_name').value.trim();
+  if (!name) { $('sealedMsg').textContent = 'a name is required'; return; }
+  const qty = Math.max(1, Math.round(Number($('s_qty').value) || 1));
+  const body = {
+    game: $('s_game').value, product_type: $('s_type').value, name,
+    set_name: $('s_set').value.trim() || null, language: $('s_lang').value.trim() || null,
+    quantity: qty, status: 'in_stock',
+    cost_cents: $('s_cost').value ? Math.round(parseFloat($('s_cost').value) * 100) : null,
+  };
+  $('sealedMsg').textContent = 'adding…';
+  const made = await jpost('/api/sealed/items', body);
+  if (made.status >= 400 || !made.json?.id) {
+    $('sealedMsg').textContent = made.json?.error || `HTTP ${made.status}`;
+    return;
+  }
+  let note = made.json.sku || `#${made.json.id}`;
+  if ($('holdSealed').checked) {
+    const held = await jpost('/api/runs/hold', { kind: 'sealed', item_id: made.json.id, qty });
+    note += held.status >= 400 ? ` · added but NOT held: ${held.json?.error || held.status}` : ` · ${qty} unit(s) held`;
+  }
+  sealedLog.unshift(`${name} — ${note}`);
+  $('sealedLog').classList.remove('empty');
+  $('sealedLog').innerHTML = sealedLog.map((l) => `<div class="mono" style="padding:5px 0;border-bottom:1px solid var(--line);">${esc(l)}</div>`).join('');
+  $('sealedMsg').textContent = 'added';
+  $('s_name').value = '';
+  refreshHeld();
+};
+
+boot();
+</script>
+</body>
+</html>

@@ -255,6 +255,63 @@ describe('the module reports itself', () => {
   });
 });
 
+// The intake page imports the rarity vocabulary over HTTP rather than keeping a copy, so whether it
+// works at all depends on the dev server serving that module to a browser. A broken specifier here is
+// invisible to every other test in the suite — the page's inline script parses fine, the unit tests
+// pass, and the only symptom is a blank grid on the operator's screen.
+describe('the intake page and the module it imports', () => {
+  it('serves the page, and the dev server hands its module to the browser', async () => {
+    const page = await get('/runs-intake.html');
+    assert.equal(page.status, 200);
+    // Vite extracts an inline module into its own request, so the import is NOT in the served HTML.
+    // Following the proxy is the only way to assert on what a browser actually executes; asserting
+    // on the HTML would have quietly checked nothing.
+    const proxy = /src="([^"]*html-proxy[^"]*)"/.exec(page.text);
+    assert.ok(proxy, 'the page has no module script — its whole grid is that script');
+    const js = await get(proxy[1]);
+    assert.equal(js.status, 200);
+    assert.match(js.text, /from '\/lib\/runs-rarity\.mjs'/,
+      'the page must import the vocabulary rather than keeping its own copy');
+  });
+
+  it('serves the rarity module, with its dependency rewritten to something a browser can fetch', async () => {
+    const r = await get('/lib/runs-rarity.mjs');
+    assert.equal(r.status, 200);
+    assert.match(r.text, /rarityClass/);
+    // The source says './runs-canonical.mjs'; what reaches the browser must be an absolute path, or
+    // the import 404s at load and the page renders an empty grid with no error the operator can see.
+    assert.match(r.text, /from "\/lib\/runs-canonical\.mjs"/);
+    assert.equal((await get('/lib/runs-canonical.mjs')).status, 200);
+  });
+
+  it('neither module imports a node builtin, which would break the moment a browser loaded it', async () => {
+    for (const f of ['/lib/runs-rarity.mjs', '/lib/runs-canonical.mjs']) {
+      const t = (await get(f)).text;
+      assert.ok(!/from ['"]node:/.test(t), f + ' imports a node builtin');
+      assert.ok(!/require\(['"]node:/.test(t), f + ' requires a node builtin');
+    }
+  });
+
+  it('/api/runs/vocab serves the closed lists the page renders', async () => {
+    const r = await get('/api/runs/vocab');
+    assert.equal(r.status, 200);
+    assert.ok(r.json.games.includes('pokemon'));
+    assert.ok(r.json.sealed_types_by_game.pokemon.includes('booster_pack'));
+    // The published hash, pinned here too: a table edit moves every future header digest, and this
+    // is the copy an operator's browser would be shown.
+    assert.equal(r.json.rarity.version, 'rarity-v1');
+    assert.equal(r.json.rarity.hash, 'ca971d5d15666d83cfeb4b451dc3bd99d6639e7eeee70c23002c39a7d28d83e0');
+  });
+
+  it('/api/runs/rarity answers a probe, and says null rather than nothing for an unmapped string', async () => {
+    assert.equal((await get('/api/runs/rarity?q=Special%20Illustration%20Rare')).json.class, 'SPECIAL_ART_RARE');
+    const miss = await get('/api/runs/rarity?q=Double%20Rare');
+    assert.equal(miss.status, 200);
+    assert.ok('class' in miss.json, 'the key must be present — absent would read as "not asked"');
+    assert.equal(miss.json.class, null);
+  });
+});
+
 // The settings surface is the arming switch, so its refusals are load-bearing rather than cosmetic:
 // this is the one place a human can change what the module is allowed to do, and two of the values in
 // the file are promises made to buyers rather than preferences.
