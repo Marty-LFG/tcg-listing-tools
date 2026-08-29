@@ -463,6 +463,25 @@ forgotten, because the dev rehearsal is what creates its problem.
    It breaks AusPost/Shopify Shipping label purchase and any weight-based rate — and "tracking upload"
    is an explicit step of the roadmap's Phase 5 dress rehearsal. A single is ~2 g plus packaging;
    whatever the number, it has to come from somewhere before anything ships.
+   ✅ **Fixed 2026-08-29.** "Somewhere" turned out not to exist: the eBay lane carries no weight at
+   all — its postage is flat-rate banded by *price* and pinned to hand-made fulfilment policies, so
+   eBay is told which policy to use and never how heavy the parcel is. There was nothing to mirror.
+   `DISPATCH_WEIGHT_GRAMS` in `lib/channels/shopify-map.mjs` is now the single source, keyed by
+   `PRODUCT_TYPES` itself so a new type cannot be added without one: **Single 30 g** (1.8 card + 0.4
+   sleeve + 9 toploader + 0.7 team bag + 18 rigid mailer — the parcel `CARD_PROTECTION` promises),
+   **Graded Slab 150 g** (BGS ≈ 86 g, the heaviest of the three graders, + wrap + mailer), **Sealed**
+   sub-keyed by sealed `product_type` at the top of each range §8 documents (pack 60 / bundle 300 /
+   box 1300), **Mystery Bundle 250 g** and **Accessory 200 g** as flagged placeholders for lanes that
+   are not open. Every figure is a component sum, not a scale reading, so each errs heavy — an
+   over-declared parcel quotes a buyer slightly too much, an under-declared one buys a label Australia
+   Post will not honour — and `item.weight_grams` overrides the table outright the day a row carries a
+   real measurement (GR4). `toShopifyProduct` emits `weight_grams`; `buildProductSetInput` sends it as
+   `inventoryItem.measurement.weight = { unit: 'GRAMS', value }` (shape read off shopify.dev at the
+   pinned 2026-07, not remembered), and omits `measurement` entirely rather than writing a zero over a
+   weight corrected in admin. `validateProduct` now hard-errors on a non-positive weight, which is what
+   stops this regressing. Covered by `test/unit/shopify-map.test.mjs` (non-zero for every product type,
+   table/vocabulary drift, the sealed sub-table, the measured override, the refusal) and by
+   `test/unit/shopify-product-api.test.mjs` for the wire shape.
 6. **One image per product, where the manifest offers more.** The first real publish carries a single
    front frame in `media` plus the OG card as a `bkc.og_image` file reference. That may be correct for
    a raw single photographed once — but the plan's S5 gate says "a dev product carries the ordered
