@@ -10,7 +10,7 @@ import { tmpFile } from '../helpers/tmp.mjs';
 import {
   liveReservation, reservedUnits, onHandUnits, availableUnits, assertNotReserved, channelHoldFor,
   holdForRun, assignToSlot, releaseReservation, consumeReservation, breakReservation, abandonRun,
-  devRunHoldings,
+  devRunHoldings, reservedPoolUnits,
 } from '../../lib/runs-reserve.mjs';
 
 const db = openDbAt(tmpFile('runs-reserve.db'));
@@ -298,5 +298,71 @@ describe('dev-run asymmetries', () => {
     assert.ok(rows.length >= 1);
     assert.ok(rows.every((r) => r.run.startsWith('DEV-')));
     assert.ok(rows.every((r) => r.units >= 1));
+  });
+});
+
+// --- blocking vs encumbering ------------------------------------------------------------------------
+//
+// THE BUG THIS PINS (caught in review, never shipped): `consumed` was in one state list used for both
+// questions. It has to be in the blocking one — a packed card must never be listed again — and it has
+// to be OUT of the encumbering one, because consumeReservation has ALREADY decremented the stock table.
+// Counting it in both removes the same units twice, so a pool of ten with six packed reports zero
+// sellable instead of four, and the shop quietly stops selling stock that is sitting on the shelf.
+describe('a consumed reservation blocks, but no longer encumbers', () => {
+  it('sealed: the units are gone from stock, so they must not be subtracted a second time', async () => {
+    mkRun('live');
+    const item = mkSealed(0);
+    db.prepare(`INSERT INTO sealed_placements (item_id, location, quantity) VALUES (?,?,?)`).run(item, 'Shelf C', 10);
+    db.prepare('UPDATE sealed_items SET quantity = 10 WHERE id = ?').run(item);
+
+    const h = holdForRun(db, { kind: 'sealed', itemId: item, qty: 6 });
+    assert.equal(reservedUnits(db, 'sealed', item), 6, 'an active hold encumbers');
+    assert.equal(availableUnits(db, 'sealed', item), 4);
+
+    db.prepare(`UPDATE run_reservations SET state='committed' WHERE id=?`).run(h.id);
+    await consumeReservation(db, h.id);
+
+    assert.equal(onHandUnits(db, 'sealed', item), 4, 'the decrement already happened');
+    assert.equal(reservedUnits(db, 'sealed', item), 0, 'a consumed hold must NOT encumber — the units left');
+    assert.equal(availableUnits(db, 'sealed', item), 4, 'four, not minus two');
+  });
+
+  it('inventory: consumed still BLOCKS, so a packed card can never be listed again', () => {
+    const { runId, bundleId } = mkRun('live');
+    const item = mkInv({ cert_number: 'CERT-CONSUMED' });
+    const h = holdForRun(db, { kind: 'inventory', itemId: item, runId });
+    assignToSlot(db, { reservationId: h.id, bundleId, slot: 'slab' });
+    db.prepare(`UPDATE run_reservations SET state='consumed' WHERE id=?`).run(h.id);
+
+    assert.ok(liveReservation(db, 'inventory', item), 'consumed is still a live reservation');
+    const refusal = assertNotReserved(db, 'inventory', item);
+    assert.equal(refusal && refusal.code, 'reserved_for_run');
+  });
+});
+
+describe('reservedPoolUnits — the sealed aggregate the listing side actually asks', () => {
+  it('sums live holds across every row sharing a pool_sku, and excludes consumed', async () => {
+    const { runId } = mkRun('live');
+    const pool = 'POOL-TEST-1';
+    const a = mkSealed(10), b = mkSealed(10);
+    db.prepare('UPDATE sealed_items SET pool_sku = ? WHERE id IN (?,?)').run(pool, a, b);
+    db.prepare(`INSERT INTO sealed_placements (item_id, location, quantity) VALUES (?,?,?),(?,?,?)`)
+      .run(a, 'Shelf D', 10, b, 'Shelf E', 10);
+
+    assert.equal(reservedPoolUnits(db, pool), 0);
+    const ha = holdForRun(db, { kind: 'sealed', itemId: a, runId, qty: 3 });
+    const hb = holdForRun(db, { kind: 'sealed', itemId: b, runId, qty: 4 });
+    assert.equal(reservedPoolUnits(db, pool), 7, 'both rows count towards the pool');
+
+    db.prepare(`UPDATE run_reservations SET state='committed' WHERE id=?`).run(ha.id);
+    await consumeReservation(db, ha.id);
+    assert.equal(reservedPoolUnits(db, pool), 4, 'the consumed three came off the placements instead');
+
+    releaseReservation(db, hb.id);
+    assert.equal(reservedPoolUnits(db, pool), 0);
+  });
+
+  it('a pool nobody has reserved reports zero rather than throwing', () => {
+    assert.equal(reservedPoolUnits(db, 'POOL-THAT-DOES-NOT-EXIST'), 0);
   });
 });
