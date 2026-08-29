@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Purchasing · Binders Keepers</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;--purple:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;min-height:100vh;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1240px;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;} a:hover{text-decoration:underline;text-underline-offset:3px;}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:22px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);}
+  .sub .dot{color:var(--faint);margin:0 7px;}
+  .actions{display:flex;gap:9px;}
+
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s ease;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);} .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+  .btn:disabled:hover{border-color:var(--line2);background:rgba(255,255,255,.025);}
+  .btn.sm{padding:6px 10px;font-size:11.5px;border-radius:8px;}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  .btn.ghost:hover{color:var(--text);border-color:var(--line2);background:rgba(255,255,255,.03);}
+  .btn.danger{border-color:rgba(240,102,110,.38);color:var(--red);background:rgba(240,102,110,.06);}
+  .btn.danger:hover{background:rgba(240,102,110,.14);border-color:var(--red);}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.go:hover{background:rgba(67,214,160,.17);border-color:var(--green);}
+
+  select,input,textarea{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--sans);transition:.15s;}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  input::placeholder,textarea::placeholder{color:var(--faint);}
+  input[type=number]{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .fld{display:flex;flex-direction:column;gap:5px;}
+  .fld label{font-size:10.5px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:700;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;}
+  .row4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px;}
+
+  /* summary tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:20px;}
+  .tile{position:relative;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:15px 16px 14px;box-shadow:var(--shadow);overflow:hidden;animation:rise .4s both;}
+  .tile::before{content:'';position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.5;}
+  .tile .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);font-weight:700;}
+  .tile .big{font-family:var(--mono);font-size:23px;font-weight:600;margin-top:7px;font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+  .tile .note{font-size:11px;color:var(--faint);margin-top:3px;font-family:var(--mono);}
+  .tile .note.warn{color:var(--amber);} .tile .note.bad{color:var(--red);}
+
+  /* tabs */
+  .tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--line);padding-bottom:10px;}
+  .tab{font-family:var(--mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;padding:7px 13px;border:1px solid transparent;border-radius:9px;color:var(--muted);cursor:pointer;background:transparent;transition:.15s;}
+  .tab:hover{color:var(--text);background:rgba(255,255,255,.03);}
+  .tab.on{color:var(--gold);border-color:var(--gold-soft);background:var(--gold-soft);font-weight:600;}
+  .tab .n{font-size:10.5px;opacity:.7;margin-left:5px;}
+
+  .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:11px 13px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));}
+  .sec-h{font-family:var(--sans);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);font-weight:700;}
+  .empty{color:var(--muted);font-size:13px;padding:26px;text-align:center;border:1px dashed var(--line);border-radius:14px;background:rgba(255,255,255,.012);}
+
+  /* the register — a manifest, not cards. An order list is a ledger. */
+  .polist{display:flex;flex-direction:column;gap:7px;}
+  .pohead{display:flex;align-items:flex-end;gap:12px;padding:2px 14px 7px;margin-bottom:7px;border:1px solid transparent;border-bottom-color:var(--line);}
+  .pohead .h{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;white-space:nowrap;}
+  .porow{position:relative;border:1px solid var(--line);border-radius:12px;background:var(--panel);transition:border-color .15s,background .15s;animation:rise .35s both;overflow:hidden;}
+  .porow:hover{border-color:var(--line2);background:var(--panel2);}
+  /* status-coloured accent rail — the state of an order should be readable before you read it */
+  .porow::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--faint);}
+  .porow[data-st="preorder"]::before{background:var(--purple);}
+  .porow[data-st="ordered"]::before{background:var(--gold);}
+  .porow[data-st="in_transit"]::before{background:var(--blue);}
+  .porow[data-st="arrived"]::before{background:var(--amber);}
+  .porow[data-st="received"]::before{background:var(--green);}
+  .porow[data-st="closed"]::before{background:var(--faint);}
+  .porow[data-st="cancelled"]::before{background:rgba(240,102,110,.5);}
+  .pr-head{display:flex;align-items:center;gap:12px;padding:11px 14px 11px 17px;cursor:pointer;user-select:none;}
+  .pr-ref{font-family:var(--mono);font-size:12px;color:var(--gold);font-weight:600;width:88px;flex:none;}
+  .pr-sup{font-family:var(--serif);font-weight:600;font-size:15px;letter-spacing:-.01em;min-width:150px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .pr-n{font-family:var(--mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;width:104px;text-align:right;flex:none;}
+  .pr-money{font-family:var(--mono);font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;width:132px;text-align:right;flex:none;}
+  .pr-money .n2{display:block;font-size:10px;font-weight:400;color:var(--faint);}
+  .pr-when{font-family:var(--mono);font-size:11px;color:var(--muted);width:122px;text-align:right;flex:none;}
+  .pr-pill{width:96px;flex:none;display:flex;justify-content:flex-end;}
+
+  .chip{font-family:var(--mono);font-size:10.5px;border:1px solid var(--line2);border-radius:999px;padding:2px 9px;color:var(--muted);white-space:nowrap;}
+  .chip.g{color:var(--green);border-color:rgba(67,214,160,.35);background:rgba(67,214,160,.07);}
+  .chip.b{color:var(--blue);border-color:rgba(106,176,255,.35);background:rgba(106,176,255,.07);}
+  .chip.p{color:var(--purple);border-color:rgba(217,164,255,.35);background:rgba(217,164,255,.07);}
+  .chip.warn{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.06);}
+  .chip.bad{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.07);}
+  .chip.gold{color:var(--gold);border-color:var(--gold-soft);background:var(--gold-soft);}
+
+  /* modal / drawer */
+  .overlay{position:fixed;inset:0;background:rgba(4,5,8,.76);backdrop-filter:blur(7px);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:34px 18px;overflow-y:auto;}
+  .overlay.on{display:flex;}
+  .modal{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line2);border-radius:20px;max-width:940px;width:100%;padding:24px 26px;box-shadow:0 34px 90px -22px rgba(0,0,0,.82);animation:rise .28s both;}
+  .modal.wide{max-width:1120px;}
+  .modal h2{font-family:var(--serif);font-weight:600;margin:0 0 4px;font-size:22px;}
+  .modal .msub{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:0 0 18px;}
+  .modal-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--line);flex-wrap:wrap;}
+  .modal-actions .spacer{flex:1;}
+  .block{border:1px solid var(--line);border-radius:14px;padding:14px 15px;margin-bottom:14px;background:rgba(255,255,255,.012);}
+  .block > .bh{font-size:10.5px;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);font-weight:700;margin-bottom:11px;display:flex;align-items:center;gap:9px;}
+  .block > .bh .rest{margin-left:auto;font-size:11px;color:var(--faint);letter-spacing:0;text-transform:none;font-family:var(--mono);font-weight:400;}
+
+  /* tables inside the drawer */
+  table.t{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.t th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;padding:0 8px 7px;border-bottom:1px solid var(--line);}
+  table.t td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  table.t tr:last-child td{border-bottom:none;}
+  table.t .num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;}
+  table.t .sku{font-family:var(--mono);font-size:10.5px;color:var(--faint);}
+
+  /* the totals ledger — this is a receipt, so it reads like one */
+  .ledger{font-family:var(--mono);font-size:12.5px;}
+  .ledger .l{display:flex;align-items:baseline;gap:8px;padding:3px 0;}
+  .ledger .l .k{color:var(--muted);}
+  .ledger .l .lead{flex:1;border-bottom:1px dotted var(--line2);transform:translateY(-3px);}
+  .ledger .l .v{font-variant-numeric:tabular-nums;}
+  .ledger .l.total{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-weight:600;font-size:14px;}
+  .ledger .l.total .k{color:var(--text);}
+  .ledger .l.owed .v{color:var(--red);font-weight:600;}
+  .ledger .l.owed.clear .v{color:var(--green);}
+  .ledger .native{color:var(--faint);font-size:10.5px;margin-left:6px;}
+
+  /* the picker */
+  .picker{border:1px solid var(--line2);border-radius:12px;background:var(--ink);max-height:260px;overflow-y:auto;}
+  .pk{display:flex;align-items:center;gap:10px;padding:8px 11px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s;}
+  .pk:last-child{border-bottom:none;}
+  .pk:hover{background:rgba(212,176,114,.08);}
+  .pk .nm{flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .pk .nm .s{display:block;font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .pk .q{font-family:var(--mono);font-size:11px;color:var(--gold);white-space:nowrap;}
+  .pk .c{font-family:var(--mono);font-size:11px;color:var(--muted);width:92px;text-align:right;}
+  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;}
+  .seg button{background:transparent;border:none;color:var(--muted);padding:6px 12px;cursor:pointer;font-size:12px;font-family:var(--sans);}
+  .seg button.on{background:var(--gold);color:var(--ink);font-weight:600;}
+
+  /* the receive screen */
+  .stepper{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:16px;}
+  .stepper .s{padding:4px 10px;border:1px solid var(--line);border-radius:999px;}
+  .stepper .s.on{color:var(--gold);border-color:var(--gold-soft);background:var(--gold-soft);}
+  .stepper .s.done{color:var(--green);border-color:rgba(67,214,160,.35);}
+  .cnt{border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:9px;background:rgba(255,255,255,.012);}
+  .cnt .top{display:flex;align-items:center;gap:11px;flex-wrap:wrap;}
+  .cnt .nm{font-weight:600;font-size:13.5px;flex:1;min-width:170px;}
+  .cnt .ord{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+  .cnt input.qty{width:76px;font-size:16px;font-weight:600;text-align:center;padding:6px;}
+  .cnt .spots{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);}
+  .spot{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+  .spot input.loc{width:230px;flex:none;}
+  .spot input.sq{width:72px;text-align:center;}
+  .spotsum{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px;}
+  .spotsum.bad{color:var(--red);}
+  .blockers{border:1px solid rgba(240,102,110,.35);background:rgba(240,102,110,.06);border-radius:12px;padding:11px 13px;margin-bottom:14px;font-size:12.5px;}
+  .blockers .bh{color:var(--red);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px;}
+  .blockers ul{margin:0;padding-left:18px;color:var(--muted);}
+  .plan{font-family:var(--mono);font-size:12px;}
+  .plan .pl{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);}
+  .plan .pl:last-child{border-bottom:none;}
+  .plan .pl .act{width:74px;flex:none;font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;}
+  .plan .pl .act.new{color:var(--green);} .plan .pl .act.merge{color:var(--blue);}
+  .plan .pl .act.skip{color:var(--faint);} .plan .pl .act.lot{color:var(--purple);}
+  .plan .pl .act.fee{color:var(--amber);}
+  .plan .pl .d{flex:1;}
+  .plan .pl .d .sub2{display:block;color:var(--faint);font-size:10.5px;}
+  .plan .pl .m{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;}
+  .planfoot{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line2);border-radius:11px;padding:11px 17px;font-size:13px;box-shadow:var(--shadow);z-index:120;display:none;animation:rise .2s both;}
+  .toast.on{display:block;} .toast.bad{border-color:rgba(240,102,110,.5);color:var(--red);}
+  @keyframes rise{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+  @media (max-width:820px){
+    .row2,.row3,.row4{grid-template-columns:1fr;}
+    .pr-when,.pr-n{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Binders Keepers <span class="thin">Purchasing</span></h1>
+        <p class="sub"><a href="/sealed.html">← sealed inventory</a><span class="dot">·</span>stock ordered, on its way, and being checked in<span class="dot">·</span><span id="updated">—</span></p>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn go" onclick="openOrder(null)">＋ New order</button>
+      <a class="btn ghost" href="/locations.html">locations</a>
+      <a class="btn ghost" href="/">all tools</a>
+    </div>
+  </header>
+
+  <h2 class="sr-only">Summary</h2>
+  <div class="tiles" id="tiles"></div>
+
+  <h2 class="sr-only">Orders</h2>
+  <div class="tabs" id="tabs"></div>
+
+  <div class="filters">
+    <span class="sec-h">Register</span>
+    <input id="f_q" placeholder="search ref, supplier, invoice or tracking" style="width:250px;" oninput="renderList()">
+    <select id="f_sup" onchange="renderList()"><option value="">every supplier</option></select>
+    <span style="margin-left:auto;font-size:11px;color:var(--faint);" id="fxnote">—</span>
+  </div>
+  <div id="list"></div>
+</div>
+
+<!-- ORDER DRAWER -->
+<div class="overlay" id="ordOverlay">
+  <div class="modal wide">
+    <h2 id="ordTitle">New order</h2>
+    <p class="msub" id="ordSub">—</p>
+
+    <div class="block">
+      <div class="bh">Supplier &amp; terms</div>
+      <div class="row4">
+        <div class="fld"><label>Supplier</label><input id="o_sup" list="supList" placeholder="who you bought from"></div>
+        <div class="fld"><label>Their invoice / order no.</label><input id="o_ref" placeholder="INV-9912"></div>
+        <div class="fld"><label>Currency</label>
+          <select id="o_cur" onchange="relabelCurrency()">
+            <option>AUD</option><option>USD</option><option>JPY</option><option>EUR</option><option>GBP</option><option>NZD</option>
+          </select>
+        </div>
+        <div class="fld"><label>Status</label><select id="o_status" onchange="onStatusPick()"></select></div>
+      </div>
+      <div class="row4">
+        <div class="fld"><label>Ordered</label><input id="o_ordered" type="date"></div>
+        <div class="fld" id="fld_release"><label>Release / street date</label><input id="o_release" type="date"></div>
+        <div class="fld"><label>Expected</label><input id="o_eta" type="date"></div>
+        <div class="fld"><label>Default storage spot</label><input id="o_defloc" list="locList" placeholder="where it all goes"></div>
+      </div>
+      <div class="row3" id="row_transit">
+        <div class="fld"><label>Carrier</label><input id="o_carrier" placeholder="Auspost, DHL…"></div>
+        <div class="fld"><label>Tracking</label><input id="o_track"></div>
+        <div class="fld"><label>Notes</label><input id="o_notes"></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="bh">Charges <span class="rest" id="curNote">amounts in AUD</span></div>
+      <div class="row4">
+        <div class="fld"><label>Shipping</label><input id="o_ship" type="number" step="0.01"></div>
+        <div class="fld"><label>Tax / GST</label><input id="o_tax" type="number" step="0.01"></div>
+        <div class="fld"><label>Other fees</label><input id="o_fees" type="number" step="0.01"></div>
+        <div class="fld"><label>Discount</label><input id="o_disc" type="number" step="0.01"></div>
+      </div>
+      <div id="fxbox" style="display:none;">
+        <div class="row3">
+          <div class="fld"><label>Live rate</label><input id="o_fx" type="number" step="0.0001" placeholder="1.5210"></div>
+          <div class="fld"><label>Settled (A$ actually charged)</label><input id="o_settled" type="number" step="0.01" placeholder="what the bank took"></div>
+          <div class="fld"><label>&nbsp;</label>
+            <div style="display:flex;gap:7px;">
+              <button class="btn sm ghost" type="button" onclick="captureRate()">Capture live</button>
+              <button class="btn sm" type="button" onclick="settleOrder()">Settle</button>
+            </div>
+          </div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--faint);" id="fxstate">—</div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="bh">Lines <span class="rest" id="lineRest">—</span></div>
+      <div id="lineTable"></div>
+      <div style="margin-top:12px;display:flex;gap:9px;align-items:center;">
+        <span class="seg">
+          <button type="button" id="segPick" onclick="setLineMode('pick')">Pick existing stock</button>
+          <button type="button" id="segNew" onclick="setLineMode('new')">New product</button>
+        </span>
+        <span style="font-size:11px;color:var(--faint);" id="lineModeNote"></span>
+      </div>
+
+      <div id="pickPane" style="margin-top:12px;">
+        <div class="row4">
+          <div class="fld"><label>Search</label><input id="pk_q" placeholder="name or SKU" oninput="searchStock()"></div>
+          <div class="fld"><label>Game</label><select id="pk_game" onchange="searchStock()"><option value="">any</option></select></div>
+          <div class="fld"><label>Type</label><select id="pk_type" onchange="searchStock()"><option value="">any</option></select></div>
+          <div class="fld"><label>Held</label><select id="pk_status" onchange="searchStock()">
+            <option value="in_stock">in stock</option><option value="listed">listed</option><option value="all">any</option>
+          </select></div>
+        </div>
+        <div class="picker" id="pickList"><div class="empty" style="border:none;">Search your stock to add a restock line.</div></div>
+      </div>
+
+      <div id="newPane" style="margin-top:12px;display:none;">
+        <div class="row4">
+          <div class="fld"><label>Kind</label><select id="n_kind" onchange="onKindPick()">
+            <option value="unit">Units — N of one product</option>
+            <option value="lot">Bulk lot — one lump price</option>
+            <option value="grading">Grading — a service, not stock</option>
+          </select></div>
+          <div class="fld"><label>Goes into</label><select id="n_target" onchange="onTargetPick()">
+            <option value="sealed">Sealed stock</option><option value="inventory">Singles / slabs</option>
+          </select></div>
+          <div class="fld"><label>Game</label><select id="n_game"></select></div>
+          <div class="fld" id="fld_ptype"><label>Product type</label><select id="n_ptype"></select></div>
+        </div>
+        <div class="row4">
+          <div class="fld"><label>Name *</label><input id="n_name" placeholder="Surging Sparks Booster Box"></div>
+          <div class="fld"><label>Set</label><input id="n_set"></div>
+          <div class="fld"><label>Language</label><input id="n_lang" value="EN"></div>
+          <div class="fld"><label>Condition</label><input id="n_cond" placeholder="sealed / Near Mint"></div>
+        </div>
+      </div>
+
+      <div class="row4" style="margin-top:12px;align-items:end;">
+        <div class="fld"><label>Quantity</label><input id="l_qty" type="number" min="1" step="1" value="1"></div>
+        <div class="fld"><label id="l_costLbl">Unit cost</label><input id="l_cost" type="number" step="0.01"></div>
+        <div class="fld"><label>Line note</label><input id="l_note"></div>
+        <div class="fld"><label>&nbsp;</label><button class="btn go" type="button" onclick="addLine()">＋ Add line</button></div>
+      </div>
+      <div id="pickedNote" style="margin-top:8px;font-size:11.5px;color:var(--gold);display:none;"></div>
+    </div>
+
+    <div class="row2">
+      <div class="block" style="margin-bottom:0;">
+        <div class="bh">Totals</div>
+        <div class="ledger" id="ledger"></div>
+      </div>
+      <div class="block" style="margin-bottom:0;">
+        <div class="bh">Payments <span class="rest" id="payRest">—</span></div>
+        <div id="payTable"></div>
+        <div class="row3" style="margin-top:11px;">
+          <div class="fld"><label>Amount</label><input id="p_amt" type="number" step="0.01" placeholder="negative = refund"></div>
+          <div class="fld"><label>Currency</label><select id="p_cur"><option>AUD</option><option>USD</option><option>JPY</option><option>EUR</option><option>GBP</option><option>NZD</option></select></div>
+          <div class="fld"><label>Method</label><input id="p_method" placeholder="card / bank / paypal"></div>
+        </div>
+        <button class="btn sm" type="button" onclick="addPayment()">Record payment</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn danger" id="btnDelete" onclick="deleteOrder()">Delete</button>
+      <span class="spacer"></span>
+      <button class="btn ghost" onclick="closeOrder()">Close</button>
+      <button class="btn" onclick="saveOrder()">Save</button>
+      <button class="btn go" id="btnReceive" onclick="openReceive()">Receive stock →</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECEIVE SCREEN -->
+<div class="overlay" id="recOverlay">
+  <div class="modal wide">
+    <h2>Receive <span class="thin" id="recRef"></span></h2>
+    <p class="msub" id="recSub">Count what turned up, say where it goes, then look at what it will do before it does it.</p>
+    <div class="stepper" id="recStep">
+      <span class="s on">1 · Count</span><span>→</span><span class="s">2 · Preview</span><span>→</span><span class="s">3 · Commit</span>
+    </div>
+
+    <div class="block">
+      <div class="bh">Everything goes to
+        <input id="rc_defloc" list="locList" placeholder="a spot (optional)" style="margin-left:8px;width:220px;">
+        <button class="btn sm ghost" type="button" onclick="applyDefaultSpot()">Apply to all</button>
+        <button class="btn sm ghost" type="button" onclick="newLocation()">＋ New spot</button>
+        <span class="rest">lines can still override</span>
+      </div>
+      <div id="countRows"></div>
+    </div>
+
+    <div id="previewBox"></div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeReceive()">Back</button>
+      <span class="spacer"></span>
+      <span style="font-size:11.5px;color:var(--faint);align-self:center;" id="recWhy"></span>
+      <button class="btn" id="btnPreview" onclick="doPreview()">Preview</button>
+      <button class="btn go" id="btnCommit" onclick="doCommit()" disabled>Receive into stock</button>
+    </div>
+  </div>
+</div>
+
+<datalist id="supList"></datalist>
+<datalist id="locList"></datalist>
+<div class="toast" id="toast"></div>
+
+<script src="/extras.js"></script>
+<script type="module">
+const B = '/api/purchasing';
+let ORDERS = [], COUNTS = {}, TAB = 'outstanding', CUR = null, LINEMODE = 'pick', PICKED = null;
+let STATUSES = [], TRANSITIONS = {}, LOCATIONS = [], SUPPLIERS = [], PLAN = null;
+let GAMES = [], TYPES = {}, ALL_TYPES = [];
+
+const $ = (id) => document.getElementById(id);
+const val = (id) => ($(id) ? String($(id).value || '').trim() : '');
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function toast(msg, bad) {
+  const t = $('toast');
+  t.textContent = msg; t.className = 'toast on' + (bad ? ' bad' : '');
+  clearTimeout(t._t); t._t = setTimeout(() => { t.className = 'toast'; }, 3200);
+}
+async function api(path, opts = {}) {
+  const r = await fetch(B + path, {
+    method: opts.method || 'GET',
+    headers: opts.body ? { 'content-type': 'application/json' } : undefined,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(body.error || 'request failed'); e.body = body; e.status = r.status; throw e; }
+  return body;
+}
+
+// ---- money -----------------------------------------------------------------
+// AUD is the headline everywhere (GR3), with the native amount as a secondary annotation. The
+// ORDER's own rate wins over the live one — once an order is settled, its cost basis is a fact, not
+// a conversion that should drift with the market. With no rate at all we show the native figure
+// flagged approximate rather than a confidently wrong AUD number.
+const cents = (v) => (v === '' || v == null ? null : Math.round(parseFloat(v) * 100));
+const dollars = (c) => (c == null ? '' : (c / 100).toFixed(2));
+function audOf(c, cur, fx) {
+  if (c == null) return null;
+  if ((cur || 'AUD') === 'AUD') return c;
+  if (fx != null) return Math.round(c * fx);
+  const r = (window.TCG && TCG.toAUD) ? TCG.toAUD(c / 100, cur) : null;
+  return r == null ? null : Math.round(r * 100);
+}
+function money(c, cur, fx) {
+  if (c == null) return '<span style="color:var(--faint)">—</span>';
+  cur = cur || 'AUD';
+  if (cur === 'AUD') return 'A$' + dollars(c);
+  const a = audOf(c, cur, fx);
+  if (a == null) return '<span title="no FX rate — this is the amount as invoiced">' + cur + ' ' + dollars(c) + ' ≈?</span>';
+  return 'A$' + dollars(a) + '<span class="n2">' + cur + ' ' + dollars(c) + '</span>';
+}
+function moneyFlat(c, cur, fx) {
+  if (c == null) return '—';
+  cur = cur || 'AUD';
+  if (cur === 'AUD') return 'A$' + dollars(c);
+  const a = audOf(c, cur, fx);
+  return a == null ? (cur + ' ' + dollars(c) + ' ≈?') : ('A$' + dollars(a) + ' · ' + cur + ' ' + dollars(c));
+}
+
+// ---- boot ------------------------------------------------------------------
+async function boot() {
+  if (window.TCG && TCG.loadFx) { try { await TCG.loadFx(); } catch {} }
+  const r = (window.TCG && TCG.toAUD) ? TCG.toAUD(1, 'USD') : null;
+  $('fxnote').textContent = r != null ? ('1 USD = A$' + r.toFixed(4)) : 'FX rate unavailable';
+  try {
+    const v = await api('/statuses');
+    STATUSES = v.statuses; TRANSITIONS = v.transitions;
+  } catch {}
+  await Promise.all([loadSuppliers(), loadLocations(), loadVocab()]);
+  await refresh();
+}
+async function loadSuppliers() {
+  try {
+    SUPPLIERS = (await api('/suppliers')).suppliers || [];
+    $('supList').innerHTML = SUPPLIERS.map((s) => '<option value="' + esc(s) + '">').join('');
+    $('f_sup').innerHTML = '<option value="">every supplier</option>' + SUPPLIERS.map((s) => '<option>' + esc(s) + '</option>').join('');
+  } catch {}
+}
+async function loadLocations() {
+  // The spots come from the sealed tool, which owns them. One vocabulary, one owner — duplicating it
+  // here is exactly the mirror drift the golden rules exist to prevent.
+  try {
+    const r = await fetch('/api/sealed/locations');
+    LOCATIONS = (await r.json()).locations || [];
+    $('locList').innerHTML = LOCATIONS.map((s) => '<option value="' + esc(s) + '">').join('');
+  } catch {}
+}
+async function loadVocab() {
+  // The product-type taxonomy has ONE owner (lib/sealed.mjs), and this reads it rather than keeping
+  // a copy that would drift the first time a type is added.
+  try {
+    const r = await fetch('/api/sealed/product-types');
+    const j = await r.json();
+    TYPES = j.by_game || {};
+    ALL_TYPES = j.types || [];
+    GAMES = Object.keys(TYPES);
+  } catch {}
+  if (!GAMES.length) GAMES = ['pokemon', 'mtg', 'lorcana', 'swu', 'riftbound', 'onepiece', 'other'];
+  const opts = GAMES.map((g) => '<option>' + esc(g) + '</option>').join('');
+  $('n_game').innerHTML = opts;
+  $('pk_game').innerHTML = '<option value="">any</option>' + opts;
+  onTargetPick();
+}
+
+async function refresh() {
+  const r = await api('/orders?facet=all');
+  ORDERS = r.orders; COUNTS = r.counts;
+  renderTabs(); renderList(); renderTiles();
+  $('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+}
+
+function renderTiles() {
+  const open = ORDERS.filter((o) => o.outstanding);
+  const overdue = open.filter((o) => o.overdue).length;
+  const pre = ORDERS.filter((o) => o.status === 'preorder');
+  const owed = ORDERS.filter((o) => !['cancelled', 'closed'].includes(o.status) && o.balance_cents > 0);
+  const foldAud = (list, f) => list.reduce((s, o) => {
+    const a = audOf(f(o), o.currency, o.fx);
+    return a == null ? s : s + a;
+  }, 0);
+  const nextRelease = pre.map((o) => o.release_date).filter(Boolean).sort()[0];
+  $('tiles').innerHTML = [
+    tile('Outstanding', open.length, overdue ? (overdue + ' overdue') : 'nothing late', overdue ? 'bad' : ''),
+    tile('On the water', 'A$' + dollars(foldAud(open, (o) => o.total_cents)), open.length + ' order' + (open.length === 1 ? '' : 's')),
+    tile('Owed', 'A$' + dollars(foldAud(owed, (o) => o.balance_cents)), owed.length ? (owed.length + ' unpaid') : 'all settled', owed.length ? 'warn' : ''),
+    tile('Preorders', pre.length, nextRelease ? ('next ' + nextRelease) : 'none booked'),
+  ].join('');
+}
+const tile = (lbl, big, note, cls) =>
+  '<div class="tile"><div class="lbl">' + lbl + '</div><div class="big">' + big + '</div>' +
+  '<div class="note ' + (cls || '') + '">' + esc(note) + '</div></div>';
+
+function renderTabs() {
+  const defs = [
+    ['outstanding', 'Outstanding'], ['preorder', 'Preorders'], ['to_reconcile', 'To reconcile'],
+    ['received', 'Received'], ['cancelled', 'Cancelled'], ['all', 'All'],
+  ];
+  $('tabs').innerHTML = defs.map(([k, label]) =>
+    '<button class="tab' + (TAB === k ? ' on' : '') + '" data-tab="' + k + '">' + label +
+    '<span class="n">' + (COUNTS[k] || 0) + '</span></button>').join('');
+  for (const b of $('tabs').querySelectorAll('.tab')) {
+    b.onclick = () => { TAB = b.dataset.tab; renderTabs(); renderList(); };
+  }
+}
+
+function inTab(o) {
+  return TAB === 'outstanding' ? o.outstanding
+    : TAB === 'preorder' ? o.status === 'preorder'
+    : TAB === 'to_reconcile' ? o.to_reconcile
+    : TAB === 'received' ? ['received', 'closed'].includes(o.status)
+    : TAB === 'cancelled' ? o.status === 'cancelled'
+    : true;
+}
+
+function renderList() {
+  const q = val('f_q').toLowerCase(), sup = val('f_sup');
+  const rows = ORDERS.filter(inTab)
+    .filter((o) => !sup || o.supplier === sup)
+    .filter((o) => !q || [o.ref, o.supplier, o.supplier_ref, o.tracking, o.notes]
+      .some((v) => v && String(v).toLowerCase().includes(q)));
+  if (!rows.length) {
+    $('list').innerHTML = '<div class="empty">Nothing here. ' +
+      (TAB === 'outstanding' ? 'Nothing is on its way.' : TAB === 'preorder' ? 'No preorders booked.' : 'Try another tab.') + '</div>';
+    return;
+  }
+  const head = '<div class="pohead"><span class="h" style="width:88px;">Ref</span>' +
+    '<span class="h" style="flex:1;">Supplier</span>' +
+    '<span class="h" style="width:104px;text-align:right;">Lines / units</span>' +
+    '<span class="h" style="width:132px;text-align:right;">Total</span>' +
+    '<span class="h" style="width:96px;text-align:right;">Payment</span>' +
+    '<span class="h" style="width:122px;text-align:right;">When</span></div>';
+  $('list').innerHTML = head + '<div class="polist">' + rows.map(row).join('') + '</div>';
+  for (const el of $('list').querySelectorAll('.porow')) {
+    el.querySelector('.pr-head').onclick = () => openOrder(+el.dataset.id);
+  }
+}
+
+function row(o) {
+  const pay = o.payment_status === 'paid' ? '<span class="chip g">PAID</span>'
+    : o.payment_status === 'partial' ? '<span class="chip warn">PARTIAL</span>'
+    : '<span class="chip bad">UNPAID</span>';
+  const when = o.status === 'preorder' ? (o.release_date ? 'releases ' + o.release_date : 'no date')
+    : o.eta_at ? (o.overdue ? '<span style="color:var(--amber)">' + o.eta_at + ' · late</span>' : 'eta ' + o.eta_at)
+    : (o.received_at ? 'in ' + o.received_at : (o.ordered_at || ''));
+  const flags = [];
+  if (o.status === 'preorder') flags.push('<span class="chip p">PREORDER</span>');
+  if (o.status === 'in_transit') flags.push('<span class="chip b">IN TRANSIT</span>');
+  if (o.status === 'arrived') flags.push('<span class="chip warn">ARRIVED</span>');
+  if (o.to_reconcile) flags.push('<span class="chip warn">NEEDS COUNTING</span>');
+  if (o.status === 'received') flags.push('<span class="chip g">RECEIVED</span>');
+  if (o.status === 'closed') flags.push('<span class="chip">CLOSED</span>');
+  if (o.status === 'cancelled') flags.push('<span class="chip bad">CANCELLED</span>');
+  // An unsettled foreign order shows an estimate, and says so — never a confident wrong number.
+  if (o.fx_estimated) flags.push('<span class="chip warn" title="AUD shown at the live rate; enter what the bank charged to fix the cost basis">EST FX</span>');
+  return '<div class="porow" data-id="' + o.id + '" data-st="' + o.status + '">' +
+    '<div class="pr-head">' +
+      '<span class="pr-ref">' + esc(o.ref) + '</span>' +
+      '<span class="pr-sup">' + esc(o.supplier || 'unnamed supplier') + ' ' + flags.join(' ') + '</span>' +
+      '<span class="pr-n">' + o.line_count + ' / ' + o.unit_count + '</span>' +
+      '<span class="pr-money">' + money(o.total_cents, o.currency, o.fx) + '</span>' +
+      '<span class="pr-pill">' + pay + '</span>' +
+      '<span class="pr-when">' + when + '</span>' +
+    '</div></div>';
+}
+
+// ---- the drawer ------------------------------------------------------------
+async function openOrder(id) {
+  PICKED = null; setLineMode('pick');
+  if (id == null) {
+    CUR = { order: { id: null, status: 'draft', currency: 'AUD' }, lines: [], payments: [], totals: {} };
+    $('ordTitle').textContent = 'New order';
+    $('ordSub').textContent = 'nothing is stock until it is received';
+    $('btnDelete').style.display = 'none';
+    $('btnReceive').style.display = 'none';
+  } else {
+    CUR = await api('/orders/' + id);
+    $('ordTitle').textContent = CUR.order.ref;
+    $('ordSub').textContent = (CUR.order.supplier || 'unnamed supplier') + ' · ' + CUR.order.status.replace('_', ' ');
+    $('btnDelete').style.display = CUR.receipt ? 'none' : '';
+    $('btnReceive').style.display = ['ordered', 'in_transit', 'arrived'].includes(CUR.order.status) ? '' : 'none';
+  }
+  fillOrderForm();
+  renderLines(); renderLedger(); renderPayments();
+  $('ordOverlay').classList.add('on');
+}
+function closeOrder() { $('ordOverlay').classList.remove('on'); refresh(); }
+
+function fillOrderForm() {
+  const o = CUR.order;
+  $('o_sup').value = o.supplier || ''; $('o_ref').value = o.supplier_ref || '';
+  $('o_cur').value = o.currency || 'AUD';
+  $('o_ordered').value = o.ordered_at || ''; $('o_release').value = o.release_date || '';
+  $('o_eta').value = o.eta_at || ''; $('o_defloc').value = o.default_location || '';
+  $('o_carrier').value = o.carrier || ''; $('o_track').value = o.tracking || ''; $('o_notes').value = o.notes || '';
+  $('o_ship').value = dollars(o.shipping_cents); $('o_tax').value = dollars(o.tax_cents);
+  $('o_fees').value = dollars(o.other_fees_cents); $('o_disc').value = dollars(o.discount_cents);
+  $('o_fx').value = o.fx_to_aud == null ? '' : o.fx_to_aud;
+  $('o_settled').value = dollars(o.settled_aud_cents);
+  // Only the moves the server would actually accept — finding out with a 409 is a worse UI than a
+  // dropdown that never offered the impossible one.
+  const allowed = TRANSITIONS[o.status] || [];
+  $('o_status').innerHTML = [o.status, ...allowed]
+    .map((s) => '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s.replace('_', ' ') + '</option>').join('');
+  relabelCurrency(); onStatusPick();
+}
+function relabelCurrency() {
+  const c = val('o_cur');
+  $('curNote').textContent = c === 'AUD' ? 'amounts in AUD' : 'amounts in ' + c + ' — exactly as invoiced';
+  $('fxbox').style.display = c === 'AUD' ? 'none' : '';
+  const o = (CUR && CUR.order) || {};
+  $('fxstate').innerHTML = o.settled_fx_to_aud != null
+    ? '<span style="color:var(--green)">settled</span> · 1 ' + c + ' = A$' + Number(o.settled_fx_to_aud).toFixed(4) + ' — this is the cost basis now'
+    : (o.fx_to_aud != null
+      ? '<span style="color:var(--amber)">estimate</span> · 1 ' + c + ' = A$' + Number(o.fx_to_aud).toFixed(4) + ' at the live rate'
+      : '<span style="color:var(--amber)">no rate</span> · receiving needs one, because stock is stored in AUD');
+  $('l_costLbl').textContent = 'Unit cost (' + c + ')';
+}
+function onStatusPick() {
+  const s = val('o_status');
+  $('fld_release').style.opacity = s === 'preorder' ? '1' : '.45';
+  $('row_transit').style.opacity = ['in_transit', 'arrived'].includes(s) ? '1' : '.6';
+}
+function onTargetPick() {
+  const t = val('n_target') || 'sealed';
+  $('fld_ptype').style.display = t === 'sealed' ? '' : 'none';
+  const g = val('n_game');
+  const list = TYPES[g] || ALL_TYPES;
+  $('n_ptype').innerHTML = list.map((t2) => '<option>' + esc(t2) + '</option>').join('');
+  $('pk_type').innerHTML = '<option value="">any</option>' + list.map((t2) => '<option>' + esc(t2) + '</option>').join('');
+}
+function onKindPick() {
+  const k = val('n_kind');
+  $('l_costLbl').textContent = (k === 'lot' ? 'Lot total (' : 'Unit cost (') + val('o_cur') + ')';
+  $('lineModeNote').textContent = k === 'lot'
+    ? 'one lump price; you say how many items came out when it lands'
+    : k === 'grading' ? 'a service you are buying — it creates no stock' : '';
+}
+
+function setLineMode(m) {
+  LINEMODE = m; PICKED = null;
+  $('segPick').classList.toggle('on', m === 'pick');
+  $('segNew').classList.toggle('on', m === 'new');
+  $('pickPane').style.display = m === 'pick' ? '' : 'none';
+  $('newPane').style.display = m === 'new' ? '' : 'none';
+  $('pickedNote').style.display = 'none';
+  $('lineModeNote').textContent = m === 'pick'
+    ? 'a restock joins the SKU you already hold — no second listing, no second shelf slot'
+    : '';
+}
+
+let pkTimer = null;
+function searchStock() {
+  clearTimeout(pkTimer);
+  pkTimer = setTimeout(async () => {
+    const p = new URLSearchParams();
+    if (val('pk_q')) p.set('q', val('pk_q'));
+    if (val('pk_game')) p.set('game', val('pk_game'));
+    if (val('pk_type')) p.set('product_type', val('pk_type'));
+    p.set('status', val('pk_status') || 'in_stock');
+    p.set('limit', '40');
+    try {
+      const r = await api('/stock?' + p.toString());
+      $('pickList').innerHTML = r.items.length ? r.items.map((i) =>
+        '<div class="pk" data-kind="' + i.kind + '" data-id="' + i.id + '">' +
+          '<span class="nm">' + esc(i.name) + '<span class="s">' + esc(i.sku) + (i.set_name ? ' · ' + esc(i.set_name) : '') + '</span></span>' +
+          '<span class="q">' + i.quantity + ' held' + (i.location ? ' · ' + esc(i.location) : '') + '</span>' +
+          '<span class="c">' + (i.landed_unit_cents ? 'A$' + dollars(i.landed_unit_cents) : '—') + '</span>' +
+        '</div>').join('') : '<div class="empty" style="border:none;">No held stock matches.</div>';
+      for (const el of $('pickList').querySelectorAll('.pk')) {
+        el.onclick = () => {
+          const item = r.items.find((i) => i.kind === el.dataset.kind && i.id === +el.dataset.id);
+          PICKED = { kind: item.kind, item_id: item.id };
+          $('pickedNote').style.display = '';
+          $('pickedNote').innerHTML = '↳ restocking <strong>' + esc(item.name) + '</strong> (' + esc(item.sku) + ') — ' +
+            item.quantity + ' held' + (item.location ? ' in ' + esc(item.location) : '');
+          if (!val('l_cost') && item.cost_cents) $('l_cost').value = dollars(item.cost_cents);
+        };
+      }
+    } catch (e) { toast(e.message, true); }
+  }, 200);
+}
+
+async function ensureOrder() {
+  if (CUR.order.id) return CUR.order.id;
+  const body = collectHeader();
+  const r = await api('/orders', { method: 'POST', body });
+  CUR = await api('/orders/' + r.id);
+  $('ordTitle').textContent = CUR.order.ref;
+  $('btnDelete').style.display = '';
+  return CUR.order.id;
+}
+function collectHeader() {
+  const b = {
+    supplier: val('o_sup') || null, supplier_ref: val('o_ref') || null, currency: val('o_cur'),
+    ordered_at: val('o_ordered') || null, release_date: val('o_release') || null,
+    eta_at: val('o_eta') || null, default_location: val('o_defloc') || null,
+    carrier: val('o_carrier') || null, tracking: val('o_track') || null, notes: val('o_notes') || null,
+    shipping_cents: cents(val('o_ship')), tax_cents: cents(val('o_tax')),
+    other_fees_cents: cents(val('o_fees')), discount_cents: cents(val('o_disc')),
+    fx_to_aud: val('o_fx') ? parseFloat(val('o_fx')) : null,
+  };
+  const s = val('o_status');
+  if (s && s !== (CUR.order.status || 'draft')) b.status = s;
+  else if (!CUR.order.id) b.status = s || 'draft';
+  return b;
+}
+
+async function addLine() {
+  const qty = Math.max(1, parseInt(val('l_qty') || '1', 10));
+  const kind = LINEMODE === 'new' ? val('n_kind') : 'unit';
+  const c = cents(val('l_cost'));
+  const body = {
+    line_kind: kind, qty_ordered: qty, notes: val('l_note') || null,
+    unit_cost_cents: kind === 'lot' ? null : c,
+    lot_total_cents: kind === 'lot' ? c : null,
+  };
+  if (LINEMODE === 'pick') {
+    if (!PICKED) return toast('Pick a stock row first, or switch to New product.', true);
+    body.link = PICKED;
+  } else {
+    if (!val('n_name')) return toast('A line needs a name.', true);
+    Object.assign(body, {
+      target: val('n_target'), game: val('n_game'), name: val('n_name'),
+      set_name: val('n_set') || null, language: val('n_lang') || 'EN',
+      condition: val('n_cond') || null,
+      product_type: val('n_target') === 'sealed' ? val('n_ptype') : null,
+    });
+  }
+  try {
+    const id = await ensureOrder();
+    await api('/orders/' + id + '/lines', { method: 'POST', body });
+    CUR = await api('/orders/' + id);
+    renderLines(); renderLedger();
+    $('l_cost').value = ''; $('l_note').value = ''; $('l_qty').value = '1';
+    $('n_name').value = ''; PICKED = null; $('pickedNote').style.display = 'none';
+    toast('Line added.');
+  } catch (e) { toast(e.body?.detail || e.message, true); }
+}
+
+function renderLines() {
+  const o = CUR.order, ls = CUR.lines || [];
+  // The effective rate lives on totals (settled if known, live otherwise) — the order row only
+  // carries the two raw columns, and reading o.fx here rendered every line as "no rate".
+  const fx = (CUR.totals || {}).fx;
+  $('lineRest').textContent = ls.length ? (ls.length + ' line' + (ls.length === 1 ? '' : 's')) : 'nothing yet';
+  if (!ls.length) { $('lineTable').innerHTML = '<div class="empty" style="border:none;padding:14px;">No lines yet.</div>'; return; }
+  $('lineTable').innerHTML = '<table class="t"><thead><tr>' +
+    '<th>Item</th><th>Kind</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Value</th><th></th>' +
+    '</tr></thead><tbody>' + ls.map((l) => {
+      let note = '';
+      if (l.link_kind) {
+        note = l.link && l.link.alive
+          ? '<span class="sku">restock · ' + esc(l.link_sku) + ' · ' + l.link.current.quantity + ' held' +
+            (l.link.current.location ? ' in ' + esc(l.link.current.location) : '') + '</span>'
+          : '<span class="sku" style="color:var(--amber)">restock · ' + esc(l.link_sku || '') + ' · record missing</span>';
+      } else if (l.set_name) note = '<span class="sku">' + esc(l.set_name) + '</span>';
+      const unit = l.line_kind === 'lot' ? l.lot_total_cents : l.unit_cost_cents;
+      return '<tr><td>' + esc(l.name) + '<br>' + note + '</td>' +
+        '<td><span class="chip">' + l.line_kind + '</span></td>' +
+        '<td class="num">' + l.qty_ordered + '</td>' +
+        '<td class="num">' + moneyFlat(unit, o.currency, fx) + '</td>' +
+        '<td class="num">' + moneyFlat(l.value_cents, o.currency, fx) + '</td>' +
+        '<td class="num">' + (CUR.receipt ? '' : '<button class="btn sm ghost" data-del="' + l.id + '">×</button>') + '</td></tr>';
+    }).join('') + '</tbody></table>';
+  for (const b of $('lineTable').querySelectorAll('[data-del]')) {
+    b.onclick = async () => {
+      try {
+        await api('/lines/' + b.dataset.del, { method: 'DELETE' });
+        CUR = await api('/orders/' + CUR.order.id); renderLines(); renderLedger();
+      } catch (e) { toast(e.body?.error || e.message, true); }
+    };
+  }
+}
+
+function renderLedger() {
+  const t = CUR.totals || {}, o = CUR.order;
+  if (!o.id) { $('ledger').innerHTML = '<div class="empty" style="border:none;padding:12px;">Save the order to see totals.</div>'; return; }
+  const line = (k, c, cls) => '<div class="l ' + (cls || '') + '"><span class="k">' + k + '</span>' +
+    '<span class="lead"></span><span class="v">' + moneyFlat(c, o.currency, t.fx) + '</span></div>';
+  const owed = t.balance_cents > 0;
+  $('ledger').innerHTML =
+    line('Goods', t.goods_cents) +
+    (o.shipping_cents ? line('Shipping', o.shipping_cents) : '') +
+    (o.tax_cents ? line('Tax', o.tax_cents) : '') +
+    (o.other_fees_cents ? line('Other fees', o.other_fees_cents) : '') +
+    (o.discount_cents ? line('Discount', -o.discount_cents) : '') +
+    line('Total', t.total_cents, 'total') +
+    line('Paid', t.paid_cents) +
+    line(owed ? 'Owed' : 'Settled', t.balance_cents, 'owed' + (owed ? '' : ' clear')) +
+    (t.fx_estimated ? '<div style="margin-top:8px;font-size:10.5px;color:var(--amber);font-family:var(--mono);">A$ figures are an estimate at the live rate — enter what the bank charged to fix the cost basis.</div>' : '');
+}
+
+function renderPayments() {
+  const ps = CUR.payments || [], t = CUR.totals || {};
+  $('payRest').textContent = ps.length ? (ps.length + ' recorded') : 'none yet';
+  $('payTable').innerHTML = ps.length ? '<table class="t"><tbody>' + ps.map((p) =>
+    '<tr><td>' + esc(p.paid_at || '') + '<br><span class="sku">' + esc(p.method || '') + '</span></td>' +
+    '<td class="num">' + (p.amount_cents < 0 ? '<span style="color:var(--green)">' : '') +
+      (p.currency === 'AUD' ? 'A$' : p.currency + ' ') + dollars(p.amount_cents) + (p.amount_cents < 0 ? '</span>' : '') + '</td>' +
+    '<td class="num"><button class="btn sm ghost" data-pdel="' + p.id + '">×</button></td></tr>').join('') +
+    '</tbody></table>' : '<div class="empty" style="border:none;padding:12px;">Nothing paid yet.</div>';
+  for (const b of $('payTable').querySelectorAll('[data-pdel]')) {
+    b.onclick = async () => {
+      await api('/payments/' + b.dataset.pdel, { method: 'DELETE' });
+      CUR = await api('/orders/' + CUR.order.id); renderPayments(); renderLedger();
+    };
+  }
+}
+
+async function addPayment() {
+  const amt = cents(val('p_amt'));
+  if (amt == null) return toast('How much?', true);
+  try {
+    const id = await ensureOrder();
+    await api('/orders/' + id + '/payments', {
+      method: 'POST',
+      body: { amount_cents: amt, currency: val('p_cur'), method: val('p_method') || null,
+        aud_cents: val('p_cur') === 'AUD' ? amt : null },
+    });
+    CUR = await api('/orders/' + id);
+    $('p_amt').value = ''; renderPayments(); renderLedger();
+    toast('Payment recorded.');
+  } catch (e) { toast(e.body?.error || e.message, true); }
+}
+
+function captureRate() {
+  const r = (window.TCG && TCG.toAUD) ? TCG.toAUD(1, val('o_cur')) : null;
+  if (r == null) return toast('No live rate available — is the FX proxy up?', true);
+  $('o_fx').value = r.toFixed(4);
+  toast('Captured 1 ' + val('o_cur') + ' = A$' + r.toFixed(4));
+}
+async function settleOrder() {
+  const c = cents(val('o_settled'));
+  if (c == null) return toast('Enter the A$ the bank actually charged.', true);
+  try {
+    const id = await ensureOrder();
+    await api('/orders/' + id + '/settle', { method: 'POST', body: { settled_aud_cents: c, settled_source: 'bank' } });
+    CUR = await api('/orders/' + id);
+    fillOrderForm(); renderLedger(); renderLines();
+    toast('Settled — that is the cost basis now.');
+  } catch (e) { toast(e.body?.error || e.message, true); }
+}
+
+async function saveOrder() {
+  try {
+    if (!CUR.order.id) { await ensureOrder(); toast('Order created.'); }
+    else {
+      await api('/orders/' + CUR.order.id, { method: 'PATCH', body: collectHeader() });
+      CUR = await api('/orders/' + CUR.order.id);
+      toast('Saved.');
+    }
+    fillOrderForm(); renderLines(); renderLedger();
+    await loadSuppliers(); await refresh();
+    $('btnReceive').style.display = ['ordered', 'in_transit', 'arrived'].includes(CUR.order.status) ? '' : 'none';
+  } catch (e) {
+    toast(e.body?.error === 'illegal_transition' ? ('Cannot go from ' + e.body.from + ' to ' + e.body.to) : (e.body?.error || e.message), true);
+  }
+}
+async function deleteOrder() {
+  if (!CUR.order.id || !confirm('Delete ' + CUR.order.ref + '? This cannot be undone.')) return;
+  try { await api('/orders/' + CUR.order.id, { method: 'DELETE' }); closeOrder(); toast('Deleted.'); }
+  catch (e) { toast(e.body?.detail || e.body?.error || e.message, true); }
+}
+
+// ---- the receive screen ----------------------------------------------------
+function openReceive() {
+  PLAN = null;
+  $('recRef').textContent = CUR.order.ref;
+  $('rc_defloc').value = CUR.order.default_location || '';
+  renderCountRows();
+  $('previewBox').innerHTML = '';
+  $('btnCommit').disabled = true;
+  setStep(0);
+  $('recOverlay').classList.add('on');
+}
+function closeReceive() { $('recOverlay').classList.remove('on'); }
+function setStep(i) {
+  const s = $('recStep').querySelectorAll('.s');
+  s.forEach((el, n) => { el.className = 's' + (n === i ? ' on' : n < i ? ' done' : ''); });
+}
+
+function renderCountRows() {
+  $('countRows').innerHTML = (CUR.lines || []).map((l) => {
+    const spots = (l.placements || []).length ? l.placements : [{ location: '', quantity: '' }];
+    return '<div class="cnt" data-line="' + l.id + '" data-kind="' + l.line_kind + '" data-target="' + (l.link_kind || l.target) + '">' +
+      '<div class="top">' +
+        '<span class="nm">' + esc(l.name) + (l.link_kind ? ' <span class="chip gold">restock</span>' : '') +
+          (l.line_kind !== 'unit' ? ' <span class="chip">' + l.line_kind + '</span>' : '') + '</span>' +
+        '<span class="ord">ordered ' + l.qty_ordered + '</span>' +
+        '<input class="qty" type="number" min="0" step="1" value="' + (l.qty_received == null ? l.qty_ordered : l.qty_received) + '">' +
+        '<select class="disc"><option value="">no discrepancy</option>' +
+          ['short', 'over', 'damaged', 'wrong_item', 'not_shipped', 'substituted']
+            .map((c) => '<option value="' + c + '"' + (l.discrepancy === c ? ' selected' : '') + '>' + c.replace('_', ' ') + '</option>').join('') +
+        '</select>' +
+        (l.line_kind === 'lot' ? '<input class="lotu" type="number" min="1" placeholder="items in lot" style="width:120px;" value="' + (l.lot_units || '') + '">' : '') +
+      '</div>' +
+      '<div class="spots">' + spots.map((s) => spotRow(s.location, s.quantity)).join('') +
+        '<button class="btn sm ghost addspot" type="button">＋ split across another spot</button>' +
+        '<div class="spotsum"></div>' +
+      '</div></div>';
+  }).join('');
+  for (const c of $('countRows').querySelectorAll('.cnt')) wireCountRow(c);
+  updateWhy();
+}
+const spotRow = (loc, qty) => '<div class="spot"><input class="loc" list="locList" placeholder="storage spot" value="' +
+  esc(loc || '') + '"><input class="sq" type="number" min="1" placeholder="qty" value="' + (qty || '') + '"><button class="btn sm ghost rmspot" type="button">×</button></div>';
+
+function wireCountRow(c) {
+  const isSealed = c.dataset.target === 'sealed' && c.dataset.kind === 'unit';
+  const addBtn = c.querySelector('.addspot');
+  // Splitting across spots is a sealed capability: inventory_items carries one scalar location, so
+  // offering a split there would promise something the store cannot keep.
+  if (!isSealed) addBtn.style.display = 'none';
+  addBtn.onclick = () => { addBtn.insertAdjacentHTML('beforebegin', spotRow('', '')); wireSpots(c); };
+  c.querySelector('.qty').oninput = () => { sumSpots(c); updateWhy(); };
+  c.querySelector('.disc').onchange = updateWhy;
+  const lot = c.querySelector('.lotu'); if (lot) lot.oninput = updateWhy;
+  wireSpots(c);
+}
+function wireSpots(c) {
+  for (const b of c.querySelectorAll('.rmspot')) {
+    b.onclick = () => { if (c.querySelectorAll('.spot').length > 1) { b.closest('.spot').remove(); sumSpots(c); updateWhy(); } };
+  }
+  for (const i of c.querySelectorAll('.sq, .loc')) i.oninput = () => { sumSpots(c); updateWhy(); };
+  sumSpots(c);
+}
+function sumSpots(c) {
+  const spots = [...c.querySelectorAll('.spot')];
+  const placed = spots.reduce((s, el) => s + (parseInt(el.querySelector('.sq').value || '0', 10) || 0), 0);
+  const want = parseInt(c.querySelector('.qty').value || '0', 10) || 0;
+  const el = c.querySelector('.spotsum');
+  if (spots.length <= 1 && !placed) { el.textContent = ''; el.className = 'spotsum'; return; }
+  el.textContent = placed + ' of ' + want + ' placed';
+  el.className = 'spotsum' + (placed !== want ? ' bad' : '');
+}
+function updateWhy() {
+  const why = [];
+  for (const c of $('countRows').querySelectorAll('.cnt')) {
+    const q = c.querySelector('.qty').value;
+    const want = parseInt(q || '0', 10);
+    const ord = parseInt(c.querySelector('.ord').textContent.replace(/\D+/g, ''), 10);
+    if (q === '') why.push('a line is uncounted');
+    else if (want !== ord && !c.querySelector('.disc').value) why.push('a mismatch needs a reason');
+    const lot = c.querySelector('.lotu');
+    if (lot && want > 0 && !lot.value) why.push('a lot needs its item count');
+    const spots = [...c.querySelectorAll('.spot')];
+    const placed = spots.reduce((s, el) => s + (parseInt(el.querySelector('.sq').value || '0', 10) || 0), 0);
+    if (placed > 0 && placed !== want) why.push('a split does not add up');
+  }
+  const uniq = [...new Set(why)];
+  $('recWhy').textContent = uniq.length ? uniq.join(' · ') : '';
+  $('btnPreview').disabled = false;
+  if (uniq.length) $('btnCommit').disabled = true;
+}
+
+function applyDefaultSpot() {
+  const loc = val('rc_defloc');
+  if (!loc) return toast('Type a spot first.', true);
+  for (const c of $('countRows').querySelectorAll('.cnt')) {
+    const first = c.querySelector('.spot .loc');
+    if (first && !first.value) first.value = loc;
+    const sq = c.querySelector('.spot .sq');
+    if (sq && !sq.value && c.querySelectorAll('.spot').length === 1) sq.value = c.querySelector('.qty').value;
+    sumSpots(c);
+  }
+  updateWhy();
+  toast('Applied ' + loc + ' to every line.');
+}
+async function newLocation() {
+  const name = prompt('Name the new storage spot');
+  if (!name || !name.trim()) return;
+  try {
+    await fetch('/api/sealed/locations', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    await loadLocations();
+    $('rc_defloc').value = name.trim();
+    toast('Created ' + name.trim() + '.');
+  } catch (e) { toast('Could not create that spot.', true); }
+}
+
+async function saveCounts() {
+  for (const c of $('countRows').querySelectorAll('.cnt')) {
+    const placements = [...c.querySelectorAll('.spot')].map((el) => ({
+      location: el.querySelector('.loc').value.trim() || null,
+      quantity: parseInt(el.querySelector('.sq').value || '0', 10) || 0,
+    })).filter((p) => p.quantity > 0);
+    const body = {
+      qty_received: c.querySelector('.qty').value === '' ? null : parseInt(c.querySelector('.qty').value, 10),
+      discrepancy: c.querySelector('.disc').value || null,
+      placements,
+    };
+    const lot = c.querySelector('.lotu');
+    if (lot) body.lot_units = lot.value ? parseInt(lot.value, 10) : null;
+    await api('/lines/' + c.dataset.line + '/count', { method: 'POST', body });
+  }
+}
+
+async function doPreview() {
+  try {
+    await saveCounts();
+    PLAN = await api('/orders/' + CUR.order.id + '/receive?dry=1', {
+      method: 'POST', body: { default_location: val('rc_defloc') || null },
+    });
+    renderPlan();
+    setStep(PLAN.blockers.length ? 0 : 1);
+    $('btnCommit').disabled = PLAN.blockers.length > 0;
+  } catch (e) { toast(e.body?.error || e.message, true); }
+}
+
+function renderPlan() {
+  const o = CUR.order, p = PLAN;
+  let html = '';
+  if (p.blockers.length) {
+    html += '<div class="blockers"><div class="bh">Not ready</div><ul>' +
+      p.blockers.map((b) => '<li>' + esc(b.name ? b.name + ' — ' : '') + esc(reasonText(b)) + '</li>').join('') + '</ul></div>';
+  }
+  html += '<div class="block"><div class="bh">What this will do</div><div class="plan">' +
+    p.steps.map((s) => {
+      const act = s.action === 'new' ? 'new' : s.action === 'merge' ? 'merge'
+        : s.action === 'new_lot' ? 'lot' : s.action === 'fee' ? 'fee' : 'skip';
+      let d = esc(s.name), sub = '';
+      if (s.action === 'merge') {
+        sub = '→ ' + esc(s.target_sku || '') + ' · ' + s.target_qty_before + ' → ' + (s.target_qty_before + s.qty) +
+          (s.blend_after ? ' · cost A$' + dollars(s.blend_after.cost_cents) + ' (weighted avg)' : '');
+      } else if (s.action === 'new') {
+        sub = 'new stock record · ' + (s.placements || []).map((x) => (x.location || 'unassigned') + ' ×' + x.quantity).join(' · ');
+      } else if (s.action === 'new_lot') {
+        sub = s.lot_units + ' items · ' + s.buckets.map((b) => b.qty + ' at A$' + dollars(b.unit_cents)).join(' + ');
+      } else if (s.action === 'fee') {
+        sub = 'grading fee — creates no stock';
+      } else {
+        sub = 'nothing received' + (s.reason ? ' · ' + esc(s.reason.replace('_', ' ')) : '');
+      }
+      if (s.link_note) sub += ' · ⚠ ' + (s.link_note === 'link_repaired' ? 'linked record was gone; matched the same product' : 'linked record is gone — creating a new one');
+      const m = s.action === 'skip' || s.action === 'fee' ? ''
+        : (s.landed_unit_cents != null
+          ? 'A$' + dollars(s.cost_cents) + ' + A$' + dollars(s.acq_fees_cents) + '<br>= A$' + dollars(s.landed_unit_cents) + ' landed'
+          : '');
+      return '<div class="pl"><span class="act ' + act + '">' + (s.action === 'skip' ? 'skip' : act) + '</span>' +
+        '<span class="d">' + (s.qty ? '+' + s.qty + ' ' : '') + d + '<span class="sub2">' + sub + '</span></span>' +
+        '<span class="m">' + m + '</span></div>';
+    }).join('') +
+    '</div><div class="planfoot">' +
+      '<span>' + moneyFlat(p.pot_cents, o.currency, p.fx) + ' of charges spread <strong>by ' + p.basis + '</strong></span>' +
+      '<span>' + moneyFlat(p.allocated_cents, o.currency, p.fx) + ' allocated' +
+        (p.allocated_cents === p.pot_cents ? ' · 0c left over' : ' · MISMATCH') + '</span>' +
+      (p.rounding_residue_cents ? '<span>per-unit rounding +' + p.rounding_residue_cents + 'c</span>' : '') +
+      (p.fx_estimated ? '<span style="color:var(--amber)">FX is an estimate — settle first to lock the cost basis</span>' : '') +
+    '</div></div>';
+  $('previewBox').innerHTML = html;
+}
+function reasonText(b) {
+  return b.reason === 'uncounted' ? 'not counted yet'
+    : b.reason === 'discrepancy_reason_required' ? ('counted ' + b.counted + ' of ' + b.ordered + ' — say why')
+    : b.reason === 'placements_mismatch' ? ('placed ' + b.placed + ' of ' + b.counted)
+    : b.reason === 'lot_units_required' ? 'say how many items came out of the lot'
+    : b.reason === 'split_not_supported' ? (b.detail || 'this line cannot split across spots')
+    : b.reason === 'fx_required' ? 'no FX rate — stock is stored in AUD, so capture a rate or settle the order'
+    : b.reason;
+}
+
+async function doCommit() {
+  if (!confirm('Put this into stock? Cost basis and placements will be written.')) return;
+  try {
+    const r = await api('/orders/' + CUR.order.id + '/receive', {
+      method: 'POST', body: { default_location: val('rc_defloc') || null },
+    });
+    setStep(2);
+    $('btnCommit').disabled = true;
+    $('previewBox').innerHTML = '<div class="block"><div class="bh">Received</div><div class="plan">' +
+      (r.result || []).filter((s) => s.sku || s.items).map((s) => {
+        const sku = s.sku || (s.items && s.items[0] && s.items[0].sku);
+        const href = s.kind === 'sealed' ? '/sealed.html' : '/inventory.html';
+        return '<div class="pl"><span class="act new">' + (s.created === false ? 'merged' : 'stocked') + '</span>' +
+          '<span class="d">' + esc(s.name) + '<span class="sub2">' + esc(sku || '') + '</span></span>' +
+          '<span class="m"><a href="' + href + '">open →</a></span></div>';
+      }).join('') + '</div></div>';
+    toast('Received into stock.');
+    CUR = await api('/orders/' + CUR.order.id);
+    renderLines(); renderLedger();
+    await refresh();
+  } catch (e) {
+    if (e.body?.error === 'lines_unreconciled') { PLAN = { ...PLAN, blockers: e.body.blockers }; renderPlan(); }
+    toast(e.body?.error === 'lines_unreconciled' ? 'Some lines are not ready.' : (e.body?.error || e.message), true);
+  }
+}
+
+// Expose the handlers the markup calls.
+Object.assign(window, {
+  openOrder, closeOrder, saveOrder, deleteOrder, addLine, addPayment, settleOrder, captureRate,
+  setLineMode, searchStock, onKindPick, onTargetPick, onStatusPick, relabelCurrency, renderList,
+  openReceive, closeReceive, doPreview, doCommit, applyDefaultSpot, newLocation,
+});
+$('n_game').addEventListener('change', onTargetPick);
+boot();
+</script>
+</body>
+</html>
