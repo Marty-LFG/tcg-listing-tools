@@ -371,13 +371,25 @@ describe('publishProduct — the order is the safety', () => {
     assert.equal(r.input.variants[0].sku, 'AAC-085');
   });
 
-  it('publishes anyway when only the identity failed, and says so', async () => {
+  // This used to assert the warning pointed at identity.rebuild as the remedy. It was wrong advice:
+  // rebuildIdentity sends only the `listings` field, so against a metaobject that was never created it
+  // is a CREATE with every other required field absent — the operator gets four "can't be blank" errors
+  // when one field was missing, and three of them are innocent. Seen for real on 2026-08-25.
+  //
+  // The warning now carries the STORE'S OWN reason, and it is raised where a driver will actually print
+  // it. Living only on steps[].warning is why the real cause never reached anyone: every driver renders
+  // `warnings`, none renders `steps`.
+  it('publishes anyway when only the identity failed, and reports the reason where it will be seen', async () => {
     const { r, stub } = await run({}, { level: [], identity: 'metaobject definition not found' });
     assert.equal(r.ok, true, 'a card that is correct and priced should not be withheld over a grouping field');
     assert.ok(stub.ops().includes('publish'));
+
     const s = r.steps.find((x) => x.step === 'identity');
     assert.equal(s.ok, false);
-    assert.match(s.warning, /identity\.rebuild/);
+    assert.match(s.warning, /metaobject definition not found/, "the step carries the store's reason, not a guess at the remedy");
+
+    assert.ok(r.warnings.some((w) => /NO card identity/.test(w)), 'and it must reach warnings, which is what drivers print');
+    assert.ok(r.warnings.some((w) => /metaobject definition not found/.test(w)), 'carrying the reason with it');
   });
 
   it('refuses a row the map layer rejects, without calling anything', async () => {
