@@ -77,7 +77,7 @@ async function stub(url, init = {}) {
     inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
     try {
       const sku = v.input.variants[0].sku;
-      calls.push({ op: 'productSet', sku });
+      calls.push({ op: 'productSet', sku, variables: v });
       // Yield, so that IF two rows were ever in flight together the watermark would see it. Without
       // an await here a synchronous stub could never expose overlap even if the batch had it.
       await new Promise((r) => setTimeout(r, 1));
@@ -594,6 +594,49 @@ describe('colliding rows are gated, not merely announced', () => {
     const pf = await post('/publish/preflight', { itemIds: ids });
     assert.equal(pf.json.publishable, 0);
     assert.equal(pf.json.refused, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The shape productSet actually accepts. Measured against the real dev store 2026-08-25: the
+// identifying metafield MUST be present (Shopify refuses otherwise, to stop the identifier being
+// deleted by omission) and MUST NOT carry its `type`, or the entry fails to match the identifier and
+// the mutation is refused with METAFIELD_MISMATCH — an error whose wording says the value is absent
+// when it is present and correct but for one extra key. The stub cannot re-derive that rule, so it is
+// asserted directly on the payload.
+describe('the custom.id metafield is sent in the shape productSet accepts', () => {
+  it('is present in the metafields array, and carries no type', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+
+    const set = calls.find((c) => c.op === 'productSet');
+    assert.ok(set, 'productSet was never called');
+    const mfs = set.variables.input.metafields || [];
+    const idMf = mfs.find((m) => m.namespace === 'custom' && m.key === 'id');
+
+    assert.ok(idMf, 'omitting it is refused: Shopify will not let the identifier be dropped by omission');
+    assert.equal(idMf.value, 'AAC-097');
+    assert.ok(!('type' in idMf), 'sending `type` on the identifying metafield is what causes METAFIELD_MISMATCH');
+  });
+
+  it('leaves every other metafield carrying its type', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    const mfs = calls.find((c) => c.op === 'productSet').variables.input.metafields || [];
+    const others = mfs.filter((m) => !(m.namespace === 'custom' && m.key === 'id'));
+    assert.ok(others.length >= 5, 'expected the bkc.* set');
+    for (const m of others) assert.ok(m.type, `${m.namespace}.${m.key} lost its type — only the identifier is special`);
+  });
+
+  it('sends the identifier and the metafield with the same value', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    const v = calls.find((c) => c.op === 'productSet').variables;
+    const idMf = (v.input.metafields || []).find((m) => m.namespace === 'custom' && m.key === 'id');
+    assert.deepEqual(
+      { namespace: v.identifier.customId.namespace, key: v.identifier.customId.key, value: v.identifier.customId.value },
+      { namespace: idMf.namespace, key: idMf.key, value: idMf.value },
+      'a divergence here is the other half of METAFIELD_MISMATCH');
   });
 });
 
