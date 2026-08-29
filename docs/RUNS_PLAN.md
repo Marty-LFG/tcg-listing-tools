@@ -277,11 +277,15 @@ run.public_id | run.edition | bundle.no | bundle.label | bundle.is_chase | bundl
 slot.<slot>.<ii>.<field>     for every slot, ii = 00 .. max_lines-1, each of the 15 fields
 ```
 
-`bundle.seal_serial` is the tamper-evident seal applied to that parcel: **16 lowercase hex characters,
-random per bundle**, never a contiguous block. Revision 4 required it in §8.5 while §4.4's closed name set
+`bundle.seal_serial` identifies the tamper-evident seal applied to that parcel: **16 lowercase hex
+characters**. What must be unpredictable is the **bundle-to-serial mapping**, not the serial's own format —
+a sequentially numbered commercial seal roll is fine provided the assignment of physical seals to bundles is
+random and the roll is larger than the run, so neither the mapping nor the set of serials in play is
+derivable by a buyer holding one parcel. Revision 4 required it in §8.5 while §4.4's closed name set
 had no such attribute and §4.5 made a verifier reject extras — so a conforming producer could not satisfy
-the document. Both reviewers found the contradiction. It is opened at tier C (chase bundles only, and only
-after delivery) and at tier D.
+the document. Both reviewers found the contradiction. It is opened **only at tier D**. Its value is to the individual buyer checking their own parcel, which they
+get through the code-gated record — no public tier needs it, and publishing chase bundles' serials would let
+anyone who photographed a parcel correlate it to a chase for no benefit.
 
 `bundle.is_chase` takes exactly `0` or `1`; any other value is invalid.
 
@@ -693,7 +697,17 @@ headerDigest    = 829a795eaca64d6ccf56b6898e0e51f495f450a70b34e9577c04ccaa685d22
 ```
 
 with `rarityTableVersion` = `rarity-v1`, `closeByDate` = `2027-03-31T23:59:59.000Z`, `salesCloseAt` =
-`2027-01-31T23:59:59.000Z`, the §11.2 guarantee text, and
+`2027-01-31T23:59:59.000Z`, the fixture's own guarantee text
+
+```
+"Every bundle contains one PSA 10 graded Japanese card of an illustrated chase rarity
+ (Art Rare, Mega Attack Rare or Special Art Rare), three sealed Japanese booster packs
+ and one art card."
+```
+
+(EX2 is a three-bundle synthetic run for exercising the encoding; its claim set is deliberately simpler
+than Edition 1's in §11.2, and uses `rarity_in` rather than `field_mix` because an aggregate claim over
+three bundles proves little.) and
 
 ```
 unsoldPolicy = "Every bundle in a run is sold at one price shared by every remaining number.
@@ -1486,8 +1500,14 @@ A committed cert for a card never in our possession verifies perfectly. Mitigati
 validation against the grader's public database at intake, and tier C exposure.
 
 ### 8.5 Physical substitution after packing
-**The seal serial must be committed as a bundle attribute**, not merely recommended, so the parcel binds to
-the record. Serials are random per bundle, never a contiguous block.
+The seal serial is a committed attribute, so the parcel binds to the record: a buyer checks the serial on
+their seal against the serial in their decrypted record, and a swapped or resealed parcel shows.
+
+Two properties that are easy to conflate. **Tamper evidence comes from the seal material** — void-if-removed
+backing — and the serial contributes nothing to it. **The serial provides binding**, and only that. Neither
+proves a parcel was never opened: a forger with matching seal stock *and* knowledge of the target's serial
+could defeat both. The mitigation is that the bundle-to-serial mapping is random and the serial is never
+published, so the second condition is not available to them.
 
 ### 8.6 Physical uniformity is not enforced
 Component count is enforced; weight, thickness and profile are not. This is an operational control on
@@ -1784,6 +1804,26 @@ rather than ignore it — silence must fail closed, not open.
 | `rarity_in` | `in` | slot name | class set | every populated line's `rarity`, mapped through §11.1, is in the set |
 | `packs_language` | `eq` | slot name | language code | as `language`, scoped to that slot |
 | `slot_count` | `eq` | `bundle` | `slot:qty` list | per slot, summed `qty` over populated lines equals the stated quantity |
+| `field_mix` | `eq` | slot name | `field` + `VALUE:count` list | **run-level, not per-bundle**: across every bundle, the number of populated lines in that slot whose named field holds `VALUE` equals `count`. Rarity values are mapped through §11.1 first; every other field compares literally |
+
+`field_mix` is the only **aggregate** claim — every other claim is a per-bundle universal. Two worked
+uses:
+
+```
+field_mix  art    rarity     ART_RARE:15, SPECIAL_ART_RARE:10
+field_mix  packs  set_code   M3:25, M4:25, M5:25
+```
+
+It is a materially stronger statement than `rarity_in`: "every art card is one of these rarities" versus
+"exactly fifteen are Art Rare and ten are Special Art Rare".
+
+**It is generalised over the field rather than fixed to rarity** because the same question arises for any
+slot whose stock is a deliberate mix — most obviously sealed packs drawn from several sets. A claim type
+per field would have been a vocabulary that grows every time a run is shaped differently.
+
+**Cost.** Tier B opens whatever the claims reference (§5.5.1), so a `field_mix` on `packs.set_code` opens
+every bundle's pack set codes at close. That is a real increase over opening `qty` alone, and it is the
+price of proving the claim. A run that does not claim its pack mix does not disclose it.
 
 **Rendering.** Fragments are emitted in `claimsCanonical` order and assembled into a fixed skeleton:
 
@@ -1807,15 +1847,30 @@ The first edition's claims and the sentence they generate:
 grader     slab   eq  PSA
 language   bundle eq  JA
 min_grade  slab   gte 10
-rarity_in  slab   in  ART_RARE, MEGA_ATTACK_RARE, SPECIAL_ART_RARE
+field_mix  art    rarity ART_RARE:15, SPECIAL_ART_RARE:10
 slot_count bundle eq  art:1, packs:3, slab:1
 ```
 
-> Every bundle contains one PSA 10 graded Japanese card of an illustrated chase rarity (Art Rare, Mega
-> Attack Rare or Special Art Rare), three sealed Japanese booster packs and one art card.
+**The rarity guarantee sits on the art card, not the slab.** The slab is claimed as a PSA 10 Japanese
+card; whatever rarity it happens to be is delivered rather than promised. Claiming less than is delivered
+is safe, and it keeps the slab's rarity free to vary across a run without endangering the guarantee.
 
-Note the rarity classes render in canonical byte order — Art, Mega, Special — which revision 4's example
-did not, one of the reasons its byte-equality check was unreachable.
+Note there is no "or better" operator. Rarity ordering is contested, and a comparison no two parties
+evaluate identically is worse than no claim — so a rarity rule always enumerates its classes explicitly.
+
+> Every bundle contains one PSA 10 graded Japanese card, three sealed Japanese booster packs and one
+> Japanese art card. Across the twenty-five bundles, fifteen art cards are Art Rare and ten are Special
+> Art Rare.
+
+**`field_mix` renders as its own sentence**, because it is a run-level statement and the first clause is
+a per-bundle universal. Mixing an aggregate into "every bundle contains…" would be false on its face. A run
+with several `field_mix` claims renders one sentence per claim, in `claimsCanonical` order.
+
+Rarity classes render in canonical byte order, and counts render as words from the fixed integer table —
+which is also what keeps §2.2 guardrail 2 satisfied. **The renderer has no code path that can emit a ratio
+or a percentage.** "Five of twenty-five" is expressible; "one in five" is not, and that is a consumer-law
+and gambling-optics constraint rather than a stylistic one. Deriving the ratio internally is fine; it must
+never reach copy.
 
 A run whose pool includes a class outside the committed set fails to lock, with the offending bundle named.
 
