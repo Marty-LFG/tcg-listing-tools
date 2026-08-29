@@ -210,7 +210,19 @@ async function main() {
   const warned = pf.rows.map((r) => ({ ...r, warnings: r.warnings.filter(notCollision) })).filter((x) => x.ok && x.warnings.length);
   for (const r of warned) console.log(yellow(`  ! ${r.item_id}`) + `  ${(r.name || '').slice(0, 40)} — ${r.warnings.join(' · ')}`);
 
-  if (!pf.publishable) { console.log(red('\nnothing publishable. Fix the refusals above and run again.\n')); { process.exitCode = 1; return; } }
+  // `publishable` excludes already-live rows BY DESIGN — it answers "what would a normal run send".
+  // It is therefore the wrong number to gate on when --force is set, which exists precisely to re-push
+  // a row that IS already live. Gating on it made --force a no-op for its only use case, and reported
+  // "nothing publishable — fix the refusals above" when there were no refusals at all.
+  const sendable = pf.rows.filter((x) => x.ok && (FORCE || !x.alreadyLive));
+  if (!sendable.length) {
+    if (pf.alreadyLive && !pf.refused) {
+      console.log(yellow('\nevery row is already live on Shopify. Add --force to re-push and revise them.\n'));
+    } else {
+      console.log(red('\nnothing publishable. Fix the refusals above and run again.\n'));
+    }
+    process.exitCode = 1; return;
+  }
   if (!LIVE && !DRY) {
     console.log(dim('\npreview only — nothing was sent. Add --dry-run to have the SERVER map and validate every card,'));
     console.log(dim('or --live to publish for real (the server still refuses unless publish.enabled is true).\n'));
@@ -218,7 +230,7 @@ async function main() {
   }
 
   // --- 3. the run --------------------------------------------------------------------------------
-  const go = pf.rows.filter((x) => x.ok && (FORCE || !x.alreadyLive)).map((x) => x.item_id);
+  const go = sendable.map((x) => x.item_id);
   // Which rows are still waiting on a shelf label, per row — the preflight already worked it out.
   const willAssign = new Map(pf.rows.map((x) => [x.item_id, !!x.willAssignLabel]));
   console.log(bold(`\n${LIVE ? 'publishing' : 'dry running'} ${go.length}…\n`));
