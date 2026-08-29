@@ -179,6 +179,28 @@
   .btn:disabled{opacity:.4;cursor:default;transform:none;}
   .actionbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
 
+  /* danger confirm — for switches that can reach a real storefront. Deliberately NOT window.confirm:
+     a native dialog cannot explain consequences, and the whole reason this exists is the explanation. */
+  .dlg{position:fixed;inset:0;background:rgba(5,6,9,.72);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:80;padding:20px;}
+  .dlg[hidden]{display:none;}
+  .dlg__box{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid rgba(240,102,110,.38);
+    border-radius:15px;box-shadow:var(--shadow);max-width:560px;width:100%;padding:22px 24px;}
+  .dlg__box h3{margin:0 0 10px;font-family:var(--serif);font-size:19px;color:var(--red);}
+  .dlg__box .body{font-size:13px;line-height:1.62;color:var(--muted);}
+  .dlg__box .body b{color:var(--text);}
+  .dlg__box .body ul{margin:9px 0 0;padding-left:19px;}
+  .dlg__box .body li{margin-bottom:5px;}
+  .dlg__box .phrase{margin-top:15px;font-size:12px;color:var(--muted);}
+  .dlg__box .phrase code{font-family:var(--mono);color:var(--amber);background:var(--field);
+    border:1px solid var(--line2);border-radius:5px;padding:1px 6px;}
+  .dlg__box input.confirm{width:100%;margin-top:7px;font-family:var(--mono);font-size:12.5px;
+    background:var(--field);border:1px solid var(--line2);border-radius:9px;padding:9px 11px;color:var(--text);}
+  .dlg__box input.confirm:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px rgba(240,102,110,.14);}
+  .dlg__acts{display:flex;gap:9px;justify-content:flex-end;margin-top:17px;}
+  .btn.danger{border-color:rgba(240,102,110,.45);color:var(--red);}
+  .btn.danger:hover{border-color:var(--red);color:var(--red);}
+  .tog.is-danger .lbl b{color:var(--amber);}
+
   /* forms */
   .fgroup{margin-top:4px;}
   .fgroup + .fgroup{margin-top:16px;padding-top:14px;border-top:1px dashed var(--line);}
@@ -1154,6 +1176,39 @@
       ]},
     ]},
 
+    shopify:{ title:'Shopify channel', section:'listing', groups:[{name:'Publishing',anchor:'shopify-publish',fields:[
+      {p:'publish.enabled',l:'Publishing armed',t:'toggle',tip:'<b>The master switch for writing to Shopify at all.</b> Off, <code>/api/shopify/publish</code> refuses with a 409 and only the local preview runs — it maps and validates a card and calls nothing. On, the publish path creates real products on whichever store is selected below. This ships OFF and is meant to be armed deliberately, after a dry run has been eyeballed.'},
+      {p:'publish.status',l:'New products land as',t:'select',wide:true,
+       opts:[{v:'DRAFT',l:'DRAFT — created but on no sales channel, invisible to buyers'},{v:'ACTIVE',l:'ACTIVE — published to the Online Store, a real page exists'}],
+       tip:'<b>DRAFT is the supervised setting.</b> A draft cannot be bought even if publishing misfires, so it is the right first run against a store you have never written to. ⚠ Shopify <b>silently no-ops</b> publishing a draft to a sales channel — <code>publishablePublish</code> returns success and attaches the product to nothing — so a DRAFT product has no storefront page and the PDP cannot be checked until this is ACTIVE. Applies at publish time only: changing it here does not alter products already created, which need a re-push with force.'},
+      {p:'sync.enabled',l:'Cross-channel sync',t:'toggle',tip:'The delist lane that ends an eBay listing when the card sells on Shopify and vice versa. <b>Nothing reads this yet</b> — it exists so that turning sync on is a config edit rather than a code change, and so the switch is visibly OFF while the publish path is being proved. Leave it off until the A–F acceptance suite has passed.'},
+    ]},{name:'Which store',anchor:'shopify-store',fields:[
+      {p:'defaultStore',l:'Target store',t:'select',wide:true,
+       opts:[{v:'dev',l:'dev — binders-keepers-dev (a development store, cannot take real payments)'},{v:'live',l:'live — the real shop'}],
+       confirmOn:['live'],
+       confirm:{title:'Point every publish at the REAL shop?',phrase:'LIVE',go:'I understand — target live',
+         body:'<p>Every route that writes — publish, batch publish, identity rebuild — currently defaults to the <b>dev</b> store. This changes that default to the <b>real shop</b>, for every command and every button, until you change it back.</p>'
+           +'<ul><li>The dev store is a development store and <b>cannot process real payments</b>. The live one can.</li>'
+           +'<li>This alone does not let anything through — <b>Allow live writes</b> below is a separate switch and the live store must also be pinned.</li>'
+           +'<li>A product created on live is on a real shop, and Shopify has <b>no bulk delete</b> for uploaded image files.</li></ul>'
+           +'<p>If you are testing, you want <b>dev</b>. Cancel is the safe answer.</p>'},
+       tip:'Which Shopify store every write goes to. <b>dev</b> unless you are doing the launch cutover. Individual requests can override it with <code>?store=</code>, which is why the switch below exists as well.'},
+      {p:'publish.allowLive',l:'Allow live writes',t:'toggle',
+       confirm:{title:'Allow writes to the real shop?',phrase:'ALLOW LIVE',go:'I understand — allow live writes',
+         body:'<p>This is the switch that stops the dev-store gate from also arming the real shop. <code>?store=</code> is read straight off the query string with no allowlist, and <b>Publishing armed</b> is one global switch — so without this, arming dev arms live too, and the only thing between a stray <code>?store=live</code> and a real product on the real shop is that nobody typed it.</p>'
+           +'<ul><li><b>Turn this on only for the D-023 launch cutover.</b> Nothing in normal testing needs it.</li>'
+           +'<li>Dry runs are exempt and always allowed — they write nothing anywhere, on either store.</li>'
+           +'<li>The live store must also be pinned below. Blank pins refuse a live write on their own.</li></ul>'
+           +'<p>Leaving this off costs you nothing today. Turning it on by accident costs a product on a real storefront.</p>'},
+       tip:'<b>⚠ The one switch that permits writing to the real shop.</b> Separate from <b>Publishing armed</b> on purpose, and fails closed — absent or off both mean no. Dry runs are always exempt. Keep it off until the launch cutover.'},
+    ]},{name:'Pinned store objects',anchor:'shopify-pins',fields:[
+      {p:'stores.dev.locationGid',l:'dev · shipping location',t:'text',wide:true,tip:'The location stock is written to. Measured by <code>scripts/check-shopify.mjs</code>, which prints it with a “pin this” marker. Must be active, fulfil online orders <i>and</i> ship inventory — <code>/api/shopify/status</code> verifies all three against the store rather than trusting this file.'},
+      {p:'stores.dev.publicationGid',l:'dev · Online Store publication',t:'text',wide:true,tip:'The sales channel a product is published to. Without it a product is created <b>invisible</b> — live in our ledger and unbuyable — which is why the publish path refuses to start when it is missing.'},
+      {p:'stores.live.locationGid',l:'live · shipping location',t:'text',wide:true,tip:'⚠ Deliberately <b>empty</b> until the launch cutover. Blank pins are a second, independent refusal for live writes: <code>guardPins</code> stops the request before anything is sent, whatever the switches above say. A Location GID is store-scoped — never paste the dev value here.'},
+      {p:'stores.live.publicationGid',l:'live · Online Store publication',t:'text',wide:true,tip:'⚠ Also deliberately empty. Note <code>check-shopify.mjs</code> <b>cannot</b> measure these — it is dev-only by construction and refuses if the resolved shop is the live one. Read them with a read-only Admin query instead.'},
+    ]}], json:'collections', jsonLabel:'Collection GIDs',
+      jsonTip:'Shopify collection GIDs resolved at publish and sent whole (<code>ProductSetInput.collections</code> is a full replacement, like every list on that input). Per-SET collections are deliberately absent — those are AUTOMATED collections keyed on the <code>bkc.set_code</code> metafield, so they need no maintenance here as stock grows. <code>byGame</code> is the manual fallback for top-level groupings.' },
+
     'listing-image':{ title:'Listing images', section:'listing', groups:[{name:'Branded rails',anchor:'images-rails',fields:[
       {p:'enabled',l:'Branded rails',t:'toggle',tip:'<b>Master switch.</b> When on, listing photos are composed into the square branded frame (store mark + set art + card number on the rails) before upload. Off = photos go up untouched. Geometry is tuned in the <a href="/listing-image-lab.html">listing image lab</a>; saving there is deliberate and separate.'},
       {p:'applyTo.catalogArt',l:'Brand catalog art',t:'toggle',tip:'Apply the rails to stock CDN card art (Near Mint listings that use the catalog scan).'},
@@ -1253,11 +1308,52 @@
     return {rows:j.categories.filter(c=>c&&c.path).map(c=>({id:c.path,name:c.path})),missingId:null};
   }
 
+  /* A switch that can reach a real storefront must be hard to flip by accident, and the accident this
+     guards is not a mis-click — it is flipping it without knowing what it does. So the dialog is mostly
+     explanation, and the typed phrase exists to make sure the explanation was read rather than
+     dismissed. It gates ARMING only: turning something off is always allowed and never asks.
+
+     Returns a promise so the caller can revert the control when it resolves false. */
+  function confirmDanger(cf){
+    return new Promise((resolve)=>{
+      const dlg=el('<div class="dlg"><div class="dlg__box" role="alertdialog" aria-modal="true">'
+        +'<h3>'+esc(cf.title)+'</h3><div class="body">'+cf.body+'</div>'
+        +'<div class="phrase">Type <code>'+esc(cf.phrase)+'</code> to confirm you have read this.</div>'
+        +'<input class="confirm" autocomplete="off" spellcheck="false" aria-label="Confirmation phrase">'
+        +'<div class="dlg__acts"><button class="btn ghost" data-x>Cancel</button>'
+        +'<button class="btn danger" data-go disabled>'+esc(cf.go||'I understand — turn it on')+'</button></div>'
+        +'</div></div>');
+      document.body.appendChild(dlg);
+      const inp=dlg.querySelector('input.confirm'), go=dlg.querySelector('[data-go]');
+      const done=(v)=>{ dlg.remove(); document.removeEventListener('keydown',onKey); resolve(v); };
+      const onKey=(e)=>{ if(e.key==='Escape') done(false); };
+      inp.addEventListener('input',()=>{ go.disabled = inp.value.trim().toUpperCase() !== cf.phrase.toUpperCase(); });
+      inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter' && !go.disabled) done(true); });
+      dlg.querySelector('[data-x]').addEventListener('click',()=>done(false));
+      go.addEventListener('click',()=>done(true));
+      // Clicking the backdrop cancels — the safe direction, so it needs no confirmation of its own.
+      dlg.addEventListener('mousedown',(e)=>{ if(e.target===dlg) done(false); });
+      document.addEventListener('keydown',onKey);
+      inp.focus();
+    });
+  }
+
   function fieldCtl(f,c,inputs){
     const cur=getP(c,f.p);
     if(f.t==='toggle'){
-      const row=el('<label class="tog"><input type="checkbox"><span class="sw"></span><span class="lbl"><b>'+f.l+'</b>'+inf(f.tip)+'</span></label>');
+      const row=el('<label class="tog'+(f.confirm?' is-danger':'')+'"><input type="checkbox"><span class="sw"></span><span class="lbl"><b>'+f.l+'</b>'+inf(f.tip)+'</span></label>');
       const cb=row.querySelector('input'); cb.checked=(cur==null?!!f.def:!!cur); inputs[f.p]=()=>cb.checked;
+      if(f.confirm){
+        // Arming only. Disarming is the safe direction and must never be obstructed — a switch that is
+        // hard to turn OFF is a hazard, not a safeguard.
+        cb.addEventListener('change',async()=>{
+          if(!cb.checked) return;
+          cb.checked=false;                                  // stays off unless the dialog says otherwise
+          // 'input', not 'change' — the card listens for both, and re-dispatching 'change' would
+          // re-enter this very handler and reopen the dialog forever.
+          if(await confirmDanger(f.confirm)){ cb.checked=true; cb.dispatchEvent(new Event('input',{bubbles:true})); }
+        });
+      }
       return {node:row,wide:true};
     }
     const cell=el('<div class="field'+(f.wide?' wide':'')+'"><label>'+esc(f.l)+inf(f.tip)+'</label></div>');
@@ -1286,6 +1382,17 @@
       // A <select> always yields a STRING. f.num says the setting is a number, and saving "1" where the
       // validator wants an integer is a save that fails for a reason the form cannot explain.
       inputs[f.p]=f.num?(()=>input.value===''?null:+input.value):(()=>input.value);
+      // Same arming guard as the danger toggles, for a select whose value can point a real publish at
+      // a real shop. f.confirmOn lists the values that need it; every other value changes freely, and
+      // moving BACK to a safe value never asks.
+      if(f.confirm && Array.isArray(f.confirmOn)){
+        let prev=input.value;
+        input.addEventListener('change',async()=>{
+          if(!f.confirmOn.includes(input.value)){ prev=input.value; return; }
+          const want=input.value; input.value=prev;
+          if(await confirmDanger(f.confirm)){ input.value=want; prev=want; input.dispatchEvent(new Event('input',{bubbles:true})); }
+        });
+      }
     }
     else if(f.t==='textarea'){ input=document.createElement('textarea'); input.value=cur??''; inputs[f.p]=()=>input.value; }
     // A comma-separated list that saves as a real ARRAY. `holidays` is validated as an array, so a
