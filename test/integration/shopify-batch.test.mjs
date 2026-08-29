@@ -641,6 +641,44 @@ describe('the custom.id metafield is sent in the shape productSet accepts', () =
 });
 
 // ---------------------------------------------------------------------------
+// Shopify silently no-ops publishablePublish for a DRAFT product: ok, no userErrors, and the product
+// ends up on ZERO publications. Measured on the dev store 2026-08-25 — same mutation, same publication,
+// ACTIVE gives 1, DRAFT gives 0, both reporting success. So `ok` alone cannot decide the mirror state,
+// and §3.3 defines 'live' as published to the Online Store publication.
+describe('a DRAFT publish is recorded as unpublished, not live', () => {
+  it('records state unpublished when the store returns a DRAFT product', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'DRAFT' } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+
+    assert.equal(r.rows[0].status, 'published', 'the call did succeed — the product exists');
+    assert.equal(mirror('AAC-097').state, 'unpublished',
+      "'live' means on the Online Store publication, and a draft is on no channel at all");
+    assert.ok(r.rows[0].warnings.some((w) => /DRAFT/.test(w)), 'the operator must be told it is on no channel');
+  });
+
+  it('still records live for an ACTIVE publish', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
+    const a = addItem({ name: 'Beta', number: '59/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(mirror('AAC-097').state, 'live');
+  });
+
+  // The consequence that would otherwise bite on the very next run: an unpublished row must NOT be
+  // skipped as already-live, or the ACTIVE re-run that is meant to finish the job does nothing.
+  it('does not skip an unpublished row on the next run', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'DRAFT' } });
+    const a = addItem({ name: 'Gamma', number: '60/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
+    const again = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(again.rows[0].status, 'published', 'a draft is unfinished work, not a completed publish');
+    assert.equal(mirror('AAC-097').state, 'live');
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('the route contract', () => {
   it('refuses an empty batch with a message rather than streaming nothing', async () => {
     const r = await post('/publish/batch', { itemIds: [] });
