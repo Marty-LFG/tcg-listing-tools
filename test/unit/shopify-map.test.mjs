@@ -159,16 +159,32 @@ describe('no eBay postage copy reaches the storefront', () => {
     assert.match(lp, /^<p>Lightly Played /);
   });
 
-  it('never promises a photo it does not have', () => {
-    // Not keepable for every product: a pre-order has no card to photograph, and validateProduct only
-    // WARNS on a row with no image rather than refusing it.
-    const ok = buildShopifyDescription(row(), { img: 'https://x/y.png', cond: 'NM' });
-    assert.match(ok, /we photograph the actual card/);
-    for (const over of [{ release_status: 'pre-order' }, { image_url: null, image: null }]) {
+  // THIS TEST USED TO ASSERT THE BUG, and it is worth knowing how, because the failure was subtle and
+  // the test's NAME was right the whole time. It checked that the photography claim disappeared for
+  // `{ release_status: 'pre-order' }` and `{ image_url: null, image: null }` — and it did, in the test.
+  // In production it never could: `release_status` and `image` are not columns, and real rows come from
+  // SELECT * so they never carry those keys at all, while `image_url` is always populated (it is the
+  // catalogue art, and a row without it fails compose before publishing). The fixture could reach
+  // branches the database could not. Green, and wrong, all the way to a customer-facing page.
+  //
+  // The claim is now unconditional in the OTHER direction: catalogue art, which is the truth for every
+  // product the pipeline can currently produce (bk-shopify D-030, PHOTO-PROVENANCE.md §1.1).
+  it('claims stock artwork, not photography, because that is what we publish', () => {
+    for (const over of [{}, { release_status: 'pre-order' }, { image_url: null }, { condition: 'Lightly Played' }]) {
       const h = toShopifyProduct(row(over)).descriptionHtml;
-      assert.doesNotMatch(h, /we photograph the actual card/, JSON.stringify(over));
-      // …but the provenance line is unconditional, because it is true of everything we sell.
+      assert.match(h, /Pictured with stock artwork/, JSON.stringify(over));
+      assert.doesNotMatch(h, /photograph the actual card/, JSON.stringify(over));
+      assert.doesNotMatch(h, /What you see is what you get/, JSON.stringify(over));
+      // …and the provenance line stays unconditional, because it is true of everything we sell.
       assert.match(h, /Run by collectors in Newcastle, not a warehouse\./);
+    }
+  });
+
+  // The photographed sentence still exists as a constant and must stay correct for the day it becomes
+  // reachable — but nothing may emit it until owner photo bytes can actually reach the compositor.
+  it('does not emit the photographed sentence from any input, because none can be true yet', () => {
+    for (const over of [{}, { photo_urls: ['https://x/front.jpg'] }, { image: 'https://x/front.jpg' }]) {
+      assert.doesNotMatch(toShopifyProduct(row(over)).descriptionHtml, /Photographed as it is/, JSON.stringify(over));
     }
   });
 
