@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import {
   toShopifyProduct, validateProduct, buildShopifyTitle, buildShopifyDescription,
   identityKeyFor, identityHandleFor, productHandleFor, buildTags, buildMetafields, slug,
-  PRODUCT_TYPES, TAXONOMY,
+  dispatchWeightGrams,
+  PRODUCT_TYPES, TAXONOMY, DISPATCH_WEIGHT_GRAMS, SEALED_DISPATCH_WEIGHT_GRAMS,
 } from '../../lib/channels/shopify-map.mjs';
 
 // A base row shaped like an inventory_items record after a DB round-trip — i.e. WITHOUT the lookup
@@ -326,6 +327,75 @@ describe('the product shape', () => {
   });
 });
 
+describe('dispatch weight — nothing publishes at 0 kg', () => {
+  // The defect this suite exists for: AAC-089, the first real dev-store publish, landed with
+  // `inventoryItem.measurement.weight` reading `0 KILOGRAMS`, because no birth path set one. A 0 kg
+  // parcel cannot be labelled by Shopify Shipping/AusPost and silently mis-prices any weight-based
+  // rate, so "present and non-zero" is the property, per product type.
+
+  it('every product type in the theme vocabulary has a non-zero weight', () => {
+    for (const type of Object.values(PRODUCT_TYPES)) {
+      const g = dispatchWeightGrams({}, type);
+      assert.ok(Number.isFinite(g) && g > 0, `${type} weighs ${g} — a 0 kg parcel cannot buy a label`);
+      assert.equal(g, Math.round(g), `${type} weight must be whole grams, got ${g}`);
+    }
+  });
+
+  it('the table is keyed by PRODUCT_TYPES itself, so the two cannot drift', () => {
+    // A new product type added to the vocabulary without a weight would otherwise publish at zero,
+    // which is exactly how this got missed the first time.
+    assert.deepEqual(
+      Object.keys(DISPATCH_WEIGHT_GRAMS).sort(),
+      Object.values(PRODUCT_TYPES).slice().sort(),
+    );
+  });
+
+  it('a raw single carries its packed weight — card plus sleeve, toploader and rigid mailer', () => {
+    const p = toShopifyProduct(row());
+    assert.equal(p.productType, PRODUCT_TYPES.single);
+    assert.equal(p.weight_grams, 30);
+  });
+
+  it('a graded slab is far heavier than a raw single, because the slab itself is', () => {
+    const p = toShopifyProduct(row({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '1' }));
+    assert.equal(p.productType, PRODUCT_TYPES.slab);
+    assert.equal(p.weight_grams, 150);
+    assert.ok(p.weight_grams > toShopifyProduct(row()).weight_grams);
+  });
+
+  it('sealed weighs by its own product_type, mirroring the SEALED_LISTING_PLAN §8 table', () => {
+    // Not invented here: §8 quotes ~60 g / ~250–300 g / ~1.0–1.3 kg, and each row takes the TOP of its
+    // range, because an under-declared parcel buys a label Australia Post will not honour.
+    assert.equal(dispatchWeightGrams({ product_type: 'booster_pack' }, PRODUCT_TYPES.sealed), 60);
+    assert.equal(dispatchWeightGrams({ product_type: 'booster_bundle' }, PRODUCT_TYPES.sealed), 300);
+    assert.equal(dispatchWeightGrams({ product_type: 'booster_box' }, PRODUCT_TYPES.sealed), 1300);
+  });
+
+  it('an unclassified sealed row falls back HEAVY, never under the heaviest type we know', () => {
+    const heaviest = Math.max(...Object.values(SEALED_DISPATCH_WEIGHT_GRAMS));
+    for (const product_type of ['elite_trainer_box', 'tin', 'other', '', null, undefined]) {
+      const g = dispatchWeightGrams({ product_type }, PRODUCT_TYPES.sealed);
+      assert.ok(g >= heaviest, `sealed "${product_type}" fell back to ${g}, under the known ${heaviest}`);
+    }
+  });
+
+  it('a measured weight on the row beats the table outright', () => {
+    // The table is a component sum, not a scale reading (GR4). The day a row carries a real number,
+    // nothing here is consulted.
+    assert.equal(toShopifyProduct(row({ weight_grams: 41 })).weight_grams, 41);
+    assert.equal(dispatchWeightGrams({ weight_grams: 2500 }, PRODUCT_TYPES.single), 2500);
+    // …but a junk value must not shadow the table into zero.
+    for (const bad of [0, -5, '', null, 'heavy', NaN, Infinity]) {
+      assert.equal(dispatchWeightGrams({ weight_grams: bad }, PRODUCT_TYPES.single), 30, String(bad));
+    }
+  });
+
+  it('returns 0 for a type nothing has weighed, rather than inventing a default', () => {
+    // 0 is a refusal, not a value — validateProduct turns it into a hard error below.
+    assert.equal(dispatchWeightGrams({}, 'Trading Card Booster Fridge'), 0);
+  });
+});
+
 describe('validateProduct — the refusals land before the scope does', () => {
   const check = (over, opts) => {
     const it2 = row(over);
@@ -367,6 +437,16 @@ describe('validateProduct — the refusals land before the scope does', () => {
 
   it('refuses a missing SKU', () => {
     assert.match(errs({ sku: null }), /no SKU/);
+  });
+
+  it('refuses a zero dispatch weight — the AAC-089 defect, made unpublishable', () => {
+    // Reached by hand rather than through a row, because no product type in the table can produce it.
+    const p = toShopifyProduct(row());
+    for (const weight_grams of [0, null, undefined, -1]) {
+      const v = validateProduct({ ...p, weight_grams }, row());
+      assert.match(v.errors.join(' | '), /no dispatch weight/, String(weight_grams));
+    }
+    assert.deepEqual(validateProduct(p, row()).errors, [], 'a real row must still pass');
   });
 
   it('warns rather than blocks on the things a storefront can render around', () => {
