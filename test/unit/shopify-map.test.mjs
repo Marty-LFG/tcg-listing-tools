@@ -222,11 +222,23 @@ describe('metafields', () => {
     assert.equal(get(zh).value, 'false', 'a Chinese printing is an import, but it is not THIS field');
   });
 
-  it('carries the custom.id upsert key, typed `id` so Shopify enforces uniqueness', () => {
+  // This test previously asserted type:'id' and was WRONG — it encoded the assumption that produced
+  // METAFIELD_MISMATCH on the very first real publish. When custom.id is also identifier.customId,
+  // Shopify requires it in the metafields array (so the identifier cannot be deleted by omission) but
+  // refuses the mutation if it carries its type. Measured against the real dev store 2026-08-25:
+  // identical payloads, type present vs absent — the first is refused, the second creates the product.
+  // The definition on the store already fixes the type, so uniqueness is enforced either way.
+  it('carries the custom.id upsert key with NO type — productSet refuses it otherwise', () => {
     const k = p.metafields.find((m) => m.namespace === 'custom' && m.key === 'id');
     assert.equal(k.value, 'AAC-085');
-    assert.equal(k.type, 'id');
+    assert.ok(!('type' in k), 'sending `type` on the identifying metafield causes METAFIELD_MISMATCH');
     assert.deepEqual(p.customId, { namespace: 'custom', key: 'id', value: 'AAC-085' });
+  });
+
+  it('still types every metafield that is NOT the identifier', () => {
+    for (const m of p.metafields.filter((x) => !(x.namespace === 'custom' && x.key === 'id'))) {
+      assert.ok(m.type, `${m.namespace}.${m.key} must keep its type — only the identifier is special`);
+    }
   });
 
   it('writes bkc.card only once the identity metaobject exists', () => {
