@@ -133,7 +133,7 @@ describe('the shared product wording is imported, not re-typed', () => {
     // CARD_FOOTER are deliberately NOT here: "Thanks for looking" and "item specifics" are eBay idiom,
     // and the condition suffix duplicates the parcel sentence now that condition leads the identity
     // line (A7, 2026-08-23).
-    for (const k of ['CARD_PROTECTION', 'SLAB_PROTECTION', 'SHOPIFY_WYSIWYG', 'SHOPIFY_PROVENANCE']) {
+    for (const k of ['CARD_PROTECTION', 'SLAB_PROTECTION', 'SHOPIFY_CATALOGUE_ART', 'SHOPIFY_PROVENANCE']) {
       assert.match(src, new RegExp('\\b' + k + '\\b'), `${k} should be imported rather than restated`);
     }
     // If a frozen sentence ever appears as a LITERAL here, the mirror the import exists to avoid is
