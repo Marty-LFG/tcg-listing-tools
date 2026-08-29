@@ -1720,7 +1720,7 @@ verified, and an amended bundle cannot render a plain success state.
 
 | # | Constraint (§2.2) | Mechanism |
 | --- | --- | --- |
-| 1 | No monetary values customer-facing | **(a)** Public projections are database views with no monetary column. **(b)** A sanitiser deep-walks every outbound payload and **throws** on a money-shaped key or value-claim string — throwing, because a silently stripped field is a defect nobody sees. **(c)** A test seeds known values and asserts those **literal numbers** appear nowhere in any response |
+| 1 | No monetary values customer-facing | **(a)** Public projections are database views with no monetary column. **(b)** A sanitiser deep-walks every outbound payload and **throws** on a money-shaped key or value-claim string — throwing, because a silently stripped field is a defect nobody sees. The key pattern is **segment-anchored**, `/(^|_)(cents|price|cost|paid|amount|aud|usd|profit|margin|rrp)($|_)/i`: an unanchored version matches `grading_company` through "comp" and a bare `value`, both legitimate fields, so it would throw on a valid payload. Money here is always a `*_cents` column, so anchoring costs nothing. **(c)** A test seeds known values and asserts those **literal numbers** appear nowhere in any response |
 | 2 | Counts, never ratios | The guarantee is generated; the only count renderer emits an integer-to-word form. A test scans for `%`, `/`, "odds", "chance", "probability" |
 | 3 | Guarantee true of the manifest | §11.2 |
 | 4 | Language disclosed | The lock is refused if the claim set lacks a language claim while any item's language is non-default |
