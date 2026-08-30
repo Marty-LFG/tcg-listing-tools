@@ -203,6 +203,86 @@ describe('claiming and binding stock', () => {
   });
 });
 
+// THE BULK ROUTES, driven for real. The single-item guards were proven above; these are the ones an
+// audit found unguarded AFTER the seven-call-site work was reported complete. A batch delete cascades
+// over every in_stock row, and a reservation never changes an item's status — reservation is
+// orthogonal to lifecycle by design — so reserved rows sat squarely inside that WHERE clause.
+describe('a batch cannot take reserved stock with it', () => {
+  let batchId, batchItem;
+
+  before(async () => {
+    const made = await post('/api/inventory/batches', {
+      batch: { game: 'pokemon', source: 'manual', set_name: 'Test Batch' }, rows: [],
+    });
+    batchId = made.json?.batch_id ?? made.json?.id;
+    assert.ok(batchId, 'no batch: ' + made.text);
+    const item = await post('/api/inventory/items', {
+      game: 'pokemon', name: 'Batched Slab', quantity: 1, status: 'in_stock',
+      grading_company: 'PSA', grade: 10, cert_number: 'TESTCERT-BATCH', batch_id: batchId,
+    });
+    batchItem = item.json?.id;
+    assert.ok(batchItem, 'no batched item: ' + item.text);
+    const held = await post('/api/runs/hold', { kind: 'inventory', item_id: batchItem });
+    assert.equal(held.status, 201, held.text);
+  });
+
+  it('refuses to delete the batch WITH its items, and names what it is protecting', async () => {
+    const r = await req('DELETE', `/api/inventory/batches/${batchId}?items=1`);
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'reserved_for_run');
+    assert.equal(r.json.blocked.length, 1);
+    assert.equal(r.json.blocked[0].item_id, batchItem);
+
+    const still = await get(`/api/inventory/items/${batchItem}`);
+    assert.equal(still.status, 200, 'the row must survive a refused delete');
+  });
+
+  it('still lets the batch itself go — only ?items=1 is destructive', async () => {
+    const r = await req('DELETE', `/api/inventory/batches/${batchId}`);
+    assert.equal(r.status, 200);
+    assert.equal((await get(`/api/inventory/items/${batchItem}`)).status, 200,
+      'a bare batch delete unlinks rather than deletes — that was always true and must stay true');
+  });
+});
+
+// The sealed twin. Sealed is normally the ONE case where a run hold shrinks the sellable quantity
+// instead of blocking — but there is no smaller version of deleting the row the run draws from.
+describe('sealed stock a run is drawing from cannot be deleted', () => {
+  let sealedItem;
+
+  before(async () => {
+    const made = await post('/api/sealed/items', {
+      game: 'pokemon', product_type: 'booster_pack', name: 'Test Boosters',
+      quantity: 40, status: 'in_stock',
+    });
+    sealedItem = made.json?.id;
+    assert.ok(sealedItem, 'no sealed item: ' + made.text);
+    const held = await post('/api/runs/hold', { kind: 'sealed', item_id: sealedItem, qty: 12 });
+    assert.equal(held.status, 201, held.text);
+  });
+
+  it('refuses the delete and says how many units are spoken for', async () => {
+    const r = await req('DELETE', `/api/sealed/items/${sealedItem}`);
+    assert.equal(r.status, 409);
+    assert.equal(r.json.code, 'reserved_for_run');
+    assert.equal(r.json.units_held, 12);
+  });
+
+  it('but LISTING the pool is still fine — it sells what the run did not take', async () => {
+    // The asymmetry that makes sealed different, asserted rather than described: a shared pool stays
+    // sellable, just for fewer units.
+    const r = await get('/api/runs/DEV-E1/candidates?slot=packs');
+    const row = r.json.candidates.find((c) => c.id === sealedItem);
+    assert.equal(row.on_hand, 40);
+    assert.equal(row.reserved_units, 12);
+    assert.equal(row.available, 28);
+  });
+
+  it('?force=1 gets past it, because the physical world occasionally wins', async () => {
+    const r = await req('DELETE', `/api/sealed/items/${sealedItem}?force=1`);
+    assert.equal(r.status, 200);
+  });
+});
 describe('the manifest is the one gated route', () => {
   it('refuses without a bearer token', async () => {
     const r = await get('/api/runs/DEV-E1/manifest');

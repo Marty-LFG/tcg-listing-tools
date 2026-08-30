@@ -27,6 +27,8 @@ const GUARDS = [
   ['lib/listings.mjs', 'import', 'publishes a card to eBay, singly and in batches'],
   ['lib/sealed-listing.mjs', 'import', 'sells sealed pools — SHRINKS the quantity rather than refusing'],
   ['lib/inventory.mjs', 'import', 'patches, marks sold and deletes stock rows'],
+  ['lib/sealed.mjs', 'import', 'deletes sealed rows, singly and by the batch'],
+  ['lib/postsale.mjs', 'import', 'decrements on a real sale — BREAKS the reservation rather than blocking it'],
   ['lib/repricer-scan.mjs', 'import', 'resolves the reservation the pure decider is handed'],
   ['lib/channels/shopify-map.mjs', 'code', 'pure mapper; validateProduct refuses on a flag the caller sets'],
   ['lib/repricer-decide.mjs', 'code', 'pure decider; eligibleForReprice refuses on a flag the caller sets'],
@@ -89,4 +91,126 @@ describe('only the reserve module knows what the reservation states mean', () =>
         `${f} names a reservation state literally — lib/${OWNER} owns that vocabulary`);
     });
   }
+});
+
+// THE HOLE THIS CLOSES, and it was open for a day. The suite above is FILE-granular: it asks whether
+// lib/inventory.mjs mentions the reserve module. It did — for three routes — while a FOURTH,
+// `DELETE /batches/:id?items=1`, ran `DELETE FROM inventory_items WHERE batch_id = ? AND status =
+// 'in_stock'` with no check at all. A reservation never changes an item's status (it is orthogonal to
+// lifecycle, by design), so reserved rows sat squarely inside that WHERE clause and were deleted
+// outright, leaving the reservation dangling with no foreign key to catch it. Every test passed.
+//
+// So the rule is now per-STATEMENT: every statement that disposes of stock must have a guard between
+// it and the top of the route that reaches it.
+// THE HOLE THIS CLOSES, and it was open for a day. The suite above is FILE-granular: it asks whether
+// lib/inventory.mjs mentions the reserve module. It did — for three routes — while a FOURTH,
+// `DELETE /batches/:id?items=1`, ran `DELETE FROM inventory_items WHERE batch_id = ? AND status =
+// 'in_stock'` with no check at all. A reservation never changes an item's status (it is orthogonal to
+// lifecycle, by design), so reserved rows sat squarely inside that WHERE clause and were deleted
+// outright, leaving the reservation dangling with no foreign key to catch it. Every test passed.
+//
+// So the rule is now per-STATEMENT: every statement that disposes of stock must have a guard between
+// it and the top of the route that reaches it.
+
+// Deleting a row, or taking it out of stock. Anchored to DELETE FROM and UPDATE ... SET status so a
+// SELECT that merely COUNTS sold rows is not mistaken for disposal.
+const DESTRUCTIVE = /DELETE FROM (inventory_items|sealed_items)\b|UPDATE (inventory_items|sealed_items) SET status = 'sold'/;
+const GUARD = /reservationBlock\(|blockIfHeld\(|assertNotReserved\(/;
+// Where a route begins in these routers: an exact path match, or a regex match into `m`.
+const ROUTE_START = /^\s*if \(\(m = p\.match\(|^\s*if \(p === '/;
+
+// Returns one string per disposing statement that has no guard above it inside its own route.
+function unguardedDisposals(source) {
+  const lines = source.split(/\r?\n/);
+  let routeAt = -1;
+  const out = [];
+  let seen = 0;
+  lines.forEach((line, i) => {
+    if (ROUTE_START.test(line)) routeAt = i;
+    if (!DESTRUCTIVE.test(line)) return;
+    seen++;
+    if (routeAt < 0) { out.push(`${i + 1}: outside any route — ${line.trim()}`); return; }
+    if (!GUARD.test(lines.slice(routeAt, i).join('\n'))) {
+      out.push(`${i + 1}: ${line.trim()} (route opens at line ${routeAt + 1})`);
+    }
+  });
+  return { seen, unguarded: out };
+}
+
+describe('every route that disposes of stock consults the ledger, not merely every file', () => {
+  for (const file of ['lib/inventory.mjs', 'lib/sealed.mjs']) {
+    it(`${file} guards every disposing statement at the route that reaches it`, () => {
+      const { seen, unguarded } = unguardedDisposals(src(file));
+      assert.ok(seen > 0, `found no disposing statements in ${file} — the pattern drifted, not the code`);
+      assert.deepEqual(unguarded, [],
+        `${file} disposes of stock without consulting lib/${OWNER} first:\n  ` + unguarded.join('\n  '));
+    });
+  }
+
+  // A detector that cannot fail is a comment with a green tick next to it. These two cases are the
+  // real defect and its fix, reduced to their shapes, so the scan above is known to have teeth.
+  it('DOES flag the shape of the defect it was written for', () => {
+    const bad = [
+      "      if ((m = p.match(/^\\/batches\\/(\\d+)$/)) && method === 'DELETE') {",
+      '        const id = +m[1];',
+      "        db.prepare(`DELETE FROM inventory_items WHERE batch_id = ? AND status = 'in_stock'`).run(id);",
+      '      }',
+    ].join('\n');
+    const { seen, unguarded } = unguardedDisposals(bad);
+    assert.equal(seen, 1);
+    assert.equal(unguarded.length, 1, 'the scan missed an unguarded batch delete');
+  });
+
+  it('and does NOT flag the same route once a guard is added', () => {
+    const good = [
+      "      if ((m = p.match(/^\\/batches\\/(\\d+)$/)) && method === 'DELETE') {",
+      '        const id = +m[1];',
+      "        const hit = reservationBlock(db, row.id, q, 'delete batch items');",
+      '        if (hit) return send(res, 409, hit);',
+      "        db.prepare(`DELETE FROM inventory_items WHERE batch_id = ? AND status = 'in_stock'`).run(id);",
+      '      }',
+    ].join('\n');
+    assert.deepEqual(unguardedDisposals(good).unguarded, []);
+  });
+
+  // The guard has to be inside the SAME route, not merely somewhere earlier in the file — that is
+  // precisely the mistake the file-granular version made.
+  it('does not accept a guard that belongs to a DIFFERENT route', () => {
+    const sneaky = [
+      "      if ((m = p.match(/^\\/items\\/(\\d+)$/)) && method === 'DELETE') {",
+      "        const blocked = reservationBlock(db, +m[1], q, 'delete item');",
+      '        if (blocked) return send(res, 409, blocked);',
+      '      }',
+      "      if ((m = p.match(/^\\/batches\\/(\\d+)$/)) && method === 'DELETE') {",
+      "        db.prepare(`DELETE FROM inventory_items WHERE batch_id = ? AND status = 'in_stock'`).run(+m[1]);",
+      '      }',
+    ].join('\n');
+    assert.equal(unguardedDisposals(sneaky).unguarded.length, 1,
+      'a guard in the route above must not cover the route below it');
+  });
+});
+describe('the sale path breaks the reservation rather than blocking the sale', () => {
+  // The function's own text, from its declaration to the start of the next top-level one. Sliced on
+  // the NEXT `export ` rather than a closing brace, because a brace-counting scan over a file with
+  // template literals full of SQL is a parser nobody should be writing in a test.
+  const post = src('lib/postsale.mjs');
+  const from = post.indexOf('export function applyStockDecrements');
+  const next = post.indexOf('export ', from + 10);
+  const body = post.slice(from, next > 0 ? next : undefined);
+
+  it('is found, so the slice below is not silently empty', () => {
+    assert.ok(from > 0 && body.length > 400, 'applyStockDecrements moved or was renamed');
+  });
+
+  it('calls breakOversoldReservations', () => {
+    assert.match(body, /breakOversoldReservations\(/,
+      'the decrement is exempt from refusing ONLY because it reports the breakage instead — '
+      + 'without the hook it is just an unguarded disposal path');
+  });
+
+  it('and does NOT refuse the sale', () => {
+    assert.ok(!/blockIfHeld\(|reservationBlock\(|assertNotReserved\(/.test(body),
+      'a real sale must never be blocked by a reservation — that leaves the shop believing it owns '
+      + 'a card someone has already paid for');
+  });
 });

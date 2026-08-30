@@ -10,7 +10,7 @@ import { tmpFile } from '../helpers/tmp.mjs';
 import {
   liveReservation, reservedUnits, onHandUnits, availableUnits, assertNotReserved, channelHoldFor,
   holdForRun, assignToSlot, releaseReservation, consumeReservation, breakReservation, abandonRun,
-  devRunHoldings, reservedPoolUnits,
+  devRunHoldings, reservedPoolUnits, blockIfHeld, breakOversoldReservations,
 } from '../../lib/runs-reserve.mjs';
 
 const db = openDbAt(tmpFile('runs-reserve.db'));
@@ -364,5 +364,121 @@ describe('reservedPoolUnits — the sealed aggregate the listing side actually a
 
   it('a pool nobody has reserved reports zero rather than throwing', () => {
     assert.equal(reservedPoolUnits(db, 'POOL-THAT-DOES-NOT-EXIST'), 0);
+  });
+});
+
+// --- when the shelf loses an argument with the ledger -------------------------------------------
+//
+// applyStockDecrements is the ONE disposing path that must not refuse. If a reserved slab genuinely
+// sold on eBay, the sale is real, and blocking the decrement would leave the shop believing it owns a
+// card someone has paid for. It pays for that exemption by telling the run: the reservation flips to
+// `broken`, which is never deleted because it IS the incident record, and lockRun refuses while one
+// stands.
+//
+// This existed as an exported function with a unit test and NO PRODUCTION CALLER for a day. The
+// invariant suite now asserts the wiring; these assert the rule.
+describe('breakOversoldReservations', () => {
+  it('inventory: the object is gone, so the reservation is broken — no judgement needed', () => {
+    const { runId, bundleId } = mkRun('live');
+    const item = mkInv({ cert_number: 'CERT-SOLD-AWAY' });
+    const h = holdForRun(db, { kind: 'inventory', itemId: item, runId });
+    assignToSlot(db, { reservationId: h.id, bundleId, slot: 'slab' });
+
+    // What a real sale leaves behind: quantity 0, status sold. The decrement has ALREADY happened.
+    db.prepare("UPDATE inventory_items SET quantity = 0, status = 'sold' WHERE id = ?").run(item);
+    const broken = breakOversoldReservations(db, 'inventory', item, 'sold on order 99-TEST');
+
+    assert.equal(broken.length, 1);
+    assert.equal(db.prepare('SELECT state FROM run_reservations WHERE id=?').get(h.id).state, 'broken');
+    const row = db.prepare("SELECT action, note FROM run_audit WHERE entity_id=? AND action='reservation_broken'").get(h.id);
+    assert.ok(row, 'a broken reservation with no audit row is not an incident record');
+    assert.match(row.note, /99-TEST/);
+  });
+
+  it('inventory: a PARTIAL sale that left the object on the shelf breaks nothing', () => {
+    const { runId } = mkRun('live');
+    const item = mkInv();
+    const h = holdForRun(db, { kind: 'inventory', itemId: item, runId });
+    assert.deepEqual(breakOversoldReservations(db, 'inventory', item, 'someone else sold'), []);
+    assert.equal(db.prepare('SELECT state FROM run_reservations WHERE id=?').get(h.id).state, 'active');
+  });
+
+  // The sealed rule, and the reason it needs one: a single sealed row legitimately backs both a run
+  // and the shop, so a sale off it is USUALLY fine. Only an oversell is an incident.
+  it('sealed: a sale the pool can still cover breaks nothing', () => {
+    const { runId } = mkRun('live');
+    const item = mkSealed(10);
+    const h = holdForRun(db, { kind: 'sealed', itemId: item, runId, qty: 4 });
+    db.prepare('UPDATE sealed_items SET quantity = 6 WHERE id = ?').run(item);   // four sold to the shop
+    assert.deepEqual(breakOversoldReservations(db, 'sealed', item, 'shop sale'), []);
+    assert.equal(db.prepare('SELECT state FROM run_reservations WHERE id=?').get(h.id).state, 'active');
+  });
+
+  it('sealed: an OVERSELL breaks the fewest holds that restore the invariant, newest first', () => {
+    const { runId } = mkRun('live');
+    const item = mkSealed(10);
+    const older = holdForRun(db, { kind: 'sealed', itemId: item, qty: 3 });          // held for runs at large
+    const newer = holdForRun(db, { kind: 'sealed', itemId: item, runId, qty: 3 });   // held for this run
+    assert.equal(reservedUnits(db, 'sealed', item), 6);
+
+    // Eight sold. Two left on the shelf against six promised — four short.
+    db.prepare('UPDATE sealed_items SET quantity = 2 WHERE id = ?').run(item);
+    const broken = breakOversoldReservations(db, 'sealed', item, 'sold on order 99-TEST');
+
+    // Breaking the newest 3 leaves 3 promised against 2 on hand — still short — so the older one goes
+    // too. Both, but in that order, and the note carries how far short it was.
+    assert.equal(broken.length, 2);
+    assert.deepEqual(broken.map((b) => b.id), [newer.id, older.id],
+      'the most recently placed hold is the one least likely to be packed already');
+    const note = db.prepare("SELECT note FROM run_audit WHERE entity_id=? AND action='reservation_broken'").get(newer.id).note;
+    assert.match(note, /4 unit\(s\) short/);
+  });
+
+  it('sealed: stops as soon as the shelf covers what is left, rather than breaking everything', () => {
+    const { runId } = mkRun('live');
+    const item = mkSealed(10);
+    const older = holdForRun(db, { kind: 'sealed', itemId: item, qty: 2 });
+    const newer = holdForRun(db, { kind: 'sealed', itemId: item, runId, qty: 3 });
+    db.prepare('UPDATE sealed_items SET quantity = 2 WHERE id = ?').run(item);   // 5 promised, 2 on hand
+
+    const broken = breakOversoldReservations(db, 'sealed', item, 'shop oversold');
+    assert.deepEqual(broken.map((b) => b.id), [newer.id], 'breaking the newest 3 already restores it');
+    assert.equal(db.prepare('SELECT state FROM run_reservations WHERE id=?').get(older.id).state, 'active');
+  });
+});
+
+// blockIfHeld is the DESTRUCTIVE guard, and it differs from assertNotReserved in exactly one way that
+// matters: it refuses for sealed too. Shrinking the sellable quantity answers 'may I list this pool';
+// it is no answer at all to 'may I delete the row the run draws its boosters from'.
+describe('blockIfHeld — the guard for deleting rather than listing', () => {
+  it('refuses a held SEALED row, where assertNotReserved deliberately does not', () => {
+    const { runId } = mkRun('live');
+    const item = mkSealed(10);
+    holdForRun(db, { kind: 'sealed', itemId: item, runId, qty: 3 });
+
+    assert.equal(assertNotReserved(db, 'sealed', item), null, 'listing a shared pool is still fine');
+    const blocked = blockIfHeld(db, { kind: 'sealed', itemId: item, action: 'delete' });
+    assert.equal(blocked.code, 'reserved_for_run');
+    assert.equal(blocked.units_held, 3);
+    assert.match(blocked.error, /3 unit\(s\)/);
+  });
+
+  it('lets a free row through', () => {
+    assert.equal(blockIfHeld(db, { kind: 'sealed', itemId: mkSealed(5), action: 'delete' }), null);
+    assert.equal(blockIfHeld(db, { kind: 'inventory', itemId: mkInv(), action: 'delete' }), null);
+  });
+
+  it('force PROCEEDS and leaves a record — an override with no trail is just a hole', () => {
+    const { runId } = mkRun('live');
+    const item = mkInv({ cert_number: 'CERT-FORCED' });
+    const h = holdForRun(db, { kind: 'inventory', itemId: item, runId });
+    assert.ok(blockIfHeld(db, { kind: 'inventory', itemId: item, action: 'delete item' }));
+    assert.equal(blockIfHeld(db, { kind: 'inventory', itemId: item, force: true, action: 'delete item' }), null);
+
+    const row = db.prepare("SELECT note FROM run_audit WHERE entity_id=? AND action='reservation_override'").get(item);
+    assert.ok(row, 'a forced override must be recorded against the item');
+    assert.match(row.note, /delete item forced/);
+    // And it does NOT release the hold: forcing past a guard is not the same as changing your mind.
+    assert.equal(db.prepare('SELECT state FROM run_reservations WHERE id=?').get(h.id).state, 'active');
   });
 });
