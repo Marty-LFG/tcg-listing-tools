@@ -488,3 +488,38 @@ describe('centeringBand: the cleared band, and the one just missed', () => {
     assert.equal(hit.missed, null)
   })
 })
+
+// ----------------------------------------------------------------- centeringWants
+// One phrasing of the missed band, shared by the dashboard rows, the grader's pill and the printed
+// report — so those three surfaces cannot word the same fact differently.
+describe('centeringWants: how the missed band is worded', () => {
+  test('names the grade above and the side that failed, one decimal', () => {
+    const [top, next] = cfg.centering.PSA
+    const wants = GR.centeringWants(GR.centeringBand('PSA', top.front + 1, null, cfg))
+    assert.equal(wants, `${top.grade} wants ≤ ${top.front.toFixed(1)} front`)
+    assert.ok(!wants.includes('back'), 'an unmeasured back is not something to want')
+    assert.equal(next.grade < top.grade, true)
+  })
+
+  test('a back-limited miss says back, and a both-limited miss says both', () => {
+    assert.equal(GR.centeringWants(GR.centeringBand('PCG', 55, 61, cfg)), '9 wants ≤ 60.0 back')
+    const both = GR.centeringWants(GR.centeringBand('TAG', 75, 95, cfg))
+    assert.match(both, /front \+ .*back$/)
+  })
+
+  test('null when the top band is already cleared, and for a null hit', () => {
+    const top = cfg.centering.PSA[0]
+    assert.equal(GR.centeringWants(GR.centeringBand('PSA', top.front, top.back, cfg)), null)
+    assert.equal(GR.centeringWants(null), null)
+    assert.equal(GR.centeringWants(GR.centeringBand('PSA', null, null, cfg)), null)
+  })
+
+  // jsPDF's core fonts are WinAnsi and carry no math operators, so the printed report asks for
+  // '<=' and MUST get pure ASCII back — a stray U+2264 prints as rubbish on paper.
+  test('the le override swaps the glyph and leaves the string ASCII-only', () => {
+    const [top] = cfg.centering.PSA
+    const wants = GR.centeringWants(GR.centeringBand('PSA', top.front + 1, null, cfg), '<=')
+    assert.equal(wants, `${top.grade} wants <= ${top.front.toFixed(1)} front`)
+    assert.ok(!/[^\x20-\x7E]/.test(wants), `not ASCII-safe for the PDF: ${wants}`)
+  })
+})

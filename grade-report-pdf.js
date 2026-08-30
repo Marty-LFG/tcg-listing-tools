@@ -489,6 +489,12 @@
       P.text('Centering alone caps this card at PSA ' + gradeStr(d.centering.psaCap) + '.',
         tx, ty, { size: 7.8, color: INK, style: 'bold' });
       ty += 5;
+      // and what the band above would have taken — the cap alone never says how close it was.
+      // The caller supplies this already spelled with '<=' (WinAnsi has no math operators).
+      if (d.centering.psaWants) {
+        P.text('PSA ' + str(d.centering.psaWants) + '.', tx, ty, { size: 7.2, color: MUTED });
+        ty += 4.6;
+      }
     }
 
     P.y = Math.max(top + (res ? res.h : 40) + 10, ty + 2);

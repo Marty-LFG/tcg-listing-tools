@@ -405,8 +405,8 @@ cert number, tries to auto-fill the card identity + grade.
   deep-link to that company's official verify page (cert pre-filled where the URL format is known,
   e.g. TAG `tagd.co/{cert}`, PCGCN's QR page) and the form degrades to **manual entry**
   (Golden Rule 7). This registry is **broader** than the pre-grader's tolerance set in
-  `data/grading.config.json` (PSA/BGS/CGC/SGC/TAG) — you can own a slab from any company, but only
-  those with known tolerances get a predicted grade.
+  `data/grading.config.json` (PSA/BGS/CGC/PCG/TAG — SGC swapped for PCG 2026-08-22) — you can own a
+  slab from any company, but only those with known tolerances get a predicted grade.
 
 ### PSA — cert API  (`lib/psa.mjs`)
 - Upstream `https://api.psacard.com/publicapi`: `GET /cert/GetByCertNumber/{cert}` (card + grade)

@@ -73,6 +73,24 @@
     };
   };
 
+  // The ONE phrasing of "what the next band up would take", over a centeringBand hit — e.g.
+  // "10 wants <= 55.0 front". Shared by every surface that shows a centering cap (the dashboard
+  // rows, the grader's pill, the printed report) so the two screens and the paper cannot word the
+  // same fact differently. null means the top band was already cleared: there is nothing to want,
+  // and each caller decides how to say so.
+  // `le` overrides the "<=" glyph. The screens pass U+2264; the PDF must NOT — jsPDF's core fonts
+  // are WinAnsi, which has no math operators, so a real "<=" sign prints as rubbish.
+  GR.centeringWants = function (hit, le) {
+    if (!hit || !hit.missed) return null;
+    var op = le == null ? '≤' : le;
+    var bits = [];
+    if (hit.missedFront) bits.push(op + ' ' + hit.missed.front.toFixed(1) + ' front');
+    if (hit.missedBack && hit.missed.back != null) bits.push(op + ' ' + hit.missed.back.toFixed(1) + ' back');
+    if (!bits.length) return null;
+    var g = hit.missed.grade;
+    return (g % 1 === 0 ? String(g) : g.toFixed(1)) + ' wants ' + bits.join(' + ');
+  };
+
   // Highest grade whose centering tolerance the measured worst-axis % satisfies (<= band).
   GR.centeringGrade = function (company, frontWorst, backWorst, cfg) {
     var hit = GR.centeringBand(company, frontWorst, backWorst, cfg);

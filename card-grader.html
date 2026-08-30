@@ -1358,9 +1358,13 @@ function renderReport(pred, rf, rb){
   H+='<div class="rcard"><h3>Measured centering</h3>';
   // pill from the SAME bands the prediction uses (config-driven, back included) — hardcoded
   // 55/60 literals drifted from the editable config and from BGS's stricter 51
-  var cenG=GradeRules.centeringGrade('PSA', rf.worst, rb?rb.worst:null, CFG);
+  var cenB=GradeRules.centeringBand('PSA', rf.worst, rb?rb.worst:null, CFG);
+  var cenG=cenB?cenB.grade:null;
   var cenPill=cenG>=10?' <span class="pill high">PSA 10-capable</span>':cenG>=9?' <span class="pill medium">PSA ~'+gradeStr(cenG)+'</span>':' <span class="pill low">caps PSA at '+gradeStr(cenG)+'</span>';
-  H+='<div class="small">Front — L/R <b class="mono">'+rf.lrLabel+'</b>, T/B <b class="mono">'+rf.tbLabel+'</b> · worst <b class="mono" style="color:var(--gold)">'+rf.label+'</b> <span class="muted">('+rf.worstAxis+')</span>'+cenPill+'</div>';
+  // ...and WHY it caps there. The band above is the difference between "resubmit after a better
+  // scan" and "this card is never a 10", and the pill alone never said which.
+  var cenWants=GradeRules.centeringWants(cenB);
+  H+='<div class="small">Front — L/R <b class="mono">'+rf.lrLabel+'</b>, T/B <b class="mono">'+rf.tbLabel+'</b> · worst <b class="mono" style="color:var(--gold)">'+rf.label+'</b> <span class="muted">('+rf.worstAxis+')</span>'+cenPill+(cenWants?' <span class="muted mono">PSA '+esc(cenWants)+'</span>':'')+'</div>';
   var mmF=_pads.front.borderMm(primaryFront()?primaryFront().dpi:null);
   if(mmF) H+='<div class="small muted" style="margin-top:2px;">Borders — T <b class="mono">'+mmF.t.toFixed(1)+'</b> · B <b class="mono">'+mmF.b.toFixed(1)+'</b> · L <b class="mono">'+mmF.l.toFixed(1)+'</b> · R <b class="mono">'+mmF.r.toFixed(1)+'</b> mm</div>';
   if(rb) H+='<div class="small" style="margin-top:4px;">Back — L/R <b class="mono">'+rb.lrLabel+'</b>, T/B <b class="mono">'+rb.tbLabel+'</b> · worst <b class="mono">'+rb.label+'</b> <span class="muted">('+rb.worstAxis+')</span></div>';
@@ -1661,13 +1665,17 @@ async function downloadPDF(){
   var btn=$('pdfBtn'); btn.disabled=true;
   try{
     var L=window._lastPred, pf=primaryFront(), pb=primaryBack();
+    // one band walk for both the cap and the reason, so the paper cannot disagree with the screen
+    var psaBand=GradeRules.centeringBand('PSA', L.rf.worst, L.rb?L.rb.worst:null, CFG);
     var doc=await GradeReportPDF.build({
       card:{ name:val('f_name'), number:val('f_num'), set:val('f_set'), rarity:val('f_rarity'), finish:val('f_finish'), language:'EN' },
       cfg:CFG, pred:L.pred, econ:L.econ, bestCo:L.bestCo,
       centering:{ front:L.rf, back:L.rb,
         frontMm:_pads.front.borderMm(pf?pf.dpi:null),
         backMm:L.rb?_pads.back.borderMm(pb?pb.dpi:null):null,
-        psaCap:GradeRules.centeringGrade('PSA', L.rf.worst, L.rb?L.rb.worst:null, CFG) },
+        psaCap:psaBand?psaBand.grade:null,
+        // '<=' spelled out: jsPDF's core fonts are WinAnsi and have no math operators
+        psaWants:GradeRules.centeringWants(psaBand, '<=') },
       ai:_ai, shots:SHOTS, defects:pinnedDefects(),
       pricing:{ rawUSD:rawUSD(), valueAtGrade:valueAtGradeUSD },
       meta:{ generatedAt:new Date(), reportId:_reportId }

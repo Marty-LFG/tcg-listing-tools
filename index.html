@@ -557,15 +557,10 @@ function cnRead(face) {
   return GR.centeringPct(b);
 }
 
-// What the band immediately above the one you cleared would take. Every number here is read off
-// cfg.centering, never typed in.
-function cnWants(hit) {
-  if (!hit || !hit.missed) return 'top band';
-  const bits = [];
-  if (hit.missedFront) bits.push('≤' + hit.missed.front.toFixed(1) + ' front');
-  if (hit.missedBack) bits.push('≤' + hit.missed.back.toFixed(1) + ' back');
-  return bits.length ? gradeStr(hit.missed.grade) + ' wants ' + bits.join(' + ') : '';
-}
+// What the band immediately above the one you cleared would take. GR.centeringWants is the one
+// phrasing of that, shared with the pre-grader's pill and its printed report, and every number in
+// it is read off cfg.centering rather than typed. null means the top band is already cleared.
+const cnWants = (hit) => (hit ? GR.centeringWants(hit) || 'top band' : '');
 
 function cnRender() {
   const front = cnRead('front'), back = cnRead('back'), shown = cnFace === 'front' ? front : back;
