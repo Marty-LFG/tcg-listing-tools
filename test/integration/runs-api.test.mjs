@@ -354,6 +354,16 @@ describe('the intake page and the module it imports', () => {
       'the page must import the vocabulary rather than keeping its own copy');
   });
 
+  it('serves the manifest page, and its module imports both vocabularies', async () => {
+    const page = await get('/runs.html');
+    assert.equal(page.status, 200);
+    const proxy = /src="([^"]*html-proxy[^"]*)"/.exec(page.text);
+    assert.ok(proxy, 'the page has no module script');
+    const js = (await get(proxy[1])).text;
+    assert.match(js, /from '\/lib\/runs-rarity\.mjs'/);
+    assert.match(js, /from '\/lib\/runs-language\.mjs'/);
+  });
+
   it('serves the rarity module, with its dependency rewritten to something a browser can fetch', async () => {
     const r = await get('/lib/runs-rarity.mjs');
     assert.equal(r.status, 200);
