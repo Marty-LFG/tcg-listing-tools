@@ -189,9 +189,12 @@ Depth comes from layering, not decoration:
   the tool's accent, holding an inline SVG that inherits it via `currentColor`. One geometry
   across the whole set: `viewBox="0 0 24 24"`, `fill:none`, `stroke-width:1.5`, round caps and
   joins. **No emoji in tiles** — they render per-platform and fight the refined tone.
-- **The counter** (`index.html`) — the eBay fee solver as a ledger receipt: label, a dotted
-  leader (`border-bottom:1px dotted` on a zero-height flex filler), then the figure. Keeps a
-  green top-rule rather than the accent so it reads as a utility, not another tile.
+- **The counter** (`index.html`) — the masthead's ledger receipt: label, a dotted leader
+  (`border-bottom:1px dotted` on a zero-height flex filler), then the figure. Keeps a green
+  top-rule rather than the accent so it reads as a utility, not another tile. It now carries the
+  centering quick-reference — a `.seg` face switch, a 2×2 `.mmgrid` of mm fields, and a `.crow`
+  per grading company (code, grade, leader, the band it missed) — but the receipt primitives
+  (`.ctr-head`/`.ctr-row`/`.ctr-lbl`/`.leader`/`.ctr-in`/`.ctr-note`) are the reusable part.
 - **Finder** (`index.html`) — a mono filter field with a `/` `kbd` hint that fades on focus, a
   live `n of m` tally, and section bands that hide themselves when empty. Filters on a
   `data-find` attribute holding the words nobody puts in a title (`psa`, `mtg`, `to pack`).
@@ -275,7 +278,7 @@ matching `a.tool.t-*{--accent:…}` so its tile is the same colour as the page:
 | File | Role |
 |---|---|
 | `vault.css` | Shared design layer linked into the 15 builder/tool pages. Neutral-var re-theme + fonts + background + primitive restyles. |
-| `index.html` | The hub, and the reference for the index components: section rule, icon well + hairline icon set, counter, finder. |
+| `index.html` | The hub, and the reference for the index components: section rule, icon well + hairline icon set, counter (now the centering panel), `.seg` face switch, finder. |
 | `inventory.html` | The reference for the token block, button family, status rails and the `.slab`. Copy its `:root` when starting a flagship page. |
 | `favicon.svg` | The monogram as a tab icon. Every page links it (`<link rel="icon" href="/favicon.svg" type="image/svg+xml">` right after `<title>`). |
 | `data/grading-companies.json` | Per-company `theme{bg,fg,accent}` that drives the slab. |
