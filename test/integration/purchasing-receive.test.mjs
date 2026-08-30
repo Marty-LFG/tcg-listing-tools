@@ -261,6 +261,39 @@ describe('a bulk lot', () => {
   });
 });
 
+describe('a restock target that is LISTED', () => {
+  it('still merges — a listed product is on eBay, not gone', async () => {
+    // Restocking something currently listed is the ORDINARY case (the picker offers a `listed`
+    // filter for it). A guard that only accepted 'in_stock' split the pile across two SKUs, left the
+    // live listing's quantity untouched and never blended the cost basis.
+    const held = await sealedApi('/items', {
+      method: 'POST',
+      body: { game: 'pokemon', product_type: 'booster_box', name: 'Listed Box', quantity: 2, cost_cents: 10000 },
+    });
+    await sealedApi('/items/' + held.body.id, { method: 'PATCH', body: { status: 'listed' } });
+
+    const orderId = await makeOrder({ supplier: 'Listed Co' });
+    const line = await addLine(orderId, { qty_ordered: 3, unit_cost_cents: 14000, link: { kind: 'sealed', item_id: held.body.id } });
+    await count(line, { qty_received: 3, placements: [{ location: 'SHELF-L', quantity: 3 }] });
+
+    const before = withDb((db) => db.prepare('SELECT COUNT(*) n FROM sealed_items').get().n);
+    const dry = await api(`/orders/${orderId}/receive?dry=1`, { method: 'POST' });
+    assert.equal(dry.body.steps[0].action, 'merge', 'a listed product must be topped up, not duplicated');
+    assert.equal(dry.body.steps[0].target_id, held.body.id);
+
+    const r = await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    withDb((db) => {
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM sealed_items').get().n, before, 'no second SKU');
+      const row = db.prepare('SELECT quantity, status, cost_cents FROM sealed_items WHERE id = ?').get(held.body.id);
+      assert.equal(row.quantity, 5, '2 held + 3 received');
+      assert.equal(row.status, 'listed', 'and it is still the listing it was');
+      assert.equal(row.cost_cents, 12400, '(10000*2 + 14000*3) / 5');
+      assert.ok(mirrorHolds(db));
+    });
+  });
+});
+
 describe('a restock target that has left stock', () => {
   it('is not merged into — a sold row would swallow the delivery invisibly', async () => {
     // The card can sell while the restock is still on the water. Merging six boxes onto a row marked
@@ -341,6 +374,49 @@ describe('a deleted restock target', () => {
     withDb((db) => {
       assert.ok(mirrorHolds(db), 'and the mirror still holds afterwards');
     });
+  });
+});
+
+describe('a grading line', () => {
+  it('books the per-card fee once per submission, totalling what was paid', async () => {
+    // The fee is PER CARD. It used to be added in full to every named submission, so three cards on
+    // one line booked 3x what was paid — and promote() folds that into each slab's cost basis.
+    const mk = async (name) => (await (await fetch(base + '/api/inventory/submissions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: 'pokemon', name, grading_company: 'PSA', status: 'submitted' }),
+    })).json()).id;
+    const ids = [await mk('Card A'), await mk('Card B'), await mk('Card C')];
+
+    const orderId = await makeOrder({ supplier: 'PSA' });
+    const line = await addLine(orderId, {
+      line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'PSA bulk submission',
+      qty_ordered: 3, unit_cost_cents: 2500, submission_ids: ids,
+    });
+    await count(line, { qty_received: 3 });
+
+    const r = await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    withDb((db) => {
+      const rows = ids.map((id) => db.prepare('SELECT grading_cost_cents FROM grading_submissions WHERE id = ?').get(id));
+      for (const row of rows) assert.equal(row.grading_cost_cents, 2500, 'the per-card fee, once');
+      assert.equal(rows.reduce((s, x) => s + x.grading_cost_cents, 0), 7500, '3 cards x A$25.00 = what was paid');
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM sealed_items WHERE po_line_id = ?').get(line).n, 0,
+        'grading buys a service — it creates no stock');
+    });
+  });
+
+  it('refuses when the submissions named do not match the cards counted', async () => {
+    const orderId = await makeOrder({ supplier: 'PSA' });
+    const line = await addLine(orderId, {
+      line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'Mismatched submission',
+      qty_ordered: 1, unit_cost_cents: 2500, submission_ids: [1, 2, 3],
+    });
+    await count(line, { qty_received: 1 });
+    const dry = await api(`/orders/${orderId}/receive?dry=1`, { method: 'POST' });
+    const blocker = dry.body.blockers.find((b) => b.reason === 'grading_count_mismatch');
+    assert.ok(blocker, 'one card counted against three submissions would book 3x the fee');
+    assert.equal(blocker.counted, 1);
+    assert.equal(blocker.submissions, 3);
   });
 });
 

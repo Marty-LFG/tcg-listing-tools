@@ -307,6 +307,14 @@
         <div class="picker" id="pickList"><div class="empty" style="border:none;">Search your stock to add a restock line.</div></div>
       </div>
 
+      <div id="gradePane" style="margin-top:12px;display:none;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:7px;">
+          Which cards is this fee for? One submission per card — the per-card fee is booked once each.
+        </div>
+        <div class="picker" id="subList"><div class="empty" style="border:none;">No open grading submissions.</div></div>
+        <div id="subPicked" style="margin-top:7px;font-size:11.5px;color:var(--gold);"></div>
+      </div>
+
       <div id="newPane" style="margin-top:12px;display:none;">
         <div class="row4">
           <div class="fld"><label>Kind</label><select id="n_kind" onchange="onKindPick()">
@@ -404,7 +412,7 @@
 <script type="module">
 const B = '/api/purchasing';
 let ORDERS = [], ROWS = [], COUNTS = {}, TAB = 'outstanding', CUR = null, LINEMODE = 'pick', PICKED = null;
-let STATUSES = [], TRANSITIONS = {}, LOCATIONS = [], SUPPLIERS = [], PLAN = null;
+let STATUSES = [], TRANSITIONS = {}, CREATE_STATUSES = ['draft', 'preorder', 'ordered'], LOCATIONS = [], SUPPLIERS = [], PLAN = null;
 let GAMES = [], TYPES = {}, ALL_TYPES = [];
 
 const $ = (id) => document.getElementById(id);
@@ -465,6 +473,7 @@ async function boot() {
   try {
     const v = await api('/statuses');
     STATUSES = v.statuses; TRANSITIONS = v.transitions;
+    if (Array.isArray(v.create_statuses) && v.create_statuses.length) CREATE_STATUSES = v.create_statuses;
   } catch {}
   await Promise.all([loadSuppliers(), loadLocations(), loadVocab()]);
   await refresh();
@@ -511,12 +520,28 @@ async function loadVocab() {
 // its own copy of all three and never send the parameters, so the two definitions had to be edited
 // together and had already drifted (the server matched supplier case-insensitively, the page with
 // ===). There is one definition now, and it is the one the API documents.
-async function refresh() {
+let refreshTimer = null, refreshSeq = 0;
+// Debounced, and sequenced. Every keystroke used to fire TWO full /orders round trips, each of which
+// decorates every order with its lines and payments; two in-flight pairs could also resolve out of
+// order and leave the list showing a prefix the user had already typed past. Same 200ms idiom
+// searchStock() uses below.
+function refresh() {
+  clearTimeout(refreshTimer);
+  return new Promise((done) => { refreshTimer = setTimeout(() => refreshNow().then(done, done), 180); });
+}
+async function refreshNow() {
+  const seq = ++refreshSeq;
   const p = new URLSearchParams({ facet: TAB });
   if (val('f_sup')) p.set('supplier', val('f_sup'));
   if (val('f_q')) p.set('q', val('f_q'));
-  const [view, all] = await Promise.all([api('/orders?' + p.toString()), api('/orders?facet=all')]);
-  ROWS = view.orders; ORDERS = all.orders; COUNTS = view.counts;
+  const filtered = p.toString() !== 'facet=all';
+  // Only fetch the unfiltered set when it is actually a different question.
+  const [view, all] = await Promise.all([
+    api('/orders?' + p.toString()),
+    filtered ? api('/orders?facet=all') : null,
+  ]);
+  if (seq !== refreshSeq) return;              // a newer keystroke already won
+  ROWS = view.orders; ORDERS = (all || view).orders; COUNTS = view.counts;
   renderTabs(); renderList(); renderTiles();
   $('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
 }
@@ -610,22 +635,29 @@ async function openOrder(id) {
     CUR = { order: { id: null, status: 'draft', currency: 'AUD' }, lines: [], payments: [], totals: {} };
     $('ordTitle').textContent = 'New order';
     $('ordSub').textContent = 'nothing is stock until it is received';
-    $('btnDelete').style.display = 'none';
-    $('btnReceive').style.display = 'none';
-    $('btnClose').style.display = 'none';
+    syncOrderButtons();
   } else {
     CUR = await api('/orders/' + id);
     $('ordTitle').textContent = CUR.order.ref;
     $('ordSub').textContent = (CUR.order.supplier || 'unnamed supplier') + ' · ' + CUR.order.status.replace('_', ' ');
-    $('btnDelete').style.display = CUR.receipt ? 'none' : '';
-    $('btnReceive').style.display = ['ordered', 'in_transit', 'arrived'].includes(CUR.order.status) ? '' : 'none';
-    $('btnClose').style.display = CUR.order.status === 'received' ? '' : 'none';
+    syncOrderButtons();
   }
   fillOrderForm();
   renderLines(); renderLedger(); renderPayments();
   $('ordOverlay').classList.add('on');
 }
 function closeOrder() { $('ordOverlay').classList.remove('on'); refresh(); }
+
+// ONE place that decides which drawer actions are live. It was duplicated verbatim in three, and the
+// receive path updated none of them — so the Close button stayed hidden immediately after a commit
+// and the flow could not be finished without reopening the drawer.
+function syncOrderButtons() {
+  const o = (CUR && CUR.order) || {};
+  const show = (id, on) => { const el = $(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('btnDelete', !!o.id && !(CUR && CUR.receipt));
+  show('btnReceive', ['ordered', 'in_transit', 'arrived'].includes(o.status));
+  show('btnClose', o.status === 'received');
+}
 
 function fillOrderForm() {
   const o = CUR.order;
@@ -640,9 +672,11 @@ function fillOrderForm() {
   $('o_settled').value = dollars(o.settled_aud_cents);
   // Only the moves the server would actually accept — finding out with a 409 is a worse UI than a
   // dropdown that never offered the impossible one.
-  const allowed = TRANSITIONS[o.status] || [];
-  $('o_status').innerHTML = [o.status, ...allowed]
-    .map((s) => '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s.replace('_', ' ') + '</option>').join('');
+  // A new order is CREATED, not transitioned: POST /orders accepts only CREATE_STATUSES, so offering
+  // TRANSITIONS.draft here put 'cancelled' in the list and Save answered with a raw bad_create_status.
+  const choices = o.id ? [o.status, ...(TRANSITIONS[o.status] || [])] : CREATE_STATUSES;
+  $('o_status').innerHTML = choices
+    .map((st) => '<option value="' + st + '"' + (st === o.status ? ' selected' : '') + '>' + st.replace('_', ' ') + '</option>').join('');
   relabelCurrency(); onStatusPick();
 }
 function relabelCurrency() {
@@ -670,12 +704,52 @@ function onTargetPick() {
   $('n_ptype').innerHTML = list.map((t2) => '<option>' + esc(t2) + '</option>').join('');
   $('pk_type').innerHTML = '<option value="">any</option>' + list.map((t2) => '<option>' + esc(t2) + '</option>').join('');
 }
+let SUBMISSIONS = [], PICKED_SUBS = [];
+
+// The open grading submissions, so a grading line can name the cards it is paying for. Without this
+// the page offered a 'grading' line kind it could never make receivable — the gate refuses a line
+// with no submissions, and one blocked line blocks the whole delivery.
+async function loadSubmissions() {
+  try { SUBMISSIONS = (await api('/submissions')).submissions || []; } catch { SUBMISSIONS = []; }
+  renderSubPicker();
+}
+function renderSubPicker() {
+  if (!SUBMISSIONS.length) {
+    $('subList').innerHTML = '<div class="empty" style="border:none;">No open grading submissions — start one in the graded inventory first.</div>';
+    return;
+  }
+  $('subList').innerHTML = SUBMISSIONS.map((x) =>
+    '<div class="pk" data-sub="' + x.id + '"' + (PICKED_SUBS.includes(x.id) ? ' style="background:var(--gold-soft)"' : '') + '>' +
+      '<span class="nm">' + (PICKED_SUBS.includes(x.id) ? '✓ ' : '') + esc(x.name) +
+        '<span class="s">' + esc(x.grading_company || '') + (x.number ? ' · ' + esc(x.number) : '') +
+        (x.set_name ? ' · ' + esc(x.set_name) : '') + '</span></span>' +
+      '<span class="q">' + esc(x.status) + '</span>' +
+    '</div>').join('');
+  for (const el of $('subList').querySelectorAll('.pk')) {
+    el.onclick = () => {
+      const id = +el.dataset.sub;
+      PICKED_SUBS = PICKED_SUBS.includes(id) ? PICKED_SUBS.filter((n) => n !== id) : [...PICKED_SUBS, id];
+      // Quantity follows the selection: one submission is one card graded, which is what the gate
+      // and the per-card fee both assume.
+      $('l_qty').value = String(Math.max(1, PICKED_SUBS.length));
+      renderSubPicker();
+    };
+  }
+  $('subPicked').textContent = PICKED_SUBS.length
+    ? (PICKED_SUBS.length + ' card' + (PICKED_SUBS.length === 1 ? '' : 's') + ' selected — the per-card fee is booked once each')
+    : '';
+}
+
 function onKindPick() {
   const k = val('n_kind');
   $('l_costLbl').textContent = (k === 'lot' ? 'Lot total (' : 'Unit cost (') + val('o_cur') + ')';
   $('lineModeNote').textContent = k === 'lot'
     ? 'one lump price; you say how many items came out when it lands'
     : k === 'grading' ? 'a service you are buying — it creates no stock' : '';
+  const grading = k === 'grading';
+  $('gradePane').style.display = grading ? '' : 'none';
+  if (grading && !SUBMISSIONS.length) loadSubmissions();
+  if (!grading) { PICKED_SUBS = []; $('subPicked').textContent = ''; }
 }
 
 function setLineMode(m) {
@@ -684,6 +758,8 @@ function setLineMode(m) {
   $('segNew').classList.toggle('on', m === 'new');
   $('pickPane').style.display = m === 'pick' ? '' : 'none';
   $('newPane').style.display = m === 'new' ? '' : 'none';
+  if (m !== 'new') { $('gradePane').style.display = 'none'; PICKED_SUBS = []; }
+  else onKindPick();
   $('pickedNote').style.display = 'none';
   $('lineModeNote').textContent = m === 'pick'
     ? 'a restock joins the SKU you already hold — no second listing, no second shelf slot'
@@ -767,6 +843,11 @@ async function addLine() {
       condition: val('n_cond') || null,
       product_type: val('n_target') === 'sealed' ? val('n_ptype') : null,
     });
+    if (kind === 'grading') {
+      if (!PICKED_SUBS.length) return toast('Pick the grading submissions this fee is for.', true);
+      body.submission_ids = PICKED_SUBS;
+      body.qty_ordered = PICKED_SUBS.length;
+    }
   }
   try {
     const id = await ensureOrder();
@@ -775,6 +856,7 @@ async function addLine() {
     renderLines(); renderLedger();
     $('l_cost').value = ''; $('l_note').value = ''; $('l_qty').value = '1';
     $('n_name').value = ''; PICKED = null; $('pickedNote').style.display = 'none';
+    PICKED_SUBS = []; renderSubPicker();
     toast('Line added.');
   } catch (e) { toast(e.body?.detail || e.message, true); }
 }
@@ -921,8 +1003,7 @@ async function saveOrder() {
     }
     fillOrderForm(); renderLines(); renderLedger();
     await loadSuppliers(); await refresh();
-    $('btnReceive').style.display = ['ordered', 'in_transit', 'arrived'].includes(CUR.order.status) ? '' : 'none';
-    $('btnClose').style.display = CUR.order.status === 'received' ? '' : 'none';
+    syncOrderButtons();
   } catch (e) {
     toast(e.body?.error === 'illegal_transition' ? ('Cannot go from ' + e.body.from + ' to ' + e.body.to) : (e.body?.error || e.message), true);
   }
@@ -940,9 +1021,13 @@ async function closeOrderOut() {
     if (e.body?.error === 'unpaid') {
       const owed = moneyFlat(e.body.balance_cents, e.body.currency, (CUR.totals || {}).fx);
       if (!confirm('Still owing ' + owed + '. Close it anyway?')) return;
-      await api('/orders/' + CUR.order.id + '/close', { method: 'POST', body: { force_close_unpaid: true } });
-      toast('Closed with a balance outstanding.');
-      closeOrder();
+      // Its own try: a throw inside a catch block is NOT caught by that block, so a failed retry used
+      // to escape the function entirely and the user saw nothing at all.
+      try {
+        await api('/orders/' + CUR.order.id + '/close', { method: 'POST', body: { force_close_unpaid: true } });
+        toast('Closed with a balance outstanding.');
+        closeOrder();
+      } catch (e2) { toast(e2.body?.error || e2.message, true); }
       return;
     }
     toast(e.body?.error === 'not_received' ? 'Receive the stock before closing the order.' : (e.body?.error || e.message), true);
@@ -1172,6 +1257,9 @@ function reasonText(b) {
     : b.reason === 'placements_mismatch' ? ('placed ' + b.placed + ' of ' + b.counted)
     : b.reason === 'lot_units_required' ? 'say how many items came out of the lot'
     : b.reason === 'split_not_supported' ? (b.detail || 'this line cannot split across spots')
+    : b.reason === 'grading_submissions_required' ? 'pick the grading submissions this fee is for'
+    : b.reason === 'grading_count_mismatch' ? ('counted ' + b.counted + ' but named ' + b.submissions + ' submission(s) — one per card')
+    : b.reason === 'lot_units_too_large' ? ('a lot of ' + b.lot_units + ' items is beyond the ' + b.max + ' cap')
     : b.reason === 'fx_required' ? 'no FX rate — stock is stored in AUD, so capture a rate or settle the order'
     : b.reason;
 }
@@ -1195,6 +1283,9 @@ async function doCommit() {
     toast('Received into stock.');
     CUR = await api('/orders/' + CUR.order.id);
     renderLines(); renderLedger();
+    // The order is 'received' now: Receive must stop offering itself and Close must appear, or the
+    // flow cannot be finished without closing and reopening the drawer.
+    syncOrderButtons();
     await refresh();
   } catch (e) {
     if (e.body?.error === 'lines_unreconciled') { PLAN = { ...PLAN, blockers: e.body.blockers }; renderPlan(); }
