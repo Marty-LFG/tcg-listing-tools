@@ -15,6 +15,7 @@ import {
   CLAIM_TYPES, BUNDLE, parseGrade, validateClaim, validateClaims,
   canonicalValue, canonicalClaims, claimsCanonical, evaluateClaim, evaluateClaims,
 } from '../../lib/runs-claims.mjs';
+import { sha256Prefixed } from '../../lib/runs-canonical.mjs';
 
 // Edition 1's shape, as data. Nothing about slab/packs/art is hardcoded in the module.
 const SPECS = [
@@ -92,6 +93,45 @@ describe('claimsCanonical reproduces the specification vector', () => {
     assert.equal(
       canonicalValue({ claim_type: 'field_mix', subject: 'art', operator: 'eq', value: 'rarity=SPECIAL_ART_RARE:10,ART_RARE:15' }),
       'rarity=ART_RARE:15,SPECIAL_ART_RARE:10');
+  });
+});
+
+// field_mix is the ONE claim type with no published vector — §5.1 says EX2 "uses rarity_in rather than
+// field_mix" — so its encoding is a decision of ours that enters headerDigest. An independent reading of
+// the specification derived the same encoding and computed these values separately; they are pinned here
+// because two implementations agreeing is the closest thing to a vector this claim type has.
+describe('the field_mix encoding, which no published vector covers', () => {
+  const E1 = [
+    { claim_type: 'field_mix', subject: 'art', operator: 'eq', value: 'rarity=ART_RARE:15,SPECIAL_ART_RARE:10' },
+    CLAIM.grader, CLAIM.language, CLAIM.min_grade, CLAIM.slot_count,
+  ];
+
+  it('encodes Edition 1 to 204 bytes', () => {
+    assert.equal(new TextEncoder().encode(claimsCanonical(E1)).length, 204);
+  });
+
+  it('and to the digest an independent derivation computed', async () => {
+    assert.equal(await sha256Prefixed(null, claimsCanonical(E1)),
+      '367b8ef11c1df058cdbc20fda90e0a7669e161d079f95d023cec7c72fd1e9205');
+  });
+
+  it('sorts field_mix FIRST, which is where the byte order puts it', () => {
+    // 'field_mix' < 'grader' < 'language' < 'min_grade' < 'slot_count'. Worth stating because the
+    // rendered sentence puts the aggregate LAST — the two orders are deliberately different.
+    assert.deepEqual(canonicalClaims(E1).map((c) => c.claim_type),
+      ['field_mix', 'grader', 'language', 'min_grade', 'slot_count']);
+  });
+
+  it('sorts members by the WHOLE member, on the triple that tells the two readings apart', () => {
+    // art:1,packs:3,slab:1 sorts identically under either reading and proves nothing. This does not:
+    // ':' is 0x3A and '0' is 0x30, so whole-member sort puts M30 first and value-only sort puts M3 first.
+    assert.equal(
+      canonicalValue({ claim_type: 'field_mix', subject: 'packs', operator: 'eq', value: 'set_code=M4:25,M3:25,M30:1' }),
+      'set_code=M30:1,M3:25,M4:25');
+  });
+
+  it('refuses a zero count — a claim that nothing is something is not a claim', () => {
+    assert.equal(validateClaim({ claim_type: 'field_mix', subject: 'art', operator: 'eq', value: 'rarity=ART_RARE:0' }, SPECS).ok, false);
   });
 });
 
@@ -360,16 +400,35 @@ describe('field_mix — run-level, not per-bundle', () => {
   });
 
   it('generalises past rarity — the same question arises for a deliberate pack mix', () => {
+    // One unit per line, which is what the `distinct` deal produces: no product repeats inside a bundle.
+    const one = (code) => packs({ set_code: code, qty: '1' });
     const m = manifest([
-      bundle(1, { packs: [packs({ set_code: 'M3' })] }),
-      bundle(2, { packs: [packs({ set_code: 'M4' })] }),
-      bundle(3, { packs: [packs({ set_code: 'M4' })] }),
+      bundle(1, { packs: [one('M3')] }),
+      bundle(2, { packs: [one('M4')] }),
+      bundle(3, { packs: [one('M4')] }),
     ]);
     const claim = { claim_type: 'field_mix', subject: 'packs', operator: 'eq', value: 'set_code=M3:1,M4:2' };
     assert.equal(evaluateClaim(claim, m, SPECS).holds, true);
     assert.equal(evaluateClaim({ ...claim, value: 'set_code=M3:2,M4:1' }, m, SPECS).holds, false);
   });
 
+  // THE FALSE SENTENCE THIS PREVENTS. §11.2's evaluator counts populated LINES, while the sentence it
+  // generates names OBJECTS — and §4.4 makes three packs of one product ONE line with qty 3. So
+  // `set_code M3:25` over a 25-bundle run holding three M3 packs each would anchor a guarantee saying
+  // twenty-five packs are M3 when the run holds seventy-five. A provably false anchored sentence is the
+  // one failure with no recovery, so the claim is refused rather than the number quietly meaning
+  // something else. Edition 1's `art` slot is singleton, which is why it is unaffected.
+  it('REFUSES a mix over a slot whose lines are not one unit each', () => {
+    const m = manifest([
+      bundle(1, { packs: [packs({ set_code: 'M3', qty: '3' })] }),
+      bundle(2, { packs: [packs({ set_code: 'M3', qty: '3' })] }),
+    ]);
+    const claim = { claim_type: 'field_mix', subject: 'packs', operator: 'eq', value: 'set_code=M3:2' };
+    const r = evaluateClaim(claim, m, SPECS);
+    assert.equal(r.holds, false, 'two lines DO carry M3 — the count is right and the sentence would be false');
+    assert.match(r.counterexamples[0].got, /a line of 3 units/);
+    assert.match(r.counterexamples[0].want, /counts lines/);
+  });
   it('maps rarity through the committed table but compares every other field literally', () => {
     const m = artRun(['Illustration Rare', 'Art Rare']);
     assert.equal(evaluateClaim(mix('rarity=ART_RARE:2'), m, SPECS).holds, true, 'aliases fold into one class');

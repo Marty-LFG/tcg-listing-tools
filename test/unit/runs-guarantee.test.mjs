@@ -14,7 +14,7 @@ import { BUNDLE } from '../../lib/runs-claims.mjs';
 // it is written as the singular noun phrase the sentence should contain.
 const SPECS = [
   { slot: 'slab', label: 'graded card', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: 1, requires_cert: 1, is_chase_slot: 1, sort_order: 0 },
-  { slot: 'packs', label: 'sealed booster pack', kind: 'sealed', qty_per_bundle: 3, max_lines: 3, singleton: 0, requires_cert: 0, is_chase_slot: 0, sort_order: 1 },
+  { slot: 'packs', label: 'sealed pack', kind: 'sealed', qty_per_bundle: 3, max_lines: 3, singleton: 0, requires_cert: 0, is_chase_slot: 0, sort_order: 1 },
   { slot: 'art', label: 'art card', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: 0, requires_cert: 0, is_chase_slot: 0, sort_order: 2 },
 ];
 
@@ -33,7 +33,7 @@ describe('Edition 1', () => {
 
   it('generates the sentence', () => {
     assert.equal(gen(E1),
-      'Every bundle contains one PSA 10 Japanese graded card, three Japanese sealed booster packs '
+      'Every bundle contains one PSA 10 Japanese graded card, three Japanese sealed packs '
       + 'and one Japanese art card. Across the twenty-five bundles, fifteen art cards are Art Rare '
       + 'and ten are Special Art Rare.');
   });
@@ -61,19 +61,19 @@ describe('the per-bundle clause', () => {
     // slot_count's value is byte-sorted art, packs, slab. The sentence reads slab, packs, art — the order
     // the bundle is physically laid out in, which is what the published sentence does.
     const s = gen([C.grader, C.min_grade, C.slot_count]);
-    assert.ok(s.indexOf('graded card') < s.indexOf('sealed booster pack'));
-    assert.ok(s.indexOf('sealed booster pack') < s.indexOf('art card'));
+    assert.ok(s.indexOf('graded card') < s.indexOf('sealed pack'));
+    assert.ok(s.indexOf('sealed pack') < s.indexOf('art card'));
   });
 
   it('pluralises the label by count, and only by count', () => {
     const s = gen([C.slot_count]);
     assert.match(s, /one graded card/);
-    assert.match(s, /three sealed booster packs/);
+    assert.match(s, /three sealed packs/);
     assert.match(s, /one art card/);
   });
 
   it('joins with commas and a final "and", no Oxford comma', () => {
-    assert.match(gen([C.slot_count]), /graded card, three sealed booster packs and one art card\./);
+    assert.match(gen([C.slot_count]), /graded card, three sealed packs and one art card\./);
   });
 
   it('a bundle-scoped language claim reaches EVERY slot', () => {
@@ -84,7 +84,7 @@ describe('the per-bundle clause', () => {
   it('a slot-scoped one reaches only its slot', () => {
     const s = gen([{ ...C.language, subject: 'packs' }, C.slot_count]);
     assert.equal(s.match(/Japanese/g).length, 1);
-    assert.match(s, /three Japanese sealed booster packs/);
+    assert.match(s, /three Japanese sealed packs/);
   });
 
   it('renders a rarity_in claim as a plain list, with no invented characterisation', () => {
@@ -92,13 +92,17 @@ describe('the per-bundle clause', () => {
     // characterises a class set that §11.1 does not define — precisely the unproved assertion §11.2
     // forbids a label from introducing. It is not emitted.
     const s = gen([C.grader, C.min_grade, C.rarity_in, C.slot_count]);
-    assert.match(s, /one PSA 10 graded card of Art Rare, Mega Attack Rare or Special Art Rare/);
+    assert.match(s, /one PSA 10 graded card of \(Art Rare, Mega Attack Rare or Special Art Rare\)/);
+    // PARENTHESISED, and not for looks. Unbracketed the list runs into the clause after it —
+    // "…card of Art Rare, Mega Attack Rare or Special Art Rare, three sealed packs and one art card"
+    // reads as a single four-item list and a customer cannot parse it.
+    assert.doesNotMatch(s, /rarity_in/);
     assert.doesNotMatch(s, /illustrated chase rarity/);
   });
 
   it('omits every clause it has no claim for', () => {
     assert.equal(gen([C.slot_count]),
-      'Every bundle contains one graded card, three sealed booster packs and one art card.');
+      'Every bundle contains one graded card, three sealed packs and one art card.');
   });
 
   it('refuses to render without a slot_count claim', () => {
@@ -123,7 +127,12 @@ describe('the aggregate sentence', () => {
   it('generalises past rarity, rendering a non-rarity value literally', () => {
     const packsMix = { claim_type: 'field_mix', subject: 'packs', operator: 'eq', value: 'set_code=M3:25,M4:25,M5:25' };
     assert.match(gen([C.slot_count, packsMix]),
-      /Across the twenty-five bundles, twenty-five sealed booster packs are M3, twenty-five are M4 and twenty-five are M5\./);
+      /Across the twenty-five bundles, twenty-five sealed packs are M3, twenty-five are M4 and twenty-five are M5\./);
+  });
+
+  it('says "bundle" for a run of one', () => {
+    const one = { claim_type: 'field_mix', subject: 'art', operator: 'eq', value: 'rarity=ART_RARE:1' };
+    assert.match(gen([C.slot_count, one], 1), /Across the one bundle, one art card is|Across the one bundle, one art card are/);
   });
 
   it('renders one sentence per field_mix claim', () => {
@@ -134,12 +143,27 @@ describe('the aggregate sentence', () => {
 });
 
 describe('the integer table §11.2 references and never supplies', () => {
-  it('covers the run range, 0 to 999', () => {
+  // THE RANGE IS NOT THE RUN SIZE. A field_mix count is populated LINES across every bundle, so at the
+  // §3/§4.3 ceilings it reaches unit_count x max_lines = 999 x 99 = 98,901. A table stopping at 999
+  // would throw on a run nothing else objects to.
+  it('covers 0 to 999999, not merely the 999-bundle limit', () => {
     assert.equal(inWords(0), 'zero');
     assert.equal(inWords(1), 'one');
     assert.equal(inWords(15), 'fifteen');
     assert.equal(inWords(20), 'twenty');
     assert.equal(inWords(999), 'nine hundred and ninety-nine');
+    assert.equal(inWords(98901), 'ninety-eight thousand nine hundred and one');
+    assert.equal(inWords(999999), 'nine hundred and ninety-nine thousand nine hundred and ninety-nine');
+  });
+
+  // The `and` fork is the likeliest place two implementers diverge, so every branch is pinned.
+  it('puts "and" after the hundreds but not after the thousands', () => {
+    assert.equal(inWords(100), 'one hundred');
+    assert.equal(inWords(101), 'one hundred and one');
+    assert.equal(inWords(1000), 'one thousand');
+    assert.equal(inWords(1001), 'one thousand and one');
+    assert.equal(inWords(1100), 'one thousand one hundred');
+    assert.equal(inWords(2997), 'two thousand nine hundred and ninety-seven');
   });
 
   it('hyphenates the compound tens — the form the published sentence uses', () => {
@@ -150,17 +174,52 @@ describe('the integer table §11.2 references and never supplies', () => {
   });
 
   it('refuses anything outside the range rather than emitting a numeral', () => {
-    for (const n of [-1, 1000, 1.5, NaN, '25', null]) {
+    for (const n of [-1, 1000000, 1.5, NaN, '25', null]) {
       assert.throws(() => inWords(n), RangeError, String(n));
     }
   });
 });
 
 describe('what the generator refuses', () => {
+  it('a minimum grade with no grader — "one 10 graded card" is not a sentence', () => {
+    assert.throws(() => gen([C.slot_count, C.min_grade]), /minimum grade with no grader/);
+  });
+
+  it('a label that already reads as a plural, which the plural rule would double', () => {
+    const specs = SPECS.map((x) => (x.slot === 'packs' ? { ...x, label: 'sealed packs' } : x));
+    assert.throws(() => gen([C.slot_count], 25, specs), /already reads as a plural/);
+  });
+
+  // The label is emitted VERBATIM, so it is the one field an owner controls that reaches an anchored
+  // sentence directly. A template-only scan cannot see this attack.
+  it('a label carrying a ratio, which would put one into copy through the back door', () => {
+    for (const label of ['one in five bonus card', 'chance card', 'percent off card']) {
+      const specs = SPECS.map((x) => (x.slot === 'art' ? { ...x, label } : x));
+      assert.throws(() => gen([C.slot_count], 25, specs), /ratio or a qualifier/, label);
+    }
+  });
+
+  // A stray space is NORMALISED away rather than refused. §4.2 trims header strings and a label is one,
+  // so the committed label is already trimmed and the assembled sentence cannot double a separator.
+  it('normalises a stray space in a label rather than refusing it', () => {
+    for (const label of [' art card', 'art card ', ' art card ']) {
+      const specs = SPECS.map((x) => (x.slot === 'art' ? { ...x, label } : x));
+      assert.match(gen([C.slot_count], 25, specs), /and one art card\.$/, JSON.stringify(label));
+    }
+  });
+
+  // claimsCanonical and compositionCanonical are DIFFERENT fields of headerDigest, so a run could
+  // otherwise anchor a composition of three packs while anchoring a promise of two, with neither
+  // wrong on its own.
+  it('a slot_count that disagrees with the composition it is describing', () => {
+    const specs = SPECS.map((x) => (x.slot === 'packs' ? { ...x, qty_per_bundle: 4 } : x));
+    assert.throws(() => gen([C.slot_count], 25, specs), /while the composition declares 4/);
+  });
+
   it('a label that could smuggle an assertion into an anchored sentence', () => {
     for (const label of ['graded card (guaranteed hit!)', 'card 10', 'card,pack', '', 'x'.repeat(33)]) {
       const specs = SPECS.map((s) => (s.slot === 'slab' ? { ...s, label } : s));
-      assert.throws(() => gen([C.slot_count], 25, specs), /is not \[A-Za-z \]/, JSON.stringify(label));
+      assert.throws(() => gen([C.slot_count], 25, specs), /a label is the noun/, JSON.stringify(label));
     }
   });
 

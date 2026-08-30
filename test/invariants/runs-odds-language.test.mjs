@@ -31,21 +31,29 @@ const RATIO_FORMS = [
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 
-// COMMENTS ARE STRIPPED FIRST, and the reason is this file's own history: the scan's first run flagged
-// three of its own explanations. lib/runs-guarantee.mjs documents that "one in five" is unreachable,
-// lib/runs-reserve.mjs contains the ordinary English "one in the", and the very name of this test file
-// — runs-ODDS-language — matches a word boundary. A file explaining what it must never say is the
-// outcome this test wants, so failing it for saying so would teach the next person to delete the
-// explanation rather than the copy.
+// COMMENTS AND REGEX LITERALS ARE STRIPPED FIRST, and both exclusions were forced by real failures of
+// this very test:
+//
+//   COMMENTS. The first run flagged three of its own explanations — lib/runs-guarantee.mjs documents
+//   that "one in five" is unreachable, lib/runs-reserve.mjs contains the ordinary English "one in the",
+//   and the name of this file, runs-ODDS-language, matches a word boundary. A file explaining what it
+//   must never say is the outcome this test wants.
+//
+//   REGEX LITERALS. lib/runs-guarantee.mjs enforces this same rule as a LOCK GATE, and to detect the
+//   word "odds" its pattern has to contain it. A word inside a detector is not copy — it is the thing
+//   stopping the copy. Flagging it would mean deleting the guard to satisfy the test that exists to
+//   check the guard.
 function code(f) {
   return read(f)
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split(/\r?\n/)
     .map((line) => line.replace(/(^|\s)\/\/.*$/, '$1'))
-    .join('\n');
+    .join('\n')
+    // A regex literal, conservatively: opens on a slash that is not preceded by an identifier or a
+    // closing bracket (which would make it division), and does not span a line.
+    .replace(/(^|[=(,:[!&|?{};+\s])\/(?![*/])(?:\\.|\[(?:\\.|[^\]])*\]|[^/\\\n])+\/[gimsuy]*/g, '$1');
 }
-
 // Every module in the runs set that could put words in front of a customer, plus the pages. The list is
 // explicit rather than a glob so that adding a runs module is a deliberate act that includes deciding
 // whether it emits copy.
@@ -97,6 +105,21 @@ describe('the scan is word-anchored, deliberately', () => {
 
   it('and the anchored one does not', () => {
     assert.doesNotMatch(read('lib/runs-rarity.mjs'), RATIO_WORDS);
+  });
+
+  // AND THE STRIPPING MUST NOT NEUTER IT. Excluding comments and regex literals is two holes punched in
+  // the scan, so this proves a ratio word in an actual STRING still gets caught even on a line that also
+  // carries a regex — which is exactly what lib/runs-guarantee.mjs looks like.
+  it('still catches a ratio word in a string literal beside a regex', () => {
+    const sample = [
+      'const DETECT = /\\b(odds|chance)\\b/i;   // a detector, not copy',
+      "const COPY = 'your odds are one in five';",
+    ].join('\n');
+    const stripped = sample
+      .split(/\r?\n/).map((line) => line.replace(/(^|\s)\/\/.*$/, '$1')).join('\n')
+      .replace(/(^|[=(,:[!&|?{};+\s])\/(?![*/])(?:\\.|\[(?:\\.|[^\]])*\]|[^/\\\n])+\/[gimsuy]*/g, '$1');
+    assert.doesNotMatch(stripped, /DETECT = .*odds/, 'the detector regex should have been stripped');
+    assert.match(stripped, RATIO_WORDS, 'but the string literal must still be caught');
   });
 
   it('while still catching the words it exists for', () => {
