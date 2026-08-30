@@ -15,9 +15,12 @@ vanilla JS, no framework, no front-end build step. Everything runs on the Vite
 
 Pieces:
 
-- **`index.html`** — landing page. Hosts a self-contained **eBay AU pricing
-  calculator** (backs out a list price so the buyer's fee-inclusive total hits a
-  target) and links to every builder + tool (inventory, grader, tracker, shipping).
+- **`index.html`** — landing page. Hosts a **centering quick-reference** (four
+  border measurements in mm, front and back, → ratios + the grade ceiling
+  centering alone allows at each company, off `grade-rules.js` +
+  `data/grading.config.json`) and links to every builder + tool (inventory,
+  grader, tracker, shipping). It used to host the eBay AU fee calculator; that
+  maths now lives only in `lib/fees.mjs`.
 - **Five card builders** — `pokemon-`, `mtg-`, `swu-`, `lorcana-`, `riftbound-listing-builder.html`.
   Each: pick a set + card number → fetch live card data through a proxy → fill
   editable fields → generate an eBay HTML description + an 80-char-optimised eBay
@@ -189,7 +192,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 
 | Path | Purpose |
 |---|---|
-| `index.html` | Landing page + eBay AU pricing calculator (self-contained JS at the bottom). |
+| `index.html` | Landing page + the masthead **centering quick-reference** (self-contained JS at the bottom; loads `/grade-rules.js` as a classic script and fetches `/data/grading.config.json`). Carried the eBay AU fee calculator until 2026-08-30. |
 | `pokemon-listing-builder.html` | Pokémon builder. Has the most-developed set picker (cached custom combobox with set symbols + printed-code search) and the large EN/JP language tile. |
 | `mtg-listing-builder.html` | Magic builder (Scryfall). |
 | `swu-listing-builder.html` | Star Wars: Unlimited builder (swu-db). |
@@ -241,7 +244,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `lib/psa.mjs` | PSA public cert-verification provider (`lookupCert`) used by `lib/certlookup.mjs`. Needs `PSA_API_TOKEN`; `{matched:false}` on missing token/any failure. Field mapping UNVERIFIED against a live token. |
 | `data/grading-companies.json` | Inventory-facing grading-company registry (12: PSA/BGS/CGC/SGC/TAG majors, plus ARK, TCG Grading, Card Grading Australia, PCG (Western Premier Card Grading), PCGCN (unrelated Chinese PCG, pcgcard.cn), EMC (Encapsulated Memories Company), JBH (Joyful Box House)): label, scale, cert format, official `certUrl` (nullable when no public page), `lookup` flag, region. Add a company here by appending a row — dropdowns are data-driven. **Broader** than the pre-grader's tolerance set in `grading.config.json` (which stays PSA/BGS/CGC/SGC/TAG — don't add companies there without real tolerances, Golden Rule 4). Shared by server (`certlookup.mjs`) + client (`inventory.html`). |
 | `card-grader.html` | **Pre-grading tool** ("is this raw card worth a grading fee?"). Guided 12-shot capture wizard (flatbed scan / microscope / camera / upload), centering pad with draggable guides, AI condition pass, per-company grade prediction, TAG-style annotated report (defect pins + per-corner grid) + PDF, saved reports, and the "To pipeline" handoff into §13's submissions. See §21. |
-| `grade-rules.js` | Pure, transparent grade-prediction engine (`window.GradeRules`), loaded like `extras.js`. Every tolerance/weight comes from `data/grading.config.json` — data, never hardcoded logic. `sideFromCorners`/`sideFromEdges` aggregate the v2 granular cells (min + mean; all-null → null). Config-table-driven unit tests in `test/unit/grade-rules.test.mjs`. A documented approximation, never the companies' real math (GR4). |
+| `grade-rules.js` | Pure, transparent grade-prediction engine (`window.GradeRules`), loaded like `extras.js` by **`card-grader.html` and `index.html`** (the masthead centering panel). Every tolerance/weight comes from `data/grading.config.json` — data, never hardcoded logic. `centeringBand` is the single ladder walk: it returns the band cleared plus the tighter one missed (and which side failed), and `centeringGrade` is a thin wrapper over it — never walk `cfg.centering` yourself, that is how the old hardcoded 55/60 pills drifted. `sideFromCorners`/`sideFromEdges` aggregate the v2 granular cells (min + mean; all-null → null). Config-table-driven unit tests in `test/unit/grade-rules.test.mjs`. A documented approximation, never the companies' real math (GR4). |
 | `grade-report-pdf.js` | The printable grading report (`GradeReportPDF.build(data)` -> jsPDF doc). Print design, not the screen theme: ink on paper, times/helvetica/courier standing in for Fraunces/Plex/Plex-Mono, vector centering diagrams drawn to the measured mm. Never throws; sections drop out when their data is missing. |
 | `lib/grader.mjs` | `/api/grade` AI vision condition pass (Anthropic/OpenAI dual provider). Schema v2: up to 12 labeled shots, per-corner + per-edge findings per side, defects pinned `{imageRef,x,y}`; `normalize()` still accepts the v1 flat shape (flat aggregates = MIN of the granular cells). See §21. |
 | `lib/scan.mjs` | `scanPlugin` → `/api/scan`: flatbed scanning for the pre-grader (WIA via `scripts/wia-scan.ps1`) — capability probe, busy lock, auto-centering + confidence-gated crop. See §21. |
@@ -382,9 +385,10 @@ title used to shed the word `(Signature)` while keeping `M/NM`:
   belongs in the title, add a part in `genTitle()`.
 - **Change a title format:** edit that builder's `genTitle()` parts (text/abbr/
   prio). Don't touch `TCG.fitTitle` unless changing the global fit algorithm.
-- **Tweak the eBay fee bands** (calculator): `feeAU()` / `listForTarget()` in
-  `index.html`. Keep the forward (`feeAU`) and inverse (`listForTarget`) in sync,
-  and keep cent-rounding. Validate with a few targets (see §8).
+- **Tweak the eBay fee bands:** `feeAU()` / `listForTarget()` in `lib/fees.mjs`
+  — the only home for them since the dashboard calculator was dropped. Keep the
+  forward (`feeAU`) and inverse (`listForTarget`) in sync, and keep cent-rounding.
+  Validate with `node scripts/check-pricing.mjs` (see §8).
 - **Port a Pokémon feature to other builders** (the cached symbol combobox, the
   EN/JP language tile): both currently live only in `pokemon-listing-builder.html`.
   Lift the combobox helpers (`loadSets`/`resolveSet`/`renderSetMenu`/`pickSet`,
@@ -729,7 +733,8 @@ eBay AU (error 25016). `finishClass` tests the negations before holo/foil (GR5) 
 `extras.js` `fitTitle`/`condCode`/`langCode`/`formatCardNumber`/`cardNumberKey` and each builder's `genTitle`/`genPitch`/`buildHTML`
 (classic scripts can't import ESM), plus the single printing→finish→variant vocabulary and the
 GR6 wording constants (slab wording ⚠ pending owner sign-off). `lib/fees.mjs` is the one home
-for the AU fee bands (`index.html` imports it as a `<script type="module">`). **If you touch
+for the AU fee bands (`bulk-listing-builder.html` and `stock-runner.html` import it as a
+`<script type="module">`; `lib/listings.mjs` and `lib/pricing.mjs` import it server-side). **If you touch
 either side of any mirror, run `node scripts/check-listing-copy.mjs`** — byte-identical parity
 is the gate.
 

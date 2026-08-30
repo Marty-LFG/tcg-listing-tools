@@ -50,7 +50,7 @@
   .dot.warn{background:var(--amber);box-shadow:0 0 8px rgba(240,192,74,.45);}
   .dot.err{background:var(--red);}
 
-  /* ---- the counter: a ledger receipt for the eBay fee maths ---- */
+  /* ---- the counter: a ledger receipt, now for the centering maths ---- */
   .counter{position:relative;border:1px solid var(--line);border-radius:16px;padding:16px 18px 15px;background:linear-gradient(180deg,var(--panel),var(--bg2));overflow:hidden;box-shadow:var(--shadow);}
   .counter::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--green),transparent 70%);opacity:.55;}
   .ctr-head{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;font-weight:600;color:var(--green);margin:0 0 15px;}
@@ -64,9 +64,37 @@
   .ctr-in input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:17px;font-weight:600;padding:8px 0;font-family:var(--mono);letter-spacing:-.01em;text-align:right;}
   .ctr-in input::-webkit-outer-spin-button,.ctr-in input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
   .ctr-in input{-moz-appearance:textfield;}
-  .ctr-val{font-family:var(--mono);font-size:26px;font-weight:600;color:#fff;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
-  .ctr-status{display:flex;align-items:center;gap:7px;font-size:12px;margin:12px 0 0;color:var(--muted);font-family:var(--mono);}
   .ctr-note{font-size:11.5px;color:var(--muted);margin:9px 0 0;line-height:1.5;}
+
+  /* the face switch — the segmented control from settings.html, pressed state on aria-pressed
+     so the accessible state and the painted state cannot disagree */
+  .seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;}
+  .seg button{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;padding:6px 13px;background:transparent;color:var(--muted);border:0;cursor:pointer;transition:.14s;}
+  .seg button:hover{color:var(--text);}
+  .seg button[aria-pressed="true"]{background:var(--gold);color:var(--ink);}
+  .seg button:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--gold);}
+
+  /* four borders, paired by axis so they read in the same order as the ratios below */
+  .mmgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;margin-top:13px;}
+  .mmf{display:flex;align-items:center;gap:8px;min-width:0;}
+  .mmf .ctr-lbl{width:44px;}
+  .ctr-in.mm{width:auto;flex:1;min-width:0;padding:0 9px;gap:4px;}
+  .ctr-in.mm input{font-size:14px;padding:7px 0;}
+  .ctr-in.mm span{font-size:10px;}
+
+  /* the read-out: ratios for the face you are on, then a row per company */
+  .ratio{display:block;font-family:var(--mono);font-size:12px;color:var(--text);margin:14px 0 0;font-variant-numeric:tabular-nums;line-height:1.5;}
+  .ratio b{color:#fff;font-weight:600;}
+  .ratio .w{color:var(--gold);}
+  .ratio .o{display:block;color:var(--muted);font-size:11px;margin-top:3px;}
+  .cgrid{margin-top:12px;}
+  .crow{display:flex;align-items:center;gap:9px;padding:5px 0;border-top:1px solid var(--line);}
+  .crow:first-child{border-top:0;}
+  .cco{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.1em;color:var(--muted);width:32px;flex:none;}
+  .cg{font-family:var(--mono);font-size:15px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1;min-width:28px;}
+  .cg.top{color:var(--green);}
+  .cband{font-family:var(--mono);font-size:10px;color:var(--faint);white-space:nowrap;}
+  .cmsg{font-family:var(--mono);font-size:11px;color:var(--muted);padding:5px 0;}
 
   /* ---- the finder ---- */
   .finder{display:flex;align-items:center;gap:10px;margin:24px 0 4px;padding:0 13px;background:var(--ink);border:1px solid var(--line);border-radius:11px;transition:.15s;}
@@ -157,19 +185,24 @@
       </div>
     </div>
     <section class="counter" aria-labelledby="ctr-h">
-      <h2 class="ctr-head" id="ctr-h">eBay AU &middot; back out your list price</h2>
+      <h2 class="ctr-head" id="ctr-h">Centering &middot; what the borders allow</h2>
       <div class="ctr-row">
-        <label class="ctr-lbl" for="pc_target">Buyer pays</label>
+        <div class="seg" role="group" aria-label="Which face these borders belong to">
+          <button type="button" id="cn_front" aria-pressed="true">Front</button>
+          <button type="button" id="cn_back" aria-pressed="false">Back</button>
+        </div>
         <span class="leader" aria-hidden="true"></span>
-        <span class="ctr-in"><span aria-hidden="true">A$</span><input id="pc_target" type="number" step="0.01" min="0" value="25.00" inputmode="decimal" aria-label="Target total the buyer pays, in Australian dollars"></span>
+        <span class="ctr-lbl" id="cn_facelbl">Front borders</span>
       </div>
-      <div class="ctr-row">
-        <span class="ctr-lbl">List item for</span>
-        <span class="leader" aria-hidden="true"></span>
-        <output class="ctr-val" id="pc_list" for="pc_target">A$22.92</output>
+      <div class="mmgrid">
+        <span class="mmf"><label class="ctr-lbl" for="cn_t">Top</label><span class="ctr-in mm"><input id="cn_t" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00"><span aria-hidden="true">mm</span></span></span>
+        <span class="mmf"><label class="ctr-lbl" for="cn_b">Bottom</label><span class="ctr-in mm"><input id="cn_b" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00"><span aria-hidden="true">mm</span></span></span>
+        <span class="mmf"><label class="ctr-lbl" for="cn_l">Left</label><span class="ctr-in mm"><input id="cn_l" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00"><span aria-hidden="true">mm</span></span></span>
+        <span class="mmf"><label class="ctr-lbl" for="cn_r">Right</label><span class="ctr-in mm"><input id="cn_r" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00"><span aria-hidden="true">mm</span></span></span>
       </div>
-      <p class="ctr-status"><span class="dot ok" id="pc_dot"></span><span id="pc_statustext">Exact</span></p>
-      <p class="ctr-note" id="pc_note">Buyer&rsquo;s total includes eBay&rsquo;s buyer protection fee (A$0.30 + tiered %). Some round totals aren&rsquo;t reachable, so you&rsquo;ll get the closest.</p>
+      <output class="ratio" id="cn_ratio" for="cn_t cn_b cn_l cn_r"></output>
+      <div class="cgrid" id="cn_grades"></div>
+      <p class="ctr-note" id="cn_note"></p>
     </section>
   </header>
 
@@ -483,31 +516,116 @@
 
   <p class="note" style="--d:.40s">
     Riftbound&rsquo;s Scrydex lookups need <code>SCRYDEX_API_KEY</code> and <code>SCRYDEX_TEAM_ID</code> in your <code>.env</code>. SWU needs nothing. LEGO uses <code>REBRICKABLE_API_KEY</code> / <code>BRICKSET_API_KEY</code> / BrickLink keys, and Funko pricing uses <code>EBAY_APP_ID</code> / <code>EBAY_CERT_ID</code>. Every builder still works for manual entry with no setup.<br><br>
-    Heads-up: the counter above works from the <b>item price only</b>, so it does not include the postage the buyer pays on top. Every listing now carries banded postage, so read it as a floor rather than the full picture.
+    Heads-up: the panel above is <b>centering only</b>, measured against the same tolerance bands the pre-grader uses. It is a ceiling, not a prediction: corners, edges and surface can pull a card below it and never above. Take it as a first look, then run the card through the <a href="/card-grader.html">pre-grader</a>.
   </p>
 
 </main>
 
+<script src="/grade-rules.js"></script>
 <script type="module">
-// Fee math lives in lib/fees.mjs (single source — also used by lib/pricing.mjs).
-// Module script = deferred, so the elements below exist when this runs.
-import { pcSolve } from '/lib/fees.mjs';
+// Module script = deferred, so the elements below exist when this runs — and grade-rules.js above
+// is a classic script, so window.GradeRules is already there.
 
-// ---- the counter ----------------------------------------------------------
-const pcFmt = (n) => 'A$' + (Math.round(n * 100) / 100).toFixed(2);
-const target = document.getElementById('pc_target');
-const out = document.getElementById('pc_list'), dot = document.getElementById('pc_dot');
-const stat = document.getElementById('pc_statustext'), note = document.getElementById('pc_note');
-function pcRender() {
-  const T = parseFloat(target.value);
-  if (!(T > 0)) { out.textContent = '—'; dot.className = 'dot err'; stat.textContent = 'Enter an amount'; note.textContent = ''; return; }
-  const r = pcSolve(T);
-  out.textContent = pcFmt(r.L);
-  if (r.diff === 0) { dot.className = 'dot ok'; stat.textContent = 'Exact'; note.textContent = 'Buyer pays ' + pcFmt(r.tot) + ' including the fee.'; }
-  else { dot.className = 'dot warn'; stat.textContent = 'Closest'; note.textContent = 'Exact ' + pcFmt(T) + ' isn’t reachable, so the buyer pays ' + pcFmt(r.tot) + ' (' + (r.diff > 0 ? '+' : '') + (r.diff / 100).toFixed(2) + ').'; }
+// ---- the centering counter ------------------------------------------------
+// The ratio maths and the tolerance ladder both come from grade-rules.js driven by
+// data/grading.config.json, the same pair card-grader.html uses. NOTHING here re-implements either:
+// a second copy of the bands is exactly how the grader's old hardcoded 55/60 pills drifted away
+// from the editable config (docs/PRE_GRADING_PLAN.md, centering-math audit).
+const GR = window.GradeRules;
+const AXES = ['t', 'b', 'l', 'r'];
+const cnVal = { front: { t: '', b: '', l: '', r: '' }, back: { t: '', b: '', l: '', r: '' } };
+const cnIn = Object.fromEntries(AXES.map((k) => [k, document.getElementById('cn_' + k)]));
+const cnBtn = { front: document.getElementById('cn_front'), back: document.getElementById('cn_back') };
+const cnRatio = document.getElementById('cn_ratio'), cnGrades = document.getElementById('cn_grades');
+const cnNote = document.getElementById('cn_note'), cnFaceLbl = document.getElementById('cn_facelbl');
+let cnFace = 'front';
+let cnCfg = null;                       // data/grading.config.json, or null if it never arrived
+const gradeStr = (g) => (g % 1 === 0 ? String(g) : g.toFixed(1));
+
+// A face counts as MEASURED only when all four borders are real numbers and neither axis sums to
+// zero. centeringPct answers a flat 50 for a zero-sum axis, so a blank or all-zero face would
+// otherwise read as perfect centering and hand out a 10 nobody measured.
+function cnRead(face) {
+  if (!GR) return null;
+  const raw = cnVal[face], b = {};
+  for (const k of AXES) {
+    const n = parseFloat(raw[k]);
+    if (!Number.isFinite(n) || n < 0) return null;
+    b[k] = n;
+  }
+  if (b.l + b.r === 0 || b.t + b.b === 0) return null;
+  return GR.centeringPct(b);
 }
-target.addEventListener('input', pcRender);
-pcRender();
+
+// What the band immediately above the one you cleared would take. Every number here is read off
+// cfg.centering, never typed in.
+function cnWants(hit) {
+  if (!hit || !hit.missed) return 'top band';
+  const bits = [];
+  if (hit.missedFront) bits.push('≤' + hit.missed.front.toFixed(1) + ' front');
+  if (hit.missedBack) bits.push('≤' + hit.missed.back.toFixed(1) + ' back');
+  return bits.length ? gradeStr(hit.missed.grade) + ' wants ' + bits.join(' + ') : '';
+}
+
+function cnRender() {
+  const front = cnRead('front'), back = cnRead('back'), shown = cnFace === 'front' ? front : back;
+
+  // the ratio line is the face you are looking at; the grades below are always both faces at once
+  if (!shown) {
+    cnRatio.innerHTML = '<span class="o">Enter all four ' + cnFace + ' borders to measure this face.</span>';
+  } else {
+    cnRatio.innerHTML = 'L/R <b>' + shown.lrLabel + '</b> &middot; T/B <b>' + shown.tbLabel + '</b>'
+      + '<span class="o">worst <b class="w">' + shown.label + '</b> (' + shown.worstAxis + ')</span>';
+  }
+
+  if (!front) {
+    cnGrades.replaceChildren();
+    cnNote.textContent = GR ? 'The front sets the grade. The back is optional and can only tighten it.'
+      : 'Grade rules did not load, so there are no ratios or grades until they do.';
+    return;
+  }
+  if (!cnCfg || !cnCfg.companies) {
+    cnGrades.innerHTML = '<div class="cmsg">Grade bands did not load, so ratios only.</div>';
+    cnNote.textContent = 'Is the dev server still serving /data/grading.config.json?';
+    return;
+  }
+
+  // An unmeasured back constrains nothing — the same contract centeringGrade has always had, and
+  // the note says so out loud rather than letting a front-only reading look like the whole card.
+  const backWorst = back ? back.worst : null;
+  const rows = Object.keys(cnCfg.companies).map((co) => {
+    const hit = GR.centeringBand(co, front.worst, backWorst, cnCfg);
+    const row = document.createElement('div');
+    row.className = 'crow';
+    row.title = (cnCfg.companies[co] || {}).label || co;
+    const code = document.createElement('span'); code.className = 'cco'; code.textContent = co;
+    const g = document.createElement('span');
+    g.className = 'cg' + (hit && hit.index === 0 ? ' top' : '');
+    g.textContent = hit ? gradeStr(hit.grade) : '—';
+    const lead = document.createElement('span'); lead.className = 'leader'; lead.setAttribute('aria-hidden', 'true');
+    const want = document.createElement('span'); want.className = 'cband'; want.textContent = cnWants(hit);
+    row.append(code, g, lead, want);
+    return row;
+  });
+  cnGrades.replaceChildren(...rows);
+  cnNote.textContent = back
+    ? 'Front and back both counted. Centering only, so corners, edges and surface can pull these down, never up.'
+    : 'Front only, back not measured. Centering only, so corners, edges and surface can pull these down, never up.';
+}
+
+function cnSetFace(f) {
+  cnFace = f;
+  cnBtn.front.setAttribute('aria-pressed', String(f === 'front'));
+  cnBtn.back.setAttribute('aria-pressed', String(f === 'back'));
+  cnFaceLbl.textContent = f === 'front' ? 'Front borders' : 'Back borders';
+  for (const k of AXES) cnIn[k].value = cnVal[f][k];   // each face keeps its own four numbers
+  cnRender();
+}
+cnBtn.front.addEventListener('click', () => cnSetFace('front'));
+cnBtn.back.addEventListener('click', () => cnSetFace('back'));
+for (const k of AXES) cnIn[k].addEventListener('input', () => { cnVal[cnFace][k] = cnIn[k].value; cnRender(); });
+cnRender();
+fetch('/data/grading.config.json').then((r) => (r.ok ? r.json() : null)).then((j) => { cnCfg = j; cnRender(); }).catch(() => {});
 
 // ---- the finder -----------------------------------------------------------
 // Every tile carries data-find with the words nobody puts in a title (game codes, "psa",

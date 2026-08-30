@@ -426,3 +426,65 @@ describe('centering percentages sum to 100 (property)', () => {
     assert.equal(GR.predictCompany('CGC', perfect, cfg, 0.9, { frontWorst: 54, backWorst: 70 }).gradeLabel, 'Gem Mint 10')
   })
 })
+
+// ------------------------------------------------------------------ centeringBand
+// The dashboard's centering panel (index.html) prints the band it cleared AND the tighter one it
+// missed, so centeringGrade now delegates to centeringBand and there is only ever ONE ladder walk.
+// A second, independent walk is how the grader's old hardcoded 55/60 pills drifted from the config.
+describe('centeringBand: the cleared band, and the one just missed', () => {
+  test('delegation changed nothing — every company agrees with centeringGrade at every boundary', () => {
+    for (const co of Object.keys(cfg.companies)) {
+      for (const band of cfg.centering[co]) {
+        assert.equal(GR.centeringBand(co, band.front, null, cfg).grade, GR.centeringGrade(co, band.front, null, cfg))
+      }
+      const last = cfg.centering[co][cfg.centering[co].length - 1]
+      assert.equal(GR.centeringBand(co, last.front + 1, null, cfg).grade, GR.centeringGrade(co, last.front + 1, null, cfg))
+    }
+    assert.equal(GR.centeringBand('PSA', null, null, cfg), null)
+  })
+
+  test('the top band has nothing above it to miss', () => {
+    const top = cfg.centering.PSA[0]
+    const hit = GR.centeringBand('PSA', top.front, top.back, cfg)
+    assert.equal(hit.grade, top.grade)
+    assert.equal(hit.index, 0)
+    assert.equal(hit.missed, null)
+    assert.equal(hit.missedFront, false)
+    assert.equal(hit.missedBack, false)
+  })
+
+  test('a front-limited miss names the band above and blames the front', () => {
+    const [top, next] = cfg.centering.PSA
+    const hit = GR.centeringBand('PSA', top.front + 1, null, cfg)   // just over the 10 band's front
+    assert.equal(hit.grade, next.grade)
+    assert.equal(hit.missed.grade, top.grade)
+    assert.equal(hit.missedFront, true)
+    assert.equal(hit.missedBack, false)                             // an unmeasured back blames nothing
+  })
+
+  test('a back-limited miss blames the back, not the front (PCG 55 front / 61 back)', () => {
+    const hit = GR.centeringBand('PCG', 55, 61, cfg)
+    assert.equal(hit.grade, 8.5)                                    // 61 fails both the 10 and the 9 band
+    assert.equal(hit.missed.grade, 9)
+    assert.equal(hit.missedFront, false)
+    assert.equal(hit.missedBack, true)
+  })
+
+  test('worse than the lowest band: a step below it, blaming the band it fell out of', () => {
+    const bands = cfg.centering.PSA
+    const last = bands[bands.length - 1]
+    const hit = GR.centeringBand('PSA', last.front + 1, null, cfg)
+    assert.equal(hit.grade, Math.max(1, last.grade - 1))
+    assert.equal(hit.band, null)
+    assert.equal(hit.index, bands.length)
+    assert.equal(hit.missed.grade, last.grade)
+    assert.equal(hit.missedFront, true)
+  })
+
+  test('a company with no bands falls back to 5 rather than throwing', () => {
+    const hit = GR.centeringBand('NOPE', 55, null, cfg)
+    assert.equal(hit.grade, 5)
+    assert.equal(hit.band, null)
+    assert.equal(hit.missed, null)
+  })
+})

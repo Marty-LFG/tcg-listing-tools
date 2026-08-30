@@ -44,21 +44,39 @@
     };
   };
 
-  // Highest grade whose centering tolerance the measured worst-axis % satisfies (<= band).
-  // backWorst may be null (back not photographed / SGC front-only) -> back is not constrained.
+  // Which band the measurement landed in, AND the tighter one it just missed. centeringGrade says
+  // what grade centering allows; this says why, so a caller can print "10 wants <= 55 front" off the
+  // SAME ladder walk. A second, independent walk is exactly how the old hardcoded 55/60 pills drifted
+  // away from the editable config (docs/PRE_GRADING_PLAN.md, centering-math audit).
+  // backWorst may be null (back not photographed / a front-only company) -> back is not constrained.
   // frontWorst null means NO measurement — that is null out, never a passing grade.
-  GR.centeringGrade = function (company, frontWorst, backWorst, cfg) {
+  GR.centeringBand = function (company, frontWorst, backWorst, cfg) {
     if (frontWorst == null) return null;
-    var bands = (cfg.centering || {})[company] || [];
+    var bands = ((cfg || {}).centering || {})[company] || [];
+    function frontFits(band) { return frontWorst <= band.front + 1e-9; }
+    function backFits(band) { return band.back == null || backWorst == null || backWorst <= band.back + 1e-9; }
     for (var i = 0; i < bands.length; i++) {
-      var band = bands[i];
-      var frontOk = frontWorst == null || frontWorst <= band.front + 1e-9;
-      var backOk = band.back == null || backWorst == null || backWorst <= band.back + 1e-9;
-      if (frontOk && backOk) return band.grade;
+      if (!frontFits(bands[i]) || !backFits(bands[i])) continue;
+      var missed = i > 0 ? bands[i - 1] : null;   // null at the top band: nothing better to reach
+      return {
+        grade: bands[i].grade, band: bands[i], index: i, missed: missed,
+        missedFront: missed ? !frontFits(missed) : false,
+        missedBack: missed ? !backFits(missed) : false
+      };
     }
     // Worse than the lowest listed band -> fall a step below the last band's grade.
     var last = bands[bands.length - 1];
-    return last ? Math.max(1, last.grade - 1) : 5;
+    if (!last) return { grade: 5, band: null, index: -1, missed: null, missedFront: false, missedBack: false };
+    return {
+      grade: Math.max(1, last.grade - 1), band: null, index: bands.length, missed: last,
+      missedFront: !frontFits(last), missedBack: !backFits(last)
+    };
+  };
+
+  // Highest grade whose centering tolerance the measured worst-axis % satisfies (<= band).
+  GR.centeringGrade = function (company, frontWorst, backWorst, cfg) {
+    var hit = GR.centeringBand(company, frontWorst, backWorst, cfg);
+    return hit ? hit.grade : null;
   };
 
   // Effective per-pillar subgrade from front + back (front weighted heavier — AGS uses 0.6/0.4).
