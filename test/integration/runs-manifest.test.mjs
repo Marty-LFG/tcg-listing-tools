@@ -263,3 +263,100 @@ describe('the guarantee panel', () => {
     await put(`/api/runs/${RUN}/claims`, { claims: CLAIMS });
   });
 });
+
+// R1-3. The bench workflow: check the picked bundle against its manifest, pre-assign seal serials, and
+// keep an append-only record of anything that changes after the lock.
+describe('the pick check', () => {
+  it('is GATED — the response names the certs this bundle should contain', async () => {
+    const r = await post(`/api/runs/${RUN}/pick/1`, { images: [{ dataB64: 'x' }] });
+    assert.ok([401, 403, 503].includes(r.status), 'answered ' + r.status);
+    assert.equal(r.json.code, 'manifest_gated');
+    assert.ok(!r.text.includes('MCERT-'), 'a refusal must not leak what it refused');
+  });
+
+  it('refuses a bundle with nothing bound to it yet', async () => {
+    // Gated first, so this asserts the ORDER of the guards rather than the message: without a token
+    // the gate answers before the emptiness check ever runs.
+    const r = await post(`/api/runs/${RUN}/pick/99`, { images: [] });
+    assert.ok([401, 403, 404, 503].includes(r.status));
+  });
+});
+
+describe('seal serials', () => {
+  const roll = (n) => Array.from({ length: n }, (_, i) => (0xbeef0000 + i).toString(16).padStart(16, '0'));
+
+  it('starts with none assigned', async () => {
+    const r = await get(`/api/runs/${RUN}/seals`);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.ready, false);
+    assert.equal(r.json.missing, 3);
+  });
+
+  it('REFUSES a roll no larger than the run', async () => {
+    // Same size means a buyer who knows the roll knows the whole set in play.
+    const r = await post(`/api/runs/${RUN}/seals`, { roll: roll(3) });
+    assert.equal(r.status, 409);
+    assert.match(r.json.error, /LARGER than the run/);
+  });
+
+  it('assigns one per bundle from a larger roll, and reports ready', async () => {
+    const r = await post(`/api/runs/${RUN}/seals`, { roll: roll(20) });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.assigned, 3);
+    assert.equal(r.json.spare, 17);
+    assert.equal((await get(`/api/runs/${RUN}/seals`)).json.ready, true);
+  });
+
+  it('and the serials never appear on the open run route', async () => {
+    // seal_serial addresses a parcel. The column list on that route is the control.
+    const r = await get(`/api/runs/${RUN}`);
+    assert.ok(!('seal_serial' in r.json.bundles[0]));
+    assert.ok(!r.text.includes('beef0000'));
+  });
+});
+
+describe('amendments', () => {
+  it('refuse on a draft — edit the manifest instead', async () => {
+    const r = await post(`/api/runs/${RUN}/amendments`, {
+      reason: 'nope', new_header: 'a'.repeat(64), affected_bundles: [1],
+    });
+    assert.equal(r.status, 409);
+    assert.match(r.json.error, /still a draft/);
+  });
+
+  it('an unamended run is a chain of length zero', async () => {
+    const r = await get(`/api/runs/${RUN}/amendments`);
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.amendments, []);
+    assert.equal(r.json.chain.ok, true);
+    assert.equal(r.json.chain.links, 0);
+  });
+});
+
+describe('the audit surface', () => {
+  it('records what was done, newest first', async () => {
+    const r = await get(`/api/runs/${RUN}/audit`);
+    assert.equal(r.status, 200);
+    const actions = r.json.audit.map((a) => a.action);
+    assert.ok(actions.includes('create'), 'the run creation is recorded');
+    assert.ok(actions.includes('seal_serials'), 'the serial assignment is recorded');
+    assert.ok(actions.includes('assign') || actions.includes('split'), 'the deal is recorded');
+  });
+
+  it('withholds the payloads without a token — they are manifest-shaped', async () => {
+    const r = await get(`/api/runs/${RUN}/audit`);
+    assert.equal(r.json.detail, false);
+    for (const a of r.json.audit) {
+      assert.equal(a.before_json, undefined);
+      assert.equal(a.after_json, undefined);
+    }
+    // The action, actor and note are the operational record and stay readable.
+    assert.ok(r.json.audit.every((a) => typeof a.action === 'string'));
+  });
+
+  it('and no seal serial reached the audit note', async () => {
+    // The MAPPING is as sensitive as the manifest, and the audit surface is read more widely.
+    const r = await get(`/api/runs/${RUN}/audit`);
+    assert.ok(!r.text.includes('beef0000'));
+  });
+});

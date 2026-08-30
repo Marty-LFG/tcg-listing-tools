@@ -220,6 +220,56 @@
         <tbody id="m_rows"></tbody>
       </table></div>
     </section>
+    <div class="cols">
+      <!-- ===================== SEALS ===================== -->
+      <section class="card">
+        <div class="hd">
+          <div><h2>Seal serials</h2><span class="cap">pre-assigned, before the lock</span></div>
+          <span id="seal_state" class="pill wait">—</span>
+        </div>
+        <p class="note">
+          The serial is a <b>committed attribute</b> — inside the bundle&rsquo;s leaf, and so inside the run
+          root — so it has to exist before the lock even though the parcel is sealed after it. What must be
+          unpredictable is the <b>mapping</b>, not the serial: a numbered commercial roll is fine as long as
+          the assignment is random and the roll is <b>larger than the run</b>, so nobody holding one parcel
+          can derive the set in play.
+        </p>
+        <div class="fld"><label>The roll — one 16-character hex serial per line</label>
+          <textarea id="rollBox" rows="4" style="width:100%;font-family:var(--mono);font-size:12px;"
+            placeholder="0000beef00000001&#10;0000beef00000002&#10;…"></textarea></div>
+        <div class="foot">
+          <button class="btn" onclick="assignSeals()">Assign at random</button>
+          <span id="seal_msg" class="msg"></span>
+        </div>
+      </section>
+
+      <!-- ===================== AMENDMENTS ===================== -->
+      <section class="card">
+        <div class="hd">
+          <div><h2>Amendments</h2><span class="cap">append-only &middot; never an edit</span></div>
+          <span id="chain_state" class="pill wait">—</span>
+        </div>
+        <p class="note">
+          A locked manifest is never corrected in place. A change publishes a <b>new header with its own
+          anchor</b>, and each one records the header it succeeds — so the chain is checkable by anyone
+          holding the published artifacts, and a broken link shows without trusting us.
+        </p>
+        <div id="chainRows"></div>
+      </section>
+    </div>
+
+    <!-- ===================== AUDIT ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Audit</h2><span class="cap">every recorded action on this run</span></div>
+        <a class="btn sm ghost" href="/runs-pick.html">pick &amp; verify →</a>
+      </div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:150px;">When</th><th style="width:120px;">Action</th>
+          <th style="width:110px;">Bundle</th><th style="width:100px;">Actor</th><th>Note</th></tr></thead>
+        <tbody id="auditRows"></tbody>
+      </table></div>
+    </section>
   </div>
 </div>
 
@@ -289,7 +339,7 @@ window.pickRun = async (publicId) => {
   $('tag').textContent = `${RUN.public_id} · ${RUN.unit_count} bundles · ${RUN.status}`;
   $('dealSlot').innerHTML = SPECS.map((s) => `<option value="${esc(s.slot)}">${esc(s.slot)} (${s.qty_per_bundle}/bundle)</option>`).join('');
   renderManifest();
-  await Promise.all([loadPool(), loadClaims(), loadLadder()]);
+  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit()]);
   refreshGuarantee();
 };
 
@@ -516,6 +566,58 @@ function renderManifest() {
       <td><input type="checkbox" ${pinned.get(b.bundle_no) ? 'checked' : ''} onchange="setPin(${b.bundle_no},this.checked)" title="god bundle — excluded from chase randomisation"></td>
     </tr>`;
   }).join('');
+}
+
+// ---- seals, amendments, audit ----------------------------------------------------------------------
+
+async function loadSeals() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/seals`);
+  const s = r.json || {};
+  $('seal_state').className = 'pill ' + (s.ready ? 'ok' : 'wait');
+  $('seal_state').textContent = s.ready ? 'all assigned' : `${s.missing ?? '—'} without a serial`;
+}
+
+window.assignSeals = async () => {
+  const roll = $('rollBox').value.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+  if (!roll.length) { say('seal_msg', 'paste the roll first', 'bad'); return; }
+  const r = await api('POST', `/api/runs/${encodeURIComponent(RUN.public_id)}/seals`, { roll });
+  if (!r.ok) { say('seal_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  // The mapping is deliberately NOT shown: it is as sensitive as the manifest, and this panel is on
+  // the page an operator leaves open.
+  say('seal_msg', `${r.json.assigned} assigned, ${r.json.spare} spare`, 'ok');
+  $('rollBox').value = '';
+  loadSeals();
+  loadAudit();
+};
+
+async function loadChain() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/amendments`);
+  const j = r.json || {};
+  const chain = j.chain || {};
+  $('chain_state').className = 'pill ' + (chain.ok === false ? 'bad' : (j.amendments || []).length ? 'warn' : 'ok');
+  $('chain_state').textContent = chain.ok === false ? 'chain broken'
+    : (j.amendments || []).length ? `${j.amendments.length} amendment(s)` : 'unamended';
+
+  $('chainRows').innerHTML = (j.amendments || []).length
+    ? (j.amendments).map((a) => `<div class="finding" style="border-left:3px solid var(--amber);border-radius:10px;padding:9px 12px;margin-bottom:8px;background:rgba(255,255,255,.015);">
+        <div style="font-weight:600;">#${a.seq} — ${esc(a.reason)}</div>
+        <div class="mono" style="color:var(--muted);margin-top:3px;">bundles ${esc(a.affected_bundles)} · ${esc(String(a.amended_at).slice(0, 16))}</div>
+        <div class="mono" style="color:var(--faint);margin-top:3px;">${esc(String(a.prior_header).slice(0, 12))}… → ${esc(String(a.new_header).slice(0, 12))}…</div>
+      </div>`).join('')
+      + (chain.problems || []).map((x) => `<div class="warn">${esc(x)}</div>`).join('')
+    : '<div class="empty">Nothing amended. A run only gets amendments after it is locked.</div>';
+}
+
+async function loadAudit() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/audit?limit=60`, null, authed());
+  const rows = r.json?.audit || [];
+  $('auditRows').innerHTML = rows.length ? rows.map((a) => `<tr>
+      <td class="mono">${esc(String(a.ts).slice(0, 16))}</td>
+      <td><span class="pill">${esc(a.action)}</span></td>
+      <td class="mono">${esc(a.bundle || '')}</td>
+      <td class="mono">${esc(a.actor || '')}</td>
+      <td style="color:var(--muted);">${esc(a.note || '')}</td>
+    </tr>`).join('') : '<tr><td colspan="5"><div class="empty">Nothing recorded yet.</div></td></tr>';
 }
 
 window.setPin = async (no, pinned) => {
