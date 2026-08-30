@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keeper's Runs · Binders Keepers</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;--purple:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;min-height:100vh;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1400px;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;} a:hover{text-decoration:underline;text-underline-offset:3px;}
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);}
+  .sub .dot{color:var(--faint);margin:0 7px;}
+  .actions{display:flex;gap:9px;align-items:center;}
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s ease;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);} .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn.sm{padding:5px 10px;font-size:11.5px;border-radius:8px;}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  .btn.ghost:hover{color:var(--text);border-color:var(--line2);background:rgba(255,255,255,.03);}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.go:hover{background:rgba(67,214,160,.17);border-color:var(--green);}
+  .btn.danger{border-color:rgba(240,102,110,.38);color:var(--red);background:rgba(240,102,110,.06);}
+  select,input,textarea{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--sans);transition:.15s;}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  input::placeholder,textarea::placeholder{color:var(--faint);}
+  label{display:block;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:5px;}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 17px;margin-bottom:16px;}
+  .card h2{font-family:var(--serif);font-weight:600;font-size:17px;margin:0 0 4px;}
+  .card .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);}
+  .hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+  .row{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-end;}
+  .note{color:var(--muted);font-size:12px;line-height:1.65;margin:0 0 12px;}
+  .note b{color:var(--text);font-weight:600;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:left;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:0 8px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  td input,td select{padding:4px 7px;font-size:12px;border-radius:7px;width:100%;}
+  .mono{font-family:var(--mono);font-size:11.5px;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;font-family:var(--mono);white-space:nowrap;border:1px solid var(--line2);color:var(--muted);}
+  .pill.ok{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.09);}
+  .pill.bad{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.08);}
+  .pill.wait{color:var(--faint);}
+  .pill.warn{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.08);}
+  .pill.pin{color:var(--purple);border-color:rgba(217,164,255,.4);background:rgba(217,164,255,.08);}
+  .empty{color:var(--muted);font-size:13px;padding:22px;text-align:center;border:1px dashed var(--line);border-radius:12px;background:rgba(255,255,255,.012);}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:1080px){.cols{grid-template-columns:1fr;}}
+  .sentence{font-family:var(--serif);font-size:16px;line-height:1.6;color:var(--text);padding:13px 15px;border-radius:12px;
+    border:1px solid rgba(212,176,114,.3);background:rgba(212,176,114,.06);}
+  .sentence.bad{border-color:rgba(240,102,110,.35);background:rgba(240,102,110,.06);color:var(--muted);}
+  .warn{border:1px solid rgba(240,192,74,.35);background:rgba(240,192,74,.07);border-radius:12px;padding:10px 13px;margin-bottom:12px;color:var(--amber);font-size:12.5px;line-height:1.6;}
+  .warn b{color:#ffd97a;}
+  .grid-scroll{overflow-x:auto;}
+  .hide{display:none;}
+  .foot{display:flex;gap:11px;align-items:center;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid var(--line);}
+  .msg{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+  .msg.bad{color:var(--red);} .msg.ok{color:var(--green);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Keeper's <span class="thin">Runs</span></h1>
+        <p class="sub"><a href="/runs-intake.html">← run intake</a><span class="dot">·</span>build a manifest<span class="dot">·</span><span id="tag">—</span></p>
+      </div>
+    </div>
+    <div class="actions">
+      <select id="runPick" onchange="pickRun(this.value)" style="min-width:210px;"></select>
+      <button class="btn ghost" onclick="toggleCreate()">＋ New run</button>
+      <a class="btn ghost" href="/">all tools</a>
+    </div>
+  </header>
+
+  <!-- ===================== COMPOSITION EDITOR (create only) ===================== -->
+  <section id="createCard" class="card hide">
+    <div class="hd">
+      <div><h2>New run</h2><span class="cap">composition is fixed at create</span></div>
+    </div>
+    <p class="note">
+      A run declares its own shape, and that shape is <b>inside the hash</b> — so it is set here and never
+      afterwards. Changing it later would be a different run, not an edit.
+      <b>A slot's label is customer-facing copy</b>: it becomes the noun in the guarantee sentence, so write
+      it as the singular noun phrase the sentence should contain — <span class="mono">graded card</span>,
+      not <span class="mono">Graded slab</span>.
+    </p>
+    <div class="row" style="margin-bottom:12px;">
+      <div><label>Identifier</label><input id="c_id" placeholder="DEV-E1" style="width:130px;"></div>
+      <div><label>Mode</label><select id="c_mode" style="width:100px;" onchange="syncMode()"><option value="dev">dev</option><option value="live">live</option></select></div>
+      <div style="flex:1;min-width:190px;"><label>Name</label><input id="c_name" style="width:100%;" placeholder="Edition One"></div>
+      <div><label>Bundles</label><input id="c_count" type="number" min="1" max="999" value="25" style="width:90px;"></div>
+      <div><label>Edition</label><input id="c_ed" type="number" min="1" value="1" style="width:80px;"></div>
+    </div>
+    <div class="grid-scroll">
+      <table>
+        <thead><tr>
+          <th style="width:120px;">Slot</th><th style="min-width:150px;">Label (the noun)</th><th style="width:110px;">Kind</th>
+          <th style="width:70px;">Qty</th><th style="width:80px;">Lines</th><th>Singleton</th><th>Cert</th><th>Chase</th><th></th>
+        </tr></thead>
+        <tbody id="c_slots"></tbody>
+      </table>
+    </div>
+    <div class="foot">
+      <button class="btn sm ghost" onclick="addSlot()">＋ slot</button>
+      <button class="btn go" onclick="createRun()">Create run</button>
+      <span id="c_msg" class="msg"></span>
+    </div>
+  </section>
+
+  <div id="runBody" class="hide">
+    <!-- ===================== GUARANTEE PANEL ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Guarantee</h2><span class="cap">the claims are the boundary · the sentence is a rendering of them</span></div>
+        <span id="g_verdict" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        Every claim is checked against the manifest <b>as it stands</b>, so a card that would make the
+        sentence false is refused here, while there is still time to swap it. The sentence below is
+        generated from the claims — it cannot assert more than they support, and it is what gets committed.
+      </p>
+      <div id="g_sentence" class="sentence bad">No claims yet.</div>
+      <div id="g_gate" class="warn hide"></div>
+      <div class="grid-scroll" style="margin-top:13px;">
+        <table>
+          <thead><tr><th style="width:110px;">Type</th><th style="width:90px;">Subject</th><th style="width:60px;">Op</th>
+            <th style="min-width:200px;">Value</th><th style="width:100px;">Holds</th><th></th></tr></thead>
+          <tbody id="g_rows"></tbody>
+        </table>
+      </div>
+      <div class="foot">
+        <button class="btn sm ghost" onclick="addClaim()">＋ claim</button>
+        <button class="btn" onclick="saveClaims()">Save claims</button>
+        <button class="btn sm ghost" onclick="refreshGuarantee()">Re-check</button>
+        <span id="g_msg" class="msg"></span>
+      </div>
+    </section>
+
+    <div class="cols">
+      <!-- ===================== POOL ===================== -->
+      <section class="card">
+        <div class="hd"><div><h2>Pool</h2><span class="cap">held for this run · not yet in a bundle</span></div></div>
+        <p class="note">
+          A hold blocks the item everywhere — it cannot be published, listed, repriced, marked sold or
+          deleted while it stands. <b>A pool hold has no slot</b>, so when two slots take the same kind of
+          stock you tick which holds feed which.
+        </p>
+        <div class="grid-scroll"><table>
+          <thead><tr><th style="width:34px;"></th><th>Item</th><th style="width:64px;">Qty</th><th style="width:90px;">Kind</th><th></th></tr></thead>
+          <tbody id="poolRows"></tbody>
+        </table></div>
+        <div class="foot">
+          <select id="dealSlot" style="width:130px;"></select>
+          <select id="dealStrategy" style="width:120px;">
+            <option value="shuffle">shuffle</option><option value="distinct">distinct</option><option value="pinned">pinned</option>
+          </select>
+          <button class="btn go" onclick="runDeal()">Deal into bundles</button>
+          <span id="pool_msg" class="msg"></span>
+        </div>
+      </section>
+
+      <!-- ===================== CHASE LADDER ===================== -->
+      <section class="card">
+        <div class="hd"><div><h2>Chase ladder</h2><span class="cap">published before any sale</span></div></div>
+        <p class="note">
+          What "a chase" <b>means</b>, fixed publicly before a single bundle sells — so the count opened at
+          close is a claim about a pre-committed definition rather than one we could reinterpret afterwards.
+        </p>
+        <div class="grid-scroll"><table>
+          <thead><tr><th style="width:44px;">Rank</th><th style="min-width:150px;">Card</th><th style="width:80px;">Set</th>
+            <th style="width:70px;">Lang</th><th style="width:70px;">Grader</th><th style="width:60px;">Grade</th><th></th></tr></thead>
+          <tbody id="ladderRows"></tbody>
+        </table></div>
+        <div class="foot">
+          <button class="btn sm ghost" onclick="addLadder()">＋ entry</button>
+          <button class="btn" onclick="saveLadder()">Save ladder</button>
+          <span id="ladder_msg" class="msg"></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== MANIFEST GRID ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Manifest</h2><span class="cap">columns generated from the composition · empty cells are the work queue</span></div>
+        <span id="m_progress" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        A <b>pinned</b> bundle is excluded from lock-time chase randomisation and keeps exactly what was
+        assigned to it — which is what lets one bundle hold the best option in every slot at once.
+      </p>
+      <div class="grid-scroll"><table>
+        <thead><tr id="m_head"></tr></thead>
+        <tbody id="m_rows"></tbody>
+      </table></div>
+    </section>
+  </div>
+</div>
+
+<script src="/extras.js"></script>
+<script type="module">
+// The vocabularies are IMPORTED, never restated. Whether a rarity maps to a committed class and whether a
+// language folds to a claimable code are the same questions the lock will ask, and a page answering them
+// from its own copy would show a green tick for a run the lock later refuses.
+import { rarityClass, RARITY_CLASSES } from '/lib/runs-rarity.mjs';
+import { canonicalLanguage } from '/lib/runs-language.mjs';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// The manifest and the counterexamples are the pre-sale answer sheet, so those routes are token-gated.
+// Same storage key and prompt as settings.html, so an operator learns one convention.
+const DIAG_KEY = 'tcg_diag_token';
+function diagToken(force) {
+  let t = ''; try { t = localStorage.getItem(DIAG_KEY) || ''; } catch { /* private mode */ }
+  if (!t || force) {
+    t = (window.prompt('Server DIAG_TOKEN — the manifest and the failing cards are gated behind it:', '') || '').trim();
+    if (t) { try { localStorage.setItem(DIAG_KEY, t); } catch { /* private mode */ } }
+  }
+  return t;
+}
+const authed = () => { const t = diagToken(false); return t ? { authorization: 'Bearer ' + t } : {}; };
+
+const api = async (method, path, body, headers = {}) => {
+  const r = await fetch(path, {
+    method,
+    headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...headers },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  let json = null; try { json = JSON.parse(text); } catch { /* html */ }
+  return { status: r.status, json, text, ok: r.status < 400 };
+};
+const say = (id, text, kind = '') => { const el = $(id); el.className = 'msg ' + kind; el.textContent = text; };
+
+let RUNS = [], RUN = null, SPECS = [], FILL = [], BUNDLES = [], POOL = [], CLAIMS = [], LADDER = [], VOCAB = null;
+
+// ---- runs list -------------------------------------------------------------------------------------
+
+async function loadRuns(select) {
+  const r = await api('GET', '/api/runs');
+  RUNS = r.json?.runs || [];
+  $('runPick').innerHTML = RUNS.length
+    ? RUNS.map((x) => `<option value="${esc(x.public_id)}">${esc(x.public_id)} — ${esc(x.name)} (${x.status})</option>`).join('')
+    : '<option value="">no runs yet</option>';
+  const want = select || RUNS[0]?.public_id;
+  if (want) { $('runPick').value = want; await pickRun(want); }
+}
+
+window.pickRun = async (publicId) => {
+  if (!publicId) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(publicId));
+  if (!r.ok) return;
+  RUN = r.json.run; SPECS = r.json.slots; FILL = r.json.fill; BUNDLES = r.json.bundles;
+  $('runBody').classList.remove('hide');
+  $('createCard').classList.add('hide');
+  $('tag').textContent = `${RUN.public_id} · ${RUN.unit_count} bundles · ${RUN.status}`;
+  $('dealSlot').innerHTML = SPECS.map((s) => `<option value="${esc(s.slot)}">${esc(s.slot)} (${s.qty_per_bundle}/bundle)</option>`).join('');
+  renderManifest();
+  await Promise.all([loadPool(), loadClaims(), loadLadder()]);
+  refreshGuarantee();
+};
+
+// ---- composition editor ----------------------------------------------------------------------------
+
+let SLOTDRAFT = [];
+window.toggleCreate = () => {
+  const on = $('createCard').classList.toggle('hide');
+  if (!on) {
+    $('runBody').classList.add('hide');
+    if (!SLOTDRAFT.length) {
+      // Edition 1's shape, as a starting point rather than a default the code knows about.
+      SLOTDRAFT = [
+        { slot: 'slab', label: 'graded card', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: true, requires_cert: true, is_chase_slot: true },
+        { slot: 'packs', label: 'sealed pack', kind: 'sealed', qty_per_bundle: 3, max_lines: 3, singleton: false, requires_cert: false, is_chase_slot: false },
+        { slot: 'art', label: 'art card', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: true, requires_cert: false, is_chase_slot: false },
+      ];
+    }
+    renderSlots();
+  } else { $('runBody').classList.toggle('hide', !RUN); }
+};
+window.syncMode = () => {
+  // The identifier and the mode cannot disagree — the database enforces it, and a DEV- prefix inside the
+  // header digest is what makes a rehearsal's Bitcoin timestamp self-labelling forever.
+  const dev = $('c_mode').value === 'dev';
+  const id = $('c_id').value.trim();
+  if (dev && id && !id.startsWith('DEV-')) $('c_id').value = 'DEV-' + id;
+  if (!dev && id.startsWith('DEV-')) $('c_id').value = id.slice(4);
+};
+window.addSlot = () => { SLOTDRAFT.push({ slot: '', label: '', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: false, requires_cert: false, is_chase_slot: false }); renderSlots(); };
+window.dropSlot = (i) => { SLOTDRAFT.splice(i, 1); renderSlots(); };
+window.editSlot = (i, k, v) => { SLOTDRAFT[i][k] = (k === 'qty_per_bundle' || k === 'max_lines') ? Number(v) : v; };
+window.toggleSlot = (i, k, v) => {
+  // Exactly one slot is where a chase REPLACES the base item — that is what keeps every parcel the same
+  // weight and thickness, so a bundle cannot be identified by feel at a show table.
+  if (k === 'is_chase_slot' && v) SLOTDRAFT.forEach((s, j) => { s.is_chase_slot = j === i; });
+  else SLOTDRAFT[i][k] = v;
+  renderSlots();
+};
+
+function renderSlots() {
+  $('c_slots').innerHTML = SLOTDRAFT.map((s, i) => `<tr>
+    <td><input value="${esc(s.slot)}" onchange="editSlot(${i},'slot',this.value)" placeholder="slab"></td>
+    <td><input value="${esc(s.label)}" onchange="editSlot(${i},'label',this.value)" placeholder="graded card"></td>
+    <td><select onchange="editSlot(${i},'kind',this.value)">
+      <option value="inventory"${s.kind === 'inventory' ? ' selected' : ''}>inventory</option>
+      <option value="sealed"${s.kind === 'sealed' ? ' selected' : ''}>sealed</option></select></td>
+    <td><input type="number" min="1" value="${s.qty_per_bundle}" onchange="editSlot(${i},'qty_per_bundle',this.value)"></td>
+    <td><input type="number" min="1" max="99" value="${s.max_lines}" onchange="editSlot(${i},'max_lines',this.value)"></td>
+    <td><input type="checkbox" ${s.singleton ? 'checked' : ''} onchange="toggleSlot(${i},'singleton',this.checked)"></td>
+    <td><input type="checkbox" ${s.requires_cert ? 'checked' : ''} onchange="toggleSlot(${i},'requires_cert',this.checked)"></td>
+    <td><input type="checkbox" ${s.is_chase_slot ? 'checked' : ''} onchange="toggleSlot(${i},'is_chase_slot',this.checked)"></td>
+    <td><button class="btn sm ghost" onclick="dropSlot(${i})">✕</button></td>
+  </tr>`).join('');
+}
+
+window.createRun = async () => {
+  say('c_msg', 'creating…');
+  const r = await api('POST', '/api/runs', {
+    public_id: $('c_id').value.trim(), mode: $('c_mode').value, name: $('c_name').value.trim(),
+    unit_count: Number($('c_count').value), edition: Number($('c_ed').value), slots: SLOTDRAFT,
+  });
+  if (!r.ok) { say('c_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  say('c_msg', 'created', 'ok');
+  await loadRuns(r.json.run.public_id);
+};
+
+// ---- pool ------------------------------------------------------------------------------------------
+
+async function loadPool() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/pool`);
+  POOL = r.json?.pool || [];
+  $('poolRows').innerHTML = POOL.length ? POOL.map((h) => `<tr>
+    <td><input type="checkbox" class="poolPick" value="${h.reservation_id}" checked></td>
+    <td>${esc(h.display_name || '(unnamed)')}${h.cert_number ? ` <span class="mono" style="color:var(--faint);">${esc(h.cert_number)}</span>` : ''}</td>
+    <td class="mono">${h.qty}</td>
+    <td><span class="pill">${esc(h.kind)}</span></td>
+    <td><button class="btn sm ghost" onclick="release(${h.reservation_id})">release</button></td>
+  </tr>`).join('') : '<tr><td colspan="5"><div class="empty">Nothing held. Hold stock from run intake, then deal it here.</div></td></tr>';
+}
+
+window.release = async (id) => {
+  const r = await api('POST', `/api/runs/reservations/${id}/release`, { reason: 'released from the pool panel' });
+  say('pool_msg', r.ok ? 'released' : (r.json?.error || `HTTP ${r.status}`), r.ok ? 'ok' : 'bad');
+  await loadPool();
+};
+
+window.runDeal = async () => {
+  const picked = [...document.querySelectorAll('.poolPick:checked')].map((el) => Number(el.value));
+  say('pool_msg', 'dealing…');
+  const r = await api('POST', `/api/runs/${encodeURIComponent(RUN.public_id)}/deal`, {
+    slot: $('dealSlot').value, strategy: $('dealStrategy').value, reservation_ids: picked,
+  });
+  if (!r.ok) { say('pool_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  say('pool_msg', r.json.pinned ? 'pinned slots are assigned by hand' : `dealt ${r.json.dealt}`, 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// ---- chase ladder ----------------------------------------------------------------------------------
+
+async function loadLadder() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/ladder`);
+  LADDER = r.json?.ladder || [];
+  renderLadder();
+}
+window.addLadder = () => { LADDER.push({ card_name: '', set_code: '', language: 'JA', grading_company: 'PSA', grade: '10' }); renderLadder(); };
+window.dropLadder = (i) => { LADDER.splice(i, 1); renderLadder(); };
+window.editLadder = (i, k, v) => { LADDER[i][k] = v; };
+
+function renderLadder() {
+  $('ladderRows').innerHTML = LADDER.length ? LADDER.map((l, i) => `<tr>
+    <td class="mono">${i + 1}</td>
+    <td><input value="${esc(l.card_name)}" onchange="editLadder(${i},'card_name',this.value)"></td>
+    <td><input value="${esc(l.set_code || '')}" onchange="editLadder(${i},'set_code',this.value)"></td>
+    <td><input value="${esc(l.language || '')}" onchange="editLadder(${i},'language',this.value)"></td>
+    <td><input value="${esc(l.grading_company || '')}" onchange="editLadder(${i},'grading_company',this.value)"></td>
+    <td><input value="${esc(l.grade || '')}" onchange="editLadder(${i},'grade',this.value)"></td>
+    <td><button class="btn sm ghost" onclick="dropLadder(${i})">✕</button></td>
+  </tr>`).join('') : '<tr><td colspan="7"><div class="empty">No chases declared.</div></td></tr>';
+}
+
+window.saveLadder = async () => {
+  const r = await api('PUT', `/api/runs/${encodeURIComponent(RUN.public_id)}/ladder`, { ladder: LADDER });
+  say('ladder_msg', r.ok ? 'saved' : (r.json?.error || `HTTP ${r.status}`), r.ok ? 'ok' : 'bad');
+  if (r.ok) { LADDER = r.json.ladder; renderLadder(); }
+};
+
+// ---- claims + guarantee ----------------------------------------------------------------------------
+
+async function loadClaims() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/claims`);
+  CLAIMS = r.json?.claims || [];
+  VOCAB = r.json?.vocabulary || null;
+}
+window.addClaim = () => { CLAIMS.push({ claim_type: 'grader', subject: SPECS[0]?.slot || 'bundle', operator: 'eq', value: '', published: 1 }); refreshGuarantee(); };
+window.dropClaim = (i) => { CLAIMS.splice(i, 1); refreshGuarantee(); };
+window.editClaim = (i, k, v) => {
+  CLAIMS[i][k] = v;
+  // The operator is a property of the claim type, not a choice — one per type, which is why there is no
+  // "or better" anywhere in this vocabulary.
+  if (k === 'claim_type' && VOCAB && VOCAB[v]) CLAIMS[i].operator = VOCAB[v].operator;
+  refreshGuarantee();
+};
+
+window.saveClaims = async () => {
+  say('g_msg', 'saving…');
+  const r = await api('PUT', `/api/runs/${encodeURIComponent(RUN.public_id)}/claims`, { claims: CLAIMS });
+  if (!r.ok) { say('g_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  CLAIMS = r.json.claims;
+  say('g_msg', 'saved', 'ok');
+  refreshGuarantee();
+};
+
+window.refreshGuarantee = async () => {
+  renderClaims([]);
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/guarantee`, null, authed());
+  if (!r.ok) { say('g_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  const g = r.json;
+
+  $('g_verdict').className = 'pill ' + (g.holds ? 'ok' : 'bad');
+  $('g_verdict').textContent = g.holds ? 'every claim holds' : 'a claim fails';
+  $('g_sentence').className = 'sentence' + (g.sentence ? '' : ' bad');
+  $('g_sentence').textContent = g.sentence || (g.sentence_error ? 'No sentence: ' + g.sentence_error : 'No claims yet.');
+
+  const gate = $('g_gate');
+  if (!g.detail) {
+    gate.classList.remove('hide');
+    gate.innerHTML = '<b>Which cards fail is gated.</b> The counts below are safe to show; the bundle and cert '
+      + 'of an offending card are the pre-sale answer sheet. <button class="btn sm ghost" '
+      + 'onclick="diagToken(true);refreshGuarantee();">Enter DIAG_TOKEN</button>';
+  } else gate.classList.add('hide');
+
+  renderClaims(g.results || []);
+}
+
+function renderClaims(results) {
+  const byKey = new Map(results.map((r) => [`${r.claim.claim_type} ${r.claim.subject}`, r]));
+  const types = VOCAB ? Object.keys(VOCAB) : ['grader'];
+  const subjects = ['bundle', ...SPECS.map((s) => s.slot)];
+
+  $('g_rows').innerHTML = CLAIMS.length ? CLAIMS.map((c, i) => {
+    const r = byKey.get(`${c.claim_type} ${c.subject}`);
+    const verdict = !r ? '<span class="pill wait">unsaved</span>'
+      : r.deferred ? '<span class="pill warn" title="counts across the whole run">deferred</span>'
+      : r.holds ? '<span class="pill ok">✓</span>'
+      : `<span class="pill bad">✗ ${r.counterexample_count}</span>`;
+    const detail = r && r.counterexamples && r.counterexamples.length
+      ? `<div class="mono" style="color:var(--red);padding-top:4px;">`
+        + r.counterexamples.slice(0, 4).map((x) => `${esc(x.bundle)}${x.cert ? ' · ' + esc(x.cert) : ''} — got ${esc(x.got)}`).join('<br>')
+        + (r.counterexamples.length > 4 ? `<br>… and ${r.counterexamples.length - 4} more` : '') + '</div>'
+      : '';
+    return `<tr>
+      <td><select onchange="editClaim(${i},'claim_type',this.value)">${types.map((t) => `<option value="${t}"${t === c.claim_type ? ' selected' : ''}>${t}</option>`).join('')}</select></td>
+      <td><select onchange="editClaim(${i},'subject',this.value)">${subjects.map((sname) => `<option value="${esc(sname)}"${sname === c.subject ? ' selected' : ''}>${esc(sname)}</option>`).join('')}</select></td>
+      <td class="mono">${esc(c.operator)}</td>
+      <td><input value="${esc(c.value)}" onchange="editClaim(${i},'value',this.value)" placeholder="PSA">${detail}</td>
+      <td>${verdict}</td>
+      <td><button class="btn sm ghost" onclick="dropClaim(${i})">✕</button></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6"><div class="empty">No claims. A run with no claims promises nothing.</div></td></tr>';
+}
+
+// ---- manifest grid ---------------------------------------------------------------------------------
+
+function renderManifest() {
+  $('m_head').innerHTML = '<th style="width:100px;">Bundle</th>'
+    + SPECS.map((s) => `<th>${esc(s.slot)} <span style="color:var(--faint);">${s.qty_per_bundle}</span></th>`).join('')
+    + '<th style="width:90px;">Status</th><th style="width:70px;">Pin</th>';
+
+  const done = FILL.filter((b) => b.complete).length;
+  $('m_progress').className = 'pill ' + (done === FILL.length && FILL.length ? 'ok' : 'wait');
+  $('m_progress').textContent = `${done} / ${FILL.length} complete`;
+
+  const pinned = new Map(BUNDLES.map((b) => [b.bundle_no, b.pinned]));
+  $('m_rows').innerHTML = FILL.map((b) => {
+    const cells = SPECS.map((s) => {
+      const cell = b.slots[s.slot] || { want: s.qty_per_bundle, have: 0, complete: false };
+      const cls = cell.complete ? 'ok' : cell.have ? 'warn' : 'wait';
+      return `<td><span class="pill ${cls}">${cell.have}/${cell.want}</span></td>`;
+    }).join('');
+    return `<tr>
+      <td class="mono">${esc(b.label)}</td>${cells}
+      <td>${b.complete ? '<span class="pill ok">built</span>' : '<span class="pill wait">open</span>'}</td>
+      <td><input type="checkbox" ${pinned.get(b.bundle_no) ? 'checked' : ''} onchange="setPin(${b.bundle_no},this.checked)" title="god bundle — excluded from chase randomisation"></td>
+    </tr>`;
+  }).join('');
+}
+
+window.setPin = async (no, pinned) => {
+  await api('PATCH', `/api/runs/${encodeURIComponent(RUN.public_id)}/bundles/${no}`, { pinned });
+  await pickRun(RUN.public_id);
+};
+
+window.diagToken = diagToken;
+loadRuns();
+</script>
+</body>
+</html>
