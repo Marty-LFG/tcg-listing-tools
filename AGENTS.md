@@ -2230,9 +2230,13 @@ yet. It is its own tab and stays out of `Outstanding`, so a six-month-out preord
 `POST /orders/:id/receive?dry=1` builds the plan and writes **nothing**; the same call without `dry`
 rebuilds it from the same rows and applies it, so what the owner approved is what happens.
 
-`reconcileGate` blocks the WHOLE order on: an uncounted line, a count differing from the order with
-no reason code, a split that does not sum to the count, a split on a line that cannot split, or a
-lot that has not said how many items came out. Every unready line is reported at once.
+`reconcileGate` blocks the WHOLE order on: an uncounted line; a count differing from the order with
+no reason code; a split that does not sum to the count; a split on a line that cannot split; a lot
+that has not said how many items came out, or names more than `MAX_LOT_UNITS`; a grading line naming
+no submissions, naming a number of them that does not equal the cards counted, or naming one that has
+been deleted or already promoted. Every unready line is reported at once. **Keep this list in step
+with the code** — a second client written against a stale list will not know a grading line can
+block a delivery.
 
 **Idempotency is `purchase_receipts.UNIQUE(order_id)`**, and the receipt INSERT is the transaction's
 first statement — a double tap, a retried fetch or a second tab throws on the constraint and rolls
