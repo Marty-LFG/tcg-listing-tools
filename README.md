@@ -20,6 +20,7 @@ The landing page links to seven listing **builders** — Pokémon, Magic, Star W
 Unlimited, Riftbound, Disney Lorcana, LEGO, Funko Pop! — plus five **tools**:
 Graded Card Inventory (`inventory.html`), Price Tracker (`tracker.html`),
 Card Pre-Grader (`card-grader.html`), Shipping Label Maker (`shipping-label.html`),
+**Purchasing** (`purchasing.html`) — stock ordered but not yet received —
 and **Settings & Status** (`settings.html`) — one page showing which API keys are set,
 per-source health (with on-demand probes), baked-data freshness, and DB/subsystem state,
 plus edit forms for the tracker/repricer/pricing/refresh configs.
@@ -53,6 +54,8 @@ Live upstream smoke (opt-in, makes one request per source): `TEST_LIVE=1 pnpm te
   with `PSA_API_TOKEN`, others deep-link to their verify page)
 - `/api/inventory/*` → graded-card inventory API (`lib/inventory.mjs`; items CRUD, valuation,
   grading pipeline)
+- `/api/purchasing/*` → purchase orders / incoming stock (`lib/purchasing.mjs`; orders, lines,
+  payments, the restock picker, and the receive that writes into sealed/graded stock)
 - `/api/grade` → pre-grader AI vision condition pass; `/api/print` → thermal label printer
 
 The tools call those relative paths, so everything is same-origin — no CORS,
@@ -74,6 +77,39 @@ no key in the browser. Edit the proxy targets/headers in `vite.config.js`.
   Unleashed #238 Baron Nashor is **Ultimate**, which no number can imply.
 - SWU is entirely live via swu-db; Base URL is preset to `/api/swu`.
 - Every builder always allows manual field entry; the preview builds regardless.
+
+## Purchase orders (incoming stock)
+
+`orders.html` is the **outbound** eBay fulfilment queue. **Purchasing** (`purchasing.html` /
+`lib/purchasing.mjs`, `/api/purchasing/*`) is the inbound side: stock you have bought and not yet
+got. It records where it came from, what it cost, what is still owed, and when the carton turns up
+it checks the goods against the order before anything becomes stock.
+
+Nothing here *is* stock. Every line is counted on arrival, a count that differs from the order needs
+a reason, and the whole order is blocked until every line reconciles. Then a **preview** shows
+exactly what will happen — which SKUs get `+N`, which are new records, where each unit is going, and
+what each one ends up having cost — and only then does the commit run, in one transaction. Receiving
+twice is impossible: a second attempt returns the original receipt rather than double-stocking.
+
+- **Where it goes.** The storage spot is chosen at receiving, primarily for sealed product: per line,
+  splittable across several spots (four on a shelf, two in a tub), with an order-wide default and
+  inline creation of new spots. Locations come from `/api/sealed/locations` — one vocabulary, one
+  owner. Singles and slabs get a spot too, though they carry a single location rather than a split.
+- **Restocks.** Most orders are more of something you already hold, so a line can be picked from a
+  filtered search over held stock instead of typed. On receipt it merges into that SKU — no second
+  listing, no second shelf label — and its cost basis moves to a weighted average.
+- **Landed cost.** Order-level shipping, tax and fees are spread across the received units *by
+  value* and land in the existing `acq_fees_cents`, so `cost_cents + acq_fees_cents` on a stock row
+  is a true landed cost. The split is exact to the cent.
+- **Money.** Amounts are stored in the currency the order was placed in and never pre-converted
+  (Golden Rule 3). AUD is shown at the live rate and flagged as an estimate until you enter what the
+  bank actually charged; from then on that settled figure is the cost basis. A foreign order with no
+  rate refuses to receive rather than inventing one.
+- **Payments** are individual rows — deposits, instalments, refunds as negatives — and the
+  unpaid/partial/paid status is derived from them, never stored.
+
+Suppliers are free text with autocomplete drawn from names already used on stock; there is no
+supplier registry to maintain. Order entry is manual only — no CSV import, no barcode scan.
 
 ## Graded-card inventory (Binders Keepers)
 

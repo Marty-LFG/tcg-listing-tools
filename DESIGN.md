@@ -65,7 +65,7 @@ Per-page `--gold` overrides in the wild — **this table is the source of truth*
 
 | Accent | Pages |
 |---|---|
-| `#d4b072` house gold | `index` · `inventory` · `tracker` · `catalog` · `sealed` · `locations` · `listings` · `listing-match` · `orders` · `postsale` · `settings` |
+| `#d4b072` house gold | `index` · `inventory` · `tracker` · `catalog` · `sealed` · `locations` · `listings` · `listing-match` · `orders` · `postsale` · `settings` · `purchasing` |
 | `#f0c020` | `pokemon-listing-builder` · `stock-uploader` · `stock-runner` · `bulk-listing-builder` |
 | `#5ab0ff` | `shipping-label` · `pdf-print` |
 | `#d9a4ff` | `card-grader` |
@@ -136,8 +136,8 @@ dependency beyond the data APIs.
 
 Two delivery modes, one look:
 
-- **Flagship inline pages** (11) — `index`, `inventory`, `tracker`, `catalog`, `sealed`,
-  `locations`, `orders`, `postsale`, `listings`, `listing-match`, `listing-image-lab` carry the
+- **Flagship inline pages** (12) — `index`, `inventory`, `tracker`, `catalog`, `sealed`,
+  `locations`, `orders`, `postsale`, `purchasing`, `listings`, `listing-match`, `listing-image-lab` carry the
   full token block + component CSS **inline** in their own `<style>` and link **no** `vault.css`.
   They are the richest surfaces (masthead, section rules, tiles, slabs, modals) and own their
   styling end-to-end.
