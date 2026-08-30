@@ -239,10 +239,16 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 const DIAG_KEY = 'tcg_diag_token';
 function diagToken(force) {
   let t = ''; try { t = localStorage.getItem(DIAG_KEY) || ''; } catch { /* private mode */ }
-  if (!t || force) {
-    t = (window.prompt('Server DIAG_TOKEN — the manifest and the failing cards are gated behind it:', '') || '').trim();
-    if (t) { try { localStorage.setItem(DIAG_KEY, t); } catch { /* private mode */ } }
-  }
+  if (t && !force) return t;
+  // NEVER PROMPT ON LOAD. force is false on every automatic call, so a visitor with no token stored gets
+  // the ungated view — which is the whole point of splitting this route by sensitivity — instead of a
+  // modal before they have asked for anything. Only the panel's own button passes force.
+  if (!force) return '';
+  // And prompt() is not available everywhere a page can run. An embedded viewer throws rather than
+  // returning null, which used to reject out of refreshGuarantee and leave the panel blank.
+  try { t = (window.prompt('Server DIAG_TOKEN — the manifest and the failing cards are gated behind it:', '') || '').trim(); }
+  catch { return ''; }
+  if (t) { try { localStorage.setItem(DIAG_KEY, t); } catch { /* private mode */ } }
   return t;
 }
 const authed = () => { const t = diagToken(false); return t ? { authorization: 'Bearer ' + t } : {}; };
