@@ -253,9 +253,17 @@ describe('why the Runner does NOT stage through POST /api/inventory/batches', ()
     const { json } = await get('/api/inventory/items?q=Batch Path');
     const row = (json.items || [])[0];
     assert.ok(row, 'batch row not created');
-    // If either of these ever becomes non-null, /batches has learned to carry them and the Runner
-    // could switch to it for a single round-trip stage. Until then, /items is the only correct path.
-    assert.equal(row.card_facts, null, '/batches still drops card_facts');
+    // This canary fired on 2026-08-25 and was RIGHT to: /batches learned to derive one field. It now
+    // stamps card_facts.set_code at insert (lib/inventory.mjs stampSetCode), because a row without one
+    // gets no bk_card_identity metaobject and can never appear in the PDP condition selector — 24 rows
+    // had gone out that way. So card_facts is no longer null.
+    //
+    // But the Runner still cannot switch, and that is the thing this test is actually guarding. What
+    // /batches carries is DERIVED from set_name; it still discards whatever card_facts the CLIENT sent,
+    // and still drops store_categories entirely. The Runner needs both preserved verbatim.
+    const facts = row.card_facts ? JSON.parse(row.card_facts) : {};
+    assert.equal(facts.set_code, 'OBF', '/batches now derives set_code from the set name');
+    assert.equal(facts.hp, undefined, "/batches STILL drops the client's own card_facts — the row sent hp:330");
     assert.equal(row.store_categories, null, '/batches still drops store_categories');
   });
 
