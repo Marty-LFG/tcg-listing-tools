@@ -181,10 +181,25 @@ if (WANT.collections) {
     ok ? gone++ : failed++;
   }
 }
+// THE IMAGE CACHE GOES TOO, and forgetting it cost a run. shopify_files maps a content hash to a
+// MediaImage gid and never revalidates — its own header says so — which means it assumes Shopify's
+// files are immortal. Deleting a product takes its media with it, so the next publish of that same
+// card reuses a gid that no longer exists and productSet refuses the ENTIRE call with INVALID_INPUT.
+//
+// Measured here: a sweep of 60 products was followed by a run in which exactly the ten
+// previously-published cards failed and all 35 new ones succeeded. That split is what identified it.
+//
+// Cleared whole rather than per product, because the cache is keyed on content hash and has no idea
+// which product a file belonged to. Re-uploading is the only cost, and after a sweep there is nothing
+// left for those references to point at anyway. The publish path also self-heals this now, so a stale
+// row is recoverable rather than fatal — but not creating them is better than recovering from them.
+if (gone && (WANT.seed || WANT.published)) {
+  try { files = db.prepare('DELETE FROM shopify_files').run().changes || 0; } catch { /* GR7 */ }
+}
 db.close();
 
 console.log(bold('\n──────── summary ────────'));
-console.log(`  ${green(String(gone))} deleted   ${failed ? red(failed + ' failed') : '0 failed'}   ${forgot} mirror row(s) cleared`);
+console.log(`  ${green(String(gone))} deleted   ${failed ? red(failed + ' failed') : '0 failed'}   ${forgot} mirror row(s) cleared   ${files} cached image ref(s) cleared`);
 if (WANT.published) {
   console.log(dim('\n  Re-upload the real cards when you are ready:'));
   console.log(dim('    node --disable-warning=ExperimentalWarning scripts/publish-shopify.mjs --limit 50 --include-listed --live\n'));

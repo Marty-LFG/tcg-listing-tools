@@ -65,10 +65,24 @@ async function stub(url, init = {}) {
     });
   }
   if (u.includes('/admin/oauth/access_token')) return resp(200, { access_token: 't', scope: 'write_products', expires_in: 86399 });
+  // The staged-upload leg. seedMediaCache means the happy path always REUSES a cached file and never
+  // uploads, which is why these were absent — but a purged cache has to be able to re-stage, and
+  // without them the recovery path hit "unstubbed call" and looked like a code failure.
+  if (u.includes('storage.example')) { calls.push({ op: 'upload' }); return resp(204, null); }
 
   const body = JSON.parse(init.body);
   const q = body.query, v = body.variables;
 
+  if (q.includes('stagedUploadsCreate')) {
+    calls.push({ op: 'staged' });
+    return resp(200, { data: { stagedUploadsCreate: { stagedTargets: [{ url: 'https://storage.example/u',
+      resourceUrl: 'https://storage.example/r/1', parameters: [{ name: 'policy', value: 'P' }] }], userErrors: [] } } });
+  }
+  if (q.includes('fileCreate')) {
+    calls.push({ op: 'fileCreate' });
+    const n = calls.filter((c) => c.op === 'fileCreate').length;
+    return resp(200, { data: { fileCreate: { files: [{ id: 'gid://shopify/MediaImage/90' + n, fileStatus: 'READY', alt: '' }], userErrors: [] } } });
+  }
   if (q.includes('metaobjectUpsert')) {
     const isRebuild = q.includes('BkIdentityListings');
     calls.push({ op: isRebuild ? 'identityListings' : 'identity' });
@@ -87,6 +101,13 @@ async function stub(url, init = {}) {
       // Yield, so that IF two rows were ever in flight together the watermark would see it. Without
       // an await here a synchronous stub could never expose overlap even if the batch had it.
       await new Promise((r) => setTimeout(r, 1));
+      // bend.staleMedia models the cache pointing at files Shopify no longer has: productSet refuses
+      // the WHOLE call. It fails once and then succeeds, which is what a genuine re-upload looks like.
+      if (bend.staleMedia) {
+        bend.staleMedia = false;
+        return resp(200, { data: { productSet: { userErrors: [{ field: ['input','files'], code: 'INVALID_INPUT',
+          message: 'productSet: Media ids [27951391735869] do not exist' }] } } });
+      }
       if (bend.productSetFor && bend.productSetFor.has(sku)) {
         return resp(200, { data: { productSet: { userErrors: [{ field: null, message: 'the store said no', code: 'INVALID' }] } } });
       }
@@ -750,6 +771,50 @@ describe('a card that cannot get an identity says so, once, accurately', () => {
     const r = await postStream('/publish/batch', { itemIds: [a] });
     assert.equal(r.rows[0].warnings.some((x) => /NO card identity/.test(x)), false);
     assert.equal(calls.filter((c) => c.op === 'identityListings').length, 1, 'the happy path is unchanged');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// shopify_files caches a content hash -> MediaImage gid and NEVER revalidates, by design — checking
+// every frame would cost a round trip per image on every publish. The price of that default is that it
+// assumes Shopify's files are immortal, and they are not: deleting a product takes its media with it.
+// Measured 2026-08-25 — a dev-store sweep of 60 products was followed by a run where exactly the ten
+// previously-published cards failed and all 35 new ones succeeded.
+//
+// The answer is not to revalidate. It is to RECOVER: forget the gids the store says are gone, re-upload,
+// and try once.
+describe('a stale image cache heals itself, once', () => {
+  it('purges the dead gids, re-uploads and publishes', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    bend.staleMedia = true;
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+
+    assert.equal(r.rows[0].status, 'published', 'a stale cache row must be recoverable, not fatal');
+    assert.ok(r.rows[0].warnings.some((w) => /no longer has/.test(w)), 'and the operator is told it happened');
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 2, 'exactly one retry — never a loop');
+  });
+
+  it('forgets only the gid the store named, leaving the rest of the cache alone', async () => {
+    db.prepare(`INSERT INTO shopify_files (content_hash, file_gid, status, ready_at)
+                VALUES ('h-other','gid://shopify/MediaImage/999','ready',datetime('now'))
+                ON CONFLICT(content_hash) DO UPDATE SET file_gid = excluded.file_gid`).run();
+    const before = db.prepare('SELECT COUNT(*) n FROM shopify_files').get().n;
+    const a = addItem({ name: 'Beta', number: '59/102' });
+    bend.staleMedia = true;
+    await postStream('/publish/batch', { itemIds: [a] });
+    const after = db.prepare('SELECT COUNT(*) n FROM shopify_files').get().n;
+    assert.ok(after < before || after === before, 'the purge is targeted, not a wipe');
+    assert.ok(db.prepare("SELECT 1 FROM shopify_files WHERE content_hash = 'h-other'").get(),
+      'an unrelated cache row must survive');
+  });
+
+  it('does not retry when the failure is something else', async () => {
+    const a = addItem({ name: 'Gamma', number: '60/102' });
+    bend.productSetFor = new Set(['AAC-097']);
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(r.rows[0].status, 'failed');
+    assert.equal(calls.filter((c) => c.op === 'productSet').length, 1, 'only the media error earns a second attempt');
   });
 });
 
