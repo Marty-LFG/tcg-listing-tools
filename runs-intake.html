@@ -184,6 +184,10 @@
 // class is the same question the lock will ask, and a page that answered it with its own copy of the
 // table would show a green tick for a card the lock later refuses — after the pool was bought.
 import { rarityClass, RARITY_CLASSES, RARITY_SOURCES } from '/lib/runs-rarity.mjs';
+// Same reasoning for language, and the problem is already in this repo: the cert lookup returns JP, the
+// card catalogue says ja, and a run's claim says JA. Evaluated literally — which is how a language claim
+// IS evaluated — a pool mixing them fails the guarantee, bundle by bundle, for no visible reason.
+import { canonicalLanguage, languageDisplay } from '/lib/runs-language.mjs';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -265,7 +269,9 @@ window.resolveCerts = async () => {
       set_name: id.set_name || '',
       number: id.number || '',
       variant: id.variant || '',
-      language: id.language || $('lang').value || '',
+      // Normalised HERE so the pool is consistent from the first row. What PSA calls JP and what a
+      // catalogue calls ja are the same language, and the committed field has to say so once.
+      language: canonicalLanguage(id.language || $('lang').value) || id.language || $('lang').value || '',
       grade: json?.grade == null ? '' : String(json.grade),
       rarity: $('defRarity').value || '',
       image_url: json?.image_url || null,
@@ -308,7 +314,9 @@ function renderGraded() {
       <td><input list="raritySources" value="${esc(r.rarity)}"${ro} onchange="editRow(${i},'rarity',this.value)" placeholder="as printed"></td>
       <td>${clsCell}</td>
       <td><input value="${esc(r.grade)}"${ro} onchange="editRow(${i},'grade',this.value)"></td>
-      <td><input value="${esc(r.language)}"${ro} onchange="editRow(${i},'language',this.value)"></td>
+      <td><input value="${esc(r.language)}"${ro} onchange="editRow(${i},'language',this.value)"
+        title="${esc(languageDisplay(canonicalLanguage(r.language)) || 'not a language the run vocabulary maps')}"
+        style="${canonicalLanguage(r.language) ? '' : 'border-color:var(--red);'}"></td>
       <td>${result}</td>
       <td>${r.status === 'added' ? '' : `<button class="btn sm ghost" onclick="dropRow(${i})">✕</button>`}</td>
     </tr>`;
@@ -319,14 +327,18 @@ function renderGraded() {
   // treating the card as conforming.
   const bad = rows.filter((r) => r.rarity && !rarityClass(r.rarity));
   const blank = rows.filter((r) => !r.rarity);
+  const badLang = rows.filter((r) => r.language && !canonicalLanguage(r.language));
   const box = $('unmapped');
-  if (!bad.length && !blank.length) { box.classList.add('hide'); return; }
+  if (!bad.length && !blank.length && !badLang.length) { box.classList.add('hide'); return; }
   box.classList.remove('hide');
   box.innerHTML = [
     bad.length ? `<b>${bad.length} card(s) carry a rarity the run vocabulary does not map</b>: `
       + bad.map((r) => esc(r.rarity)).filter((v, j, a) => a.indexOf(v) === j).join(', ')
       + '. An unmapped rarity has no committed class, so it satisfies no guarantee and a run holding one cannot lock.' : '',
     blank.length ? `<b>${blank.length} card(s) have no rarity yet.</b> A grader's record does not carry one, so it has to come from the card.` : '',
+    badLang.length ? `<b>${badLang.length} card(s) carry a language the run vocabulary does not map</b>: `
+      + badLang.map((r) => esc(r.language)).filter((v, j, a) => a.indexOf(v) === j).join(', ')
+      + '. A language claim is evaluated by literal comparison, so an unmapped spelling fails it on every bundle.' : '',
   ].filter(Boolean).join('<br>');
 }
 
