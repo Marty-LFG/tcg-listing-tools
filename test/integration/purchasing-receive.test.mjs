@@ -100,6 +100,27 @@ describe('the reconciliation gate', () => {
     assert.equal(r.body.placed, 3);
   });
 
+  it('and leaves the line completely untouched when it does', async () => {
+    // The count used to be written BEFORE the split was checked, and outside a transaction — so a
+    // rejected save left qty_received committed with the old placements still attached, while the
+    // page (seeing an error) told the operator nothing had saved.
+    const before = withDb((db) => db.prepare('SELECT qty_received, discrepancy FROM purchase_lines WHERE id = ?').get(lineId));
+    await api(`/lines/${lineId}/count`, {
+      method: 'POST',
+      body: { qty_received: 99, discrepancy: 'over', placements: [{ location: 'NOWHERE', quantity: 1 }] },
+    });
+    const after = withDb((db) => db.prepare('SELECT qty_received, discrepancy FROM purchase_lines WHERE id = ?').get(lineId));
+    assert.deepEqual({ ...after }, { ...before }, 'a rejected count must write nothing at all');
+    const spots = withDb((db) => db.prepare('SELECT location FROM purchase_line_placements WHERE line_id = ?').all(lineId));
+    assert.ok(!spots.some((s) => s.location === 'NOWHERE'), 'and must not leave its placements behind');
+  });
+
+  it('refuses an absurd lot size before it can allocate an array that big', async () => {
+    const r = await api(`/lines/${lineId}/count`, { method: 'POST', body: { qty_received: 6, lot_units: 100000001 } });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error, 'lot_units_too_large');
+  });
+
   it('passes once the count has a reason and the split adds up', async () => {
     await count(lineId, {
       qty_received: 4, discrepancy: 'short', discrepancy_note: '2 never left the warehouse',
@@ -236,6 +257,62 @@ describe('a bulk lot', () => {
       assert.equal(money, 1000, "the owner's rule: the split sums back to the lot total, exactly");
       // §16b: a lot is one object, not a slot on the singles shelf — it must not burn a shelf label.
       for (const row of rows) assert.match(row.sku, /^BK-RAW-/, 'a lot takes the bulk namespace');
+    });
+  });
+});
+
+describe('a restock target that has left stock', () => {
+  it('is not merged into — a sold row would swallow the delivery invisibly', async () => {
+    // The card can sell while the restock is still on the water. Merging six boxes onto a row marked
+    // 'sold' hides them from every in_stock view while summarizeSealed keeps counting them as sold.
+    const held = await sealedApi('/items', {
+      method: 'POST',
+      body: { game: 'pokemon', product_type: 'booster_box', name: 'Sold Out Box', quantity: 1, cost_cents: 9000 },
+    });
+    const orderId = await makeOrder({ supplier: 'Sold Co' });
+    const line = await addLine(orderId, { qty_ordered: 2, unit_cost_cents: 9500, link: { kind: 'sealed', item_id: held.body.id } });
+    await count(line, { qty_received: 2, placements: [{ location: 'SHELF-S', quantity: 2 }] });
+
+    await sealedApi('/items/' + held.body.id, { method: 'PATCH', body: { status: 'sold' } });
+
+    const dry = await api(`/orders/${orderId}/receive?dry=1`, { method: 'POST' });
+    assert.equal(dry.status, 200);
+    const step = dry.body.steps[0];
+    assert.notEqual(step.target_id, held.body.id, 'the sold row must not be the merge target');
+    assert.deepEqual(dry.body.blockers, [], 'but the goods still have to be put away (GR7)');
+
+    const r = await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    withDb((db) => {
+      const sold = db.prepare('SELECT quantity, status FROM sealed_items WHERE id = ?').get(held.body.id);
+      assert.equal(sold.quantity, 1, 'the sold row is untouched');
+      assert.equal(sold.status, 'sold');
+      assert.ok(mirrorHolds(db));
+    });
+  });
+});
+
+describe('the blend audit trail', () => {
+  it('records what the cost basis was BEFORE the weighted average moved it', async () => {
+    const held = await sealedApi('/items', {
+      method: 'POST',
+      body: { game: 'pokemon', product_type: 'booster_box', name: 'Audit Box', quantity: 4, cost_cents: 10000, acq_fees_cents: 200 },
+    });
+    const orderId = await makeOrder({ supplier: 'Audit Co' });
+    const line = await addLine(orderId, { qty_ordered: 4, unit_cost_cents: 14000, link: { kind: 'sealed', item_id: held.body.id } });
+    await count(line, { qty_received: 4 });
+    const r = await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+
+    const step = r.body.result.find((s) => s.line_id === line);
+    assert.equal(step.action, 'merge');
+    // Without this the receipt claimed the blend was "reversible by hand" while recording null.
+    assert.equal(step.blend_before.quantity, 4);
+    assert.equal(step.blend_before.cost_cents, 10000);
+    assert.equal(step.blend_before.acq_fees_cents, 200);
+    assert.equal(step.blend_after.cost_cents, 12000, '(10000*4 + 14000*4) / 8');
+    withDb((db) => {
+      assert.equal(db.prepare('SELECT cost_cents FROM sealed_items WHERE id = ?').get(held.body.id).cost_cents, 12000);
     });
   });
 });

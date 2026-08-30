@@ -2203,9 +2203,18 @@ Both take **AUD cents**. See the money section below for why that is not a GR3 v
 (cancelling is sometimes a mistake). Enforced server-side by `TRANSITIONS`, and served at
 `GET /statuses` so the page's dropdown can disable what the server would refuse.
 
-**`received` appears in no transition list.** It is a claim that stock exists, and only a committed
-receive can make that true — the same discipline as `grading_submissions` reaching `graded` only
-through promote. A PATCH asking for it gets `409 receive_via_endpoint`.
+**Neither `received` nor `closed` appears in any transition list.** `received` is a claim that stock
+exists and only a committed receive can make that true — the same discipline as
+`grading_submissions` reaching `graded` only through promote. `closed` runs its own checks (a receipt
+exists; nothing is still owed unless `force_close_unpaid` says so) and stamps `closed_at`. A PATCH
+asking for either gets a 409 naming the endpoint that owns it (`receive_via_endpoint` /
+`close_via_endpoint`). Leaving `closed` in the table was not cosmetic: `fillOrderForm` builds the
+page's dropdown *from* this table, so it was the only move the UI offered on a received order, and
+taking it skipped every check.
+
+**An order can only be CREATED in `draft`, `preorder` or `ordered`** (`CREATE_STATUSES`). Creating
+one directly in `arrived` skips the whole history and is immediately receivable; `closed` would
+assert a receipt that does not exist.
 
 **A preorder needs a `release_date`**, because a preorder is an order whose product does not exist
 yet. It is its own tab and stays out of `Outstanding`, so a six-month-out preorder never clutters
@@ -2224,9 +2233,12 @@ lot that has not said how many items came out. Every unready line is reported at
 first statement — a double tap, a retried fetch or a second tab throws on the constraint and rolls
 back before one unit has moved. A repeat request returns `{already:true}` with the original result.
 
-**A dead restock link is a warning, not a blocker** (GR7). The ladder is: the row exists and its
-`link_sku` still matches → merge; it is gone but exactly ONE in-stock row matches the snapshot →
-merge and flag `link_repaired`; otherwise create and flag `link_broken`. Deliberately conservative:
+**A dead restock link is a warning, not a blocker** (GR7). The ladder is: the row exists, its
+`link_sku` still matches **and it is still `in_stock`** → merge; otherwise, if exactly ONE in-stock
+row matches the snapshot → merge and flag `link_repaired`; otherwise create and flag `link_broken`.
+The `in_stock` condition is load-bearing rather than tidy: a card can sell while its restock is on
+the water, and merging six boxes onto a row marked `sold` hides them from every in-stock view while
+`summarizeSealed` goes on counting them as sold. Deliberately conservative:
 guessing which of two similar rows a delivery belongs to is worse than creating one the owner can
 merge by hand. Either way the goods get put away, because they are physically on the floor.
 
@@ -2273,7 +2285,12 @@ merge by hand. Either way the goods get put away, because they are physically on
   and the shelf counter never rewinds.
 - **`grading`** — you already own the cards and are buying a service. Creates no stock; the fee
   lands on `grading_submissions.grading_cost_cents`, which promote already folds into
-  `acq_fees_cents` (§13). No new plumbing.
+  `acq_fees_cents` (§13). No new plumbing. The submissions are named in
+  `purchase_lines.submission_ids` (a JSON array, read by `parseSubmissionIds`) and the gate refuses a
+  grading line that names none — with nothing to write the fee to, the money would land on nothing
+  and say so nowhere. **Do not put these in `identity_key`**: that column is a PRODUCT identity
+  everywhere else and is copied verbatim out of `link_snapshot`, so a real key parsed to `NaN` and
+  the fee silently vanished. That is exactly how this column came to exist.
 
 ### Storage location
 

@@ -223,8 +223,8 @@
 
   <div class="filters">
     <span class="sec-h">Register</span>
-    <input id="f_q" placeholder="search ref, supplier, invoice or tracking" style="width:250px;" oninput="renderList()">
-    <select id="f_sup" onchange="renderList()"><option value="">every supplier</option></select>
+    <input id="f_q" placeholder="search ref, supplier, invoice or tracking" style="width:250px;" oninput="refresh()">
+    <select id="f_sup" onchange="refresh()"><option value="">every supplier</option></select>
     <span style="margin-left:auto;font-size:11px;color:var(--faint);" id="fxnote">—</span>
   </div>
   <div id="list"></div>
@@ -359,6 +359,7 @@
       <span class="spacer"></span>
       <button class="btn ghost" onclick="closeOrder()">Close</button>
       <button class="btn" onclick="saveOrder()">Save</button>
+      <button class="btn" id="btnClose" onclick="closeOrderOut()">Close order</button>
       <button class="btn go" id="btnReceive" onclick="openReceive()">Receive stock →</button>
     </div>
   </div>
@@ -402,7 +403,7 @@
 <script src="/extras.js"></script>
 <script type="module">
 const B = '/api/purchasing';
-let ORDERS = [], COUNTS = {}, TAB = 'outstanding', CUR = null, LINEMODE = 'pick', PICKED = null;
+let ORDERS = [], ROWS = [], COUNTS = {}, TAB = 'outstanding', CUR = null, LINEMODE = 'pick', PICKED = null;
 let STATUSES = [], TRANSITIONS = {}, LOCATIONS = [], SUPPLIERS = [], PLAN = null;
 let GAMES = [], TYPES = {}, ALL_TYPES = [];
 
@@ -501,9 +502,21 @@ async function loadVocab() {
   onTargetPick();
 }
 
+// Two fetches, two questions. The filtered one answers "what am I looking at" — its rows fill the
+// list and its counts fill the tabs, so a search shows which tabs still have matches. The unfiltered
+// one answers "what is outstanding overall", which is what the tiles are for and must not shrink
+// just because something is typed in the search box.
+//
+// The facet, supplier and text filters are the SERVER's (lib/purchasing.mjs) — the page used to keep
+// its own copy of all three and never send the parameters, so the two definitions had to be edited
+// together and had already drifted (the server matched supplier case-insensitively, the page with
+// ===). There is one definition now, and it is the one the API documents.
 async function refresh() {
-  const r = await api('/orders?facet=all');
-  ORDERS = r.orders; COUNTS = r.counts;
+  const p = new URLSearchParams({ facet: TAB });
+  if (val('f_sup')) p.set('supplier', val('f_sup'));
+  if (val('f_q')) p.set('q', val('f_q'));
+  const [view, all] = await Promise.all([api('/orders?' + p.toString()), api('/orders?facet=all')]);
+  ROWS = view.orders; ORDERS = all.orders; COUNTS = view.counts;
   renderTabs(); renderList(); renderTiles();
   $('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
 }
@@ -538,25 +551,13 @@ function renderTabs() {
     '<button class="tab' + (TAB === k ? ' on' : '') + '" data-tab="' + k + '">' + label +
     '<span class="n">' + (COUNTS[k] || 0) + '</span></button>').join('');
   for (const b of $('tabs').querySelectorAll('.tab')) {
-    b.onclick = () => { TAB = b.dataset.tab; renderTabs(); renderList(); };
+    b.onclick = () => { TAB = b.dataset.tab; refresh(); };
   }
 }
 
-function inTab(o) {
-  return TAB === 'outstanding' ? o.outstanding
-    : TAB === 'preorder' ? o.status === 'preorder'
-    : TAB === 'to_reconcile' ? o.to_reconcile
-    : TAB === 'received' ? ['received', 'closed'].includes(o.status)
-    : TAB === 'cancelled' ? o.status === 'cancelled'
-    : true;
-}
 
 function renderList() {
-  const q = val('f_q').toLowerCase(), sup = val('f_sup');
-  const rows = ORDERS.filter(inTab)
-    .filter((o) => !sup || o.supplier === sup)
-    .filter((o) => !q || [o.ref, o.supplier, o.supplier_ref, o.tracking, o.notes]
-      .some((v) => v && String(v).toLowerCase().includes(q)));
+  const rows = ROWS;
   if (!rows.length) {
     $('list').innerHTML = '<div class="empty">Nothing here. ' +
       (TAB === 'outstanding' ? 'Nothing is on its way.' : TAB === 'preorder' ? 'No preorders booked.' : 'Try another tab.') + '</div>';
@@ -611,12 +612,14 @@ async function openOrder(id) {
     $('ordSub').textContent = 'nothing is stock until it is received';
     $('btnDelete').style.display = 'none';
     $('btnReceive').style.display = 'none';
+    $('btnClose').style.display = 'none';
   } else {
     CUR = await api('/orders/' + id);
     $('ordTitle').textContent = CUR.order.ref;
     $('ordSub').textContent = (CUR.order.supplier || 'unnamed supplier') + ' · ' + CUR.order.status.replace('_', ' ');
     $('btnDelete').style.display = CUR.receipt ? 'none' : '';
     $('btnReceive').style.display = ['ordered', 'in_transit', 'arrived'].includes(CUR.order.status) ? '' : 'none';
+    $('btnClose').style.display = CUR.order.status === 'received' ? '' : 'none';
   }
   fillOrderForm();
   renderLines(); renderLedger(); renderPayments();
@@ -826,7 +829,14 @@ function renderLedger() {
     line('Total', t.total_cents, 'total') +
     line('Paid', t.paid_cents) +
     line(owed ? 'Owed' : 'Settled', t.balance_cents, 'owed' + (owed ? '' : ' clear')) +
-    (t.fx_estimated ? '<div style="margin-top:8px;font-size:10.5px;color:var(--amber);font-family:var(--mono);">A$ figures are an estimate at the live rate — enter what the bank charged to fix the cost basis.</div>' : '');
+    (t.fx_estimated ? '<div style="margin-top:8px;font-size:10.5px;color:var(--amber);font-family:var(--mono);">A$ figures are an estimate at the live rate — enter what the bank charged to fix the cost basis.</div>' : '') +
+    // The server has always reported these; nothing rendered them, so a payment that could not be
+    // converted just vanished from the total with no explanation for the shortfall.
+    ((t.unconvertible_payments || []).length
+      ? '<div style="margin-top:8px;font-size:10.5px;color:var(--red);font-family:var(--mono);">' +
+        t.unconvertible_payments.length + ' payment(s) carry no rate to ' + esc(o.currency) +
+        ' and are NOT counted in Paid — re-enter them with a rate.</div>'
+      : '');
 }
 
 function renderPayments() {
@@ -849,12 +859,33 @@ function renderPayments() {
 async function addPayment() {
   const amt = cents(val('p_amt'));
   if (amt == null) return toast('How much?', true);
+  const payCur = val('p_cur');
+  const ordCur = (CUR.order.currency || 'AUD');
+  // A payment in a currency other than the order's needs the rate BETWEEN them, or paidCents cannot
+  // count it at all — it lands in `unconvertible` and reads as zero paid, which showed a fully-paid
+  // USD order as UNPAID and made /close refuse. Both legs go via AUD, which is the only rate we have.
+  let fxToOrder = null, audCents = payCur === 'AUD' ? amt : null;
+  if (payCur !== ordCur) {
+    const live = (c) => (c === 'AUD' ? 1 : (window.TCG && TCG.toAUD ? TCG.toAUD(1, c) : null));
+    // The ORDER's own rate wins for the order's leg — it is the rate this order is being read at
+    // everywhere else (settled if known, else the captured live one), and using it means a payment
+    // can still be recorded when the FX proxy is down, which is the GR7 case that matters.
+    const ordToAud = ordCur === 'AUD' ? 1 : ((CUR.totals || {}).fx ?? live(ordCur));
+    const payToAud = live(payCur);
+    if (payToAud == null || ordToAud == null) {
+      // GR3: refuse rather than store a payment nothing can count. Silently banking an uncountable
+      // one is how a paid order reads as unpaid forever.
+      return toast('No FX rate for ' + payCur + '→' + ordCur + ' — record it in ' + ordCur + ', or retry once the FX proxy is up.', true);
+    }
+    fxToOrder = payToAud / ordToAud;
+    if (audCents == null) audCents = Math.round(amt * payToAud);
+  }
   try {
     const id = await ensureOrder();
     await api('/orders/' + id + '/payments', {
       method: 'POST',
-      body: { amount_cents: amt, currency: val('p_cur'), method: val('p_method') || null,
-        aud_cents: val('p_cur') === 'AUD' ? amt : null },
+      body: { amount_cents: amt, currency: payCur, method: val('p_method') || null,
+        fx_to_order: fxToOrder, aud_cents: audCents },
     });
     CUR = await api('/orders/' + id);
     $('p_amt').value = ''; renderPayments(); renderLedger();
@@ -891,10 +922,33 @@ async function saveOrder() {
     fillOrderForm(); renderLines(); renderLedger();
     await loadSuppliers(); await refresh();
     $('btnReceive').style.display = ['ordered', 'in_transit', 'arrived'].includes(CUR.order.status) ? '' : 'none';
+    $('btnClose').style.display = CUR.order.status === 'received' ? '' : 'none';
   } catch (e) {
     toast(e.body?.error === 'illegal_transition' ? ('Cannot go from ' + e.body.from + ' to ' + e.body.to) : (e.body?.error || e.message), true);
   }
 }
+// Closing goes through its own endpoint, never a status PATCH: it checks the order was actually
+// received and that nothing is still owed, and stamps closed_at. Owing money is a legitimate reason
+// to close, but it takes saying so.
+async function closeOrderOut() {
+  if (!CUR.order.id) return;
+  try {
+    await api('/orders/' + CUR.order.id + '/close', { method: 'POST' });
+    toast('Order closed.');
+    closeOrder();
+  } catch (e) {
+    if (e.body?.error === 'unpaid') {
+      const owed = moneyFlat(e.body.balance_cents, e.body.currency, (CUR.totals || {}).fx);
+      if (!confirm('Still owing ' + owed + '. Close it anyway?')) return;
+      await api('/orders/' + CUR.order.id + '/close', { method: 'POST', body: { force_close_unpaid: true } });
+      toast('Closed with a balance outstanding.');
+      closeOrder();
+      return;
+    }
+    toast(e.body?.error === 'not_received' ? 'Receive the stock before closing the order.' : (e.body?.error || e.message), true);
+  }
+}
+
 async function deleteOrder() {
   if (!CUR.order.id || !confirm('Delete ' + CUR.order.ref + '? This cannot be undone.')) return;
   try { await api('/orders/' + CUR.order.id, { method: 'DELETE' }); closeOrder(); toast('Deleted.'); }
@@ -921,12 +975,20 @@ function setStep(i) {
 function renderCountRows() {
   $('countRows').innerHTML = (CUR.lines || []).map((l) => {
     const spots = (l.placements || []).length ? l.placements : [{ location: '', quantity: '' }];
-    return '<div class="cnt" data-line="' + l.id + '" data-kind="' + l.line_kind + '" data-target="' + (l.link_kind || l.target) + '">' +
+    return '<div class="cnt" data-line="' + l.id + '" data-kind="' + l.line_kind + '" data-target="' +
+      (l.link_kind || l.target) + '" data-ordered="' + l.qty_ordered + '">' +
       '<div class="top">' +
         '<span class="nm">' + esc(l.name) + (l.link_kind ? ' <span class="chip gold">restock</span>' : '') +
           (l.line_kind !== 'unit' ? ' <span class="chip">' + l.line_kind + '</span>' : '') + '</span>' +
         '<span class="ord">ordered ' + l.qty_ordered + '</span>' +
-        '<input class="qty" type="number" min="0" step="1" value="' + (l.qty_received == null ? l.qty_ordered : l.qty_received) + '">' +
+        // Deliberately EMPTY when nothing has been counted yet, with the ordered figure only as a
+        // placeholder. Pre-filling it and letting Preview save meant the gate's "uncounted" blocker
+        // could never fire, so Receive -> Preview -> Commit put a whole carton away as counted with
+        // nobody having counted it — the exact thing the gate exists to stop. The ✓ button keeps it
+        // one tap, which is a deliberate act; a prefill is not.
+        '<input class="qty" type="number" min="0" step="1" placeholder="' + l.qty_ordered + '" value="' +
+          (l.qty_received == null ? '' : l.qty_received) + '">' +
+        '<button class="btn sm ghost asord" type="button" title="Count this line as ordered">✓ as ordered</button>' +
         '<select class="disc"><option value="">no discrepancy</option>' +
           ['short', 'over', 'damaged', 'wrong_item', 'not_shipped', 'substituted']
             .map((c) => '<option value="' + c + '"' + (l.discrepancy === c ? ' selected' : '') + '>' + c.replace('_', ' ') + '</option>').join('') +
@@ -944,6 +1006,8 @@ function renderCountRows() {
 const spotRow = (loc, qty) => '<div class="spot"><input class="loc" list="locList" placeholder="storage spot" value="' +
   esc(loc || '') + '"><input class="sq" type="number" min="1" placeholder="qty" value="' + (qty || '') + '"><button class="btn sm ghost rmspot" type="button">×</button></div>';
 
+const orderedOf = (c) => parseInt(c.dataset.ordered || '0', 10) || 0;
+
 function wireCountRow(c) {
   const isSealed = c.dataset.target === 'sealed' && c.dataset.kind === 'unit';
   const addBtn = c.querySelector('.addspot');
@@ -953,6 +1017,18 @@ function wireCountRow(c) {
   addBtn.onclick = () => { addBtn.insertAdjacentHTML('beforebegin', spotRow('', '')); wireSpots(c); };
   c.querySelector('.qty').oninput = () => { sumSpots(c); updateWhy(); };
   c.querySelector('.disc').onchange = updateWhy;
+  c.querySelector('.asord').onclick = () => {
+    const q = c.querySelector('.qty');
+    q.value = String(orderedOf(c));
+    // A single-spot line with no quantity typed yet should follow the count, so "as ordered" is
+    // genuinely one tap rather than one tap plus a correction.
+    const spots = c.querySelectorAll('.spot');
+    if (spots.length === 1) {
+      const sq = spots[0].querySelector('.sq');
+      if (!sq.value) sq.value = q.value;
+    }
+    sumSpots(c); updateWhy();
+  };
   const lot = c.querySelector('.lotu'); if (lot) lot.oninput = updateWhy;
   wireSpots(c);
 }
@@ -977,7 +1053,7 @@ function updateWhy() {
   for (const c of $('countRows').querySelectorAll('.cnt')) {
     const q = c.querySelector('.qty').value;
     const want = parseInt(q || '0', 10);
-    const ord = parseInt(c.querySelector('.ord').textContent.replace(/\D+/g, ''), 10);
+    const ord = orderedOf(c);
     if (q === '') why.push('a line is uncounted');
     else if (want !== ord && !c.querySelector('.disc').value) why.push('a mismatch needs a reason');
     const lot = c.querySelector('.lotu');
@@ -1129,8 +1205,8 @@ async function doCommit() {
 // Expose the handlers the markup calls.
 Object.assign(window, {
   openOrder, closeOrder, saveOrder, deleteOrder, addLine, addPayment, settleOrder, captureRate,
-  setLineMode, searchStock, onKindPick, onTargetPick, onStatusPick, relabelCurrency, renderList,
-  openReceive, closeReceive, doPreview, doCommit, applyDefaultSpot, newLocation,
+  setLineMode, searchStock, onKindPick, onTargetPick, onStatusPick, relabelCurrency, refresh,
+  openReceive, closeReceive, doPreview, doCommit, applyDefaultSpot, newLocation, closeOrderOut,
 });
 $('n_game').addEventListener('change', onTargetPick);
 boot();

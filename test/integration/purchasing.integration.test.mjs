@@ -122,6 +122,22 @@ describe('orders', () => {
     assert.ok(r.body.balance_cents > 0);
   });
 
+  it('refuses to settle from payments it cannot express in AUD', async () => {
+    // The figure derived here becomes the permanent cost basis on every stock row the order produces.
+    // A payment silently worth 0 would land the whole order at a fraction of what it cost.
+    const o = await api('/orders', { method: 'POST', body: { supplier: 'Mixed Co', currency: 'USD', status: 'ordered' } });
+    await api(`/orders/${o.body.id}/lines`, {
+      method: 'POST',
+      body: { game: 'pokemon', product_type: 'booster_box', name: 'Mixed Box', qty_ordered: 1, unit_cost_cents: 50000 },
+    });
+    // A JPY payment with no AUD figure attached.
+    await api(`/orders/${o.body.id}/payments`, { method: 'POST', body: { amount_cents: 30000, currency: 'JPY' } });
+    const r = await api(`/orders/${o.body.id}/settle`, { method: 'POST', body: { from_payments: true } });
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error, 'payments_not_in_aud');
+    assert.equal(r.body.payment_ids.length, 1);
+  });
+
   it('settling converts a live estimate into a permanent cost basis', async () => {
     const { body: before } = await api('/orders/' + usdOrder);
     assert.equal(before.totals.fx_estimated, true);
@@ -146,7 +162,9 @@ describe('status transitions', () => {
   });
 
   it('refuses an illegal move and says what was allowed', async () => {
-    const r = await api('/orders/' + id, { method: 'PATCH', body: { status: 'closed' } });
+    // draft -> in_transit skips being ordered at all. ('received' and 'closed' are refused earlier
+    // still, by the endpoint guards — those have their own cases below.)
+    const r = await api('/orders/' + id, { method: 'PATCH', body: { status: 'in_transit' } });
     assert.equal(r.status, 409);
     assert.equal(r.body.error, 'illegal_transition');
     assert.deepEqual(r.body.allowed, ['preorder', 'ordered', 'cancelled']);
@@ -156,6 +174,24 @@ describe('status transitions', () => {
     const r = await api('/orders/' + id, { method: 'PATCH', body: { status: 'received' } });
     assert.equal(r.status, 409);
     assert.equal(r.body.error, 'receive_via_endpoint');
+  });
+
+  it('refuses to reach closed by PATCH — closing checks a receipt exists and nothing is owed', async () => {
+    const r = await api('/orders/' + id, { method: 'PATCH', body: { status: 'closed' } });
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error, 'close_via_endpoint');
+  });
+
+  it('refuses to CREATE an order at the end of its life', async () => {
+    // 'arrived' would be immediately receivable with no history; 'closed' would be a closed order
+    // with no receipt, which POST /close would have refused outright.
+    for (const status of ['arrived', 'closed', 'cancelled', 'in_transit']) {
+      const r = await api('/orders', { method: 'POST', body: { supplier: 'Born Bad Co', status } });
+      assert.equal(r.status, 400, status);
+      assert.equal(r.body.error, 'bad_create_status');
+    }
+    const ok = await api('/orders', { method: 'POST', body: { supplier: 'Born Fine Co', status: 'ordered' } });
+    assert.equal(ok.status, 201);
   });
 
   it('refuses a preorder with no street date', async () => {

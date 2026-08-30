@@ -4,7 +4,7 @@
 // is a way a delivery could otherwise walk into inventory without anyone having counted it.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcileGate, STATUSES, TRANSITIONS, DISCREPANCY_CODES, LINE_KINDS } from '../../lib/purchasing.mjs';
+import { reconcileGate, STATUSES, TRANSITIONS, DISCREPANCY_CODES, LINE_KINDS, parseSubmissionIds } from '../../lib/purchasing.mjs';
 
 const line = (o) => ({
   id: 1, name: 'A box', line_kind: 'unit', target: 'sealed',
@@ -71,6 +71,14 @@ describe('reconcileGate', () => {
     assert.equal(reconcileGate([line({ qty_received: 0, discrepancy: 'not_shipped' })]).ok, true);
   });
 
+  it('blocks a grading line that names no submissions', () => {
+    // A grading line's only effect is writing the fee onto its submissions. With none named the money
+    // would land on nothing at all, and nothing would say so.
+    const grading = (o) => line({ line_kind: 'grading', qty_ordered: 3, qty_received: 3, ...o });
+    assert.deepEqual(reasons([grading({})]), ['grading_submissions_required']);
+    assert.equal(reconcileGate([grading({ submission_ids: '[7,8,9]' })]).ok, true);
+  });
+
   it('reports every unready line, not just the first', () => {
     const g = reconcileGate([
       line({ id: 1, qty_received: null }),
@@ -98,6 +106,14 @@ describe('the status vocabulary', () => {
     for (const tos of Object.values(TRANSITIONS)) assert.ok(!tos.includes('received'));
   });
 
+  it('NOTHING transitions into closed either — closing runs its own checks', () => {
+    // received -> closed used to be legal here, and since the page builds its dropdown from this
+    // table it was the ONLY move offered on a received order: taking it skipped the receipt and
+    // unpaid checks in POST /close entirely and never stamped closed_at.
+    for (const tos of Object.values(TRANSITIONS)) assert.ok(!tos.includes('closed'));
+    assert.deepEqual(TRANSITIONS.received, []);
+  });
+
   it('closed is terminal', () => {
     assert.deepEqual(TRANSITIONS.closed, []);
   });
@@ -114,5 +130,25 @@ describe('the status vocabulary', () => {
 
   it('the line kinds are the three shapes an order line can take', () => {
     assert.deepEqual([...LINE_KINDS].sort(), ['grading', 'lot', 'unit']);
+  });
+});
+
+describe('parseSubmissionIds', () => {
+  it('reads a JSON array, stored or already parsed', () => {
+    assert.deepEqual(parseSubmissionIds('[7,8,9]'), [7, 8, 9]);
+    assert.deepEqual(parseSubmissionIds([7, 8]), [7, 8]);
+  });
+
+  it('is empty for nothing, rather than throwing', () => {
+    assert.deepEqual(parseSubmissionIds(null), []);
+    assert.deepEqual(parseSubmissionIds(''), []);
+    assert.deepEqual(parseSubmissionIds('not json'), []);
+    assert.deepEqual(parseSubmissionIds('{"a":1}'), []);
+  });
+
+  it('drops anything that is not a usable row id', () => {
+    // These ids used to ride in identity_key, where a real product key like 'sv4-25' parsed to NaN,
+    // got filtered out, and the grading fee was applied to nothing without an error.
+    assert.deepEqual(parseSubmissionIds('["sv4-25", 0, -3, 12]'), [12]);
   });
 });
