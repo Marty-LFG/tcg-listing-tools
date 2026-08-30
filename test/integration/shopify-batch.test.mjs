@@ -70,7 +70,13 @@ async function stub(url, init = {}) {
   const q = body.query, v = body.variables;
 
   if (q.includes('metaobjectUpsert')) {
-    calls.push({ op: q.includes('BkIdentityListings') ? 'identityListings' : 'identity' });
+    const isRebuild = q.includes('BkIdentityListings');
+    calls.push({ op: isRebuild ? 'identityListings' : 'identity' });
+    // bend.identity models the store REFUSING to create the metaobject — what a required field left
+    // blank on the stock row actually looks like (OBJECT_FIELD_REQUIRED).
+    if (bend.identity && !isRebuild) {
+      return resp(200, { data: { metaobjectUpsert: { userErrors: [{ field: null, message: bend.identity, code: 'OBJECT_FIELD_REQUIRED' }] } } });
+    }
     return resp(200, { data: { metaobjectUpsert: { metaobject: { id: 'gid://shopify/Metaobject/9', handle: v.handle.handle }, userErrors: [] } } });
   }
   if (q.includes('productSet')) {
@@ -675,6 +681,49 @@ describe('a DRAFT publish is recorded as unpublished, not live', () => {
     const again = await postStream('/publish/batch', { itemIds: [a] });
     assert.equal(again.rows[0].status, 'published', 'a draft is unfinished work, not a completed publish');
     assert.equal(mirror('AAC-097').state, 'live');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Radiant Gardevoir case, 2026-08-25. A stock row with no set_code publishes fine, but the
+// bk_card_identity metaobject REQUIRES set_code, so upsertIdentity is refused and the card gets no
+// identity — it can never appear in the PDP condition selector.
+//
+// What made it hard to read was the reporting, not the data. The one actionable sentence lived on
+// steps[].warning, which no driver prints; what DID surface was rebuildIdentity failing, and because
+// that call sends only the `listings` field it became a CREATE with every other required field absent
+// — so the operator saw four "can't be blank" errors when exactly one field was missing, and three of
+// them were innocent.
+describe('a card that cannot get an identity says so, once, accurately', () => {
+  const noIdentity = () => { bend.identity = 'Set code can\'t be blank'; };
+
+  it('warns that the card has NO identity, naming the store\'s own reason', async () => {
+    noIdentity();
+    const a = addItem({ name: 'Radiant Gardevoir', number: '69/196' });
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+
+    assert.equal(r.rows[0].status, 'published', 'a missing identity degrades the PDP, it does not withhold a sellable card');
+    const w = r.rows[0].warnings.join(' | ');
+    assert.match(w, /NO card identity/, 'the actionable sentence must reach the operator, not sit in steps[]');
+    assert.match(w, /Set code/, "and must carry the store's reason rather than making someone go digging");
+  });
+
+  it('does not then attempt a rebuild it cannot do, or report three innocent fields', async () => {
+    noIdentity();
+    const a = addItem({ name: 'Radiant Gardevoir', number: '69/196' });
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+    const w = r.rows[0].warnings.join(' | ');
+
+    assert.doesNotMatch(w, /card identity list was not rebuilt/,
+      'rebuilding a metaobject that was never created turns one real error into four misleading ones');
+    assert.equal(calls.filter((c) => c.op === 'identityListings').length, 0, 'the rebuild must be skipped, not attempted');
+  });
+
+  it('still rebuilds normally when the identity DID get created', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const r = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(r.rows[0].warnings.some((x) => /NO card identity/.test(x)), false);
+    assert.equal(calls.filter((c) => c.op === 'identityListings').length, 1, 'the happy path is unchanged');
   });
 });
 
