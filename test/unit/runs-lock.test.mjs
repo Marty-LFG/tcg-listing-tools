@@ -13,7 +13,7 @@ import { openDbAt } from '../../lib/db.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
 import { holdForRun, assignToSlot, splitToSlots, breakReservation } from '../../lib/runs-reserve.mjs';
 import {
-  collectManifest, validateForLock, manifestFingerprint, placeChases, lockRunPhase1, lockRunPhase2,
+  collectManifest, validateForLock, manifestFingerprint, deriveChases, lockRunPhase1, lockRunPhase2,
 } from '../../lib/runs-lock.mjs';
 import { openBlobFile, parseBlobFile } from '../../lib/runs-blob.mjs';
 import { blobKey } from '../../lib/runs-codes.mjs';
@@ -77,10 +77,13 @@ function mkRun({ units = 3, claims = 'full', ladder = 1, headerFields = true } =
   }
   const bundles = db.prepare('SELECT * FROM run_bundles WHERE run_id = ? ORDER BY bundle_no').all(runId);
 
-  for (let r = 1; r <= ladder; r++) {
-    db.prepare(`INSERT INTO run_chase_tiers (run_id, rank, card_name, set_code, card_number, language, grading_company, grade)
-                VALUES (?,?,?,?,?,?,?,?)`).run(runId, r, `Chase ${r}`, 'EXS', String(300 + r), 'JA', 'PSA', '10');
-  }
+  // THE LADDER NAMES CARDS THAT ARE ACTUALLY IN THE RUN, because is_chase is derived from the manifest.
+  //
+  // set_code is left NULL deliberately: inventory_items has set_NAME but no set_CODE, so a graded card's
+  // line always commits an empty set_code and a ladder entry stating one could never match. See the note
+  // in lib/runs-lock.mjs — this is a data-model gap, not a matcher bug.
+  const chaseNumbers = [];
+  for (let r = 1; r <= ladder; r++) chaseNumbers.push(String(600 + r));
 
   if (claims !== 'none') {
     const c = db.prepare('INSERT INTO run_claims (run_id, claim_type, subject, operator, value) VALUES (?,?,?,?,?)');
@@ -96,12 +99,17 @@ function mkRun({ units = 3, claims = 'full', ladder = 1, headerFields = true } =
   const packs = mkPacks(units * 3);
   const poolHold = holdForRun(db, { kind: 'sealed', itemId: packs, runId, qty: units * 3 });
   splitToSlots(db, poolHold.id, bundles.map((b) => ({ bundleId: b.id, slot: 'packs', qty: 3 })));
-  for (const b of bundles) {
-    for (const [slot, itemId] of [['slab', mkSlab()], ['art', mkArt()]]) {
+  bundles.forEach((b, i) => {
+    // Bundles 1..ladder hold the ladder cards, so the derived chase set is deterministic.
+    for (const [slot, itemId] of [['slab', mkSlab(i < ladder ? { number: chaseNumbers[i] } : {})], ['art', mkArt()]]) {
       const h = holdForRun(db, { kind: 'inventory', itemId, runId });
       assignToSlot(db, { reservationId: h.id, bundleId: b.id, slot });
     }
-  }
+  });
+  chaseNumbers.forEach((num, i) => {
+    db.prepare(`INSERT INTO run_chase_tiers (run_id, rank, card_name, set_code, card_number, language, grading_company, grade)
+                VALUES (?,?,?,NULL,?,?,?,?)`).run(runId, i + 1, `Chase ${i + 1}`, num, 'JA', 'PSA', '10');
+  });
   return { runId, pid, bundles, packs };
 }
 
@@ -283,8 +291,11 @@ describe('lock refuses, and names every reason at once', () => {
     assert.ok(codes.includes('language_unclaimed'));
   });
 
-  it('a chase ladder longer than the bundles that can hold one', async () => {
-    const { runId } = mkRun({ units: 3, ladder: 4 });
+  it('a chase ladder naming a card no bundle holds', async () => {
+    // Caught at LOCK rather than at close: a run that cannot produce a valid tier C disclosure must never
+    // be anchored, because by close every parcel has already shipped.
+    const { runId } = mkRun({ units: 3, ladder: 1 });
+    db.prepare("UPDATE run_chase_tiers SET card_number = '99999' WHERE run_id = ?").run(runId);
     assert.ok((await refuse(runId)).includes('chase_placement'));
   });
 
@@ -312,12 +323,17 @@ describe('the compute window is closed by a fingerprint', () => {
     // different card is the edit an id-only check would miss, so the fingerprint carries the descriptors.
     const { runId, bundles } = mkRun();
     const swap = mkSlab({ name: 'Swapped In' });
+    let edited = false;
     const err = await lockRunPhase1(db, runId, {
-      rng: (n) => {
-        // Fires once, mid-compute, standing in for a concurrent edit through the API.
-        const res = db.prepare(`SELECT id FROM run_reservations WHERE bundle_id = ? AND slot = 'slab'`).get(bundles[0].id);
-        db.prepare('UPDATE run_reservations SET item_id = ? WHERE id = ?').run(swap, res.id);
-        return n - 1;
+      // nonceFor runs while the blob file is being built — after the fingerprint is taken and before the
+      // transaction opens, which is precisely the window a concurrent API edit would land in.
+      nonceFor: () => {
+        if (!edited) {
+          edited = true;
+          const res = db.prepare(`SELECT id FROM run_reservations WHERE bundle_id = ? AND slot = 'slab'`).get(bundles[0].id);
+          db.prepare('UPDATE run_reservations SET item_id = ? WHERE id = ?').run(swap, res.id);
+        }
+        return new Uint8Array(12);
       },
     }).then(() => null, (e) => e);
     assert.equal(err?.code, 'manifest_changed');
@@ -335,44 +351,80 @@ describe('the compute window is closed by a fingerprint', () => {
   });
 });
 
-describe('§10.4 chase placement', () => {
-  const bundles = (n, pinned = []) => Array.from({ length: n }, (_, i) => ({
-    bundle_no: i + 1, pinned: pinned.includes(i + 1) ? 1 : 0, is_chase: 0,
-  }));
-  const ladder = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, rank: i + 1 }));
+describe('§10.4 chase placement is DERIVED, not drawn', () => {
+  // §10.4 step 2 says "randomise chase bundle numbers", and that instruction is a leftover from a design
+  // in which chase cards were dealt at lock. They are not: the physical pick-and-verify pass happens
+  // BEFORE the lock, so every card is already in a specific numbered bundle by the time this runs.
+  // Labelling a bundle at random would label one that need not hold a ladder card at all — a run that
+  // locks cleanly, sells out, ships, and then fails its own tier C disclosure at close.
+  const SPECS = [
+    { slot: 'slab', kind: 'inventory', max_lines: 1, is_chase_slot: 1, sort_order: 0 },
+    { slot: 'art', kind: 'inventory', max_lines: 1, is_chase_slot: 0, sort_order: 1 },
+  ];
+  const line = (over = {}) => ({
+    kind: 'inventory', display_name: 'x', game: 'pokemon', identity_key: '', set_code: 'EXS',
+    card_number: '101', rarity: 'Art Rare', language: 'JA', finish: '', product_type: '', upc: '',
+    grading_company: 'PSA', grade: '10', cert_number: '1', qty: '1', ...over,
+  });
+  const entry = (rank, number) => ({
+    rank, card_name: `Chase ${rank}`, set_code: 'EXS', card_number: number, language: 'JA',
+    grading_company: 'PSA', grade: '10',
+  });
+  // byBundle in the shape collectManifest produces: id -> { bundle, lines: { slot: [{ row, line }] } }.
+  const world = (perBundle) => {
+    const bundles = perBundle.map((_, i) => ({ id: i + 1, bundle_no: i + 1, label: `B-${i + 1}` }));
+    const byBundle = new Map(bundles.map((b, i) => [b.id, { bundle: b, lines: perBundle[i] }]));
+    return { bundles, byBundle };
+  };
+  const slab = (number) => ({ slab: [{ row: {}, line: line({ card_number: number }) }] });
 
-  it('places exactly as many chases as the ladder declares', () => {
-    const p = placeChases(bundles(25), ladder(5), (n) => n - 1);
-    assert.equal(p.size, 5);
+  it('labels exactly the bundles that hold a ladder card', () => {
+    const { bundles, byBundle } = world([slab('501'), slab('101'), slab('502')]);
+    const p = deriveChases(bundles, [entry(1, '501'), entry(2, '502')], SPECS, byBundle);
+    assert.deepEqual([...p.keys()].sort(), [1, 3]);
+    assert.equal(p.get(1).rank, 1);
+    assert.equal(p.get(3).rank, 2);
   });
 
-  it('EXCLUDES pinned bundles from the draw', () => {
-    // A pinned bundle keeps exactly what was assigned to it — which is what lets one bundle hold the best
-    // option in every slot at once.
-    const p = placeChases(bundles(10, [3, 7]), ladder(8), (n) => n - 1);
-    assert.ok(!p.has(3));
-    assert.ok(!p.has(7));
-    assert.equal(p.size, 8);
+  it('REFUSES two ladder cards in one bundle — claim 3 promises one per bundle', () => {
+    const both = { slab: [{ row: {}, line: line({ card_number: '501' }) }],
+      art: [{ row: {}, line: line({ card_number: '502' }) }] };
+    const { bundles, byBundle } = world([both, slab('101'), slab('102')]);
+    assert.throws(() => deriveChases(bundles, [entry(1, '501'), entry(2, '502')], SPECS, byBundle),
+      /holds 2 chase ladder cards/);
   });
 
-  it('keeps a pinned bundle that was already flagged a chase', () => {
-    const b = bundles(10, [4]);
-    b[3].is_chase = 1;
-    const p = placeChases(b, ladder(3), (n) => n - 1);
-    assert.ok(p.has(4));
-    assert.equal(p.size, 3);
+  it('refuses a chase sitting outside the declared chase slot', () => {
+    const wrong = { slab: [{ row: {}, line: line({ card_number: '101' }) }],
+      art: [{ row: {}, line: line({ card_number: '501' }) }] };
+    const { bundles, byBundle } = world([wrong, slab('102')]);
+    assert.throws(() => deriveChases(bundles, [entry(1, '501')], SPECS, byBundle),
+      /not the declared chase slot/);
   });
 
-  it('and refuses a ladder it cannot place', () => {
-    assert.throws(() => placeChases(bundles(3), ladder(4), (n) => n - 1), /only 3 bundles/);
+  it('refuses a ladder card that is in no bundle at all', () => {
+    const { bundles, byBundle } = world([slab('101'), slab('102')]);
+    assert.throws(() => deriveChases(bundles, [entry(1, '999')], SPECS, byBundle),
+      /is in no bundle of this run/);
   });
 
-  it('draws from a cryptographic source, never Math.random', () => {
-    // Source-scanned rather than argued: a predictable placement is a predictable product.
+  it('refuses one ladder rank claimed by two bundles', () => {
+    const { bundles, byBundle } = world([slab('501'), slab('501')]);
+    assert.throws(() => deriveChases(bundles, [entry(1, '501')], SPECS, byBundle),
+      /appears in both bundle/);
+  });
+
+  it('and refuses a ladder with nowhere for a chase to go', () => {
+    const flat = SPECS.map((x) => ({ ...x, is_chase_slot: 0 }));
+    const { bundles, byBundle } = world([slab('501')]);
+    assert.throws(() => deriveChases(bundles, [entry(1, '501')], flat, byBundle), /no slot for a chase/);
+  });
+
+  it('uses no Math.random anywhere in the module', () => {
+    // Comments stripped, so the module explaining WHY placement is not a draw does not trip its own scan.
     const src = readFileSync(new URL('../../lib/runs-lock.mjs', import.meta.url), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    assert.ok(!/Math\.random/.test(src), 'comments stripped, so the module saying NEVER Math.random does not trip its own scan');
-    assert.ok(/randomInt/.test(src));
+    assert.ok(!/Math\.random/.test(src));
   });
 });
 
