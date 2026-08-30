@@ -194,6 +194,22 @@ describe('status transitions', () => {
     assert.equal(ok.status, 201);
   });
 
+  it('treats an explicit null status as a draft, not as a bad one', async () => {
+    // The normal shape from a client spreading a partial form object.
+    const r = await api('/orders', { method: 'POST', body: { supplier: 'Null Status Co', status: null } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const { body } = await api('/orders/' + r.body.id);
+    assert.equal(body.order.status, 'draft');
+  });
+
+  it('serves the statuses an order may be CREATED in, separately from the transitions', async () => {
+    // The page builds its new-order dropdown from this. Built from TRANSITIONS it offered
+    // 'cancelled', which POST /orders then refused with a raw error.
+    const { body } = await api('/statuses');
+    assert.deepEqual(body.create_statuses, ['draft', 'preorder', 'ordered']);
+    assert.ok(!body.create_statuses.includes('cancelled'));
+  });
+
   it('refuses a preorder with no street date', async () => {
     const r = await api('/orders/' + id, { method: 'PATCH', body: { status: 'preorder' } });
     assert.equal(r.status, 400);
@@ -258,6 +274,29 @@ describe('the restock picker', () => {
     assert.equal(hit.quantity, 3);
     assert.equal(hit.location, 'SHELF-A');
     assert.equal(hit.landed_unit_cents, 16400, 'cost_cents + acq_fees_cents, not re-derived in the browser');
+  });
+
+  it('survives a garbage offset instead of 500ing', async () => {
+    // Math.max(0, NaN) is NaN, and node:sqlite throws "datatype mismatch" on LIMIT ? — so a bad
+    // query string took out the picker's hot path.
+    for (const qs of ['offset=abc', 'limit=abc', 'limit=&offset=', 'offset=-5']) {
+      const r = await api('/stock?' + qs);
+      assert.equal(r.status, 200, qs + ' -> ' + JSON.stringify(r.body));
+      assert.ok(Array.isArray(r.body.items));
+    }
+  });
+
+  it('reports a real match count, not the size of the page it returned', async () => {
+    const { body } = await api('/stock?limit=1');
+    assert.equal(body.items.length, 1);
+    assert.ok(body.total >= 1, 'total must count matches, or no caller can tell there is a next page');
+  });
+
+  it('takes a search term containing LIKE wildcards literally', async () => {
+    const r = await api('/stock?q=' + encodeURIComponent('%'));
+    assert.equal(r.status, 200);
+    // An unescaped % would match every row rather than the ones actually containing one.
+    assert.ok(r.body.items.every((i) => (i.name + i.sku).includes('%')) || r.body.items.length === 0);
   });
 
   it('filters by game and by product type', async () => {

@@ -310,7 +310,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `/api/pregrade` | `pregradePlugin` (`lib/pregrade.mjs`) | Saved pre-grade reports. `POST /` create · `POST /:id/images` (ONE image per request, 28MB cap) · `GET /` list (LEFT-JOINs the linked submission's `submission_id` + `actual_grade`) · `GET/PATCH /:id` · `DELETE /:id` (refcounted byte unlink) · `GET /file/<sha>.<ext>` (immutable content-addressed image bytes). See §21. |
 | `/api/cert` | (middleware) | **Multi-company** graded-slab cert lookup (`lib/certlookup.mjs`) for the inventory add form. `GET /api/cert?company=PSA&cert=…` → `{matched, identity, grade, company, verifyUrl, …}`; `GET /api/cert/providers` → the company registry. PSA auto-fills (`PSA_API_TOKEN`); every other company has no public API ⇒ `{matched:false, verifyUrl}` (official page, or null) + manual entry (Golden Rule 7). |
 | `/api/inventory` | (plugin) | Graded-card **inventory** API (`lib/inventory.mjs`): `GET/POST /items`, `GET/PATCH/DELETE /items/:id`, `POST /items/:id/refresh-value` (PriceCharting graded value), `POST /items/:id/value-manual`, `POST /items/:id/fetch-image` (resolve+cache card image), `GET /items/:id/valuations`, `GET/POST /submissions`, `PATCH/DELETE /submissions/:id`, `POST /submissions/:id/promote`, `GET /summary`, `GET /export`. See §13. |
-| `/api/purchasing` | (plugin) | **Purchase orders** (`lib/purchasing.mjs`): `GET/POST /orders`, `GET/PATCH/DELETE /orders/:id`, `POST /orders/:id/lines`, `PATCH/DELETE /lines/:id`, `POST /lines/:id/count`, `GET/POST /orders/:id/payments`, `DELETE /payments/:id`, `POST /orders/:id/settle`, `POST /orders/:id/receive[?dry=1]`, `GET /orders/:id/receipt`, `POST /orders/:id/close`, `GET /stock` (restock picker), `GET /suppliers`, `GET /statuses`, `GET /discrepancy-codes`, `GET /summary`. See §22. |
+| `/api/purchasing` | (plugin) | **Purchase orders** (`lib/purchasing.mjs`): `GET/POST /orders`, `GET/PATCH/DELETE /orders/:id`, `POST /orders/:id/lines`, `PATCH/DELETE /lines/:id`, `POST /lines/:id/count`, `GET/POST /orders/:id/payments`, `DELETE /payments/:id`, `POST /orders/:id/settle`, `POST /orders/:id/receive[?dry=1]`, `GET /orders/:id/receipt`, `POST /orders/:id/close`, `GET /stock` (restock picker), `GET /submissions` (open grading submissions), `GET /suppliers`, `GET /statuses`, `GET /discrepancy-codes`, `GET /summary`. See §22. |
 | `/api/print` | (middleware) | Streams a browser-rasterised label bitmap to the **AUSPRINT PRO** (Rongta/TSPL) over raw TCP **9100** (`lib/labelprint.mjs`). `POST {jobs, speed?, density?}` — top-level `speed`/`density` (one per batch) are clamped and merged over config before `buildJob`. `GET` returns `{enabled,dpi,ip,page,offXmm,offYmm,speed,density}` so `shipping-label.html` / `pdf-print.html` can enable Print, pick rasterise DPI, and seed the Darkness/Speed steppers. **`offXmm`/`offYmm` are the ADDRESS-label calibration only** — `shipping-label.html` and `orders.html` both resolve it the same way (localStorage `ship_offx`/`ship_offy` wins, else this GET) and apply it to the printed raster only, never the preview or the PNG fallback; their 5mm margin absorbs the shift. `pdf-print.html` deliberately ignores it and keeps its own nudge (localStorage `pdfprint_offx`/`offy`, default 0) because dropped PDFs are often full-bleed, and its Fit modes shrink the page to reserve room so a nudge can never clip ink. Config = `.env` `LABEL_PRINTER_*`; unset ⇒ disabled, tool stays download-only (Golden Rule 7). No new deps (pure `node:net`). |
 | `/api/repricer` | `repricerPlugin` (`lib/repricer.mjs`) | Store repricer + Telegram. `/config`, `/me`, `/chatid`, `/proposals`, `POST /test-alert`; `/oauth`, `/oauth/start`, `POST /oauth/exchange`, `/oauth/status`, `POST /oauth/test` (eBay user-token consent). Owns `data/repricer.db` + the Telegram long-poll loop. See §15. |
 | `/api/listings` | `listingsPlugin` (`lib/listings.mjs`) | **eBay stock uploader** (Sell Inventory API). `GET /config`; `GET /account/status`, `POST /account/bootstrap` (opt-in business policies + create AU payment/return/fulfilment policies + merchant location), `GET /account/privileges`; `POST /preview` (dry-run: build+validate+resolve descriptors+upload EPS images+listing fees), `POST /publish` (create→offer→publish, idempotent on SKU, writes back `ebay_listing_id`/`ebay_offer_id`/`channel_status` + the `ebay_listings` mirror + a `listing_pushes` audit row), `POST /price` (eBay AU singles comps → suggested list price, own listings excluded), `POST /photos` + `DELETE /:id/photos` (owner photos → eBay EPS, base64), `POST /:id/revise-price`, `POST /:id/withdraw`, `GET /:id`, `GET /reconcile-state`, `POST /reconcile` (DIAG-gated — check our mirrored listings vs eBay, mark ended/out-of-stock drift). UI: `stock-uploader.html`. Config `data/ebay-listing.config.json` (server-owned). See §17. |
@@ -2234,11 +2234,18 @@ first statement — a double tap, a retried fetch or a second tab throws on the 
 back before one unit has moved. A repeat request returns `{already:true}` with the original result.
 
 **A dead restock link is a warning, not a blocker** (GR7). The ladder is: the row exists, its
-`link_sku` still matches **and it is still `in_stock`** → merge; otherwise, if exactly ONE in-stock
-row matches the snapshot → merge and flag `link_repaired`; otherwise create and flag `link_broken`.
-The `in_stock` condition is load-bearing rather than tidy: a card can sell while its restock is on
-the water, and merging six boxes onto a row marked `sold` hides them from every in-stock view while
-`summarizeSealed` goes on counting them as sold. Deliberately conservative:
+`link_sku` still matches **and it is still HELD** → merge; otherwise, if exactly ONE held row matches
+the snapshot → merge and flag `link_repaired`; otherwise create and flag `link_broken`.
+
+**"Held" is `HELD_STATUSES` = `in_stock` OR `listed`, and the pair matters in both directions.**
+Excluding `sold` is the point: a card can sell while its restock is on the water, and merging six
+boxes onto a sold row hides them from every in-stock view while `summarizeSealed` goes on counting
+them as sold. But `listed` is emphatically still held — restocking something currently on eBay is
+the *ordinary* case, the picker offers a `listed` filter for it, and `lib/sealed.mjs`'s own valuation
+query uses the same pair. A guard that accepted only `in_stock` split the pile across two SKUs, left
+the live listing's quantity untouched and never blended the cost basis. Both the direct path and
+`identityMatches` use `HELD_STATUSES`, because a repair path narrower than the direct one sends a
+listed product down the create branch the moment its link breaks. Deliberately conservative:
 guessing which of two similar rows a delivery belongs to is worse than creating one the owner can
 merge by hand. Either way the goods get put away, because they are physically on the floor.
 
@@ -2291,6 +2298,11 @@ merge by hand. Either way the goods get put away, because they are physically on
   and say so nowhere. **Do not put these in `identity_key`**: that column is a PRODUCT identity
   everywhere else and is copied verbatim out of `link_snapshot`, so a real key parsed to `NaN` and
   the fee silently vanished. That is exactly how this column came to exist.
+  `unit_cost_cents` is the fee for ONE card, so `submission_ids.length` must equal `qty_received` and
+  each submission is credited the per-card fee **once** — the gate enforces that ratio, because
+  crediting the full figure to every id books a multiple of what was paid into permanent cost bases.
+  `GET /api/purchasing/submissions` serves the open submissions for the line editor's picker; a line
+  kind the page cannot complete is a line kind that blocks the whole delivery.
 
 ### Storage location
 
