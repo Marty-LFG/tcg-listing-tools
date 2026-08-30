@@ -386,6 +386,32 @@ describe('preflight', () => {
     assert.equal(r.json.publishable, 0);
   });
 
+  // The half the intra-batch check cannot see. Publish one copy today and its twin tomorrow, and the
+  // second batch looks clean while the row still lands on a handle another product owns. Found on real
+  // stock 2026-08-25: item 105 published, then a backfill queued item 106 — the same card, same
+  // condition — in a batch of its own.
+  it('refuses a row whose handle is already held by a DIFFERENT published item', async () => {
+    const first = addItem({ name: 'Radiant Gardevoir', number: '69/196' });
+    await postStream('/publish/batch', { itemIds: [first] });
+
+    const twin = addItem({ name: 'Radiant Gardevoir', number: '69/196' });
+    const pf = await post('/publish/preflight', { itemIds: [twin] });
+    const row = pf.json.rows[0];
+
+    assert.equal(row.ok, false, 'a second copy must not publish onto the first copy’s handle');
+    assert.equal(row.collidesWithPublished.item_id, first);
+    assert.match(row.errors.join(' '), /already held by item/);
+    assert.equal(pf.json.publishable, 0);
+  });
+
+  it('still lets a row re-publish over its OWN handle, which is what force is for', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    const pf = await post('/publish/preflight', { itemIds: [a] });
+    assert.equal(pf.json.rows[0].ok, true, 'its own mirror row must never read as somebody else’s claim');
+    assert.equal(pf.json.rows[0].alreadyLive, true);
+  });
+
   it('does not flag distinct cards, or one card in different conditions', async () => {
     const ids = [
       addItem({ name: 'Alpha', number: '58/102' }),
