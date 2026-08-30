@@ -405,6 +405,32 @@ describe('a grading line', () => {
     });
   });
 
+  it('refuses a submission that is gone or already promoted, instead of paying it into nothing', async () => {
+    const orderId = await makeOrder({ supplier: 'PSA' });
+    const line = await addLine(orderId, {
+      line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'Ghost submission',
+      qty_ordered: 1, unit_cost_cents: 2500, submission_ids: [999999],
+    });
+    await count(line, { qty_received: 1 });
+    const dry = await api(`/orders/${orderId}/receive?dry=1`, { method: 'POST' });
+    const blocker = dry.body.blockers.find((b) => b.reason === 'grading_submissions_unusable');
+    assert.ok(blocker, 'the UPDATE would change 0 rows and the money would vanish silently');
+    assert.deepEqual(blocker.submission_ids, [999999]);
+  });
+
+  it('dedupes repeated ids, so one card cannot be billed twice', async () => {
+    const r = await api('/orders', { method: 'POST', body: { supplier: 'PSA', status: 'ordered' } });
+    const add = await api(`/orders/${r.body.id}/lines`, {
+      method: 'POST',
+      body: { line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'Dupe submission',
+        qty_ordered: 2, unit_cost_cents: 2500, submission_ids: [7, 7] },
+    });
+    assert.equal(add.status, 201);
+    const { body } = await api('/orders/' + r.body.id);
+    // [7,7] with qty 2 would have passed a bare length check and run the fee UPDATE twice on one row.
+    assert.deepEqual(JSON.parse(body.lines[0].submission_ids), [7]);
+  });
+
   it('refuses when the submissions named do not match the cards counted', async () => {
     const orderId = await makeOrder({ supplier: 'PSA' });
     const line = await addLine(orderId, {

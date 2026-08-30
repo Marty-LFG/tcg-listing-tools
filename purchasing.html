@@ -520,14 +520,24 @@ async function loadVocab() {
 // its own copy of all three and never send the parameters, so the two definitions had to be edited
 // together and had already drifted (the server matched supplier case-insensitively, the page with
 // ===). There is one definition now, and it is the one the API documents.
-let refreshTimer = null, refreshSeq = 0;
+let refreshTimer = null, refreshSeq = 0, refreshWaiters = [];
 // Debounced, and sequenced. Every keystroke used to fire TWO full /orders round trips, each of which
 // decorates every order with its lines and payments; two in-flight pairs could also resolve out of
 // order and leave the list showing a prefix the user had already typed past. Same 200ms idiom
 // searchStock() uses below.
 function refresh() {
   clearTimeout(refreshTimer);
-  return new Promise((done) => { refreshTimer = setTimeout(() => refreshNow().then(done, done), 180); });
+  // Every caller waiting on a coalesced refresh is settled by the run that actually happens. The
+  // first cut resolved only the LAST promise, so a cancelled one stayed pending forever — and an
+  // `await refresh()` in saveOrder simply never returned, skipping the syncOrderButtons() after it.
+  return new Promise((done) => {
+    refreshWaiters.push(done);
+    refreshTimer = setTimeout(() => {
+      const waiters = refreshWaiters; refreshWaiters = [];
+      const settle = () => waiters.forEach((f) => f());
+      refreshNow().then(settle, settle);
+    }, 180);
+  });
 }
 async function refreshNow() {
   const seq = ++refreshSeq;
@@ -704,18 +714,21 @@ function onTargetPick() {
   $('n_ptype').innerHTML = list.map((t2) => '<option>' + esc(t2) + '</option>').join('');
   $('pk_type').innerHTML = '<option value="">any</option>' + list.map((t2) => '<option>' + esc(t2) + '</option>').join('');
 }
-let SUBMISSIONS = [], PICKED_SUBS = [];
+let SUBMISSIONS = [], PICKED_SUBS = [], SUBS_LOADED = false;
 
 // The open grading submissions, so a grading line can name the cards it is paying for. Without this
 // the page offered a 'grading' line kind it could never make receivable — the gate refuses a line
 // with no submissions, and one blocked line blocks the whole delivery.
 async function loadSubmissions() {
   try { SUBMISSIONS = (await api('/submissions')).submissions || []; } catch { SUBMISSIONS = []; }
+  SUBS_LOADED = true;
   renderSubPicker();
 }
 function renderSubPicker() {
   if (!SUBMISSIONS.length) {
-    $('subList').innerHTML = '<div class="empty" style="border:none;">No open grading submissions — start one in the graded inventory first.</div>';
+    $('subList').innerHTML = '<div class="empty" style="border:none;">' +
+      (SUBS_LOADED ? 'No open grading submissions — start one in the graded inventory first.' : 'Loading…') + '</div>';
+    $('subPicked').textContent = '';   // the early return used to leave a stale "3 cards selected"
     return;
   }
   $('subList').innerHTML = SUBMISSIONS.map((x) =>
@@ -748,7 +761,7 @@ function onKindPick() {
     : k === 'grading' ? 'a service you are buying — it creates no stock' : '';
   const grading = k === 'grading';
   $('gradePane').style.display = grading ? '' : 'none';
-  if (grading && !SUBMISSIONS.length) loadSubmissions();
+  if (grading) loadSubmissions();   // a submission created elsewhere must show up without a reload
   if (!grading) { PICKED_SUBS = []; $('subPicked').textContent = ''; }
 }
 
@@ -804,7 +817,7 @@ async function ensureOrder() {
   const r = await api('/orders', { method: 'POST', body });
   CUR = await api('/orders/' + r.id);
   $('ordTitle').textContent = CUR.order.ref;
-  $('btnDelete').style.display = '';
+  syncOrderButtons();   // one writer, or the consolidation drifts again
   return CUR.order.id;
 }
 function collectHeader() {
@@ -1072,8 +1085,17 @@ function renderCountRows() {
         // nobody having counted it — the exact thing the gate exists to stop. The ✓ button keeps it
         // one tap, which is a deliberate act; a prefill is not.
         '<input class="qty" type="number" min="0" step="1" placeholder="' + l.qty_ordered + '" value="' +
-          (l.qty_received == null ? '' : l.qty_received) + '">' +
-        '<button class="btn sm ghost asord" type="button" title="Count this line as ordered">✓ as ordered</button>' +
+          // A grading line is not physically counted — you already own the cards — so its count is the
+          // number of submissions it names, filled in rather than left for someone to type. Every
+          // OTHER kind stays blank on purpose: that is the gate.
+          (l.line_kind === 'grading' ? subCount(l)
+            : l.qty_received == null ? '' : l.qty_received) + '"' +
+          // A grading line's count IS the number of cards it names, which is what the gate requires.
+          // Leaving it editable created a blocker with no remedy on this screen: there is no
+          // submission editor here, so the only escape was deleting the line and starting again.
+          (l.line_kind === 'grading' ? ' readonly title="set by the submissions this line names"' : '') + '>' +
+        (l.line_kind === 'grading' ? '' :
+          '<button class="btn sm ghost asord" type="button" title="Count this line as ordered">✓ as ordered</button>') +
         '<select class="disc"><option value="">no discrepancy</option>' +
           ['short', 'over', 'damaged', 'wrong_item', 'not_shipped', 'substituted']
             .map((c) => '<option value="' + c + '"' + (l.discrepancy === c ? ' selected' : '') + '>' + c.replace('_', ' ') + '</option>').join('') +
@@ -1092,6 +1114,7 @@ const spotRow = (loc, qty) => '<div class="spot"><input class="loc" list="locLis
   esc(loc || '') + '"><input class="sq" type="number" min="1" placeholder="qty" value="' + (qty || '') + '"><button class="btn sm ghost rmspot" type="button">×</button></div>';
 
 const orderedOf = (c) => parseInt(c.dataset.ordered || '0', 10) || 0;
+const subCount = (l) => { try { return (JSON.parse(l.submission_ids || '[]') || []).length; } catch { return 0; } };
 
 function wireCountRow(c) {
   const isSealed = c.dataset.target === 'sealed' && c.dataset.kind === 'unit';
@@ -1102,7 +1125,8 @@ function wireCountRow(c) {
   addBtn.onclick = () => { addBtn.insertAdjacentHTML('beforebegin', spotRow('', '')); wireSpots(c); };
   c.querySelector('.qty').oninput = () => { sumSpots(c); updateWhy(); };
   c.querySelector('.disc').onchange = updateWhy;
-  c.querySelector('.asord').onclick = () => {
+  const asOrd = c.querySelector('.asord');
+  if (asOrd) asOrd.onclick = () => {
     const q = c.querySelector('.qty');
     q.value = String(orderedOf(c));
     // A single-spot line with no quantity typed yet should follow the count, so "as ordered" is

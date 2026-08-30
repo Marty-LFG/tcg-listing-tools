@@ -276,6 +276,29 @@ describe('the restock picker', () => {
     assert.equal(hit.landed_unit_cents, 16400, 'cost_cents + acq_fees_cents, not re-derived in the browser');
   });
 
+  it('defaults to a real page size when no limit is given', async () => {
+    // Asserting the SIZE, not just a 200: a finiteness check that treated an absent param as +null
+    // === 0 collapsed the default to one row per page, and a status-only assertion sailed past it.
+    for (let i = 0; i < 3; i++) {
+      await fetch(base + '/api/sealed/items', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ game: 'pokemon', product_type: 'booster_box', name: 'Paging Box ' + i, quantity: 1 }),
+      });
+    }
+    const bare = await api('/stock');
+    assert.ok(bare.body.items.length >= 3, 'the default page must not be one row: got ' + bare.body.items.length);
+    assert.equal(bare.body.limit, 50);
+    const blank = await api('/stock?limit=');
+    assert.equal(blank.body.limit, 50, 'a blank limit means "use the default", not zero');
+  });
+
+  it('survives a FRACTIONAL limit, which sqlite rejects exactly like NaN', async () => {
+    for (const qs of ['limit=1.5', 'offset=0.5', 'limit=2.9&offset=1.1']) {
+      const r = await api('/stock?' + qs);
+      assert.equal(r.status, 200, qs + ' -> ' + JSON.stringify(r.body));
+    }
+  });
+
   it('survives a garbage offset instead of 500ing', async () => {
     // Math.max(0, NaN) is NaN, and node:sqlite throws "datatype mismatch" on LIMIT ? — so a bad
     // query string took out the picker's hot path.
