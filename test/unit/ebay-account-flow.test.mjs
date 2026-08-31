@@ -36,6 +36,13 @@ function stubFetch(routes) {
       const [m, frag] = key.split(' ');
       if (m === method && u.includes(frag)) { const r = h(calls.length); return resp(r.status, r.json); }
     }
+    // A healthy merchant location by default. accountStatus began verifying the location against
+    // eBay once `ready` stopped trusting our own config file for it, and restating that in every
+    // test would be noise. A test that cares declares 'GET /inventory/v1/location/' itself, which
+    // matches in the loop above and wins.
+    if (method === 'GET' && u.includes('/inventory/v1/location/')) {
+      return resp(200, { merchantLocationKey: 'tcg-au-1', merchantLocationStatus: 'ENABLED' });
+    }
     return resp(404, { errors: [{ errorId: 404, message: 'unstubbed ' + method + ' ' + u }] });
   };
   return calls;
@@ -235,6 +242,11 @@ describe('accountStatus — read-only readiness', () => {
       'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
       'GET /subscription': () => ({ status: 200, json: { subscriptions: [{ subscriptionLevel: 'Basic' }] } }),
       'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
+      // Both lists have to answer for the account to be READ. Leaving them unstubbed used to pass
+      // — that was the vacuous green: an unreadable list produced no complaint, so `ready` came out
+      // true having confirmed nothing. It is now `degraded`, which is what happened on 2026-08-31.
+      'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+      'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
     });
     const st = await accountStatus(ENV, { ...CFG, policies: { paymentPolicyId: 'P', returnPolicyId: 'R' } });
     assert.equal(st.optedIn, true);
@@ -266,5 +278,90 @@ describe('accountStatus — read-only readiness', () => {
     });
     const st = await accountStatus(ENV, CFG);
     assert.equal(st.ready, false);
+  });
+});
+
+// The failure that shipped GREEN on 2026-08-31: eBay's Account API answered 500 for the whole
+// window, accountStatus reported ready:true with no error text anywhere in its reply, both stock
+// tools showed a green gate, and every publish behind it failed. `bandCheck` was null on a failed
+// read, `!bandCheck` satisfied bandsOk, rowFor() matched nothing so checkPolicyConstraints had
+// nothing to object to — a vacuous green built out of three separate absences.
+describe('accountStatus — an account it cannot READ is degraded, never ready', () => {
+  const healthy = {
+    'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+    'GET /subscription': () => ({ status: 200, json: { subscriptions: [{ subscriptionLevel: 'Basic' }] } }),
+    'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+    'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
+    'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
+  };
+  const PINNED = { paymentPolicyId: 'PAY-EXIST', returnPolicyId: 'RET-EXIST' };
+
+  it('a 500 on the fulfilment list is reported, and stops the tools publishing', async () => {
+    stubFetch({ ...healthy, 'GET /fulfillment_policy': () => ({ status: 500, json: { errors: [{ errorId: 20500, message: 'System error.' }] } }) });
+    const st = await accountStatus(ENV, { ...CFG, policies: PINNED });
+    assert.equal(st.degraded, true);
+    assert.equal(st.ready, false, 'this is the exact call that answered ready:true during the outage');
+    assert.ok(st.policyReadError, 'the read failure must reach the caller as text, not vanish');
+    assert.match(st.policyReadError, /20500|System error/);
+    assert.equal(st.policyReads.fulfillment != null, true);
+    assert.equal(st.bandCheck, null, 'unverified stays unverified — the doubt belongs to `degraded`');
+  });
+
+  it('same for the payment and return lists, one at a time', async () => {
+    for (const kind of ['payment_policy', 'return_policy']) {
+      stubFetch({ ...healthy, ['GET /' + kind]: () => ({ status: 500, json: { errors: [{ errorId: 20500, message: 'System error.' }] } }) });
+      const st = await accountStatus(ENV, { ...CFG, policies: PINNED });
+      assert.equal(st.degraded, true, kind);
+      assert.equal(st.ready, false, kind);
+    }
+  });
+
+  it('a healthy account is still ready, and says so with no error text', async () => {
+    stubFetch(healthy);
+    const st = await accountStatus(ENV, { ...CFG, policies: PINNED });
+    assert.equal(st.ready, true);
+    assert.equal(st.degraded, false);
+    assert.equal(st.policyReadError, null);
+  });
+});
+
+// The other thing `ready` could not see. getInventoryLocation existed but was reachable only from
+// bootstrapAccount, so `ready` asked whether OUR config held a non-empty string and nothing more.
+// A location deleted or disabled in Seller Hub therefore left the tools green, createOffer
+// succeeding, and publishOffer failing with an error that named nothing.
+describe('accountStatus — the merchant location is checked against eBay, not against our config', () => {
+  const healthy = {
+    'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+    'GET /subscription': () => ({ status: 200, json: { subscriptions: [{ subscriptionLevel: 'Basic' }] } }),
+    'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+    'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
+    'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: fulfillmentPolicyRows() } }),
+  };
+  const PINNED = { paymentPolicyId: 'PAY-EXIST', returnPolicyId: 'RET-EXIST' };
+
+  it('a location that is GONE is a configuration fault — not ready, not degraded', async () => {
+    stubFetch({ ...healthy, 'GET /inventory/v1/location/': () => ({ status: 404, json: { errors: [{ errorId: 25802, message: 'not found' }] } }) });
+    const st = await accountStatus(ENV, { ...CFG, policies: PINNED });
+    assert.equal(st.ready, false);
+    assert.equal(st.merchantLocation.missing, true);
+    assert.equal(st.merchantLocation.verified, false);
+    assert.equal(st.degraded, false, 'a 404 is an answer; it is not an unreadable account');
+  });
+
+  it('a location we could not READ is degraded, like any other unreadable fact', async () => {
+    stubFetch({ ...healthy, 'GET /inventory/v1/location/': () => ({ status: 500, json: { errors: [{ errorId: 25001, message: 'System error.' }] } }) });
+    const st = await accountStatus(ENV, { ...CFG, policies: PINNED });
+    assert.equal(st.degraded, true);
+    assert.equal(st.ready, false);
+    assert.equal(st.merchantLocation.unreadable, true);
+    assert.equal(st.merchantLocation.missing, false);
+  });
+
+  it('a live location is reported verified, with its eBay status', async () => {
+    stubFetch(healthy);
+    const st = await accountStatus(ENV, { ...CFG, policies: PINNED });
+    assert.equal(st.merchantLocation.verified, true);
+    assert.equal(st.merchantLocation.status, 'ENABLED');
+    assert.equal(st.ready, true);
   });
 });

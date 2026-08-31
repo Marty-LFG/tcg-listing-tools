@@ -755,8 +755,8 @@ async function doLookup(opts){
       releaseYear:((c.set&&c.set.releaseDate)||'').slice(0,4),
       img:(c.images&&(c.images.large||c.images.small))||''};
     set('f_img',_intlMeta.img||'');   // expose the fetched image so it can be overridden
-    act&&act.done('pokemontcg.io');
-    st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'');
+    act&&act.done(res.source==='tcgdex'?'tcgdex (backup)':'pokemontcg.io');
+    st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'')+TCG.pkmSourceNote(res);
     render();
     if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];var _finMap={normal:'',holofoil:'holofoil ',reverseHolofoil:'reverse holo ','1stEditionHolofoil':'1st ed holo ','1stEditionNormal':'1st ed '};Object.keys(_tp).forEach(function(k){var b=_tp[k];if(b&&(b.market!=null||b.mid!=null)){var sp=(b.low!=null||b.high!=null)?{low:b.low,high:b.high}:null;_pr.push({source:"TCGplayer",measure:(_finMap[k]!=null?_finMap[k]:k+' ')+"market",group:"market",amount:(b.market!=null?b.market:b.mid),currency:"USD",spread:sp});}});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({source:"Cardmarket",measure:"30d avg sold",group:"market",amount:_cm.averageSellPrice,currency:"EUR"});if(_cm&&_cm.lowPrice)_pr.push({source:"Cardmarket",measure:"from (low)",group:"asking",amount:_cm.lowPrice,currency:"EUR"});
       var _dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':'';var _sm=c.images&&c.images.small;var _lg=c.images&&(c.images.large||c.images.small);   // display: dotgg webp 82KB / small (raced); download: large hi-res

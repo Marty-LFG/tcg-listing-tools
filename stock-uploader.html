@@ -257,7 +257,7 @@ const LANG_KEY='tcg_stock_lang';
 let PKM_INTL=null, DEX_EN=null;
 const INTL_CACHE_KEY='pkm_intl_sets_v1';   // shared with pokemon-listing-builder.html
 const DEX_CACHE_KEY='pkm_dex_en_v3';       // shared with pokemon-listing-builder.html
-let SETS=[], setObj=null, card=null, priceInfo=null, savedItemId=null, savedKey='', photos=[], acctReady=false, connected=false;
+let SETS=[], setObj=null, card=null, priceInfo=null, savedItemId=null, savedKey='', photos=[], acctReady=false, acctDegraded=false, connected=false;
 // The intl helpers, handed over by the module shim at the bottom (this script is classic).
 const PI=()=>window.TCG.pokemonIntl;
 const isIntl=()=>!!(GA&&GA.langs)&&PI().dataLangOf(LANG)!=='en';
@@ -272,8 +272,13 @@ async function checkAccount(){
     const cr=await fetch('/api/listings/config').then(r=>r.json()); connected=!!cr.connected;
     if(!connected){ banner('Your eBay account isn’t connected. <a href="/api/repricer/oauth">Run the consent flow →</a> then reload.'); return; }
     const st=await fetch('/api/listings/account/status').then(r=>r.json());
-    acctReady=!!st.ready;
-    if(!acctReady) banner('eBay listing isn’t set up yet (business policies + location). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it once.');
+    acctReady=!!st.ready; acctDegraded=!!st.degraded;
+    // DEGRADED is not the same as NOT SET UP, and saying the wrong one costs real time. On
+    // 2026-08-31 eBay's Account API answered 500 all morning; the old status call reported ready
+    // anyway, so the page stayed green and every publish behind it failed. Now an account we
+    // cannot READ says exactly that, and points at eBay rather than at the settings page.
+    if(acctDegraded) banner('eBay isn’t answering for your account right now'+(st.policyReadError?' ('+esc(st.policyReadError)+')':'')+', so nothing here has been verified. Publishing is paused — reload in a few minutes.');
+    else if(!acctReady) banner('eBay listing isn’t set up yet (business policies + location). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it once.');
   }catch(e){ banner('Could not reach the listing API — is the dev server running?'); }
 }
 function banner(html){ const b=$('setupBanner'); b.innerHTML=html; b.style.display='block'; }
@@ -462,8 +467,8 @@ async function doLookup(opts){
     if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
     else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
     afterLookup();
-    act&&act.done('found');
-    stat($('status'),'ok','Found. Verify the details, price and offers below.');
+    act&&act.done(res.source==='tcgdex'?'found (backup)':'found');
+    stat($('status'),'ok','Found. Verify the details, price and offers below.'+TCG.pkmSourceNote(res));
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
 
@@ -1187,6 +1192,7 @@ function guard(){
   if(!card){ toast('Look up a card first'); return false; }
   if(!(parseFloat($('price').value)>0)){ stat($('listStatus'),'warn','Set a price first.'); return false; }
   if(!connected){ banner('Connect your eBay account first.'); return false; }
+  if(acctDegraded){ banner('eBay isn’t answering for your account right now, so nothing has been verified. Publishing is paused — reload in a few minutes.'); return false; }
   if(!acctReady){ banner('Run the one-time eBay listing setup in Settings first.'); return false; }
   return true;
 }

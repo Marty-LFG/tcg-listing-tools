@@ -24,7 +24,7 @@ const saveCfg = () => {};
 
 let db, tmpDir;
 const realFetch = globalThis.fetch;
-let published, failPublishFor, failDescriptors;
+let published, failPublishFor, failDescriptors, publish500, publish500For;
 
 function resp(status, json, headers = {}) {
   return {
@@ -53,7 +53,16 @@ function installStub() {
     if (u.match(/\/offer\?sku=/) && m === 'GET') { const sku = decodeURIComponent(u.split('sku=')[1]); const oid = published.get(sku); return resp(200, { offers: oid ? [{ offerId: oid, marketplaceId: 'EBAY_AU' }] : [] }); }
     if (u.endsWith('/offer') && m === 'POST') { const body = JSON.parse(opts.body); const oid = 'OFFER-' + (++offerSeq); published.set(body.sku, oid); return resp(200, { offerId: oid }); }
     if (u.match(/\/offer\/[^/]+$/) && m === 'PUT') return resp(200, {});
-    if (u.match(/\/offer\/[^/]+\/publish$/) && m === 'POST') return resp(200, { listingId: '2255' + offerSeq });
+    // publish500 models the 2026-08-31 outage: everything up to publishOffer succeeds, and eBay
+    // then answers 500 [25002] naming no field at all.
+    if (u.match(/\/offer\/[^/]+\/publish$/) && m === 'POST') {
+      const oid = u.split('/offer/')[1].replace('/publish', '');
+      const sku = [...published.entries()].find(([, v]) => v === oid)?.[0] || null;
+      const boom = publish500 || (publish500For && publish500For.has(sku));
+      return boom
+        ? resp(500, { errors: [{ errorId: 25002, domain: 'API_INVENTORY', category: 'Request', message: 'A user error has occurred. System error. Unable to process your request. Please try again later.' }] })
+        : resp(200, { listingId: '2255' + offerSeq });
+    }
     return resp(404, { errors: [{ errorId: 1, message: 'unstubbed ' + m + ' ' + u }] });
   };
 }
@@ -79,7 +88,7 @@ function collect() {
 before(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-batchtest-')); db = openDbAt(path.join(tmpDir, 'tracker.db')); });
 after(() => { globalThis.fetch = realFetch; try { db.close(); } catch {} try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} });
 beforeEach(() => {
-  published = new Map(); failPublishFor = null; failDescriptors = false;
+  published = new Map(); failPublishFor = null; failDescriptors = false; publish500 = false; publish500For = null;
   installStub();
   db.exec('DELETE FROM inventory_items; DELETE FROM ebay_listings; DELETE FROM listing_pushes; DELETE FROM listing_images; DELETE FROM channel_exports;');
 });
@@ -397,5 +406,54 @@ describe('pickCanaries — a handful of real dry runs, never the whole batch', (
   it('an empty batch yields nothing rather than throwing', () => {
     assert.deepEqual(pickCanaries([]), []);
     assert.deepEqual(pickCanaries(null), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2026-08-31: every publish came back 500 [25002] "System error". ebayRest had already retried each
+// one four times, and the batch kept going regardless — two rows that day, but this loop is built
+// for 100+, and every attempt strands an offer nothing in this repo can delete.
+describe('runBatchPublish — a run of eBay server errors is an incident, not a row problem', () => {
+  it('stops after three in a row and reports the rest untouched', async () => {
+    publish500 = true;
+    const ids = ['AAA-200', 'AAA-201', 'AAA-202', 'AAA-203', 'AAA-204']
+      .map((sku, i) => addItem({ sku, name: 'Card ' + i, price: 1000 }));
+    const c = collect();
+    const out = await runBatchPublish(ENV, db, CFG, saveCfg, { itemIds: ids, emit: c.emit });
+    const rows = c.rows();
+    assert.equal(out.failed, 3, 'three attempts is enough to call it — not all five');
+    assert.equal(out.skipped, 2, 'the rest are reported, never attempted');
+    assert.deepEqual(rows.map((r) => r.status), ['failed', 'failed', 'failed', 'skipped', 'skipped']);
+    assert.match(String(out.aborted), /eBay incident/);
+    assert.match(String(out.aborted), /their end, not these cards/);
+    assert.equal(c.summary().aborted, out.aborted);
+  });
+
+  it('a 4xx is this row’s own problem and never trips the breaker', async () => {
+    // The SKU-already-exists rejection is about THIS card. Four of them in a row must not be read
+    // as an outage, or one bad patch of data would halt a hundred-card run.
+    failPublishFor = new Set(['AAA-300', 'AAA-301', 'AAA-302', 'AAA-303']);
+    const ids = ['AAA-300', 'AAA-301', 'AAA-302', 'AAA-303', 'AAA-304']
+      .map((sku, i) => addItem({ sku, name: 'Card ' + i, price: 1000 }));
+    const c = collect();
+    const out = await runBatchPublish(ENV, db, CFG, saveCfg, { itemIds: ids, emit: c.emit });
+    assert.equal(out.aborted, null, '4xx is per-row; the run must finish');
+    assert.equal(out.failed, 4);
+    assert.equal(out.listed, 1, 'the good row still lists');
+  });
+
+  it('a success clears the streak, so scattered 5xx do not stop a long run', async () => {
+    // Fail, fail, SUCCEED, fail, fail. The longest run of server errors is two, so this is a flaky
+    // afternoon rather than an outage and the batch must see it through to the last card.
+    const skus = ['AAA-400', 'AAA-401', 'AAA-402', 'AAA-403', 'AAA-404'];
+    publish500For = new Set(['AAA-400', 'AAA-401', 'AAA-403', 'AAA-404']);
+    const ids = skus.map((sku, i) => addItem({ sku, name: 'Card ' + i, price: 1000 }));
+    const c = collect();
+    const out = await runBatchPublish(ENV, db, CFG, saveCfg, { itemIds: ids, emit: c.emit });
+    assert.equal(out.aborted, null, 'never three in a row, so never an incident');
+    assert.equal(out.listed, 1);
+    assert.equal(out.failed, 4);
+    assert.equal(out.skipped, 0, 'every card was actually attempted');
+    assert.deepEqual(c.rows().map((r) => r.status), ['failed', 'failed', 'live', 'failed', 'failed']);
   });
 });

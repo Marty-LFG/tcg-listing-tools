@@ -517,8 +517,8 @@ async function doLookup(opts){
     setv('f_num',TCG.formatCardNumber(c.number||n,c.set||{},{source:'ptcg',rarity:c.rarity})); setv('f_rarity',c.rarity||'');
     setv('f_finish',/gold|metal|hyper/i.test(c.rarity||'')?'Gold / Metal':(/holo/i.test(c.rarity||'')?'Holo':'Non-holo'));
     _card={ name:c.name, set:(c.set&&c.set.name)||setId, number:val('f_num'), rarity:c.rarity||'', finish:val('f_finish'), id:c.id, pc:null };
-    act&&act.done('pokemontcg.io');
-    st.className='status ok'; st.textContent='✓ '+c.name+' ('+(c.rarity||'?')+')';
+    act&&act.done(res.source==='tcgdex'?'tcgdex (backup)':'pokemontcg.io');
+    st.className='status ok'; st.textContent='✓ '+c.name+' ('+(c.rarity||'?')+')'+TCG.pkmSourceNote(res);
     renderBasePrices(c);
     pcEnrich(c, n);
     recompute();

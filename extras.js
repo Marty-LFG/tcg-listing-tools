@@ -1071,7 +1071,16 @@
     }catch(e){return null;}
   };
 
-  // The whole ladder. Returns {card} | {error:'no-match',hint} | {error:'source-down',status}.
+  // One wording for "this answer came from the backup source", so the three pages that look a
+  // Pokémon card up say the same thing rather than three different things. Empty in the normal
+  // case, so callers can append it unconditionally.
+  TCG.pkmSourceNote=function(res){
+    return (res&&res.source==='tcgdex')
+      ?' Card data came from the backup source (TCGdex) — pokemontcg.io is down, so prices may be a day old.'
+      :'';
+  };
+
+  // The whole ladder. Returns {card,source} | {error:'no-match',hint} | {error:'source-down',status}.
   // Callers keep their own status wording — this only decides WHICH of the two failures it is,
   // because "no card found" for an upstream outage is the bug that sends sellers hunting a typo.
   TCG.pkmLookupCard=async function(setId,typed,opts){
@@ -1087,20 +1096,30 @@
       if(r.ok){
         var j=await r.json();
         var c=j&&(j.data||j);
-        return (c&&c.name)?{card:c}:null;
+        // `source` rides along so the page can say WHERE the answer came from. A card served by the
+        // backup source is a real card, but its prices are a day old and its rarity wording is
+        // normalised rather than quoted — worth saying before a price is committed.
+        return (c&&c.name)?{card:c,source:(j&&j.source)||''}:null;
       }
       return r.status>=500||r.status===429?{error:'source-down',status:r.status}:null;
     }
     // A set already known to need the roster skips the 404 it would certainly get.
+    var down=null;
     if(!needsRoster(setId)){
       var direct=await get(t);
-      if(direct)return direct;                 // hit, or a real upstream outage
+      if(direct&&direct.card)return direct;    // a genuine hit is the only reason to stop here
+      // A 5xx is the source being unwell, NOT an answer — so remember it and KEEP GOING. The roster
+      // below reads /api/catalog/cards, a different server-owned chain that may well hold this card
+      // already. Returning here is how a card we had all along stayed unreachable through an outage
+      // (lived 2026-08-31: rsv10pt5-162 asked for fifteen times, cached on the box the whole time).
+      if(direct)down=direct;
     }
     index=await TCG.pkmRoster(setId,{refresh:!!opts.refresh});
     if(!index){
-      // No roster AND the direct id missed. The roster call is the same upstream, so treat an
-      // unavailable roster as the source being down rather than claiming the card doesn't exist.
-      return {error:'source-down',status:0};
+      // No roster AND the direct id missed. Nothing left to ask, so report the outage we saw rather
+      // than claiming the card doesn't exist — "no card found" for an outage is the bug that sends
+      // sellers hunting a typo that isn't there.
+      return down||{error:'source-down',status:0};
     }
     var raw=TCG.pkmResolveNumber(index,t);
     if(!raw){

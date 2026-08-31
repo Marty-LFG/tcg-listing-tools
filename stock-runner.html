@@ -359,7 +359,7 @@ function stat(el, cls, msg) { el.className = 'status ' + cls; el.innerHTML = msg
 // ---------------------------------------------------------------------------
 const INDEX = new Map();          // setId -> {set, cards[], byNum:Map, byName:[]}  — several sets stay resident
 let SETS = [], setObj = null, QUEUE = [], cursor = -1, mode = 'pile';
-let connected = false, acctReady = false, uid = 1, undoStack = [];
+let connected = false, acctReady = false, acctDegraded = false, uid = 1, undoStack = [];
 let STORE_CATS = [], STORE_MAX = 2, storePick = [];
 let SORT = { k: '', dir: 1 }, VERIFY = false, DISAGREE_ONLY = false;
 let labelSeeded = false, labelUpcoming = [];   // upcoming[0] is the next free label, [1] the one after
@@ -431,8 +431,13 @@ async function checkAccount() {
     if (!connected) { banner('Your eBay account isn’t connected. <a href="/api/repricer/oauth">Run the consent flow →</a> then reload.'); return; }
     renderMirrorBar();
     const st = await fetch('/api/listings/account/status').then((r) => r.json());
-    acctReady = !!st.ready;
-    if (!acctReady) banner('eBay listing isn’t set up yet (business policies + location). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it once.');
+    acctReady = !!st.ready; acctDegraded = !!st.degraded;
+    // DEGRADED is not NOT-SET-UP, and the two need different words. On 2026-08-31 eBay's Account
+    // API answered 500 all morning while this page reported ready and let a batch run into it —
+    // two rows, two shelf labels' worth of work, both failed at publish. An account we cannot READ
+    // now says so, and points at eBay rather than at the settings page.
+    if (acctDegraded) banner('eBay isn’t answering for your account right now' + (st.policyReadError ? ' (' + esc(st.policyReadError) + ')' : '') + ', so nothing here has been verified. Publishing is paused — reload in a few minutes.');
+    else if (!acctReady) banner('eBay listing isn’t set up yet (business policies + location). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it once.');
   } catch (e) { banner('Could not reach the listing API — is the dev server running?'); }
 }
 // The duplicate check is only as fresh as the last mirror import. A hand-made Seller Hub listing is

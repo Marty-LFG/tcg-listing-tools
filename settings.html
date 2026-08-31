@@ -1788,14 +1788,26 @@
     }
     const yn=(b)=>b?'<span class="pill ok plain">yes</span>':'<span class="pill bad plain">no</span>';   // 'pill err' is not a defined class — every "no" here rendered unstyled
     const pol=st.policies||{};
-    body.innerHTML=
+    // DEGRADED — eBay could not be read, so none of the rows below have been confirmed. Without
+    // this line the card reads exactly like a misconfigured account, and on 2026-08-31 that is the
+    // wrong place to go looking: eBay's Account API was answering 500 and there was nothing here to
+    // fix. Said first, and loudly, because every "no" underneath it is unverified rather than false.
+    const loc=st.merchantLocation||{};
+    const degraded=st.degraded?'<div class="note" style="border-left:3px solid var(--amber,#e0a33e);padding-left:8px;margin-bottom:10px;">'+
+      '<strong>eBay isn’t answering for this account right now'+(st.policyReadError?' ('+esc(st.policyReadError)+')':'')+'.</strong> '+
+      'Nothing below has been verified, and both stock tools have paused publishing. This usually clears on its own — re-check in a few minutes.</div>':'';
+    body.innerHTML=degraded+
       '<div class="kv"><span class="k">Business policies opted in</span><span class="v">'+yn(st.optedIn)+'</span></div>'+
       '<div class="kv"><span class="k">Subscription</span><span class="v">'+esc(st.subscriptionLevel||'—')+(st.apiListingEntitled?' <span class="pill ok plain">API ok</span>':'')+'</span></div>'+
       '<div class="kv"><span class="k">Payment policy</span><span class="v">'+(pol.paymentPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Return policy</span><span class="v">'+(pol.returnPolicyId?'<span class="pill ok plain">set</span>':yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Postage bands</span><span class="v" id="ebBands">checking…</span></div>'+
       '<div class="kv"><span class="k">Policy checks</span><span class="v" id="ebPolChk">checking…</span></div>'+
-      '<div class="kv"><span class="k">Merchant location</span><span class="v">'+(st.merchantLocationKey?esc(st.merchantLocationKey):yn(false))+'</span></div>'+
+      // Checked against eBay now, not just against our own config file — a location deleted or
+      // disabled in Seller Hub used to leave this green while every publish failed generically.
+      '<div class="kv"><span class="k">Merchant location</span><span class="v">'+(st.merchantLocationKey?esc(st.merchantLocationKey)+
+        (loc.missing?' <span class="pill bad plain">not on eBay</span>':loc.verified?' <span class="pill ok plain">'+esc(loc.status||'verified')+'</span>':loc.unreadable?' <span class="pill plain">unverified</span>':'')
+        :yn(false))+'</span></div>'+
       '<div class="kv"><span class="k">Ready to list</span><span class="v">'+yn(st.ready)+'</span></div>'+
       '<div class="kv"><span class="k">Listing as</span><span class="v" id="ebIdentity">checking…</span></div>'+
       '<div class="kv"><span class="k">Store category</span><span class="v" id="ebStoreCat">checking…</span></div>'+
