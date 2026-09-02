@@ -283,11 +283,42 @@ async function build() {
     if (!el.innerHTML) say('the QR library did not load — do not print inserts without a scannable code', 'bad');
   }
   $('print').disabled = false;
+  LAST = bundles.map((b) => b.bundle_no);
   say(`${bundles.length} bundle(s) ready — inserts go INSIDE the parcel`, 'ok');
 }
 
 $('load').addEventListener('click', () => build().catch((e) => say(String(e.message || e), 'bad')));
-$('print').addEventListener('click', () => window.print());
+// Printing an insert RECORDS that it was printed. The schema ties insert_printed_at to packed_at with
+// a CHECK, so a bundle cannot be marked packed without one — and until now the page printed and
+// recorded nothing, which meant the constraint guarded a column nothing ever wrote.
+//
+// Marked AFTER the dialog, not before: a print an operator cancels is not a printed insert, and a
+// bundle wrongly stamped would then be packable with no slip in it.
+let LAST = [];
+
+async function markPrinted(bundleNos) {
+  const t = diagToken(false);
+  if (!t) return;
+  const done = [];
+  for (const no of bundleNos) {
+    try {
+      const r = await fetch(`/api/runs/${encodeURIComponent($('run').value.trim())}/print/mark`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t },
+        body: JSON.stringify({ bundle_no: no, actor: 'runs-print.html' }),
+      });
+      if (r.ok) done.push(no);
+    } catch { /* a failed mark must never look like a failed print */ }
+  }
+  if (done.length) say(`printed \u00b7 ${done.length} insert(s) recorded`, 'ok');
+  else say('printed \u2014 but nothing was recorded; check the token', 'bad');
+}
+
+$('print').addEventListener('click', () => {
+  window.print();
+  // window.print() is synchronous in every browser this runs in, so by here the dialog is closed.
+  markPrinted(LAST);
+});
 $('run').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('load').click(); });
 const q = new URLSearchParams(location.search);
 if (q.get('run')) { $('run').value = q.get('run'); }
