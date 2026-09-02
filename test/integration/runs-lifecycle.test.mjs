@@ -191,6 +191,39 @@ describe('pack, ship, close', () => {
     assert.ok([401, 403, 503].includes(r.status), `answered ${r.status}`);
   });
 
+  it('dispatch records that the parcel has left, and is idempotent', async () => {
+    // run_bundles.shipped_at had THREE READERS AND NO WRITER: graceState takes MAX(shipped_at) to start
+    // the delivery grace clock that gates disclosure, the bundle SELECT surfaces it, and appendCancel
+    // refuses to cancel a sale after dispatch. With nothing writing it, the grace clock silently started
+    // from the run's closed_at instead - so the wait began at the wrong moment - and a sale could be
+    // cancelled after the parcel was already gone.
+    const r = await req('POST', `/api/runs/${runId}/dispatch`, { bundle_no: 1, actor: 'lifecycle' }, auth);
+    assert.equal(r.status, 200, r.text.slice(0, 300));
+    assert.ok(r.json.shipped_at);
+    assert.equal(r.json.already, false);
+
+    // A second click is a slip, not an error, and the FIRST timestamp is the true one.
+    const again = await req('POST', `/api/runs/${runId}/dispatch`, { bundle_no: 1, actor: 'lifecycle' }, auth);
+    assert.equal(again.status, 200);
+    assert.equal(again.json.already, true);
+    assert.equal(again.json.shipped_at, r.json.shipped_at, 'a second dispatch moved the timestamp');
+  });
+
+  it('and refuses to dispatch a bundle nobody packed', async () => {
+    // Dispatch is a claim about the physical world made AFTER packing froze the parcel's contents.
+    // Recording it for a bundle that was never packed records something that did not happen.
+    // Bundle 2 is the one whose pack attempt was refused for want of a token just above, so it is
+    // genuinely unpacked rather than merely untouched.
+    const r = await req('POST', `/api/runs/${runId}/dispatch`, { bundle_no: 2, actor: 'lifecycle' }, auth);
+    assert.equal(r.status, 409, r.text.slice(0, 300));
+    assert.equal(r.json.code, 'not_packed');
+  });
+
+  it('and the dispatch is gated like every other write', async () => {
+    const r = await req('POST', `/api/runs/${runId}/dispatch`, { bundle_no: 1 });
+    assert.ok([401, 403, 503].includes(r.status), `answered ${r.status}`);
+  });
+
   it('closes once every number is accounted for', async () => {
     const c = await req('GET', `/api/runs/${runId}/close-check`);
     assert.equal(c.json.can_close, true, JSON.stringify(c.json.reasons));

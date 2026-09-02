@@ -126,6 +126,25 @@
       <div><label>Bundles</label><input id="c_count" type="number" min="1" max="999" value="25" style="width:90px;"></div>
       <div><label>Edition</label><input id="c_ed" type="number" min="1" value="1" style="width:80px;"></div>
     </div>
+
+    <!-- THESE THREE ARE SETTABLE HERE AND NOWHERE ELSE, and two of them are inside the hash. A run
+         created without a close-by date or a sales-close date CANNOT BE LOCKED - validateForLock
+         refuses, and by then the only way out is abandoning the run. Without a price it locks and
+         anchors fine and then cannot be listed. There is no PATCH route for any of them by design:
+         they are anchored, so an edit would be a different run. -->
+    <div class="row" style="margin-bottom:12px;">
+      <div><label>Price each</label><input id="c_price" type="number" min="0" step="0.01" placeholder="129.00" style="width:110px;"></div>
+      <div><label>Currency</label><input id="c_ccy" value="AUD" style="width:70px;"></div>
+      <div><label>Sales close</label><input id="c_salesclose" type="date" style="width:150px;"></div>
+      <div><label>Close by</label><input id="c_closeby" type="date" style="width:150px;"></div>
+    </div>
+    <p class="note">
+      <b>Sales close</b> and <b>close by</b> are inside the anchored digest and cannot be changed
+      afterwards, and the run cannot be locked without them. <b>Sales close</b> is also what the
+      close-out gate waits for &mdash; it is recorded as the <i>start</i> of the day you pick, so a
+      rehearsal that needs to close today should leave it on today. The price never appears anywhere a
+      customer can see; it is the storefront variant price and nothing else.
+    </p>
     <div class="grid-scroll">
       <table>
         <thead><tr>
@@ -305,10 +324,26 @@
           <th style="width:70px;">Bundle</th><th style="width:165px;">When</th><th>Detail</th></tr></thead>
         <tbody id="lg_rows"></tbody>
       </table></div>
+      <!-- FULFILMENT. Each of these is a physical act being recorded, and each was previously
+           reachable only by curl. Packing is the one that draws the stock down and is what stops a
+           republish restocking the number; dispatch starts the delivery grace clock that disclosure
+           waits on; opened-live is the disposition that lets a run close when a number never sold. -->
+      <div class="row" style="margin-top:12px;align-items:flex-end;gap:8px;">
+        <div><label>Bundle</label><input id="lg_no" type="number" min="1" max="999" style="width:90px;" placeholder="7"></div>
+        <button class="btn sm ghost" onclick="bundleAct('pack')" title="consume the reservations and mark it packed">Mark packed</button>
+        <button class="btn sm ghost" onclick="bundleAct('dispatch')" title="record that the parcel has left">Mark dispatched</button>
+        <button class="btn sm ghost" onclick="openedLive()" title="record a number nobody bought as opened on stream">Opened live</button>
+      </div>
+
       <div class="foot">
         <button class="btn sm ghost" onclick="pollOrders()">Read orders now</button>
         <button class="btn sm ghost" onclick="closeRun()">Close run</button>
         <button class="btn sm ghost" onclick="discloseRun(true)">Dry-run disclosure</button>
+        <button class="btn go" onclick="discloseRun(false)">Publish disclosure</button>
+        <label class="mono" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;"
+               title="the grace period exists so a buyer has their parcel in hand before the contents are public">
+          <input type="checkbox" id="lg_force"> skip the delivery grace period
+        </label>
         <span id="lg_msg" class="msg"></span>
       </div>
     </section>
@@ -382,6 +417,35 @@
       <div class="foot">
         <button class="btn go" id="pb_btn" onclick="doPublish()">Publish artifacts</button>
         <span id="pb_msg" class="msg"></span>
+      </div>
+
+      <div class="hd" style="margin-top:18px;border-top:1px solid var(--line);padding-top:15px;">
+        <div><h2 style="font-size:15px;">Storefront</h2>
+          <span class="cap">one product &middot; one variant per number &middot; one unit each</span></div>
+        <span id="sf_state" class="pill wait">&mdash;</span>
+      </div>
+      <p class="note">
+        The buyer picks their own number, and <b>Shopify's own inventory is what stops a number selling
+        twice</b> &mdash; which is also what makes the remaining set visible to everyone rather than
+        asserted by us. Publishing needs a <b>confirmed</b> timestamp, not merely a submitted one: sales
+        open when the commitment provably predates them. Nothing here ever carries a price into
+        customer-visible copy; the price is the variant's and nothing else.
+      </p>
+      <div id="sf_reasons" class="warn hide"></div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:170px;">SKU</th><th style="width:100px;">State</th>
+          <th style="width:80px;">Qty</th><th>Variant</th></tr></thead>
+        <tbody id="sf_rows"></tbody>
+      </table></div>
+      <div class="foot">
+        <div><label>Publish as</label>
+          <select id="sf_status" style="width:110px;">
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="DRAFT">DRAFT</option>
+          </select></div>
+        <button class="btn sm ghost" onclick="doProduct(true)">Dry run</button>
+        <button class="btn go" id="sf_btn" onclick="doProduct(false)">Publish product</button>
+        <span id="sf_msg" class="msg"></span>
       </div>
     </section>
     <!-- ===================== AUDIT ===================== -->
@@ -524,11 +588,27 @@ function renderSlots() {
   </tr>`).join('');
 }
 
+// Sales close is stamped at the START of the chosen day and close-by at the END of it. Not cosmetic:
+// closeCheck refuses while now < sales_close_at, so a rehearsal that picks today would otherwise be
+// unable to close until tomorrow morning UTC. Close-by is a promise TO the buyer, so it gets the whole day.
+const dayStart = (v) => (v ? `${v}T00:00:00.000Z` : null);
+const dayEnd = (v) => (v ? `${v}T23:59:59.000Z` : null);
+
 window.createRun = async () => {
   say('c_msg', 'creating…');
+  const price = $('c_price').value.trim();
+  const salesClose = dayStart($('c_salesclose').value);
+  const closeBy = dayEnd($('c_closeby').value);
+  // Refused here rather than at lock, because lock is where it becomes unrecoverable.
+  if (!salesClose || !closeBy) {
+    return say('c_msg', 'sales close and close by are required — they are inside the anchored digest and cannot be set later', 'bad');
+  }
   const r = await api('POST', '/api/runs', {
     public_id: $('c_id').value.trim(), mode: $('c_mode').value, name: $('c_name').value.trim(),
     unit_count: Number($('c_count').value), edition: Number($('c_ed').value), slots: SLOTDRAFT,
+    unit_price_cents: price === '' ? null : Math.round(Number(price) * 100),
+    currency: $('c_ccy').value.trim() || 'AUD',
+    sales_close_at: salesClose, close_by: closeBy,
   });
   if (!r.ok) { say('c_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
   say('c_msg', 'created', 'ok');
@@ -919,6 +999,28 @@ async function loadArtifacts() {
   $('pb_state').className = 'pill ' + (published ? 'ok' : 'wait');
   $('pb_state').textContent = published ? 'published' : 'not published';
   $('pb_btn').disabled = !RUN || RUN.status === 'draft';
+  await loadStorefront();
+}
+
+async function loadStorefront() {
+  if (!RUN) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/storefront');
+  const rows = (r.json && r.json.listings) || [];
+  $('sf_rows').innerHTML = rows.length
+    ? rows.map((x) => '<tr><td class="mono">' + esc(x.sku) + '</td>'
+        + '<td><span class="pill ' + (x.state === 'live' ? 'ok' : 'warn') + '">' + esc(x.state) + '</span></td>'
+        + '<td class="mono">' + (x.available_qty == null ? '-' : x.available_qty) + '</td>'
+        + '<td class="mono" style="opacity:.7;">' + esc(String(x.variant_gid || '-').slice(-24)) + '</td></tr>').join('')
+    : '<tr><td colspan="4" class="muted">not listed yet</td></tr>';
+
+  // 'unpublished' is the state that cost a whole rehearsal once: the product existed, the variants were
+  // stocked, the drift check read clean - and the storefront had no page at all, because the product
+  // had been created as a DRAFT. It gets its own wording rather than sharing "listed".
+  const live = rows.filter((x) => x.state === 'live').length;
+  $('sf_state').className = 'pill ' + (live ? 'ok' : rows.length ? 'bad' : 'wait');
+  $('sf_state').textContent = live ? (live + ' of ' + rows.length + ' live')
+    : rows.length ? 'listed but NOT on the storefront' : 'not listed';
+  $('sf_btn').disabled = !RUN || RUN.status === 'draft';
 }
 
 window.doPublish = async () => {
@@ -943,6 +1045,21 @@ window.doPublish = async () => {
   }
   rs.classList.add('hide');
   if (!r.ok) return say('pb_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+
+  // THE RECEIPT CAN FAIL INSIDE A 200. It is published in its own try/catch so a failure there cannot
+  // fail the commitment and the blob - which is right - and the failure comes back as
+  // { receipt: { error } }. Nothing read it, so a run whose timestamp never reached the CDN reported
+  // "published and read back" and turned its pill green, and the buyer's page would show no timestamp
+  // at all with nothing anywhere saying why.
+  const receipt = r.json.receipt || {};
+  if (receipt.error) {
+    rs.classList.remove('hide');
+    rs.innerHTML = '<b>The commitment and blob published, but the timestamp receipt did not:</b>'
+      + '<div style="margin-top:5px;">- ' + esc(receipt.error) + '</div>'
+      + '<div style="margin-top:8px;opacity:.8;">A buyer can still verify their bundle; they just cannot'
+      + ' see the timestamp. Publish again once the cause is fixed.</div>';
+    return say('pb_msg', 'published, receipt failed', 'bad');
+  }
   say('pb_msg', r.json.alreadyDone ? 'already published - nothing re-uploaded' : 'published and read back', 'ok');
   await pickRun(RUN.public_id);
 };
@@ -980,7 +1097,10 @@ let ASSIGN = null;   // { bundleId, bundleNo, slot }
 window.openAssign = async (bundleNo, slot) => {
   const b = BUNDLES.find((x) => x.bundle_no === bundleNo);
   if (!b) return;
-  ASSIGN = { bundleId: b.id, bundleNo, slot };
+  // The SLOT decides which table the item id is looked up in and how many units one placement binds.
+  // Hard-coding 'inventory' here is what made every sealed slot unfillable from this page.
+  const spec = SPECS.find((s) => s.slot === slot) || {};
+  ASSIGN = { bundleId: b.id, bundleNo, slot, kind: spec.kind || 'inventory', qty: spec.qty_per_bundle || 1 };
   $('as_target').textContent = b.label + ' \u00b7 ' + slot;
   $('assignCard').classList.remove('hide');
   $('as_q').value = '';
@@ -1001,29 +1121,48 @@ window.loadCandidates = async () => {
   $('as_rows').innerHTML = rows.length ? rows.map((c) => {
     // The state is the whole value of this list: an item already live on a channel has to be withdrawn
     // first, and one earmarked for a later edition is a deliberate override rather than a mistake.
-    const state = c.state || (c.available ? 'available' : 'unavailable');
-    const cls = state === 'available' ? 'ok' : /earmark/.test(state) ? 'warn' : 'bad';
+    // /candidates returns available/reserved_units/on_hand/reserved_by/channel_hold - never `state`.
+    // Reading c.state first meant the earmark and channel-hold cases could never render.
+    //
+    // A hold with no run is stock the intake page set aside FOR runs and never arranged. It reads as
+    // unavailable here - it has a live reservation - but it is precisely what this drawer is for, so it
+    // gets its own state and is placed by adopting the hold rather than making a second one.
+    const spare = c.reserved_by && !c.reserved_by.run;
+    const state = c.channel_hold ? 'listed elsewhere'
+      : spare ? 'held for runs'
+        : c.reserved_by ? ('taken by ' + (c.reserved_by.run || '?') + (c.reserved_by.bundle ? ' \u00b7 ' + c.reserved_by.bundle : ''))
+          : c.available ? 'available' : 'unavailable';
+    const cls = state === 'available' ? 'ok' : spare ? 'warn' : 'bad';
     return '<tr><td class="mono">' + esc(c.sku || '') + '</td>'
       + '<td>' + esc(c.name || c.display_name || '') + '</td>'
       + '<td class="mono">' + esc(c.cert_number || '') + '</td>'
       + '<td>' + esc(c.grade == null ? '' : c.grade) + '</td>'
       + '<td><span class="pill ' + cls + '">' + esc(state) + '</span></td>'
-      + '<td>' + (state === 'available' || /earmark/.test(state)
-        ? '<button class="btn sm" onclick="assignItem(' + c.id + ')">place</button>' : '') + '</td></tr>';
+      + '<td>' + (state === 'available' || spare
+        ? '<button class="btn sm" onclick="assignItem(' + c.id + ','
+          + (spare ? c.reserved_by.reservation_id : 'null') + ')">place</button>' : '') + '</td></tr>';
   }).join('') : '<tr><td colspan="6" class="muted">nothing free for this slot</td></tr>';
   say('as_msg', rows.length + ' candidate(s)');
 };
 
-window.assignItem = async (itemId) => {
+window.assignItem = async (itemId, existingReservation) => {
   if (!ASSIGN) return;
-  say('as_msg', 'holding\u2026');
+  say('as_msg', existingReservation ? 'placing\u2026' : 'holding\u2026');
   // Two steps, and deliberately so: the hold is what blocks the item everywhere, and the assignment
   // promotes that same row onto a slot rather than creating a second one - which is what keeps the
   // one-live-reservation index meaningful.
-  const hold = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/hold',
-    { kind: 'inventory', item_id: itemId });
-  if (!hold.ok) return say('as_msg', (hold.json && hold.json.error) || ('error ' + hold.status), 'bad');
-  const asg = await api('POST', '/api/runs/reservations/' + hold.json.id + '/assign',
+  //
+  // Unless the item is ALREADY held for runs with no run named, in which case there is nothing to hold:
+  // a second hold would collide with the very index above. assignToSlot adopts a null run_id, so the
+  // existing row is promoted straight onto the slot.
+  let reservationId = existingReservation;
+  if (!reservationId) {
+    const hold = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/hold',
+      { kind: ASSIGN.kind, item_id: itemId, qty: ASSIGN.qty });
+    if (!hold.ok) return say('as_msg', (hold.json && hold.json.error) || ('error ' + hold.status), 'bad');
+    reservationId = hold.json.id;
+  }
+  const asg = await api('POST', '/api/runs/reservations/' + reservationId + '/assign',
     { bundle_id: ASSIGN.bundleId, slot: ASSIGN.slot });
   if (!asg.ok) return say('as_msg', (asg.json && asg.json.error) || ('error ' + asg.status), 'bad');
   say('as_msg', 'placed', 'ok');
@@ -1054,8 +1193,10 @@ async function loadLedger() {
   const free = new Set(led.available || []);
   $('lg_numbers').innerHTML = BUNDLES.map((b) => {
     const gone = !free.has(b.bundle_no);
-    return '<div class="num ' + (gone ? 'gone' : 'free') + '" title="' + esc(b.label)
-      + (gone ? ' - accounted for' : ' - available') + '">' + String(b.bundle_no).padStart(3, '0') + '</div>';
+    return '<div class="num ' + (gone ? 'gone' : 'free') + '" style="cursor:pointer;"'
+      + ' onclick="document.getElementById(\'lg_no\').value=' + b.bundle_no + '" title="' + esc(b.label)
+      + (gone ? ' - accounted for' : ' - available') + ' \u00b7 click to select">'
+      + String(b.bundle_no).padStart(3, '0') + '</div>';
   }).join('');
 
   $('lg_rows').innerHTML = (led.entries || []).length
@@ -1067,10 +1208,13 @@ async function loadLedger() {
 
   const cc = c.json || {};
   const el = $('lg_close');
-  el.classList.toggle('hide', !!cc.can_close || !(cc.reasons || []).length);
-  if (!cc.can_close && (cc.reasons || []).length) {
-    el.innerHTML = '<b>This run cannot close yet:</b>'
-      + cc.reasons.map((x) => '<div style="margin-top:5px;">- ' + esc(x) + '</div>').join('');
+  // Reasons are shown whether or not the run can close. NOTE-prefixed reasons are advisory and are
+  // ONLY ever emitted when the run CAN close, so hiding the box on can_close dropped the single
+  // advisory the check exists to give - "the close-by date you promised has already passed".
+  el.classList.toggle('hide', !(cc.reasons || []).length);
+  if ((cc.reasons || []).length) {
+    el.innerHTML = '<b>' + (cc.can_close ? 'Worth knowing before you close:' : 'This run cannot close yet:') + '</b>'
+      + cc.reasons.map((x) => '<div style="margin-top:5px;">- ' + esc(String(x).replace(/^NOTE /, '')) + '</div>').join('');
   }
 }
 
@@ -1080,9 +1224,25 @@ window.pollOrders = async () => {
   const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/poll', {}, authed());
   if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
   const d = r.json.drift && r.json.drift.drift ? r.json.drift.drift.length : 0;
-  say('lg_msg', r.json.appended + ' new \u00b7 ' + r.json.duplicates + ' seen before'
-    + (r.json.refused.length ? ' \u00b7 ' + r.json.refused.length + ' REFUSED' : '')
-    + (d ? ' \u00b7 ' + d + ' drifted' : ''), r.json.refused.length || d ? 'bad' : 'ok');
+  const errs = r.json.errors || [];
+  const refused = r.json.refused || [];
+  // A read that FAILED used to look exactly like a read that found nothing: errors were collected into
+  // the payload, the route answered 200, and this line painted it green. Say the reasons out loud -
+  // every refusal already carries a full sentence explaining itself.
+  const bits = [r.json.appended + ' new', r.json.duplicates + ' seen before'];
+  if (r.json.seen != null) bits.push(r.json.seen + ' order(s) read');
+  if (d) bits.push(d + ' drifted');
+  say('lg_msg', bits.join(' \u00b7 '), errs.length || refused.length || d ? 'bad' : 'ok');
+  const notes = [
+    ...errs.map((e) => 'could not read orders: ' + (e.message || e.error || e)),
+    ...refused.map((x) => 'refused ' + (x.bundleNo || '') + ': ' + (x.why || '')),
+  ];
+  const box = $('lg_close');
+  if (notes.length) {
+    box.classList.remove('hide');
+    box.innerHTML = '<b>The order read did not go cleanly:</b>'
+      + notes.map((n) => '<div style="margin-top:5px;">- ' + esc(n) + '</div>').join('');
+  }
   await loadLedger();
 };
 
@@ -1098,9 +1258,14 @@ window.closeRun = async () => {
 
 window.discloseRun = async (dry) => {
   if (!diagToken(false)) diagToken(true);
+  // A dry run is always forced past the grace gate - it publishes nothing, so the wait protects
+  // nobody. A REAL disclosure is forced only when the operator ticks the box, because the grace period
+  // is the buyer's, not ours: it exists so a parcel is in someone's hands before its contents are public.
+  const force = !!dry || $('lg_force').checked;
+  if (!dry && !force && !confirm('Publish the close-out disclosure? Contents become public and this cannot be taken back.')) return;
   say('lg_msg', dry ? 'building and verifying\u2026' : 'publishing\u2026');
   const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/disclose',
-    { dry_run: !!dry, force: !!dry, actor: 'runs.html' }, authed());
+    { dry_run: !!dry, force, actor: 'runs.html' }, authed());
   if (!r.ok) {
     const j = r.json || {};
     return say('lg_msg', (j.errors && j.errors.length ? j.errors[0] : j.error) || ('error ' + r.status), 'bad');
@@ -1109,6 +1274,73 @@ window.discloseRun = async (dry) => {
     ? ('verifies \u00b7 ' + r.json.openings + ' opening(s)')
     : ('disclosed \u00b7 ' + r.json.openings + ' opening(s)'), 'ok');
   await pickRun(RUN.public_id);
+};
+
+// /pack and /dispatch, the two fulfilment acts. Packing is the one with consequences beyond a
+// timestamp: it consumes the reservations, which is what actually draws this run's stock down, and it
+// is the only thing that moves a bundle off status 'open' - which is half of what stops a republish
+// offering a number that is already in the post.
+// The step that had no button. A dry run builds the productSet input and calls nothing, so it is the
+// safe way to see the refusals - and there are two quite different ones worth telling apart: not_armed
+// means we are not switched on, sale_gate means the COMMITMENT is not ready and no flag will help.
+window.doProduct = async (dry) => {
+  if (!RUN) return;
+  if (!diagToken(false)) diagToken(true);
+  if (!diagToken(false)) return say('sf_msg', 'a token is needed', 'bad');
+  const status = $('sf_status').value;
+  if (!dry && !confirm('Publish ' + RUN.unit_count + ' bundle(s) to the storefront as ' + status + '?')) return;
+  say('sf_msg', dry ? 'building\u2026' : 'publishing\u2026');
+  $('sf_reasons').classList.add('hide');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/publish-product',
+    { dry_run: !!dry, status, actor: 'runs.html' }, authed());
+  if (!r.ok) {
+    const j = r.json || {};
+    const why = [].concat(j.reasons || [], j.errors || []);
+    if (why.length) {
+      $('sf_reasons').classList.remove('hide');
+      $('sf_reasons').innerHTML = '<b>' + esc(j.error || 'refused') + '</b>'
+        + why.map((x) => '<div style="margin-top:5px;">- ' + esc(x) + '</div>').join('')
+        + (j.code === 'not_armed'
+          ? '<div style="margin-top:8px;opacity:.8;">Arming lives in settings &rsaquo; Keeper\u2019s Runs, and needs the Shopify publish switch on as well. Turn both off again when the rehearsal ends.</div>'
+          : '');
+    }
+    return say('sf_msg', j.error || ('error ' + r.status), 'bad');
+  }
+  say('sf_msg', dry ? ('dry run ok \u00b7 ' + (r.json.variants || []).length + ' variant(s) prepared')
+    : ('published \u00b7 ' + (r.json.stocked || r.json.variants || []).length + ' variant(s)'), 'ok');
+  if (!dry) await loadStorefront();
+};
+
+window.bundleAct = async (what) => {
+  if (!diagToken(false)) diagToken(true);
+  const no = Number($('lg_no').value);
+  if (!no) return say('lg_msg', 'pick a bundle number first', 'bad');
+  say('lg_msg', what === 'pack' ? 'packing\u2026' : 'recording dispatch\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/' + what,
+    { bundle_no: no, actor: 'runs.html' }, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  say('lg_msg', what === 'pack'
+    ? (r.json.bundle + ' packed \u00b7 ' + (r.json.consumed || []).length + ' reservation(s) consumed')
+    : (r.json.bundle + (r.json.already ? ' was already dispatched' : ' dispatched')), 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// The escape from the close-out deadlock. Unsold-policy v2 forbids withdrawing a bundle and forbids
+// buying it ourselves, so a number nobody wants is opened on a public stream and recorded as opened -
+// which accounts for it, and lets the run close without weakening what the chase count means.
+window.openedLive = async () => {
+  if (!diagToken(false)) diagToken(true);
+  const no = Number($('lg_no').value);
+  if (!no) return say('lg_msg', 'pick a bundle number first', 'bad');
+  const detail = prompt('How was bundle ' + no + ' opened? This goes in the published ledger.',
+    'opened on a public stream');
+  if (detail == null) return;
+  say('lg_msg', 'recording\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/ledger',
+    { kind: 'opened_live', bundle_no: no, detail, actor: 'runs.html' }, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  say('lg_msg', 'bundle ' + no + ' recorded as opened', 'ok');
+  await loadLedger();
 };
 
 window.diagToken = diagToken;
