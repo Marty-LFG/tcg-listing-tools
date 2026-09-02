@@ -79,6 +79,11 @@
   .kv dt{color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;}
   .kv dd{margin:0;font-family:var(--mono);font-size:11.5px;word-break:break-all;color:var(--text);}
   .kv dd.plain{font-family:var(--sans);font-size:13px;}
+  .numbers{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .num{width:42px;height:32px;border-radius:8px;border:1px solid var(--line2);display:flex;align-items:center;
+    justify-content:center;font-family:var(--mono);font-size:11.5px;cursor:pointer;background:rgba(255,255,255,.02);}
+  .num.gone{border-color:rgba(240,102,110,.35);color:var(--red);background:rgba(240,102,110,.07);cursor:default;}
+  .num.free:hover{border-color:var(--gold);background:var(--gold-soft);}
   .hide{display:none;}
   .foot{display:flex;gap:11px;align-items:center;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid var(--line);}
   .msg{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
@@ -262,6 +267,52 @@
       </section>
     </div>
 
+    <!-- ===================== ASSIGN DRAWER ===================== -->
+    <section class="card hide" id="assignCard">
+      <div class="hd">
+        <div><h2>Assign to <span id="as_target">a bundle</span></h2>
+          <span class="cap">stock this slot can take &middot; unreserved and in stock</span></div>
+        <button class="btn sm ghost" onclick="closeAssign()">close</button>
+      </div>
+      <div class="row" style="margin-bottom:11px;">
+        <div><label for="as_q">Search</label>
+          <input id="as_q" placeholder="name, set or cert" oninput="loadCandidates()" style="min-width:260px;"></div>
+        <span id="as_msg" class="msg"></span>
+      </div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:90px;">SKU</th><th>Card</th><th style="width:120px;">Cert</th>
+          <th style="width:70px;">Grade</th><th style="width:130px;">State</th><th style="width:80px;"></th></tr></thead>
+        <tbody id="as_rows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================== SALES &amp; CLOSE-OUT ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Sales &amp; close-out</h2>
+          <span class="cap">the ledger is the availability proof &middot; every number must be accounted for</span></div>
+        <span id="lg_verdict" class="pill wait">&mdash;</span>
+      </div>
+      <p class="note">
+        Every sale records the number the buyer chose, so <b>anyone can derive what was available at any
+        moment</b> from the published chain. That is what makes &ldquo;7 is gone&rdquo; checkable rather
+        than asserted. A number nobody buys is opened on stream and recorded, so the run can still close.
+      </p>
+      <div id="lg_numbers" class="numbers"></div>
+      <div id="lg_close" class="warn hide"></div>
+      <div class="grid-scroll" style="margin-top:12px;"><table>
+        <thead><tr><th style="width:50px;">#</th><th style="width:120px;">Kind</th>
+          <th style="width:70px;">Bundle</th><th style="width:165px;">When</th><th>Detail</th></tr></thead>
+        <tbody id="lg_rows"></tbody>
+      </table></div>
+      <div class="foot">
+        <button class="btn sm ghost" onclick="pollOrders()">Read orders now</button>
+        <button class="btn sm ghost" onclick="closeRun()">Close run</button>
+        <button class="btn sm ghost" onclick="discloseRun(true)">Dry-run disclosure</button>
+        <span id="lg_msg" class="msg"></span>
+      </div>
+    </section>
+
     <!-- ===================== LOCK &amp; ANCHOR ===================== -->
     <section class="card">
       <div class="hd">
@@ -414,7 +465,8 @@ window.pickRun = async (publicId) => {
   $('tag').textContent = `${RUN.public_id} · ${RUN.unit_count} bundles · ${RUN.status}`;
   $('dealSlot').innerHTML = SPECS.map((s) => `<option value="${esc(s.slot)}">${esc(s.slot)} (${s.qty_per_bundle}/bundle)</option>`).join('');
   renderManifest();
-  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit(), loadAnchors(), loadArtifacts()]);
+  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit(), loadAnchors(), loadArtifacts(), loadLedger()]);
+  await loadManifest();
   refreshGuarantee();
   refreshLock();
 };
@@ -634,7 +686,19 @@ function renderManifest() {
     const cells = SPECS.map((s) => {
       const cell = b.slots[s.slot] || { want: s.qty_per_bundle, have: 0, complete: false };
       const cls = cell.complete ? 'ok' : cell.have ? 'warn' : 'wait';
-      return `<td><span class="pill ${cls}">${cell.have}/${cell.want}</span></td>`;
+      const lines = cellContents(b.bundle_no, s.slot);
+      // With a token the cell shows WHAT is in it; without one it stays a count, because the contents
+      // are the pre-sale answer sheet and the page must not demand a token to be useful.
+      const what = (lines && lines.length)
+        ? '<div class="mono" style="margin-top:4px;opacity:.85;">'
+          + lines.map((l) => esc([l.display_name, l.cert_number && ('#' + l.cert_number)]
+            .filter(Boolean).join(' '))).join('<br>') + '</div>'
+        : '';
+      const add = (!cell.complete && RUN && RUN.status === 'draft')
+        ? ' <button class="btn sm ghost" onclick="openAssign(' + b.bundle_no + ",'" + s.slot + "')\""
+          + ' title="place a specific card here">+</button>'
+        : '';
+      return '<td><span class="pill ' + cls + '">' + cell.have + '/' + cell.want + '</span>' + add + what + '</td>';
     }).join('');
     return `<tr>
       <td class="mono">${esc(b.label)}</td>${cells}
@@ -880,6 +944,170 @@ window.doPublish = async () => {
   rs.classList.add('hide');
   if (!r.ok) return say('pb_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
   say('pb_msg', r.json.alreadyDone ? 'already published - nothing re-uploaded' : 'published and read back', 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// ---- the manifest grid, with what is actually in each bundle -----------------------------------------
+//
+// The grid used to show have/want counts only and never fetched /manifest, which made it a progress bar
+// rather than a manifest. The contents are the pre-sale answer sheet, so they need the token - and
+// without one the page falls back to counts rather than demanding it.
+
+let LINES = null;
+
+async function loadManifest() {
+  LINES = null;
+  if (!RUN || !diagToken(false)) { renderManifest(); return; }
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/manifest', null, authed());
+  if (r.ok) LINES = r.json.lines || [];
+  renderManifest();
+}
+
+function cellContents(bundleNo, slot) {
+  if (!LINES) return null;
+  const b = BUNDLES.find((x) => x.bundle_no === bundleNo);
+  return LINES.filter((l) => l.bundle_id === (b && b.id) && l.slot === slot);
+}
+
+// ---- assign drawer -----------------------------------------------------------------------------------
+//
+// GET /candidates and POST /reservations/:id/assign have both existed since R0 with no caller in any
+// page, so the only way to fill a bundle was the bulk deal. That is fine for a rehearsal and no use at
+// all for a real edition, where a specific card goes in a specific number.
+
+let ASSIGN = null;   // { bundleId, bundleNo, slot }
+
+window.openAssign = async (bundleNo, slot) => {
+  const b = BUNDLES.find((x) => x.bundle_no === bundleNo);
+  if (!b) return;
+  ASSIGN = { bundleId: b.id, bundleNo, slot };
+  $('as_target').textContent = b.label + ' \u00b7 ' + slot;
+  $('assignCard').classList.remove('hide');
+  $('as_q').value = '';
+  $('assignCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await loadCandidates();
+};
+
+window.closeAssign = () => { ASSIGN = null; $('assignCard').classList.add('hide'); };
+
+window.loadCandidates = async () => {
+  if (!ASSIGN) return;
+  say('as_msg', 'searching\u2026');
+  const q = encodeURIComponent($('as_q').value.trim());
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id)
+    + '/candidates?slot=' + encodeURIComponent(ASSIGN.slot) + '&q=' + q + '&limit=60');
+  if (!r.ok) return say('as_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  const rows = r.json.candidates || r.json.items || [];
+  $('as_rows').innerHTML = rows.length ? rows.map((c) => {
+    // The state is the whole value of this list: an item already live on a channel has to be withdrawn
+    // first, and one earmarked for a later edition is a deliberate override rather than a mistake.
+    const state = c.state || (c.available ? 'available' : 'unavailable');
+    const cls = state === 'available' ? 'ok' : /earmark/.test(state) ? 'warn' : 'bad';
+    return '<tr><td class="mono">' + esc(c.sku || '') + '</td>'
+      + '<td>' + esc(c.name || c.display_name || '') + '</td>'
+      + '<td class="mono">' + esc(c.cert_number || '') + '</td>'
+      + '<td>' + esc(c.grade == null ? '' : c.grade) + '</td>'
+      + '<td><span class="pill ' + cls + '">' + esc(state) + '</span></td>'
+      + '<td>' + (state === 'available' || /earmark/.test(state)
+        ? '<button class="btn sm" onclick="assignItem(' + c.id + ')">place</button>' : '') + '</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="muted">nothing free for this slot</td></tr>';
+  say('as_msg', rows.length + ' candidate(s)');
+};
+
+window.assignItem = async (itemId) => {
+  if (!ASSIGN) return;
+  say('as_msg', 'holding\u2026');
+  // Two steps, and deliberately so: the hold is what blocks the item everywhere, and the assignment
+  // promotes that same row onto a slot rather than creating a second one - which is what keeps the
+  // one-live-reservation index meaningful.
+  const hold = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/hold',
+    { kind: 'inventory', item_id: itemId });
+  if (!hold.ok) return say('as_msg', (hold.json && hold.json.error) || ('error ' + hold.status), 'bad');
+  const asg = await api('POST', '/api/runs/reservations/' + hold.json.id + '/assign',
+    { bundle_id: ASSIGN.bundleId, slot: ASSIGN.slot });
+  if (!asg.ok) return say('as_msg', (asg.json && asg.json.error) || ('error ' + asg.status), 'bad');
+  say('as_msg', 'placed', 'ok');
+  await pickRun(RUN.public_id);
+  if (ASSIGN) await loadCandidates();
+};
+
+// ---- ledger and close-out ----------------------------------------------------------------------------
+
+let AVAIL = { available: [], paused: false };
+
+async function loadLedger() {
+  if (!RUN) return;
+  const [l, c] = await Promise.all([
+    api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/ledger'),
+    api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/close-check'),
+  ]);
+  const led = l.json || { entries: [], available: [] };
+  AVAIL = { available: led.available || [], paused: !!led.paused };
+
+  // The chain verifies IN THIS BROWSER, from the published entries. The isomorphic half of the ledger
+  // module makes that free, and it is the same check a buyer runs.
+  $('lg_verdict').className = 'pill ' + (led.verified ? 'ok' : led.entries.length ? 'bad' : 'wait');
+  $('lg_verdict').textContent = led.entries.length
+    ? (led.verified ? 'chain verifies' : 'CHAIN BROKEN') : 'no entries';
+
+  const sold = new Set((led.entries || []).filter((e) => e.bundleNo).map((e) => Number(e.bundleNo)));
+  const free = new Set(led.available || []);
+  $('lg_numbers').innerHTML = BUNDLES.map((b) => {
+    const gone = !free.has(b.bundle_no);
+    return '<div class="num ' + (gone ? 'gone' : 'free') + '" title="' + esc(b.label)
+      + (gone ? ' - accounted for' : ' - available') + '">' + String(b.bundle_no).padStart(3, '0') + '</div>';
+  }).join('');
+
+  $('lg_rows').innerHTML = (led.entries || []).length
+    ? led.entries.map((e, i) => '<tr><td class="mono">' + (Number(e.seq) || '-') + '</td>'
+        + '<td>' + esc(e.kind) + '</td><td class="mono">' + esc(e.bundleNo || '') + '</td>'
+        + '<td class="mono">' + esc(String(e.occurredAt).replace('T', ' ').slice(0, 19)) + '</td>'
+        + '<td>' + esc(e.detail || '') + '</td></tr>').join('')
+    : '<tr><td colspan="5" class="muted">nothing sold yet</td></tr>';
+
+  const cc = c.json || {};
+  const el = $('lg_close');
+  el.classList.toggle('hide', !!cc.can_close || !(cc.reasons || []).length);
+  if (!cc.can_close && (cc.reasons || []).length) {
+    el.innerHTML = '<b>This run cannot close yet:</b>'
+      + cc.reasons.map((x) => '<div style="margin-top:5px;">- ' + esc(x) + '</div>').join('');
+  }
+}
+
+window.pollOrders = async () => {
+  if (!diagToken(false)) diagToken(true);
+  say('lg_msg', 'reading orders\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/poll', {}, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  const d = r.json.drift && r.json.drift.drift ? r.json.drift.drift.length : 0;
+  say('lg_msg', r.json.appended + ' new \u00b7 ' + r.json.duplicates + ' seen before'
+    + (r.json.refused.length ? ' \u00b7 ' + r.json.refused.length + ' REFUSED' : '')
+    + (d ? ' \u00b7 ' + d + ' drifted' : ''), r.json.refused.length || d ? 'bad' : 'ok');
+  await loadLedger();
+};
+
+window.closeRun = async () => {
+  if (!diagToken(false)) diagToken(true);
+  say('lg_msg', 'closing\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/close',
+    { actor: 'runs.html' }, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  say('lg_msg', 'closed', 'ok');
+  await pickRun(RUN.public_id);
+};
+
+window.discloseRun = async (dry) => {
+  if (!diagToken(false)) diagToken(true);
+  say('lg_msg', dry ? 'building and verifying\u2026' : 'publishing\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/disclose',
+    { dry_run: !!dry, force: !!dry, actor: 'runs.html' }, authed());
+  if (!r.ok) {
+    const j = r.json || {};
+    return say('lg_msg', (j.errors && j.errors.length ? j.errors[0] : j.error) || ('error ' + r.status), 'bad');
+  }
+  say('lg_msg', dry
+    ? ('verifies \u00b7 ' + r.json.openings + ' opening(s)')
+    : ('disclosed \u00b7 ' + r.json.openings + ' opening(s)'), 'ok');
   await pickRun(RUN.public_id);
 };
 
