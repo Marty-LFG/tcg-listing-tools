@@ -195,7 +195,12 @@ function insertHtml(run, b) {
   // §5.4: the code travels in the FRAGMENT, which is stripped before the request is made and so never
   // reaches a server or CDN log. The run id is included because key derivation needs it — revision 3's
   // QR omitted it and was functionally unusable.
-  const url = `${location.origin}/runs-verify.html#r=${encodeURIComponent(run.public_id)}&c=${fmt(b.code)}`;
+  // WHERE A BUYER CAN ACTUALLY REACH. Without a configured storefront this falls back to the origin the
+  // print page is served from - fine for a rehearsal where the only scanner is the operator, and useless
+  // on a real parcel, because a LAN address resolves to nothing in a buyer's hand.
+  const url = VERIFY_BASE
+    ? `${VERIFY_BASE}#r=${encodeURIComponent(run.public_id)}&c=${fmt(b.code)}`
+    : `${location.origin}/runs-verify.html#r=${encodeURIComponent(run.public_id)}&c=${fmt(b.code)}`;
   return `<div class="page"><div class="insert">
     <div class="top"><span class="mark">Binders Keepers</span><span class="num">${esc(run.public_id)} &middot; ${esc(b.label)}</span></div>
     <h3>Provably Packed</h3>
@@ -244,6 +249,14 @@ function sheetHtml(run, specs, b) {
   </div></div>`;
 }
 
+let VERIFY_BASE = '';
+(async () => {
+  try {
+    const cfg = await fetch('/api/runs/config').then((r) => (r.ok ? r.json() : null));
+    VERIFY_BASE = (cfg && cfg.public && cfg.public.verify_base_url) || '';
+  } catch { /* the fallback below is the rehearsal behaviour */ }
+})();
+
 async function build() {
   const runId = $('run').value.trim();
   if (!runId) return say('enter a run', 'bad');
@@ -284,7 +297,8 @@ async function build() {
   }
   $('print').disabled = false;
   LAST = bundles.map((b) => b.bundle_no);
-  say(`${bundles.length} bundle(s) ready — inserts go INSIDE the parcel`, 'ok');
+  say(`${bundles.length} bundle(s) ready — inserts go INSIDE the parcel · QR → `
+    + (VERIFY_BASE || location.origin + ' (LAN, rehearsal only)'), VERIFY_BASE ? 'ok' : '');
 }
 
 $('load').addEventListener('click', () => build().catch((e) => say(String(e.message || e), 'bad')));

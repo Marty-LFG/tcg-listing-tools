@@ -1238,6 +1238,8 @@
         {p:'publish.store',l:'Target store',t:'select',opts:['dev','live'],tip:'Which storefront a run publishes to. <b>live</b> additionally needs the live location/publication pins and the account-wide live switch, so setting it here alone changes nothing on its own.'},
         {p:'anchor.mode',l:'Anchoring',t:'select',opts:['stub','opentimestamps'],tip:'<b>stub</b> writes a synthetic receipt for tests and local iteration, and is refused for the live store. <b>opentimestamps</b> timestamps the run into Bitcoin <b>mainnet</b> — keyless and free, because calendars aggregate thousands of digests into a single transaction, so there is no wallet, key or coin involved. There is deliberately no testnet option: no public calendar runs on it, and its resets and deep reorgs would rehearse behaviour production does not have.'},
         {p:'anchor.upgrade_interval_min',l:'Upgrade check (min)',t:'number',min:5,max:1440,tip:'How often to ask the calendars whether a pending timestamp has made it into a block. A run may not open for sale until its timestamp is <b>confirmed</b>, so this is the loop that decides how soon that happens.'},
+        {p:'public.verify_base_url',l:'Verify page URL',t:'text',
+          tip:'The storefront page the QR on a printed insert points at, for example <b>https://binderskeepers.com.au/pages/verify</b>. Leave it EMPTY and the print page falls back to its own origin, which is right for a rehearsal and useless on a real parcel — a buyer cannot reach a LAN address. Must be https, with no query string and no fragment: the verification code travels in the fragment.'},
       ]}]},
 
     backup:{ title:'Backups', section:'system', groups:[{name:'Snapshots',anchor:'backup',fields:[

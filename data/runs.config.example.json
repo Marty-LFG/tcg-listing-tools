@@ -18,6 +18,8 @@
   "public": {
     "_comment": "Guardrails, not preferences. Both are pinned by test/data/configs.test.mjs and refused by the settings validator, so turning either off is a deliberate edit to a test rather than a checkbox.",
     "no_prices": true,
-    "publish_contents_before_close": false
+    "publish_contents_before_close": false,
+    "_comment_verify_base_url": "The storefront a printed insert points at. EMPTY means the print page uses its own origin, which is right for a rehearsal and wrong for a real parcel: a buyer cannot reach a LAN address. Set it to the storefront before any run ships.",
+    "verify_base_url": ""
   }
 }
