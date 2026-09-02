@@ -10,8 +10,8 @@ import { openDbAt } from '../../lib/db.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
 import {
   buildRunProductSetInput, validateRunProduct, publishRunProduct, runVariantSku, runProductSku,
-  runProductHandle, isRunSku, parseRunSku, mirrorAvailability, runListings,
-  MAX_SYNC_VARIANTS, BUNDLE_OPTION, RUN_SKU_PREFIX,
+  runProductHandle, isRunSku, parseRunSku, mirrorAvailability, runListings, guaranteeHtml,
+  MAX_SYNC_VARIANTS, BUNDLE_OPTION, RUN_SKU_PREFIX, RUN_TEMPLATE_SUFFIX,
 } from '../../lib/runs-shopify.mjs';
 import { PRODUCT_TYPES } from '../../lib/channels/shopify-map.mjs';
 
@@ -206,5 +206,42 @@ describe('a dry run calls nothing', () => {
     assert.equal(out.dryRun, true);
     assert.equal(out.input.variants.length, 3);
     assert.deepEqual(store.calls, { productSet: 0, read: 0, set: 0, activate: 0, publish: 0 });
+  });
+});
+
+describe('a run renders through its own PDP template, not the singles one', () => {
+  it('carries the template suffix on every product it publishes', () => {
+    // A run has no condition to choose, its trust copy is about penny sleeves and a Near Mint scale,
+    // and - the part that matters - templates/product.json has no way to pick a bundle NUMBER. §5.6.3
+    // makes the visible remaining set a property of the product: it is what makes "7 is gone"
+    // checkable rather than asserted.
+    const input = buildRunProductSetInput(RUN, BUNDLES);
+    assert.equal(input.templateSuffix, RUN_TEMPLATE_SUFFIX);
+    assert.equal(RUN_TEMPLATE_SUFFIX, 'keepers-run',
+      'the suffix and templates/product.keepers-run.json are one fact in two places');
+  });
+
+  it('and the guarantee becomes the description, because otherwise the page says nothing', () => {
+    // The one sentence that says what the buyer is getting. Generated from the run's own claims rather
+    // than typed, and inside headerDigest, so the page cannot drift from what was anchored.
+    const input = buildRunProductSetInput({ ...RUN, guarantee_text: 'Every bundle contains one PSA 10 card.' }, BUNDLES);
+    assert.equal(input.descriptionHtml, '<p>Every bundle contains one PSA 10 card.</p>');
+  });
+
+  it('but a caller that supplies its own description keeps it', () => {
+    const input = buildRunProductSetInput({ ...RUN, guarantee_text: 'G.' }, BUNDLES,
+      { descriptionHtml: '<p>hand written</p>' });
+    assert.equal(input.descriptionHtml, '<p>hand written</p>');
+  });
+
+  it('and a run with no sentence gets no description rather than an empty tag', () => {
+    assert.equal(buildRunProductSetInput({ ...RUN, guarantee_text: '' }, BUNDLES).descriptionHtml, '');
+    assert.equal(guaranteeHtml({}), '');
+    assert.equal(guaranteeHtml({ guarantee_text: '   ' }), '');
+  });
+
+  it('and the sentence is escaped, because a storefront is the wrong place to find out it was not', () => {
+    assert.equal(guaranteeHtml({ guarantee_text: 'one <b>PSA</b> & three packs' }),
+      '<p>one &lt;b&gt;PSA&lt;/b&gt; &amp; three packs</p>');
   });
 });
