@@ -143,6 +143,7 @@
 <script src="/label-render.js"></script>
 <script src="/extras.js"></script>
 <script type="module">
+import { formatCode } from '/lib/runs-codes.mjs';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const say = (t, k = '') => { $('msg').textContent = t; $('msg').className = 'msg ' + k; };
@@ -181,7 +182,14 @@ function assertNoMoney(obj, path = '$') {
   }
 }
 
-const fmt = (c) => (c || '').replace(/(.{4})/g, '$1-').replace(/-$/, '').replace(/-(..)$/, '-$1');
+// formatCode from the SHIPPED module, not a second implementation of it. Every other page in this
+// module imports its primitives over HTTP for that reason.
+//
+// The hand-rolled regex this replaces produced IDENTICAL output for a valid code — checked over 200
+// minted codes, zero differences. What it did not do is VALIDATE: formatCode canonicalises first, so a
+// malformed code throws instead of being formatted into something that looks right on a printed insert
+// and opens nothing. On a slip that goes inside a sealed parcel, that distinction is the whole point.
+const fmt = (c) => formatCode(c);
 
 function insertHtml(run, b) {
   // §5.4: the code travels in the FRAGMENT, which is stripped before the request is made and so never
