@@ -75,6 +75,10 @@
   .warn{border:1px solid rgba(240,192,74,.35);background:rgba(240,192,74,.07);border-radius:12px;padding:10px 13px;margin-bottom:12px;color:var(--amber);font-size:12.5px;line-height:1.6;}
   .warn b{color:#ffd97a;}
   .grid-scroll{overflow-x:auto;}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;margin:12px 0 0;}
+  .kv dt{color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;}
+  .kv dd{margin:0;font-family:var(--mono);font-size:11.5px;word-break:break-all;color:var(--text);}
+  .kv dd.plain{font-family:var(--sans);font-size:13px;}
   .hide{display:none;}
   .foot{display:flex;gap:11px;align-items:center;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid var(--line);}
   .msg{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
@@ -258,6 +262,56 @@
       </section>
     </div>
 
+    <!-- ===================== LOCK &amp; ANCHOR ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Lock &amp; anchor</h2><span class="cap">the commitment · irreversible · everything below happens once</span></div>
+        <span id="lk_state" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        Locking freezes this manifest, mints a verification code and a salt for every bundle, builds the
+        encrypted blob file and computes the digest that gets timestamped into Bitcoin. <b>None of it can
+        be re-issued.</b> A card found wrong afterwards needs an amendment and a new published root, so
+        the pick-and-verify pass belongs before this button, not after it.
+      </p>
+      <div id="lk_problems" class="warn hide"></div>
+      <div id="lk_digest" class="hide">
+        <dl class="kv">
+          <dt>Header digest</dt><dd id="lk_hd" class="mono">—</dd>
+          <dt>Run root</dt><dd id="lk_root" class="mono">—</dd>
+          <dt>Codes commit</dt><dd id="lk_codes" class="mono">—</dd>
+          <dt>Blob</dt><dd id="lk_blob" class="mono">—</dd>
+          <dt>Guarantee</dt><dd id="lk_guarantee">—</dd>
+        </dl>
+      </div>
+      <div class="foot">
+        <button class="btn sm ghost" onclick="refreshLock()">Re-check</button>
+        <button class="btn go" id="lk_btn" onclick="doLock()">Lock this run…</button>
+        <span id="lk_msg" class="msg"></span>
+      </div>
+
+      <div class="hd" style="margin-top:18px;border-top:1px solid var(--line);padding-top:15px;">
+        <div><h2 style="font-size:15px;">Timestamp</h2><span class="cap">pending until a Bitcoin block confirms it · §5.7.7</span></div>
+        <span id="an_gate" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        A submitted timestamp proves nothing to an outsider while it is in flight, so <b>sales stay shut
+        until it confirms</b>. The upgrade sweep runs on its own and moves it along; this is only here so
+        you can see where it is and push it if you are waiting.
+      </p>
+      <div id="an_reasons" class="warn hide"></div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:130px;">Method</th><th style="width:80px;">Scope</th>
+          <th style="width:190px;">State</th><th>Digest</th></tr></thead>
+        <tbody id="an_rows"></tbody>
+      </table></div>
+      <div class="foot">
+        <button class="btn" onclick="doAnchor()">Submit for timestamping</button>
+        <button class="btn sm ghost" onclick="doUpgrade()">Check for confirmation</button>
+        <a class="btn sm ghost" href="https://opentimestamps.org/" target="_blank" rel="noopener">independent verifier ↗</a>
+        <span id="an_msg" class="msg"></span>
+      </div>
+    </section>
     <!-- ===================== AUDIT ===================== -->
     <section class="card">
       <div class="hd">
@@ -339,8 +393,9 @@ window.pickRun = async (publicId) => {
   $('tag').textContent = `${RUN.public_id} · ${RUN.unit_count} bundles · ${RUN.status}`;
   $('dealSlot').innerHTML = SPECS.map((s) => `<option value="${esc(s.slot)}">${esc(s.slot)} (${s.qty_per_bundle}/bundle)</option>`).join('');
   renderManifest();
-  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit()]);
+  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit(), loadAnchors()]);
   refreshGuarantee();
+  refreshLock();
 };
 
 // ---- composition editor ----------------------------------------------------------------------------
@@ -623,6 +678,136 @@ async function loadAudit() {
 window.setPin = async (no, pinned) => {
   await api('PATCH', `/api/runs/${encodeURIComponent(RUN.public_id)}/bundles/${no}`, { pinned });
   await pickRun(RUN.public_id);
+};
+
+// ---- lock ------------------------------------------------------------------------------------------
+//
+// The digest is shown BEFORE the button commits anything, because locking cannot be undone: the codes,
+// the salts, the blob file and the anchored header are minted once and can never be re-issued. A card
+// found wrong afterwards needs an amendment and a new published root, not an edit.
+
+let LOCKED = null;
+
+function renderLock() {
+  const locked = RUN && RUN.status !== 'draft';
+  $('lk_state').className = 'pill ' + (locked ? 'ok' : 'wait');
+  $('lk_state').textContent = RUN ? RUN.status : '-';
+  $('lk_btn').disabled = !RUN || locked;
+  $('lk_btn').textContent = locked ? 'Locked' : 'Lock this run...';
+
+  const d = LOCKED || (locked
+    ? { header_digest: RUN.header_digest, run_root: RUN.run_root, guarantee: RUN.guarantee_text }
+    : null);
+  $('lk_digest').classList.toggle('hide', !d);
+  if (!d) return;
+  $('lk_hd').textContent = d.header_digest || '-';
+  $('lk_root').textContent = d.run_root || '-';
+  $('lk_codes').textContent = d.codes_commit || '-';
+  $('lk_blob').textContent = d.blob_hash ? (d.blob_hash + ' - ' + d.blob_length + ' bytes') : '-';
+  $('lk_guarantee').textContent = d.guarantee || '-';
+  $('lk_guarantee').className = 'plain';
+}
+
+window.refreshLock = () => renderLock();
+
+function renderLockProblems(body) {
+  const el = $('lk_problems');
+  const problems = (body && body.problems) || [];
+  if (!problems.length) { el.classList.add('hide'); return; }
+  el.classList.remove('hide');
+  const rows = problems.map((pr) => {
+    const cx = ((pr.detail && pr.detail.counterexamples) || []).slice(0, 6).map((c) =>
+      '<div class="mono" style="margin-left:14px;opacity:.85;">' + esc(c.bundle)
+      + (c.cert ? ' - cert ' + esc(c.cert) : '')
+      + ' - got ' + esc(c.got) + ', want ' + esc(c.want) + '</div>').join('');
+    return '<div style="margin-top:7px;">' + esc(pr.message) + cx + '</div>';
+  }).join('');
+  el.innerHTML = '<b>' + problems.length + ' problem(s) - nothing was written.</b>' + rows;
+}
+
+window.doLock = async () => {
+  if (!RUN) return;
+  if (!diagToken(false)) diagToken(true);
+  if (!diagToken(false)) return say('lk_msg', 'a token is needed - locking mints bearer secrets', 'bad');
+
+  // TYPED CONFIRMATION, not a click. Everything past this point is irreversible and anchored, and the
+  // run identifier is the one thing an operator cannot type by accident against the wrong run.
+  let typed = null;
+  try {
+    typed = window.prompt('Locking ' + RUN.public_id + ' is IRREVERSIBLE - codes, salts and the anchored digest are minted once. Type the run identifier to confirm:', '');
+  } catch { return say('lk_msg', 'confirmation is unavailable here', 'bad'); }
+  if (String(typed || '').trim() !== RUN.public_id) {
+    return say('lk_msg', 'not locked - the identifier did not match', '');
+  }
+
+  say('lk_msg', 'locking - deriving a key per bundle takes a moment...');
+  $('lk_btn').disabled = true;
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/lock',
+    { actor: 'runs.html' }, authed());
+  if (r.status === 401 || r.status === 403) {
+    diagToken(true); $('lk_btn').disabled = false;
+    return say('lk_msg', 'token rejected - press Lock again', 'bad');
+  }
+  if (!r.ok) {
+    // A refusal is the answer, not an error: it names every problem at once, each with the bundle and
+    // cert that caused it, so a manifest is fixed in one pass rather than one attempt per fault.
+    renderLockProblems(r.json);
+    $('lk_btn').disabled = false;
+    return say('lk_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  }
+  $('lk_problems').classList.add('hide');
+  LOCKED = r.json;
+  say('lk_msg', 'locked - now submit the digest for timestamping', 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// ---- anchor ----------------------------------------------------------------------------------------
+
+async function loadAnchors() {
+  if (!RUN) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/anchors');
+  const anchors = (r.json && r.json.anchors) || [];
+  const gate = (r.json && r.json.gate) || { open: false, reasons: [] };
+
+  $('an_rows').innerHTML = anchors.length
+    ? anchors.map((x) => '<tr><td>' + esc(x.method) + '</td><td>' + esc(x.scope) + '</td><td>'
+        + '<span class="pill ' + (x.state === 'confirmed' ? 'ok' : x.state === 'failed' ? 'bad' : 'wait')
+        + '">' + esc(x.label) + '</span></td><td class="mono">'
+        + esc(String(x.digest).slice(0, 24)) + '...</td></tr>').join('')
+    : '<tr><td colspan="4" class="muted">nothing submitted yet</td></tr>';
+
+  $('an_gate').className = 'pill ' + (gate.open ? 'ok' : 'wait');
+  $('an_gate').textContent = gate.open ? 'sales may open' : 'sales shut';
+  const rs = $('an_reasons');
+  rs.classList.toggle('hide', gate.open || !gate.reasons.length);
+  // The gate's reasons, verbatim. "You cannot sell yet" is useless without which condition is
+  // outstanding, which is why saleGate returns a list rather than a boolean.
+  if (!gate.open && gate.reasons.length) {
+    rs.innerHTML = '<b>Sales are refused because:</b>'
+      + gate.reasons.map((x) => '<div style="margin-top:5px;">- ' + esc(x) + '</div>').join('');
+  }
+}
+
+window.doAnchor = async () => {
+  if (!RUN) return;
+  say('an_msg', 'submitting...');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/anchor',
+    { actor: 'runs.html' });
+  say('an_msg', r.ok ? ('submitted - ' + r.json.label) : ((r.json && r.json.error) || ('error ' + r.status)),
+    r.ok ? 'ok' : 'bad');
+  await loadAnchors();
+};
+
+window.doUpgrade = async () => {
+  if (!RUN) return;
+  // The sweep does this on its own schedule; the button is for when you are watching and waiting.
+  say('an_msg', 'asking the calendars...');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/anchor/upgrade', {});
+  if (!r.ok) return say('an_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  const confirmed = ((r.json && r.json.anchors) || []).filter((x) => x.state === 'confirmed').length;
+  say('an_msg', confirmed ? (confirmed + ' confirmed')
+    : 'still pending - that is normal for the first hours', confirmed ? 'ok' : '');
+  await loadAnchors();
 };
 
 window.diagToken = diagToken;
