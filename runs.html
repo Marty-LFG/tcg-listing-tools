@@ -311,6 +311,27 @@
         <a class="btn sm ghost" href="https://opentimestamps.org/" target="_blank" rel="noopener">independent verifier ↗</a>
         <span id="an_msg" class="msg"></span>
       </div>
+
+      <div class="hd" style="margin-top:18px;border-top:1px solid var(--line);padding-top:15px;">
+        <div><h2 style="font-size:15px;">Published artifacts</h2>
+          <span class="cap">static files a buyer verifies against · they must outlive this LAN</span></div>
+        <span id="pb_state" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        The commitment and the encrypted blob go to a CDN, not to this server, because verification must
+        not depend on us being reachable. Each is fetched back and re-hashed after upload, so what is
+        checked is <b>the bytes that came back</b> rather than the ones we believe we sent.
+      </p>
+      <div id="pb_reasons" class="warn hide"></div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:110px;">Artifact</th><th style="width:90px;">Bytes</th>
+          <th style="width:70px;">CORS</th><th>URL</th></tr></thead>
+        <tbody id="pb_rows"></tbody>
+      </table></div>
+      <div class="foot">
+        <button class="btn go" id="pb_btn" onclick="doPublish()">Publish artifacts</button>
+        <span id="pb_msg" class="msg"></span>
+      </div>
     </section>
     <!-- ===================== AUDIT ===================== -->
     <section class="card">
@@ -393,7 +414,7 @@ window.pickRun = async (publicId) => {
   $('tag').textContent = `${RUN.public_id} · ${RUN.unit_count} bundles · ${RUN.status}`;
   $('dealSlot').innerHTML = SPECS.map((s) => `<option value="${esc(s.slot)}">${esc(s.slot)} (${s.qty_per_bundle}/bundle)</option>`).join('');
   renderManifest();
-  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit(), loadAnchors()]);
+  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit(), loadAnchors(), loadArtifacts()]);
   refreshGuarantee();
   refreshLock();
 };
@@ -808,6 +829,58 @@ window.doUpgrade = async () => {
   say('an_msg', confirmed ? (confirmed + ' confirmed')
     : 'still pending - that is normal for the first hours', confirmed ? 'ok' : '');
   await loadAnchors();
+};
+
+// ---- publish ---------------------------------------------------------------------------------------
+//
+// Phase 2 of the lock. It is separate from phase 1 because it makes network calls and cannot be one
+// transaction, and it is safely retryable because phase 1 already built and hash-committed the bytes:
+// re-encrypting here would mint fresh nonces and produce ciphertext no longer matching the anchored
+// blob hash.
+
+async function loadArtifacts() {
+  if (!RUN) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/artifacts');
+  const rows = (r.json && r.json.artifacts) || [];
+  $('pb_rows').innerHTML = rows.length
+    ? rows.map((x) => '<tr><td>' + esc(x.kind) + (x.seq > 1 ? ' #' + x.seq : '')
+        + (x.superseded_at ? ' <span class="pill">superseded</span>' : '') + '</td>'
+        + '<td class="mono">' + x.bytes + '</td>'
+        + '<td>' + (x.readback_at ? '<span class="pill ok">ok</span>' : '<span class="pill wait">-</span>') + '</td>'
+        + '<td class="mono"><a href="' + esc(x.url || '') + '" target="_blank" rel="noopener">'
+        + esc(String(x.url || '-').slice(0, 78)) + '</a></td></tr>').join('')
+    : '<tr><td colspan="4" class="muted">nothing published yet</td></tr>';
+
+  const published = rows.some((x) => x.kind === 'commitment');
+  $('pb_state').className = 'pill ' + (published ? 'ok' : 'wait');
+  $('pb_state').textContent = published ? 'published' : 'not published';
+  $('pb_btn').disabled = !RUN || RUN.status === 'draft';
+}
+
+window.doPublish = async () => {
+  if (!RUN) return;
+  if (!diagToken(false)) diagToken(true);
+  if (!diagToken(false)) return say('pb_msg', 'a token is needed', 'bad');
+  say('pb_msg', 'uploading and reading back...');
+  $('pb_btn').disabled = true;
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/publish',
+    { actor: 'runs.html' }, authed());
+  $('pb_btn').disabled = false;
+  if (r.status === 401 || r.status === 403) { diagToken(true); return say('pb_msg', 'token rejected', 'bad'); }
+
+  const rs = $('pb_reasons');
+  if (r.status === 409 && r.json && r.json.code === 'not_armed') {
+    // The arming guard names every outstanding condition rather than refusing flatly, because
+    // 'not armed' on its own tells an operator nothing about what to change.
+    rs.classList.remove('hide');
+    rs.innerHTML = '<b>Not armed to publish to "' + esc(r.json.target) + '":</b>'
+      + (r.json.reasons || []).map((x) => '<div style="margin-top:5px;">- ' + esc(x.message) + '</div>').join('');
+    return say('pb_msg', 'refused', 'bad');
+  }
+  rs.classList.add('hide');
+  if (!r.ok) return say('pb_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  say('pb_msg', r.json.alreadyDone ? 'already published - nothing re-uploaded' : 'published and read back', 'ok');
+  await pickRun(RUN.public_id);
 };
 
 window.diagToken = diagToken;

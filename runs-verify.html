@@ -200,13 +200,34 @@ async function run() {
   catch (e) { verdict('fail', 'That code is not readable', String(e.message || e)); return; }
   push('ok', 'The code is well formed', `${formatCode(code)} — 26 Crockford symbols`);
 
-  // 1. The commitment, and its own digest recomputed from its own fields.
-  let c;
-  try {
-    const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/commitment`);
-    if (!res.ok) throw new Error(`the run's commitment is not published (${res.status})`);
-    c = await res.json();
-  } catch (e) { verdict('fail', 'No published commitment', String(e.message || e)); return; }
+  // 1. The commitment, PREFERRED FROM THE CDN.
+  //
+  // §5.3.2 is the whole reason: verification must not depend on us being reachable. This app is
+  // LAN-only, and a buyer scanning an insert at 11pm on a public holiday must not get a connection
+  // refused. So the page asks our API only for the published URLs, then fetches the artifacts
+  // themselves from the CDN — and falls back to the LAN copy when a run has not published yet, which
+  // is what makes this page usable during a rehearsal.
+  let c = null;
+  let source = 'this server';
+  const artifacts = await fetch(`/api/runs/${encodeURIComponent(runId)}/artifacts`)
+    .then((r) => (r.ok ? r.json() : { artifacts: [] })).catch(() => ({ artifacts: [] }));
+  const published = Object.fromEntries((artifacts.artifacts || [])
+    .filter((a) => a.url && !a.superseded_at).map((a) => [a.kind, a.url]));
+
+  if (published.commitment) {
+    try {
+      const res = await fetch(published.commitment);
+      if (res.ok) { c = await res.json(); source = 'the published CDN copy'; }
+    } catch { /* fall through to the LAN copy */ }
+  }
+  if (!c) {
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/commitment`);
+      if (!res.ok) throw new Error(`the run's commitment is not published (${res.status})`);
+      c = await res.json();
+    } catch (e) { verdict('fail', 'No published commitment', String(e.message || e)); return; }
+  }
+  push('ok', `Commitment read from ${source}`, published.commitment || '');
 
   try {
     await verifyCommitment(c);
@@ -215,12 +236,20 @@ async function run() {
   } catch (e) { push('bad', 'The commitment does not hash to its header digest', String(e.message || e)); }
 
   // 2. The blob file, checked against the hash the header commits to BEFORE anything is decrypted.
-  let file;
-  try {
-    const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/blob`);
-    if (!res.ok) throw new Error(`the blob file is not published (${res.status})`);
-    file = new Uint8Array(await res.arrayBuffer());
-  } catch (e) { verdict('fail', 'No published blob file', String(e.message || e)); return; }
+  let file = null;
+  if (published.blob) {
+    try {
+      const res = await fetch(published.blob);
+      if (res.ok) file = new Uint8Array(await res.arrayBuffer());
+    } catch { /* fall through */ }
+  }
+  if (!file) {
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/blob`);
+      if (!res.ok) throw new Error(`the blob file is not published (${res.status})`);
+      file = new Uint8Array(await res.arrayBuffer());
+    } catch (e) { verdict('fail', 'No published blob file', String(e.message || e)); return; }
+  }
 
   const got = await blobHash(file);
   if (got !== c.blob_hash) {
@@ -297,7 +326,13 @@ async function run() {
   // 8. Anchors, reported honestly.
   let anchors = [];
   try {
-    anchors = (c.anchors || []);
+    // §5.7.6: the receipt is the ONE artifact that may be revised, so it is a separate file and the
+    // commitment freezes with an empty anchors array. Read the receipt when there is one.
+    anchors = c.anchors || [];
+    if (!anchors.length && published.anchor) {
+      const r = await fetch(published.anchor).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+      if (r && r.header_digest === c.header_digest) anchors = r.anchors || [];
+    }
     for (const a of anchors) {
       push(a.state === 'confirmed' ? 'ok' : 'pend',
         `Timestamp: ${a.label}`,
