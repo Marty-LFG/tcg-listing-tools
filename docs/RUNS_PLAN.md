@@ -277,8 +277,13 @@ run.public_id | run.edition | bundle.no | bundle.label | bundle.is_chase | bundl
 slot.<slot>.<ii>.<field>     for every slot, ii = 00 .. max_lines-1, each of the 15 fields
 ```
 
-`bundle.seal_serial` identifies the tamper-evident seal applied to that parcel: **16 lowercase hex
-characters**. What must be unpredictable is the **bundle-to-serial mapping**, not the serial's own format —
+`bundle.seal_serial` identifies the tamper-evident seal applied to that parcel, recorded **exactly as it is
+printed on the sticker**. Revision 5 said *16 lowercase hex characters*, which is the shape of a serial you
+mint; we buy them, and the first physical batch is `BK-` plus five alphanumerics — so that rule rejected
+every seal in the box. It was never load-bearing, as the rest of this very paragraph says. The producer
+accepts 3–32 characters of letters, digits and inner hyphens, compares them case-insensitively so one
+sticker cannot be entered twice, and stores the printed spelling because that is what a buyer holds in
+their hand. What must be unpredictable is the **bundle-to-serial mapping**, not the serial's own format —
 a sequentially numbered commercial seal roll is fine provided the assignment of physical seals to bundles is
 random and the roll is larger than the run, so neither the mapping nor the set of serials in play is
 derivable by a buyer holding one parcel. Revision 4 required it in §8.5 while §4.4's closed name set

@@ -262,9 +262,15 @@
           the assignment is random and the roll is <b>larger than the run</b>, so nobody holding one parcel
           can derive the set in play.
         </p>
-        <div class="fld"><label>The roll — one 16-character hex serial per line</label>
+        <div class="fld"><label>The roll — one serial per line, exactly as printed on the sticker</label>
           <textarea id="rollBox" rows="4" style="width:100%;font-family:var(--mono);font-size:12px;"
-            placeholder="0000beef00000001&#10;0000beef00000002&#10;…"></textarea></div>
+            placeholder="BK-7WMHC&#10;BK-VYNVY&#10;BK-ATDMR&#10;…"></textarea></div>
+        <p class="note" style="margin-top:8px;">
+          <b>Exactly as printed</b>, capitals and all: the serial goes into the hash, and it is the one
+          committed value a buyer can read off the outside of their own parcel. Type them off the sheet
+          rather than a photo — a repeat is caught, but a wrong-but-unique typo is not, and after the
+          lock it cannot be corrected.
+        </p>
         <div class="foot">
           <button class="btn" onclick="assignSeals()">Assign at random</button>
           <span id="seal_msg" class="msg"></span>
