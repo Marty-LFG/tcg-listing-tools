@@ -15,6 +15,7 @@ import { holdForRun, assignToSlot, splitToSlots } from '../../lib/runs-reserve.m
 import { lockRunPhase1 } from '../../lib/runs-lock.mjs';
 import {
   requiredAttributes, discloseTiers, verifyDisclosure, closeOutBundles, TIER_B_SEALED_FIELDS,
+  SEAL_ATTRIBUTE,
 } from '../../lib/runs-disclose.mjs';
 import { commitment, verifyCommitment, assertNoMoney, publicContents } from '../../lib/runs-public.mjs';
 
@@ -354,5 +355,37 @@ describe('contents are never published before a run closes', () => {
     const ctx = await lockAndClose();
     const rows = publicContents(db, ctx.runId);
     assert.ok(rows.length > 0);
+  });
+});
+
+describe('a public tier never carries a seal serial', () => {
+  it('tier C opens every OTHER attribute of a chase bundle', async () => {
+    const ctx = await lockAndClose();
+    // §4.4: the serial is opened only at tier D, "publishing chase bundles' serials would let anyone who
+    // photographed a parcel correlate it to a chase for no benefit". The tier-C branch iterated the
+    // bundle's attributes unfiltered, so a routine A+B+C close-out published the serial of exactly the
+    // bundle where that correlation is worth something - and the serial is printed on the OUTSIDE of the
+    // parcel, where every courier in the chain can photograph it.
+    //
+    // Found on a real published artifact by an independent audit, not by this suite.
+    const artifact = await discloseTiers({
+      run: ctx.run, claims: ctx.claims, specs: ctx.specs, ladder: [],
+      bundles: closeOutBundles(db, ctx.runId), tiers: ['A', 'B', 'C'],
+    });
+    const serials = artifact.openings.filter((o) => o.name === SEAL_ATTRIBUTE);
+    assert.equal(serials.length, 0, `tier C published ${serials.length} seal serial(s)`);
+    // and it is genuinely opening chase attributes, so the absence above is a filter and not an empty tier
+    assert.ok(artifact.openings.some((o) => o.name.startsWith('slot.')),
+      'tier C opened nothing at all, so the assertion above proves nothing');
+  });
+
+  it('and tier D does, because by then every bundle is public anyway', async () => {
+    const ctx = await lockAndClose();
+    const artifact = await discloseTiers({
+      run: ctx.run, claims: ctx.claims, specs: ctx.specs, ladder: [],
+      bundles: closeOutBundles(db, ctx.runId), tiers: ['A', 'B', 'C', 'D'],
+    });
+    assert.ok(artifact.openings.some((o) => o.name === SEAL_ATTRIBUTE),
+      'tier D withheld the serial, so the filter is scoped too widely');
   });
 });

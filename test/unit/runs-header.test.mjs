@@ -154,6 +154,39 @@ describe('the sub-encodings are order-independent in, order-fixed out', () => {
     assert.throws(() => chaseLadderCanonical([two[1], { ...two[0], rank: 3 }]), /contiguous from 1/);
   });
 
+  it('normalises a ladder value per §4.2 rather than letting String() decide', () => {
+    // THE BUG THIS PINS, and it defeated the whole product for a moment. This read ns(String(x)), and
+    // String(null) is the four characters "null" - while §4.2 mandates the empty string and the
+    // attribute tree, which goes through normalizeValue, was already committing "". Five of the six
+    // identity columns on run_chase_tiers are nullable, so a chase card with no set code committed
+    // 4:null, where the specification says 0:,.
+    //
+    // The consequence is the one this module exists to prevent, aimed at us: an independent verifier
+    // written from §4 - which opens by promising that is possible "with no reference to source code",
+    // and whose first obligation under §6.1 is recomputing this digest - computes a different value and
+    // REJECTS AN HONEST RUN. Found by an audit that reproduced the spec's own EX2 vector first.
+    const entry = { rank: 1, card_name: 'A', set_code: null, card_number: '1', language: 'JA',
+      grading_company: 'PSA', grade: '10' };
+    const enc = chaseLadderCanonical([entry]);
+    assert.ok(enc.includes('0:,'), `a null set_code must encode as the empty string; got ${enc}`);
+    assert.ok(!enc.includes('4:null,'), 'a null was stringified by language default');
+    assert.equal(enc, '1:1,1:A,0:,1:1,2:JA,3:PSA,2:10,');
+  });
+
+  it('and applies the same NFC and trim §4.2 gives every other value', () => {
+    // String() skips both, so a ladder entry typed with a trailing space or in NFD hashed differently
+    // from the identical card in the attribute tree. Same fact, two encodings, one run.
+    const spaced = chaseLadderCanonical([{ rank: 1, card_name: '  A  ', set_code: '', card_number: '1',
+      language: 'JA', grading_company: 'PSA', grade: '10' }]);
+    assert.ok(spaced.includes('1:A,'), `the six-code-point trim did not run; got ${spaced}`);
+
+    const nfd = chaseLadderCanonical([{ rank: 1, card_name: 'e\u0301', set_code: '', card_number: '1',
+      language: 'JA', grading_company: 'PSA', grade: '10' }]);
+    const nfc = chaseLadderCanonical([{ rank: 1, card_name: '\u00e9', set_code: '', card_number: '1',
+      language: 'JA', grading_company: 'PSA', grade: '10' }]);
+    assert.equal(nfd, nfc, 'NFC was not applied, so the same card hashes two ways');
+  });
+
   it('and renders booleans as "0"/"1" whatever truthy shape the row carried', () => {
     // SQLite hands back 0/1 integers; a hand-built spec may carry true/false. Both must hash the same, or
     // the producer and an independent verifier reading the published JSON would disagree.
