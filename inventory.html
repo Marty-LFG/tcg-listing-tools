@@ -456,8 +456,11 @@ function valueAud(it){
 function qtyOf(it){return Math.max(1, it.quantity||1);}
 function costAud(it){return (((it.cost_cents||0)+(it.acq_fees_cents||0))/100)*qtyOf(it);}
 function unrealized(it){const v=valueAud(it);if(v==null)return null;return v*qtyOf(it)-costAud(it);}
+// Scaled by sale_qty, mirroring summarizeInventory. qtyOf() reads the row's CURRENT quantity, which a
+// sale sets to 0 — so this used to charge COGS once for a whole lot and overstate the profit on it.
+function soldQtyOf(it){return it.sale_qty!=null?Math.max(0,+it.sale_qty):1;}
 function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
-  return ((it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100)*qtyOf(it);}
+  return ((it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100)*soldQtyOf(it);}
 function plBadge(d){if(d==null)return '<span class="badge flat">—</span>';
   const cls=d>0.005?'up':d<-0.005?'down':'flat';const s=d>0?'+':'';return '<span class="badge '+cls+'">'+s+aud(d)+'</span>';}
 
