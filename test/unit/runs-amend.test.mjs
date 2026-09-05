@@ -208,8 +208,20 @@ describe('seal serials, pre-assigned before lock', () => {
   it('and refuses a serial already used on another run whatever case it is typed in', () => {
     const a = mkRun({ status: 'draft', units: 2 });
     assignSealSerials(db, a, ['BK-QQQQQ', 'BK-RRRRR', 'BK-SSSSS']);
+
+    // READ BACK WHICH ONE ACTUALLY LANDED. The roll is deliberately larger than the run and the mapping
+    // is random, so one of the three is spare - and asserting against a fixed serial made this test fail
+    // one run in three, whenever the spare happened to be the one being asserted. A flaky test on a
+    // uniqueness guard is worse than none: it teaches you to re-run until it passes.
+    const landed = db.prepare('SELECT seal_serial FROM run_bundles WHERE run_id = ?').all(a.id)[0].seal_serial;
+    assert.ok(landed, 'nothing was assigned');
+
     const b = mkRun({ status: 'draft', units: 2 });
-    assert.throws(() => assignSealSerials(db, b, ['bk-qqqqq', 'BK-TTTTT', 'BK-UUUUU']), /already assigned/);
+    assert.throws(
+      () => assignSealSerials(db, b, [landed.toLowerCase(), 'BK-TTTTT', 'BK-UUUUU']),
+      /already assigned/,
+      `${landed} typed in lower case was accepted on a second run`,
+    );
   });
 
   it('and still takes a minted 16-hex serial, so nothing already assigned is stranded', () => {

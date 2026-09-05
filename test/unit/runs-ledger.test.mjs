@@ -285,3 +285,115 @@ describe('the order binding is private', () => {
     await assert.rejects(() => appendSale(db, runId, { bundleNo: 2, order }), /UNIQUE constraint failed/);
   });
 });
+
+// --- the chain as EVIDENCE, not as something to be believed --------------------------------------------
+//
+// §5.6 makes "anyone can derive what was available at any moment from the published chain" a property of
+// the product: it is what makes "7 is gone" checkable rather than asserted. An independent audit showed
+// three chains that hash perfectly and describe an impossible run, and availabilityFrom answered each
+// with a plausible availability instead of a refusal.
+//
+// These are the audit's own probes. Our writes cannot produce any of them - appendSale refuses a number
+// already accounted for - so every one is about what an INDEPENDENT verifier accepts from a chain
+// somebody else published.
+describe('a chain that hashes cleanly can still be impossible', () => {
+  const e = (seq, kind, ref, bundleNo, qty = 0) =>
+    ({ seq, kind, ref, occurredAt: '2026-06-01T00:00:00.000Z', bundleNo, qty, detail: '' });
+
+  it('refuses a bundle number that is not in the run', () => {
+    // Nothing bounded bundleNo against unit_count anywhere on the read side, so a four-bundle edition
+    // could account for bundle 009 and still report all four available.
+    const r = availabilityFrom(4, [e(1, 'sale_online', 'tokA', '009', 1)]);
+    assert.equal(r.problems.length, 1);
+    assert.match(r.problems[0], /bundle 009, which is not one of the 4/);
+  });
+
+  it('and refuses it for a disposition too, not just a sale', () => {
+    // accountsForBundle treats opened_live exactly like a sale, so every rule here has to reach it.
+    const r = availabilityFrom(4, [e(0, 'opened_live', null, '009', 0)]);
+    assert.equal(r.problems.length, 1);
+    assert.match(r.problems[0], /opened_live/);
+  });
+
+  it('refuses one parcel accounted for twice', () => {
+    // sold.set() OVERWROTE, so a chain selling bundle 002 to two different buyers derived exactly the
+    // availability of selling it once. The artifact could not distinguish them, which is the one thing
+    // an availability proof exists to do.
+    const r = availabilityFrom(4, [
+      e(1, 'sale_online', 'tokA', '002', 1),
+      e(2, 'sale_online', 'tokB', '002', 1),
+    ]);
+    assert.equal(r.problems.length, 1);
+    assert.match(r.problems[0], /entry 1 .* bundle 002, which entry 0 already accounted for/);
+  });
+
+  it('and the cancel that used to hand a live buyer’s parcel back to the shop', () => {
+    // THE WORST OF THE THREE. Sale A of 002, sale B of 002, cancel A: bundle 002 came back as available
+    // while B's uncancelled sale was still standing. It is caught at the second sale now - the cancel
+    // never gets the chance - which is why the holder check further down is a backstop and says so.
+    const r = availabilityFrom(4, [
+      e(1, 'sale_online', 'tokA', '002', 1),
+      e(2, 'sale_online', 'tokB', '002', 1),
+      e(0, 'cancel', 'tokA', null, 0),
+    ]);
+    assert.ok(r.problems.length >= 1);
+    assert.match(r.problems[0], /already accounted for/);
+
+    // AND THE GUARANTEE IS THE REFUSAL, NOT THE NUMBER. Once the second sale is discarded what remains
+    // is an honest sale-then-cancel, so 002 legitimately frees and `available` reads [1,2,3,4] again -
+    // which is exactly why `available` is meaningless while `problems` is not empty, and why the
+    // callers that act on it have to check rather than trust it.
+    assert.deepEqual(r.available, [1, 2, 3, 4]);
+  });
+
+  it('refuses a cancel of something nothing sold, and a cancel repeated', () => {
+    assert.match(availabilityFrom(4, [e(0, 'cancel', 'ghost', null, 0)]).problems[0], /which nothing sold/);
+    const twice = availabilityFrom(4, [
+      e(1, 'sale_online', 'tokA', '002', 1),
+      e(0, 'cancel', 'tokA', null, 0),
+      e(0, 'cancel', 'tokA', null, 0),
+    ]);
+    assert.match(twice.problems[0], /a second time/);
+  });
+
+  it('refuses a reused receipt token', () => {
+    const r = availabilityFrom(4, [
+      e(1, 'sale_online', 'tokA', '002', 1),
+      e(2, 'sale_online', 'tokA', '003', 1),
+    ]);
+    assert.match(r.problems[0], /reuses receipt token tokA/);
+  });
+
+  it('and leaves an honest chain exactly as it was', () => {
+    // The whole point: none of the above may cost a real chain anything.
+    const honest = availabilityFrom(4, [
+      e(1, 'sale_online', 'tokA', '002', 1),
+      e(0, 'opened_live', null, '003', 0),
+    ]);
+    assert.deepEqual(honest.problems, []);
+    assert.deepEqual(honest.available, [1, 4]);
+
+    const cancelled = availabilityFrom(4, [
+      e(1, 'sale_online', 'tokA', '002', 1),
+      e(0, 'cancel', 'tokA', null, 0),
+    ]);
+    assert.deepEqual(cancelled.problems, []);
+    assert.deepEqual(cancelled.available, [1, 2, 3, 4], 'a genuine cancellation must still free the number');
+  });
+
+  it('and verifyChain reports them, so a verifier gets ONE answer', async () => {
+    // The hashes prove the chain was not edited. They say nothing about whether what it records is
+    // possible - one parcel sold twice hashes perfectly well - so given the run's size, verifyChain
+    // has to answer both questions at once or a caller will believe the half it asked.
+    const chain = await chainOf('EX2', [
+      { seq: 1, kind: 'sale_online', ref: 'a'.repeat(32), occurredAt: '2026-06-01T00:00:00.000Z', bundleNo: '002', qty: 1, detail: '' },
+      { seq: 2, kind: 'sale_online', ref: 'b'.repeat(32), occurredAt: '2026-06-02T00:00:00.000Z', bundleNo: '002', qty: 1, detail: '' },
+    ]);
+    const blind = await verifyChain('EX2', chain);
+    assert.equal(blind.ok, true, 'the hashes really are intact - that is the point');
+
+    const sighted = await verifyChain('EX2', chain, { unitCount: 4 });
+    assert.equal(sighted.ok, false);
+    assert.ok(sighted.errors.some((x) => /already accounted for/.test(x)), JSON.stringify(sighted.errors));
+  });
+});
