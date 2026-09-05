@@ -38,9 +38,39 @@ describe('migrateShopify — tables and indexes', () => {
     assert.deepEqual(info.sort((a, b) => a.pk - b.pk).map((c) => c.name), ['sku', 'channel']);
   });
 
-  it('shopify_listings is one row per SKU', () => {
-    const pk = db.prepare(`PRAGMA table_info(shopify_listings)`).all().filter((c) => c.pk > 0).map((c) => c.name);
-    assert.deepEqual(pk, ['sku']);
+  it('shopify_listings is one row per SKU PER STORE', () => {
+    // Was `['sku']`. One install reaches both stores (storeFor reads ?store= per request, and
+    // guardLiveStore exists precisely so it can), so a single row per SKU meant a live publish
+    // UPSERTing over the dev rehearsal's row — and the COALESCE-preserve logic keeping a dev product
+    // GID alive when the live attempt failed.
+    const info = db.prepare(`PRAGMA table_info(shopify_listings)`).all().filter((c) => c.pk > 0);
+    assert.deepEqual(info.sort((a, b) => a.pk - b.pk).map((c) => c.name), ['sku', 'store']);
+  });
+
+  it('shopify_listings holds the same SKU on both stores at once', () => {
+    // The behaviour the key change exists for: a card rehearsed on dev and published to live is two
+    // rows with two product GIDs, not one row that lost the first.
+    db.prepare(`INSERT INTO shopify_listings (sku, store, state, product_gid) VALUES (?,?,?,?)`)
+      .run('ZZZ-001', 'dev', 'live', 'gid://shopify/Product/dev1');
+    db.prepare(`INSERT INTO shopify_listings (sku, store, state, product_gid) VALUES (?,?,?,?)`)
+      .run('ZZZ-001', 'live', 'live', 'gid://shopify/Product/live1');
+    const rows = db.prepare(`SELECT store, product_gid FROM shopify_listings WHERE sku = ? ORDER BY store`).all('ZZZ-001');
+    assert.deepEqual(rows.map((r) => `${r.store}=${r.product_gid}`), [
+      'dev=gid://shopify/Product/dev1',
+      'live=gid://shopify/Product/live1',
+    ]);
+    db.prepare(`DELETE FROM shopify_listings WHERE sku = ?`).run('ZZZ-001');
+  });
+
+  it('every shopify_listings index leads with store', () => {
+    // Every consumer filters on store first; an index that does not lead with it is not the index
+    // those queries need.
+    const sql = db.prepare(
+      `SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='shopify_listings' AND sql IS NOT NULL`).all();
+    assert.ok(sql.length >= 3, 'expected the three named shopify_listings indexes');
+    for (const r of sql) {
+      assert.match(r.sql, /\(\s*store\s*,/, `${r.name} must lead with store: ${r.sql}`);
+    }
   });
 
   it('shopify_listings carries no foreign key on item_id', () => {
