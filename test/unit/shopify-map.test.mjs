@@ -11,8 +11,9 @@ import {
   toShopifyProduct, validateProduct, buildShopifyTitle, buildShopifyDescription,
   identityKeyFor, identityHandleFor, productHandleFor, buildTags, buildMetafields, slug,
   dispatchWeightGrams,
-  PRODUCT_TYPES, TAXONOMY, DISPATCH_WEIGHT_GRAMS, SEALED_DISPATCH_WEIGHT_GRAMS,
+  PRODUCT_TYPES, TAXONOMY, DISPATCH_WEIGHT_GRAMS, SEALED_DISPATCH_WEIGHT_GRAMS, V1_GAMES,
 } from '../../lib/channels/shopify-map.mjs';
+import { STOCK_GAMES } from '../../lib/normalize.mjs';
 
 // A base row shaped like an inventory_items record after a DB round-trip — i.e. WITHOUT the lookup
 // facts a freshly-scanned row still carries. That is the shape that has broken derivations before, so
@@ -426,7 +427,8 @@ describe('validateProduct — the refusals land before the scope does', () => {
   });
 
   it('refuses a game outside v1 rather than half-mapping it', () => {
-    assert.match(errs({ game: 'mtg' }), /Pokémon only/);
+    assert.match(errs({ game: 'yugioh' }), /out of scope/);
+    assert.match(errs({ game: '' }), /out of scope/);
   });
 
   // Was "refuses a graded slab — it is the next slice, not this one". The slice landed: the mapping had
@@ -502,5 +504,50 @@ describe('validateProduct — the refusals land before the scope does', () => {
     assert.deepEqual(noRarity.errors, []);
     assert.match(noRarity.warnings.join(' | '), /set_code/);
     assert.match(noRarity.warnings.join(' | '), /rarity/);
+  });
+});
+
+// The code says widening V1_GAMES is "a deliberate act with its own tests". These are those tests.
+describe('the games the storefront lane is open for', () => {
+  // A per-game identity, so each entry has actually been looked at rather than added to a list. The
+  // fixture's identity_key and number are Pokémon-shaped; what is asserted per game is the part the
+  // GAME axis decides — the word a buyer reads, and that the row maps and validates at all.
+  const GAMES = [
+    ['pokemon', 'Pokémon'],
+    ['mtg', 'Magic: The Gathering'],
+    ['lorcana', 'Lorcana'],
+    ['riftbound', 'Riftbound'],
+    ['swu', 'Star Wars: Unlimited'],
+    ['onepiece', 'One Piece'],
+  ];
+
+  for (const [game, word] of GAMES) {
+    it(`${game} maps, validates, and reads as "${word}"`, () => {
+      const it2 = row({ game });
+      const p = toShopifyProduct(it2, {});
+      assert.deepEqual(validateProduct(p, it2).errors, [], `${game} does not publish`);
+      assert.ok(p.descriptionHtml.includes(word), `the description must name the game as "${word}"`);
+      assert.ok(p.tags.includes(game), 'the game is a search tag');
+      assert.equal(p.productType, PRODUCT_TYPES.single);
+      assert.ok(p.weight_grams > 0);
+    });
+  }
+
+  it('never publishes a game that cannot be held in stock', () => {
+    // Publishing what inventory cannot hold is a listing with nothing behind it. STOCK_GAMES is the
+    // list the graded and sealed inventories validate against, so it is the ceiling.
+    for (const g of V1_GAMES) {
+      assert.ok(STOCK_GAMES.includes(g), `${g} is publishable but not stockable — one of the two lists is wrong`);
+    }
+  });
+
+  it('every opened game has a real display word, not a title-cased slug', () => {
+    // The fallback in buildShopifyDescription is titleCase(item.game), which would put "Swu" or
+    // "Onepiece" in front of a buyer. A game reaching that fallback is one nobody wrote a word for.
+    for (const g of V1_GAMES) {
+      const html = toShopifyProduct(row({ game: g }), {}).descriptionHtml;
+      assert.ok(!new RegExp(`\b${g[0].toUpperCase()}${g.slice(1)}\b`).test(html),
+        `${g} fell through to titleCase — add it to GAME_WORD`);
+    }
   });
 });

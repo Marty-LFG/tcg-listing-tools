@@ -509,7 +509,11 @@ describe('the corrections the review forced', () => {
   });
 
   it('validation refuses BEFORE any byte is uploaded, so a refused row leaves no orphan file', async () => {
-    db.prepare('UPDATE inventory_items SET game = ? WHERE id = ?').run('lorcana', itemId);
+    // A game that is not merely out of the storefront's scope but not STOCKABLE either, so this test
+    // keeps refusing however far V1_GAMES is widened. It used to say 'lorcana', which stopped being a
+    // refusal the moment the lane opened past Pokémon — and the assertion below would then have been
+    // quietly checking that a SUCCESSFUL publish uploaded nothing.
+    db.prepare('UPDATE inventory_items SET game = ? WHERE id = ?').run('yugioh', itemId);
     const r = await post('/publish', { itemId });
     assert.equal(r.json.ok, false);
     assert.match(r.json.error, /validation/);
