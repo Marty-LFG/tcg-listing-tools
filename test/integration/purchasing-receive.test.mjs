@@ -405,6 +405,54 @@ describe('a grading line', () => {
     });
   });
 
+  // THE CURRENCY BUG. card-grader.html seeds grading_cost_cents in the company's NATIVE currency —
+  // data/grading.config.json: "Only PCG quotes in AUD; every other company's figures below are native
+  // USD" — and a receive adds AUD to it. Blind, that produced a number that was neither.
+  it('replaces a native-currency fee rather than adding AUD to it', async () => {
+    const subId = (await (await fetch(base + '/api/inventory/submissions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        game: 'pokemon', name: 'Charizard', grading_company: 'PSA', status: 'submitted',
+        grading_cost_cents: 7999, grading_cost_currency: 'USD',   // the grader's USD sticker price
+      }),
+    })).json()).id;
+
+    const orderId = await makeOrder({ supplier: 'PSA' });
+    const line = await addLine(orderId, {
+      line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'PSA Regular',
+      qty_ordered: 1, unit_cost_cents: 12000, submission_ids: [subId],
+    });
+    await count(line, { qty_received: 1 });
+    const r = await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+
+    withDb((db) => {
+      const row = db.prepare('SELECT grading_cost_cents, grading_cost_currency FROM grading_submissions WHERE id = ?').get(subId);
+      assert.equal(row.grading_cost_cents, 12000, 'the invoiced AUD fee replaces the USD estimate — 7999 + 12000 is not a number');
+      assert.equal(row.grading_cost_currency, 'AUD', 'and the row says which currency it is now in');
+    });
+  });
+
+  it('still ADDS when the column is already AUD, so two invoices for one card total correctly', async () => {
+    const subId = (await (await fetch(base + '/api/inventory/submissions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        game: 'pokemon', name: 'Blastoise', grading_company: 'PSA', status: 'submitted',
+        grading_cost_cents: 500, grading_cost_currency: 'AUD',
+      }),
+    })).json()).id;
+    const orderId = await makeOrder({ supplier: 'PSA' });
+    const line = await addLine(orderId, {
+      line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'PSA Regular',
+      qty_ordered: 1, unit_cost_cents: 12000, submission_ids: [subId],
+    });
+    await count(line, { qty_received: 1 });
+    await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    withDb((db) => {
+      assert.equal(db.prepare('SELECT grading_cost_cents c FROM grading_submissions WHERE id = ?').get(subId).c, 12500);
+    });
+  });
+
   it('refuses a submission that is gone or already promoted, instead of paying it into nothing', async () => {
     const orderId = await makeOrder({ supplier: 'PSA' });
     const line = await addLine(orderId, {
