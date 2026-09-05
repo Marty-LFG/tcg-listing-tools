@@ -426,9 +426,15 @@ describe('validateProduct — the refusals land before the scope does', () => {
     assert.deepEqual(v.warnings, []);
   });
 
-  it('refuses a game outside v1 rather than half-mapping it', () => {
-    assert.match(errs({ game: 'yugioh' }), /out of scope/);
-    assert.match(errs({ game: '' }), /out of scope/);
+  it('refuses a game outside v1, and names the ones that are open', () => {
+    // The message used to say "v1 publishes Pokémon only" and kept saying it after the lane widened to
+    // six games — telling an SWU row something untrue about the tool.
+    const e = errs({ game: 'yugioh' });
+    assert.match(e, /"yugioh" is not a game the storefront is open for/);
+    assert.match(e, /pokemon/);
+    assert.match(e, /onepiece/);
+    assert.doesNotMatch(e, /Pokémon only/, 'the refusal must not claim a scope the tool no longer has');
+    assert.match(errs({ game: '' }), /is not a game the storefront is open for/);
   });
 
   // Was "refuses a graded slab — it is the next slice, not this one". The slice landed: the mapping had

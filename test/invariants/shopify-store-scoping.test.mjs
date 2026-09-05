@@ -59,6 +59,15 @@ const EXEMPT = [
 // The rebuild's own INSERT ... SELECT carries the literal 'dev' rather than a bound predicate; it is
 // covered by naming `store` in the column list, so no exemption is needed for it.
 
+// A statement genuinely scoped by store either compares it, inserts it, or assigns it. Merely naming
+// the column — in a projection, or in a comment the stripper missed — is not scoping.
+const USES_STORE = [
+  /\bstore\s*(=|<>|!=|\bIN\b|\bIS\b)/i,          // WHERE store = ? / store IN (...)
+  /\(\s*[^)]*\bstore\b[^)]*\)\s*(VALUES|SELECT)/i, // INSERT INTO t (…, store, …) VALUES/SELECT
+  /\bSET\b[\s\S]*?\bstore\s*=/i,                  // UPDATE … SET store = ?
+  /\bCONFLICT\s*\([^)]*\bstore\b/i,                // ON CONFLICT(sku, store)
+];
+
 function sqlLiterals(src) {
   // Template, single- and double-quoted literals. SQL in this repo lives in all three.
   const out = [];
@@ -89,7 +98,10 @@ describe('every shopify_listings / shopify_files statement names its store', () 
     it(file, () => {
       const offenders = sqlLiterals(src)
         .filter((s) => TABLES.test(s) && DML.test(s) && !DDL.test(s))
-        .filter((s) => !/\bstore\b/.test(s))
+        // It must FILTER on store, not merely mention it. `SELECT sku, store, state FROM
+        // shopify_listings WHERE item_id = ?` names the column in its projection and is completely
+        // store-blind — which the first version of this rule accepted.
+        .filter((s) => !USES_STORE.some((re) => re.test(s)))
         .filter((s) => !EXEMPT.some((e) => e.match.test(s)))
         .map((s) => s.replace(/\s+/g, ' ').trim().slice(0, 140));
       assert.deepEqual(offenders, [],

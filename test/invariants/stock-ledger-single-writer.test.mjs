@@ -25,9 +25,22 @@ const OWNER = path.join('lib', 'stock-ledger.mjs');
 
 // An UPDATE that assigns the quantity column on one of the two stock tables. The tables are named on
 // the same statement, which is what keeps sealed_placements and every other `quantity` out of it.
+// TWO BLIND SPOTS THE FIRST VERSION HAD, both found in review, one of them hiding a live violation.
+//
+//   `[^`'"]*` could not cross a quote, so `SET status = 'sold', quantity = 0` escaped the rule
+//   entirely - reordering two columns silently defeated it. `[\s\S]*?` is non-greedy, so it still
+//   cannot run past the end of one statement.
+//
+//   A dynamically built column list - `SET ${cols.join(', ')}` - names no columns in the source at
+//   all, so no regex over SQL literals can see it. The sealed PATCH was exactly that shape and was
+//   writing quantity directly while this test passed. Those are caught structurally instead, below.
 const WRITES = [
-  /UPDATE\s+inventory_items\s+SET[^`'"]*\bquantity\s*=/i,
-  /UPDATE\s+sealed_items\s+SET[^`'"]*\bquantity\s*=/i,
+  /UPDATE\s+inventory_items\s+SET[\s\S]*?\bquantity\s*=/i,
+  /UPDATE\s+sealed_items\s+SET[\s\S]*?\bquantity\s*=/i,
+];
+const DYNAMIC = [
+  /UPDATE\s+inventory_items\s+SET\s+\$\{/i,
+  /UPDATE\s+sealed_items\s+SET\s+\$\{/i,
 ];
 
 function sqlLiterals(src) {
@@ -63,6 +76,19 @@ describe('only lib/stock-ledger.mjs writes stock quantity', () => {
       assert.deepEqual(offenders, [],
         `${file} writes a stock quantity directly. Call applyMovement or setQuantity from `
         + 'lib/stock-ledger.mjs instead, so the change carries a reason.');
+    });
+  }
+
+  // A whitelist UPDATE cannot be read for a column name, so the guard is the deletion that keeps
+  // quantity out of the whitelist in the first place. This is precisely what the sealed PATCH lacked.
+  for (const file of serverSources()) {
+    if (file === OWNER) continue;
+    const src = stripComments(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+    if (!sqlLiterals(src).some((sql) => DYNAMIC.some((re) => re.test(sql)))) continue;
+    it(file + ' keeps quantity out of its dynamic column list', () => {
+      assert.match(src, /delete\s+\w+\.quantity/,
+        `${file} builds an UPDATE from a column list, so no regex can tell whether quantity is in it. `
+        + 'Delete it from that object and route the change through setQuantity.');
     });
   }
 

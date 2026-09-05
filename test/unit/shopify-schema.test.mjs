@@ -9,6 +9,10 @@
 // their path argument after the first call, so a test using them writes to the REAL database.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { openDbAt } from '../../lib/db.mjs';
 import { openPostsaleDbAt } from '../../lib/postsale-db.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
@@ -172,5 +176,96 @@ describe('postsale channel columns', () => {
     const byChannel = db.prepare(`SELECT channel, COUNT(*) c FROM orders GROUP BY channel ORDER BY channel`)
       .all().map((r) => [r.channel, r.c]);
     assert.deepEqual(byChannel, [['ebay', 1], ['shopify', 1]]);
+  });
+});
+
+// THE REBUILDS, against the shape they actually have to run on.
+//
+// Every other fixture in the suite calls openDbAt on an empty file, which builds the new schema from
+// CREATE TABLE — so migrateShopifyStore and migrateShopifyFilesStore hit `if (cols.includes('store'))
+// return` on their second line and never execute. The riskiest code in the change (DROP + RENAME on the
+// owner's real database, holding 265 stock rows) had zero coverage. These build the OLD schema by hand
+// and run the real migration over it.
+describe('migrating a database that predates the store column', () => {
+  const legacy = (dir) => {
+    const p = path.join(dir, 'legacy.db');
+    const raw = new DatabaseSync(p);
+    raw.exec(`CREATE TABLE shopify_listings (
+      sku TEXT PRIMARY KEY, kind TEXT NOT NULL DEFAULT 'inventory', item_id INTEGER,
+      product_gid TEXT, variant_gid TEXT, inventory_gid TEXT, location_gid TEXT, identity_gid TEXT,
+      handle TEXT, state TEXT NOT NULL DEFAULT 'pending', published_at TEXT, price_cents INTEGER,
+      currency TEXT NOT NULL DEFAULT 'AUD', available_qty INTEGER, last_synced_at TEXT, error TEXT,
+      raw TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+    raw.exec(`CREATE INDEX idx_shopify_listing_item ON shopify_listings(kind, item_id)`);
+    raw.exec(`CREATE TABLE shopify_files (
+      content_hash TEXT PRIMARY KEY, file_gid TEXT, resource_url TEXT,
+      status TEXT NOT NULL DEFAULT 'staged', view TEXT, filename TEXT, width INTEGER, height INTEGER,
+      bytes INTEGER, compose_version TEXT, error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')), ready_at TEXT)`);
+    raw.exec(`INSERT INTO shopify_listings (sku, item_id, product_gid, handle, state, price_cents, raw)
+              VALUES ('AAC-085', 7, 'gid://shopify/Product/1', 'pokemon-x-nm', 'live', 12999, '{"a":1}')`);
+    raw.exec(`INSERT INTO shopify_files (content_hash, file_gid, status, view, bytes)
+              VALUES ('h-front', 'gid://shopify/MediaImage/1', 'ready', 'front', 16)`);
+    raw.close();
+    return p;
+  };
+
+  it('rebuilds both tables, keeps every row and every value, and stamps them dev', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-legacy-'));
+    try {
+      const migrated = openDbAt(legacy(dir));
+      const l = migrated.prepare('SELECT * FROM shopify_listings').all();
+      assert.equal(l.length, 1, 'the rebuild lost a row');
+      assert.equal(l[0].store, 'dev', "nothing has ever published to live, so every existing row IS dev");
+      // Every value carried across, not just the key ones.
+      assert.equal(l[0].sku, 'AAC-085');
+      assert.equal(l[0].item_id, 7);
+      assert.equal(l[0].product_gid, 'gid://shopify/Product/1');
+      assert.equal(l[0].handle, 'pokemon-x-nm');
+      assert.equal(l[0].state, 'live');
+      assert.equal(l[0].price_cents, 12999);
+      assert.equal(l[0].currency, 'AUD');
+      assert.equal(l[0].raw, '{"a":1}');
+      assert.equal(l[0].identity_handle, null, 'the column added just before the rebuild must survive it');
+
+      const f = migrated.prepare('SELECT * FROM shopify_files').all();
+      assert.equal(f.length, 1);
+      assert.equal(f[0].store, 'dev');
+      assert.equal(f[0].file_gid, 'gid://shopify/MediaImage/1');
+      assert.equal(f[0].bytes, 16);
+      migrated.close();
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('moves the primary keys and rebuilds the indexes the old table took with it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-legacy-'));
+    try {
+      const migrated = openDbAt(legacy(dir));
+      const pk = (t) => migrated.prepare(`PRAGMA table_info(${t})`).all()
+        .filter((c) => c.pk > 0).sort((a, b) => a.pk - b.pk).map((c) => c.name);
+      assert.deepEqual(pk('shopify_listings'), ['sku', 'store']);
+      assert.deepEqual(pk('shopify_files'), ['content_hash', 'store']);
+      // DROP TABLE takes the old indexes with it; all three must come back, store-first.
+      const idx = migrated.prepare(
+        `SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='shopify_listings' AND sql IS NOT NULL`).all();
+      assert.equal(idx.length, 3, idx.map((r) => r.name).join(', '));
+      for (const r of idx) assert.match(r.sql, /\(\s*store\s*,/, r.name + ' must lead with store');
+      migrated.close();
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('is a no-op on a second open, and leaves a live row alone', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-legacy-'));
+    try {
+      const p = legacy(dir);
+      const first = openDbAt(p);
+      first.prepare(`INSERT INTO shopify_listings (sku, store, state) VALUES ('AAC-085','live','pending')`).run();
+      first.close();
+      const second = openDbAt(p);
+      const rows = second.prepare(`SELECT store, state FROM shopify_listings WHERE sku='AAC-085' ORDER BY store`).all();
+      assert.deepEqual(rows.map((r) => r.store + '=' + r.state), ['dev=live', 'live=pending'],
+        'a second boot re-ran the rebuild and lost the live row');
+      second.close();
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
