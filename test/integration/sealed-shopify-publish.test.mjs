@@ -134,9 +134,32 @@ describe('a sealed pool publishes as one product at quantity N', () => {
     assert.deepEqual(order, ['productSet', 'setQty', 'publish']);
   });
 
-  it('never upserts a card identity — a booster box has no conditions to group', async () => {
+  it('never upserts a CARD identity — a booster box has no conditions to group', async () => {
     await run();
-    assert.equal(calls.filter((c) => c.op === 'identityUpsert').length, 0);
+    const types = calls.filter((c) => c.op === 'identityUpsert').map((c) => c.variables.handle.type);
+    assert.ok(!types.includes('bk_card_identity'), 'a box has no condition ladder to belong to');
+  });
+
+  it('joins its SET, so a card from that set can show the box and back', async () => {
+    await run();
+    const upserts = calls.filter((c) => c.op === 'identityUpsert').map((c) => c.variables);
+    const set = upserts.find((v) => v.handle.type === 'bk_set_identity');
+    assert.ok(set, 'the box must join its set identity');
+    assert.equal(set.handle.handle, 'pokemon-sv8a-en');
+
+    // The GID comes back from that upsert and is spliced into the product as bkc.set — the reference
+    // the theme follows. It is conditional on the upsert succeeding, so a store without the definition
+    // publishes a product with no bkc.set rather than failing the whole productSet call.
+    const input = calls.find((c) => c.op === 'productSet').variables.input;
+    const mf = (input.metafields || []).find((m) => m.namespace === 'bkc' && m.key === 'set');
+    assert.ok(mf, 'bkc.set was not spliced onto the product');
+    assert.equal(mf.type, 'metaobject_reference');
+
+    // And the lists are recomputed whole afterwards, with this box in the sealed one.
+    const rebuild = upserts.filter((v) => v.handle.type === 'bk_set_identity').at(-1);
+    const sealedField = rebuild.metaobject.fields.find((f) => f.key === 'sealed');
+    assert.ok(sealedField, 'the set rebuild must write the sealed list');
+    assert.deepEqual(JSON.parse(sealedField.value), ['gid://shopify/Product/70']);
   });
 
   it('asks the compositor for the SQUARE frame, with the pool image as the source', async () => {

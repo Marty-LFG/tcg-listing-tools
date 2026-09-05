@@ -70,6 +70,11 @@ function stub(url, init = {}) {
   if (q.includes('metaobjectUpsert')) {
     calls.push({ op: q.includes('BkIdentityListings') ? 'identityListings' : 'identity', variables: v });
     if (bend.identity) return resp(200, { data: { metaobjectUpsert: { userErrors: [{ field: null, message: bend.identity, code: 'INVALID' }] } } });
+    // A store whose bk_card_identity definition has no `graded` field yet — what every store looks
+    // like until bk-shopify's apply-metaobject-definitions has been run against it.
+    if (bend.rejectGradedField && (v.metaobject.fields || []).some((f) => f.key === 'graded')) {
+      return resp(200, { data: { metaobjectUpsert: { userErrors: [{ field: ['metaobject', 'fields'], message: "Field 'graded' is not defined", code: 'INVALID' }] } } });
+    }
     return resp(200, { data: { metaobjectUpsert: { metaobject: { id: 'gid://shopify/Metaobject/9', handle: v.handle.handle }, userErrors: [] } } });
   }
   if (q.includes('productSet')) {
@@ -263,10 +268,44 @@ describe('the condition list', () => {
     assert.equal(field.value, '[]');
   });
 
-  it('never touches any field other than listings', async () => {
+  it('never touches any field other than the two it computes', async () => {
     await rebuildIdentity(ENV, db, { identityHandle: 'ident-x', fetchImpl: stub });
     const keys = calls.at(-1).variables.metaobject.fields.map((f) => f.key);
-    assert.deepEqual(keys, ['listings'], 'a rebuild that resends descriptive fields can overwrite a hand edit');
+    // display_name, game, set_code and the rest are DESCRIPTIVE and are written at publish time. A
+    // rebuild that resent them would overwrite a hand edit in the admin with a derived value.
+    assert.deepEqual(keys, ['listings', 'graded'], 'a rebuild may only write what it recomputes');
+  });
+
+  it('files the slabs of a card under `graded`, best grade first', async () => {
+    const mk = (sku, gid, company, grade, cert) => {
+      const r = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, quantity, grading_company, grade, cert_number) VALUES (?,'pokemon','base1-60','Blastoise',1,?,?,?)`).run(sku, company, grade, cert);
+      db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES (?,?,?,'ident-g','live')`).run(sku, r.lastInsertRowid, gid);
+    };
+    mk('AAC-300', 'gid://shopify/Product/psa9', 'PSA', 9, '111');
+    mk('AAC-301', 'gid://shopify/Product/psa10', 'PSA', 10, '222');
+    const out = await rebuildIdentity(ENV, db, { identityHandle: 'ident-g', fetchImpl: stub });
+    assert.equal(out.ok, true, out.error);
+    assert.deepEqual(out.graded, ['gid://shopify/Product/psa10', 'gid://shopify/Product/psa9']);
+    assert.deepEqual(out.listings, [], 'no raw copies of this one');
+  });
+
+  // `graded` is a field on a metaobject DEFINITION that lives in bk-shopify and is applied by hand.
+  // Until that has run the store refuses an upsert naming it — and refusing the whole rebuild would
+  // blank the condition selector for a card whose listings were perfectly computable.
+  it('still writes the condition list when the store has no `graded` field yet', async () => {
+    for (const [sku, cond, gid] of [['AAC-400', 'Near Mint', 'gid://shopify/Product/n'], ['AAC-401', 'Lightly Played', 'gid://shopify/Product/l']]) {
+      const r = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, condition, quantity) VALUES (?,'pokemon','base1-61','Venusaur',?,1)`).run(sku, cond);
+      db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES (?,?,?,'ident-nofield','live')`).run(sku, r.lastInsertRowid, gid);
+    }
+    bend.rejectGradedField = true;
+    const out = await rebuildIdentity(ENV, db, { identityHandle: 'ident-nofield', fetchImpl: stub });
+    assert.equal(out.ok, true, 'a missing field definition must not blank the condition selector');
+    assert.equal(out.listings.length, 2, 'the conditions still went');
+    assert.deepEqual(out.graded, []);
+    assert.match(out.warning, /WITHOUT its graded copies/);
+    assert.match(out.warning, /apply-metaobject-definitions/);
+    assert.deepEqual(calls.at(-1).variables.metaobject.fields.map((f) => f.key), ['listings'],
+      'the retry must drop the field the store rejected, not resend it');
   });
 });
 
