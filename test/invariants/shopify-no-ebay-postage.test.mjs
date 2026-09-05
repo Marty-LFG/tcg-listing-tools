@@ -43,6 +43,10 @@ function shopifySources() {
   };
   scan('lib/channels', /^shopify-/);
   scan('lib', /^shopify/);
+  // …and the per-shape modules, which are named the other way round: lib/sealed-shopify.mjs,
+  // lib/runs-shopify.mjs. They publish to the same storefront and reuse the same copy module, so they
+  // can make exactly the same mistake — and `^shopify` would never have found them.
+  scan('lib', /-shopify\.mjs$/);
   return out;
 }
 
