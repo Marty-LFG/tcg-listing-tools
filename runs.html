@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keeper's Runs · Binders Keepers</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;--purple:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;min-height:100vh;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1400px;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;} a:hover{text-decoration:underline;text-underline-offset:3px;}
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);}
+  .sub .dot{color:var(--faint);margin:0 7px;}
+  .actions{display:flex;gap:9px;align-items:center;}
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s ease;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);} .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn.sm{padding:5px 10px;font-size:11.5px;border-radius:8px;}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  .btn.ghost:hover{color:var(--text);border-color:var(--line2);background:rgba(255,255,255,.03);}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.go:hover{background:rgba(67,214,160,.17);border-color:var(--green);}
+  .btn.danger{border-color:rgba(240,102,110,.38);color:var(--red);background:rgba(240,102,110,.06);}
+  select,input,textarea{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--sans);transition:.15s;}
+  select:focus,input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  input::placeholder,textarea::placeholder{color:var(--faint);}
+  label{display:block;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:5px;}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 17px;margin-bottom:16px;}
+  .card h2{font-family:var(--serif);font-weight:600;font-size:17px;margin:0 0 4px;}
+  .card .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);}
+  .hd{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+  .row{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-end;}
+  .note{color:var(--muted);font-size:12px;line-height:1.65;margin:0 0 12px;}
+  .note b{color:var(--text);font-weight:600;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:left;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:0 8px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  td input,td select{padding:4px 7px;font-size:12px;border-radius:7px;width:100%;}
+  .mono{font-family:var(--mono);font-size:11.5px;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;font-family:var(--mono);white-space:nowrap;border:1px solid var(--line2);color:var(--muted);}
+  .pill.ok{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.09);}
+  .pill.bad{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.08);}
+  .pill.wait{color:var(--faint);}
+  .pill.warn{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.08);}
+  .pill.pin{color:var(--purple);border-color:rgba(217,164,255,.4);background:rgba(217,164,255,.08);}
+  .empty{color:var(--muted);font-size:13px;padding:22px;text-align:center;border:1px dashed var(--line);border-radius:12px;background:rgba(255,255,255,.012);}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:1080px){.cols{grid-template-columns:1fr;}}
+  .sentence{font-family:var(--serif);font-size:16px;line-height:1.6;color:var(--text);padding:13px 15px;border-radius:12px;
+    border:1px solid rgba(212,176,114,.3);background:rgba(212,176,114,.06);}
+  .sentence.bad{border-color:rgba(240,102,110,.35);background:rgba(240,102,110,.06);color:var(--muted);}
+  .warn{border:1px solid rgba(240,192,74,.35);background:rgba(240,192,74,.07);border-radius:12px;padding:10px 13px;margin-bottom:12px;color:var(--amber);font-size:12.5px;line-height:1.6;}
+  .warn b{color:#ffd97a;}
+  .grid-scroll{overflow-x:auto;}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;margin:12px 0 0;}
+  .kv dt{color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;}
+  .kv dd{margin:0;font-family:var(--mono);font-size:11.5px;word-break:break-all;color:var(--text);}
+  .kv dd.plain{font-family:var(--sans);font-size:13px;}
+  .numbers{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .num{width:42px;height:32px;border-radius:8px;border:1px solid var(--line2);display:flex;align-items:center;
+    justify-content:center;font-family:var(--mono);font-size:11.5px;cursor:pointer;background:rgba(255,255,255,.02);}
+  .num.gone{border-color:rgba(240,102,110,.35);color:var(--red);background:rgba(240,102,110,.07);cursor:default;}
+  .num.free:hover{border-color:var(--gold);background:var(--gold-soft);}
+  .hide{display:none;}
+  .foot{display:flex;gap:11px;align-items:center;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid var(--line);}
+  .msg{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+  .msg.bad{color:var(--red);} .msg.ok{color:var(--green);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Keeper's <span class="thin">Runs</span></h1>
+        <p class="sub"><a href="/runs-intake.html">← run intake</a><span class="dot">·</span>build a manifest<span class="dot">·</span><a href="/runs-print.html">inserts &amp; pack sheets →</a><span class="dot">·</span><a href="/runs-verify.html">verify →</a><span class="dot">·</span><span id="tag">—</span></p>
+      </div>
+    </div>
+    <div class="actions">
+      <select id="runPick" onchange="pickRun(this.value)" style="min-width:210px;"></select>
+      <button class="btn ghost" onclick="toggleCreate()">＋ New run</button>
+      <a class="btn ghost" href="/">all tools</a>
+    </div>
+  </header>
+
+  <!-- ===================== COMPOSITION EDITOR (create only) ===================== -->
+  <section id="createCard" class="card hide">
+    <div class="hd">
+      <div><h2>New run</h2><span class="cap">composition is fixed at create</span></div>
+    </div>
+    <p class="note">
+      A run declares its own shape, and that shape is <b>inside the hash</b> — so it is set here and never
+      afterwards. Changing it later would be a different run, not an edit.
+      <b>A slot's label is customer-facing copy</b>: it becomes the noun in the guarantee sentence, so write
+      it as the singular noun phrase the sentence should contain — <span class="mono">graded card</span>,
+      not <span class="mono">Graded slab</span>.
+    </p>
+    <div class="row" style="margin-bottom:12px;">
+      <div><label>Identifier</label><input id="c_id" placeholder="DEV-E1" style="width:130px;"></div>
+      <div><label>Mode</label><select id="c_mode" style="width:100px;" onchange="syncMode()"><option value="dev">dev</option><option value="live">live</option></select></div>
+      <div style="flex:1;min-width:190px;"><label>Name</label><input id="c_name" style="width:100%;" placeholder="Edition One"></div>
+      <div><label>Bundles</label><input id="c_count" type="number" min="1" max="999" value="25" style="width:90px;"></div>
+      <div><label>Edition</label><input id="c_ed" type="number" min="1" value="1" style="width:80px;"></div>
+    </div>
+
+    <!-- THESE THREE ARE SETTABLE HERE AND NOWHERE ELSE, and two of them are inside the hash. A run
+         created without a close-by date or a sales-close date CANNOT BE LOCKED - validateForLock
+         refuses, and by then the only way out is abandoning the run. Without a price it locks and
+         anchors fine and then cannot be listed. There is no PATCH route for any of them by design:
+         they are anchored, so an edit would be a different run. -->
+    <div class="row" style="margin-bottom:12px;">
+      <div><label>Price each</label><input id="c_price" type="number" min="0" step="0.01" placeholder="129.00" style="width:110px;"></div>
+      <div><label>Currency</label><input id="c_ccy" value="AUD" style="width:70px;"></div>
+      <div><label>Sales close</label><input id="c_salesclose" type="date" style="width:150px;"></div>
+      <div><label>Close by</label><input id="c_closeby" type="date" style="width:150px;"></div>
+    </div>
+    <p class="note">
+      <b>Sales close</b> and <b>close by</b> are inside the anchored digest and cannot be changed
+      afterwards, and the run cannot be locked without them. <b>Sales close</b> is also what the
+      close-out gate waits for &mdash; it is recorded as the <i>start</i> of the day you pick, so a
+      rehearsal that needs to close today should leave it on today. The price never appears anywhere a
+      customer can see; it is the storefront variant price and nothing else.
+    </p>
+    <div class="grid-scroll">
+      <table>
+        <thead><tr>
+          <th style="width:120px;">Slot</th><th style="min-width:150px;">Label (the noun)</th><th style="width:110px;">Kind</th>
+          <th style="width:70px;">Qty</th><th style="width:80px;">Lines</th><th>Singleton</th><th>Cert</th><th>Chase</th><th></th>
+        </tr></thead>
+        <tbody id="c_slots"></tbody>
+      </table>
+    </div>
+    <div class="foot">
+      <button class="btn sm ghost" onclick="addSlot()">＋ slot</button>
+      <button class="btn go" onclick="createRun()">Create run</button>
+      <span id="c_msg" class="msg"></span>
+    </div>
+  </section>
+
+  <div id="runBody" class="hide">
+    <!-- ===================== GUARANTEE PANEL ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Guarantee</h2><span class="cap">the claims are the boundary · the sentence is a rendering of them</span></div>
+        <span id="g_verdict" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        Every claim is checked against the manifest <b>as it stands</b>, so a card that would make the
+        sentence false is refused here, while there is still time to swap it. The sentence below is
+        generated from the claims — it cannot assert more than they support, and it is what gets committed.
+      </p>
+      <div id="g_sentence" class="sentence bad">No claims yet.</div>
+      <div id="g_gate" class="warn hide"></div>
+      <div class="grid-scroll" style="margin-top:13px;">
+        <table>
+          <thead><tr><th style="width:110px;">Type</th><th style="width:90px;">Subject</th><th style="width:60px;">Op</th>
+            <th style="min-width:200px;">Value</th><th style="width:100px;">Holds</th><th></th></tr></thead>
+          <tbody id="g_rows"></tbody>
+        </table>
+      </div>
+      <div class="foot">
+        <button class="btn sm ghost" onclick="addClaim()">＋ claim</button>
+        <button class="btn" onclick="saveClaims()">Save claims</button>
+        <button class="btn sm ghost" onclick="refreshGuarantee()">Re-check</button>
+        <span id="g_msg" class="msg"></span>
+      </div>
+    </section>
+
+    <div class="cols">
+      <!-- ===================== POOL ===================== -->
+      <section class="card">
+        <div class="hd"><div><h2>Pool</h2><span class="cap">held for this run · not yet in a bundle</span></div></div>
+        <p class="note">
+          A hold blocks the item everywhere — it cannot be published, listed, repriced, marked sold or
+          deleted while it stands. <b>A pool hold has no slot</b>, so when two slots take the same kind of
+          stock you tick which holds feed which.
+        </p>
+        <div class="grid-scroll"><table>
+          <thead><tr><th style="width:34px;"></th><th>Item</th><th style="width:64px;">Qty</th><th style="width:90px;">Kind</th><th></th></tr></thead>
+          <tbody id="poolRows"></tbody>
+        </table></div>
+        <div class="foot">
+          <select id="dealSlot" style="width:130px;"></select>
+          <select id="dealStrategy" style="width:120px;">
+            <option value="shuffle">shuffle</option><option value="distinct">distinct</option><option value="pinned">pinned</option>
+          </select>
+          <button class="btn go" onclick="runDeal()">Deal into bundles</button>
+          <span id="pool_msg" class="msg"></span>
+        </div>
+      </section>
+
+      <!-- ===================== CHASE LADDER ===================== -->
+      <section class="card">
+        <div class="hd"><div><h2>Chase ladder</h2><span class="cap">published before any sale</span></div></div>
+        <p class="note">
+          What "a chase" <b>means</b>, fixed publicly before a single bundle sells — so the count opened at
+          close is a claim about a pre-committed definition rather than one we could reinterpret afterwards.
+        </p>
+        <div class="grid-scroll"><table>
+          <thead><tr><th style="width:44px;">Rank</th><th style="min-width:150px;">Card</th><th style="width:80px;">Set</th>
+            <th style="width:70px;">Lang</th><th style="width:70px;">Grader</th><th style="width:60px;">Grade</th><th></th></tr></thead>
+          <tbody id="ladderRows"></tbody>
+        </table></div>
+        <div class="foot">
+          <button class="btn sm ghost" onclick="addLadder()">＋ entry</button>
+          <button class="btn" onclick="saveLadder()">Save ladder</button>
+          <span id="ladder_msg" class="msg"></span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== MANIFEST GRID ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Manifest</h2><span class="cap">columns generated from the composition · empty cells are the work queue</span></div>
+        <span id="m_progress" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        A <b>pinned</b> bundle is excluded from lock-time chase randomisation and keeps exactly what was
+        assigned to it — which is what lets one bundle hold the best option in every slot at once.
+      </p>
+      <div class="grid-scroll"><table>
+        <thead><tr id="m_head"></tr></thead>
+        <tbody id="m_rows"></tbody>
+      </table></div>
+    </section>
+    <div class="cols">
+      <!-- ===================== SEALS ===================== -->
+      <section class="card">
+        <div class="hd">
+          <div><h2>Seal serials</h2><span class="cap">pre-assigned, before the lock</span></div>
+          <span id="seal_state" class="pill wait">—</span>
+        </div>
+        <p class="note">
+          The serial is a <b>committed attribute</b> — inside the bundle&rsquo;s leaf, and so inside the run
+          root — so it has to exist before the lock even though the parcel is sealed after it. What must be
+          unpredictable is the <b>mapping</b>, not the serial: a numbered commercial roll is fine as long as
+          the assignment is random and the roll is <b>larger than the run</b>, so nobody holding one parcel
+          can derive the set in play.
+        </p>
+        <div class="fld"><label>The roll — one serial per line, exactly as printed on the sticker</label>
+          <textarea id="rollBox" rows="4" style="width:100%;font-family:var(--mono);font-size:12px;"
+            placeholder="BK-7WMHC&#10;BK-VYNVY&#10;BK-ATDMR&#10;…"></textarea></div>
+        <p class="note" style="margin-top:8px;">
+          <b>Exactly as printed</b>, capitals and all: the serial goes into the hash, and it is the one
+          committed value a buyer can read off the outside of their own parcel. Type them off the sheet
+          rather than a photo — a repeat is caught, but a wrong-but-unique typo is not, and after the
+          lock it cannot be corrected.
+        </p>
+        <div class="foot">
+          <button class="btn" onclick="assignSeals()">Assign at random</button>
+          <span id="seal_msg" class="msg"></span>
+        </div>
+      </section>
+
+      <!-- ===================== AMENDMENTS ===================== -->
+      <section class="card">
+        <div class="hd">
+          <div><h2>Amendments</h2><span class="cap">append-only &middot; never an edit</span></div>
+          <span id="chain_state" class="pill wait">—</span>
+        </div>
+        <p class="note">
+          A locked manifest is never corrected in place. A change publishes a <b>new header with its own
+          anchor</b>, and each one records the header it succeeds — so the chain is checkable by anyone
+          holding the published artifacts, and a broken link shows without trusting us.
+        </p>
+        <div id="chainRows"></div>
+      </section>
+    </div>
+
+    <!-- ===================== ASSIGN DRAWER ===================== -->
+    <section class="card hide" id="assignCard">
+      <div class="hd">
+        <div><h2>Assign to <span id="as_target">a bundle</span></h2>
+          <span class="cap">stock this slot can take &middot; unreserved and in stock</span></div>
+        <button class="btn sm ghost" onclick="closeAssign()">close</button>
+      </div>
+      <div class="row" style="margin-bottom:11px;">
+        <div><label for="as_q">Search</label>
+          <input id="as_q" placeholder="name, set or cert" oninput="loadCandidates()" style="min-width:260px;"></div>
+        <span id="as_msg" class="msg"></span>
+      </div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:90px;">SKU</th><th>Card</th><th style="width:120px;">Cert</th>
+          <th style="width:70px;">Grade</th><th style="width:130px;">State</th><th style="width:80px;"></th></tr></thead>
+        <tbody id="as_rows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- ===================== SALES &amp; CLOSE-OUT ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Sales &amp; close-out</h2>
+          <span class="cap">the ledger is the availability proof &middot; every number must be accounted for</span></div>
+        <span id="lg_verdict" class="pill wait">&mdash;</span>
+      </div>
+      <p class="note">
+        Every sale records the number the buyer chose, so <b>anyone can derive what was available at any
+        moment</b> from the published chain. That is what makes &ldquo;7 is gone&rdquo; checkable rather
+        than asserted. A number nobody buys is opened on stream and recorded, so the run can still close.
+      </p>
+      <div id="lg_numbers" class="numbers"></div>
+      <div id="lg_close" class="warn hide"></div>
+      <div class="grid-scroll" style="margin-top:12px;"><table>
+        <thead><tr><th style="width:50px;">#</th><th style="width:120px;">Kind</th>
+          <th style="width:70px;">Bundle</th><th style="width:165px;">When</th><th>Detail</th></tr></thead>
+        <tbody id="lg_rows"></tbody>
+      </table></div>
+      <!-- FULFILMENT. Each of these is a physical act being recorded, and each was previously
+           reachable only by curl. Packing is the one that draws the stock down and is what stops a
+           republish restocking the number; dispatch starts the delivery grace clock that disclosure
+           waits on; opened-live is the disposition that lets a run close when a number never sold. -->
+      <div class="row" style="margin-top:12px;align-items:flex-end;gap:8px;">
+        <div><label>Bundle</label><input id="lg_no" type="number" min="1" max="999" style="width:90px;" placeholder="7"></div>
+        <button class="btn sm ghost" onclick="bundleAct('pack')" title="consume the reservations and mark it packed">Mark packed</button>
+        <button class="btn sm ghost" onclick="bundleAct('dispatch')" title="record that the parcel has left">Mark dispatched</button>
+        <button class="btn sm ghost" onclick="openedLive()" title="record a number nobody bought as opened on stream">Opened live</button>
+      </div>
+
+      <div class="foot">
+        <button class="btn sm ghost" onclick="pollOrders()">Read orders now</button>
+        <button class="btn sm ghost" onclick="closeRun()">Close run</button>
+        <button class="btn sm ghost" onclick="discloseRun(true)">Dry-run disclosure</button>
+        <button class="btn go" onclick="discloseRun(false)">Publish disclosure</button>
+        <label class="mono" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;"
+               title="the grace period exists so a buyer has their parcel in hand before the contents are public">
+          <input type="checkbox" id="lg_force"> skip the delivery grace period
+        </label>
+        <span id="lg_msg" class="msg"></span>
+      </div>
+    </section>
+
+    <!-- ===================== LOCK &amp; ANCHOR ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Lock &amp; anchor</h2><span class="cap">the commitment · irreversible · everything below happens once</span></div>
+        <span id="lk_state" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        Locking freezes this manifest, mints a verification code and a salt for every bundle, builds the
+        encrypted blob file and computes the digest that gets timestamped into Bitcoin. <b>None of it can
+        be re-issued.</b> A card found wrong afterwards needs an amendment and a new published root, so
+        the pick-and-verify pass belongs before this button, not after it.
+      </p>
+      <div id="lk_problems" class="warn hide"></div>
+      <div id="lk_digest" class="hide">
+        <dl class="kv">
+          <dt>Header digest</dt><dd id="lk_hd" class="mono">—</dd>
+          <dt>Run root</dt><dd id="lk_root" class="mono">—</dd>
+          <dt>Codes commit</dt><dd id="lk_codes" class="mono">—</dd>
+          <dt>Blob</dt><dd id="lk_blob" class="mono">—</dd>
+          <dt>Guarantee</dt><dd id="lk_guarantee">—</dd>
+        </dl>
+      </div>
+      <div class="foot">
+        <button class="btn sm ghost" onclick="refreshLock()">Re-check</button>
+        <button class="btn go" id="lk_btn" onclick="doLock()">Lock this run…</button>
+        <span id="lk_msg" class="msg"></span>
+      </div>
+
+      <div class="hd" style="margin-top:18px;border-top:1px solid var(--line);padding-top:15px;">
+        <div><h2 style="font-size:15px;">Timestamp</h2><span class="cap">pending until a Bitcoin block confirms it · §5.7.7</span></div>
+        <span id="an_gate" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        A submitted timestamp proves nothing to an outsider while it is in flight, so <b>sales stay shut
+        until it confirms</b>. The upgrade sweep runs on its own and moves it along; this is only here so
+        you can see where it is and push it if you are waiting.
+      </p>
+      <div id="an_reasons" class="warn hide"></div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:130px;">Method</th><th style="width:80px;">Scope</th>
+          <th style="width:190px;">State</th><th>Digest</th></tr></thead>
+        <tbody id="an_rows"></tbody>
+      </table></div>
+      <div class="foot">
+        <button class="btn" onclick="doAnchor()">Submit for timestamping</button>
+        <button class="btn sm ghost" onclick="doUpgrade()">Check for confirmation</button>
+        <a class="btn sm ghost" href="https://opentimestamps.org/" target="_blank" rel="noopener">independent verifier ↗</a>
+        <span id="an_msg" class="msg"></span>
+      </div>
+
+      <div class="hd" style="margin-top:18px;border-top:1px solid var(--line);padding-top:15px;">
+        <div><h2 style="font-size:15px;">Published artifacts</h2>
+          <span class="cap">static files a buyer verifies against · they must outlive this LAN</span></div>
+        <span id="pb_state" class="pill wait">—</span>
+      </div>
+      <p class="note">
+        The commitment and the encrypted blob go to a CDN, not to this server, because verification must
+        not depend on us being reachable. Each is fetched back and re-hashed after upload, so what is
+        checked is <b>the bytes that came back</b> rather than the ones we believe we sent.
+      </p>
+      <div id="pb_reasons" class="warn hide"></div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:110px;">Artifact</th><th style="width:90px;">Bytes</th>
+          <th style="width:70px;">CORS</th><th>URL</th></tr></thead>
+        <tbody id="pb_rows"></tbody>
+      </table></div>
+      <div class="foot">
+        <button class="btn go" id="pb_btn" onclick="doPublish()">Publish artifacts</button>
+        <span id="pb_msg" class="msg"></span>
+      </div>
+
+      <div class="hd" style="margin-top:18px;border-top:1px solid var(--line);padding-top:15px;">
+        <div><h2 style="font-size:15px;">Storefront</h2>
+          <span class="cap">one product &middot; one variant per number &middot; one unit each</span></div>
+        <span id="sf_state" class="pill wait">&mdash;</span>
+      </div>
+      <p class="note">
+        The buyer picks their own number, and <b>Shopify's own inventory is what stops a number selling
+        twice</b> &mdash; which is also what makes the remaining set visible to everyone rather than
+        asserted by us. Publishing needs a <b>confirmed</b> timestamp, not merely a submitted one: sales
+        open when the commitment provably predates them. Nothing here ever carries a price into
+        customer-visible copy; the price is the variant's and nothing else.
+      </p>
+      <div id="sf_reasons" class="warn hide"></div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:170px;">SKU</th><th style="width:100px;">State</th>
+          <th style="width:80px;">Qty</th><th>Variant</th></tr></thead>
+        <tbody id="sf_rows"></tbody>
+      </table></div>
+      <div class="foot">
+        <div><label>Publish as</label>
+          <select id="sf_status" style="width:110px;">
+            <option value="ACTIVE">ACTIVE</option>
+            <option value="DRAFT">DRAFT</option>
+          </select></div>
+        <button class="btn sm ghost" onclick="doProduct(true)">Dry run</button>
+        <button class="btn go" id="sf_btn" onclick="doProduct(false)">Publish product</button>
+        <span id="sf_msg" class="msg"></span>
+      </div>
+    </section>
+    <!-- ===================== AUDIT ===================== -->
+    <section class="card">
+      <div class="hd">
+        <div><h2>Audit</h2><span class="cap">every recorded action on this run</span></div>
+        <a class="btn sm ghost" href="/runs-pick.html">pick &amp; verify →</a>
+      </div>
+      <div class="grid-scroll"><table>
+        <thead><tr><th style="width:150px;">When</th><th style="width:120px;">Action</th>
+          <th style="width:110px;">Bundle</th><th style="width:100px;">Actor</th><th>Note</th></tr></thead>
+        <tbody id="auditRows"></tbody>
+      </table></div>
+    </section>
+  </div>
+</div>
+
+<script src="/extras.js"></script>
+<script type="module">
+// The vocabularies are IMPORTED, never restated. Whether a rarity maps to a committed class and whether a
+// language folds to a claimable code are the same questions the lock will ask, and a page answering them
+// from its own copy would show a green tick for a run the lock later refuses.
+import { rarityClass, RARITY_CLASSES } from '/lib/runs-rarity.mjs';
+import { canonicalLanguage } from '/lib/runs-language.mjs';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// The manifest and the counterexamples are the pre-sale answer sheet, so those routes are token-gated.
+// Same storage key and prompt as settings.html, so an operator learns one convention.
+const DIAG_KEY = 'tcg_diag_token';
+function diagToken(force) {
+  let t = ''; try { t = localStorage.getItem(DIAG_KEY) || ''; } catch { /* private mode */ }
+  if (t && !force) return t;
+  // NEVER PROMPT ON LOAD. force is false on every automatic call, so a visitor with no token stored gets
+  // the ungated view — which is the whole point of splitting this route by sensitivity — instead of a
+  // modal before they have asked for anything. Only the panel's own button passes force.
+  if (!force) return '';
+  // And prompt() is not available everywhere a page can run. An embedded viewer throws rather than
+  // returning null, which used to reject out of refreshGuarantee and leave the panel blank.
+  try { t = (window.prompt('Server DIAG_TOKEN — the manifest and the failing cards are gated behind it:', '') || '').trim(); }
+  catch { return ''; }
+  if (t) { try { localStorage.setItem(DIAG_KEY, t); } catch { /* private mode */ } }
+  return t;
+}
+const authed = () => { const t = diagToken(false); return t ? { authorization: 'Bearer ' + t } : {}; };
+
+const api = async (method, path, body, headers = {}) => {
+  const r = await fetch(path, {
+    method,
+    headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...headers },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  let json = null; try { json = JSON.parse(text); } catch { /* html */ }
+  return { status: r.status, json, text, ok: r.status < 400 };
+};
+const say = (id, text, kind = '') => { const el = $(id); el.className = 'msg ' + kind; el.textContent = text; };
+
+let RUNS = [], RUN = null, SPECS = [], FILL = [], BUNDLES = [], POOL = [], CLAIMS = [], LADDER = [], VOCAB = null;
+
+// ---- runs list -------------------------------------------------------------------------------------
+
+async function loadRuns(select) {
+  const r = await api('GET', '/api/runs');
+  RUNS = r.json?.runs || [];
+  $('runPick').innerHTML = RUNS.length
+    ? RUNS.map((x) => `<option value="${esc(x.public_id)}">${esc(x.public_id)} — ${esc(x.name)} (${x.status})</option>`).join('')
+    : '<option value="">no runs yet</option>';
+  const want = select || RUNS[0]?.public_id;
+  if (want) { $('runPick').value = want; await pickRun(want); }
+}
+
+window.pickRun = async (publicId) => {
+  if (!publicId) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(publicId));
+  if (!r.ok) return;
+  RUN = r.json.run; SPECS = r.json.slots; FILL = r.json.fill; BUNDLES = r.json.bundles;
+  $('runBody').classList.remove('hide');
+  $('createCard').classList.add('hide');
+  $('tag').textContent = `${RUN.public_id} · ${RUN.unit_count} bundles · ${RUN.status}`;
+  $('dealSlot').innerHTML = SPECS.map((s) => `<option value="${esc(s.slot)}">${esc(s.slot)} (${s.qty_per_bundle}/bundle)</option>`).join('');
+  renderManifest();
+  await Promise.all([loadPool(), loadClaims(), loadLadder(), loadSeals(), loadChain(), loadAudit(), loadAnchors(), loadArtifacts(), loadLedger()]);
+  await loadManifest();
+  refreshGuarantee();
+  refreshLock();
+};
+
+// ---- composition editor ----------------------------------------------------------------------------
+
+let SLOTDRAFT = [];
+window.toggleCreate = () => {
+  const on = $('createCard').classList.toggle('hide');
+  if (!on) {
+    $('runBody').classList.add('hide');
+    if (!SLOTDRAFT.length) {
+      // Edition 1's shape, as a starting point rather than a default the code knows about.
+      SLOTDRAFT = [
+        { slot: 'slab', label: 'graded card', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: true, requires_cert: true, is_chase_slot: true },
+        { slot: 'packs', label: 'sealed pack', kind: 'sealed', qty_per_bundle: 3, max_lines: 3, singleton: false, requires_cert: false, is_chase_slot: false },
+        { slot: 'art', label: 'art card', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: true, requires_cert: false, is_chase_slot: false },
+      ];
+    }
+    renderSlots();
+  } else { $('runBody').classList.toggle('hide', !RUN); }
+};
+window.syncMode = () => {
+  // The identifier and the mode cannot disagree — the database enforces it, and a DEV- prefix inside the
+  // header digest is what makes a rehearsal's Bitcoin timestamp self-labelling forever.
+  const dev = $('c_mode').value === 'dev';
+  const id = $('c_id').value.trim();
+  if (dev && id && !id.startsWith('DEV-')) $('c_id').value = 'DEV-' + id;
+  if (!dev && id.startsWith('DEV-')) $('c_id').value = id.slice(4);
+};
+window.addSlot = () => { SLOTDRAFT.push({ slot: '', label: '', kind: 'inventory', qty_per_bundle: 1, max_lines: 1, singleton: false, requires_cert: false, is_chase_slot: false }); renderSlots(); };
+window.dropSlot = (i) => { SLOTDRAFT.splice(i, 1); renderSlots(); };
+window.editSlot = (i, k, v) => { SLOTDRAFT[i][k] = (k === 'qty_per_bundle' || k === 'max_lines') ? Number(v) : v; };
+window.toggleSlot = (i, k, v) => {
+  // Exactly one slot is where a chase REPLACES the base item — that is what keeps every parcel the same
+  // weight and thickness, so a bundle cannot be identified by feel at a show table.
+  if (k === 'is_chase_slot' && v) SLOTDRAFT.forEach((s, j) => { s.is_chase_slot = j === i; });
+  else SLOTDRAFT[i][k] = v;
+  renderSlots();
+};
+
+function renderSlots() {
+  $('c_slots').innerHTML = SLOTDRAFT.map((s, i) => `<tr>
+    <td><input value="${esc(s.slot)}" onchange="editSlot(${i},'slot',this.value)" placeholder="slab"></td>
+    <td><input value="${esc(s.label)}" onchange="editSlot(${i},'label',this.value)" placeholder="graded card"></td>
+    <td><select onchange="editSlot(${i},'kind',this.value)">
+      <option value="inventory"${s.kind === 'inventory' ? ' selected' : ''}>inventory</option>
+      <option value="sealed"${s.kind === 'sealed' ? ' selected' : ''}>sealed</option></select></td>
+    <td><input type="number" min="1" value="${s.qty_per_bundle}" onchange="editSlot(${i},'qty_per_bundle',this.value)"></td>
+    <td><input type="number" min="1" max="99" value="${s.max_lines}" onchange="editSlot(${i},'max_lines',this.value)"></td>
+    <td><input type="checkbox" ${s.singleton ? 'checked' : ''} onchange="toggleSlot(${i},'singleton',this.checked)"></td>
+    <td><input type="checkbox" ${s.requires_cert ? 'checked' : ''} onchange="toggleSlot(${i},'requires_cert',this.checked)"></td>
+    <td><input type="checkbox" ${s.is_chase_slot ? 'checked' : ''} onchange="toggleSlot(${i},'is_chase_slot',this.checked)"></td>
+    <td><button class="btn sm ghost" onclick="dropSlot(${i})">✕</button></td>
+  </tr>`).join('');
+}
+
+// Sales close is stamped at the START of the chosen day and close-by at the END of it. Not cosmetic:
+// closeCheck refuses while now < sales_close_at, so a rehearsal that picks today would otherwise be
+// unable to close until tomorrow morning UTC. Close-by is a promise TO the buyer, so it gets the whole day.
+const dayStart = (v) => (v ? `${v}T00:00:00.000Z` : null);
+const dayEnd = (v) => (v ? `${v}T23:59:59.000Z` : null);
+
+window.createRun = async () => {
+  say('c_msg', 'creating…');
+  const price = $('c_price').value.trim();
+  const salesClose = dayStart($('c_salesclose').value);
+  const closeBy = dayEnd($('c_closeby').value);
+  // Refused here rather than at lock, because lock is where it becomes unrecoverable.
+  if (!salesClose || !closeBy) {
+    return say('c_msg', 'sales close and close by are required — they are inside the anchored digest and cannot be set later', 'bad');
+  }
+  const r = await api('POST', '/api/runs', {
+    public_id: $('c_id').value.trim(), mode: $('c_mode').value, name: $('c_name').value.trim(),
+    unit_count: Number($('c_count').value), edition: Number($('c_ed').value), slots: SLOTDRAFT,
+    unit_price_cents: price === '' ? null : Math.round(Number(price) * 100),
+    currency: $('c_ccy').value.trim() || 'AUD',
+    sales_close_at: salesClose, close_by: closeBy,
+  });
+  if (!r.ok) { say('c_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  say('c_msg', 'created', 'ok');
+  await loadRuns(r.json.run.public_id);
+};
+
+// ---- pool ------------------------------------------------------------------------------------------
+
+async function loadPool() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/pool`);
+  POOL = r.json?.pool || [];
+  $('poolRows').innerHTML = POOL.length ? POOL.map((h) => `<tr>
+    <td><input type="checkbox" class="poolPick" value="${h.reservation_id}" checked></td>
+    <td>${esc(h.display_name || '(unnamed)')}${h.cert_number ? ` <span class="mono" style="color:var(--faint);">${esc(h.cert_number)}</span>` : ''}</td>
+    <td class="mono">${h.qty}</td>
+    <td><span class="pill">${esc(h.kind)}</span></td>
+    <td><button class="btn sm ghost" onclick="release(${h.reservation_id})">release</button></td>
+  </tr>`).join('') : '<tr><td colspan="5"><div class="empty">Nothing held. Hold stock from run intake, then deal it here.</div></td></tr>';
+}
+
+window.release = async (id) => {
+  const r = await api('POST', `/api/runs/reservations/${id}/release`, { reason: 'released from the pool panel' });
+  say('pool_msg', r.ok ? 'released' : (r.json?.error || `HTTP ${r.status}`), r.ok ? 'ok' : 'bad');
+  await loadPool();
+};
+
+window.runDeal = async () => {
+  const picked = [...document.querySelectorAll('.poolPick:checked')].map((el) => Number(el.value));
+  say('pool_msg', 'dealing…');
+  const r = await api('POST', `/api/runs/${encodeURIComponent(RUN.public_id)}/deal`, {
+    slot: $('dealSlot').value, strategy: $('dealStrategy').value, reservation_ids: picked,
+  });
+  if (!r.ok) { say('pool_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  say('pool_msg', r.json.pinned ? 'pinned slots are assigned by hand' : `dealt ${r.json.dealt}`, 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// ---- chase ladder ----------------------------------------------------------------------------------
+
+async function loadLadder() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/ladder`);
+  LADDER = r.json?.ladder || [];
+  renderLadder();
+}
+window.addLadder = () => { LADDER.push({ card_name: '', set_code: '', language: 'JA', grading_company: 'PSA', grade: '10' }); renderLadder(); };
+window.dropLadder = (i) => { LADDER.splice(i, 1); renderLadder(); };
+window.editLadder = (i, k, v) => { LADDER[i][k] = v; };
+
+function renderLadder() {
+  $('ladderRows').innerHTML = LADDER.length ? LADDER.map((l, i) => `<tr>
+    <td class="mono">${i + 1}</td>
+    <td><input value="${esc(l.card_name)}" onchange="editLadder(${i},'card_name',this.value)"></td>
+    <td><input value="${esc(l.set_code || '')}" onchange="editLadder(${i},'set_code',this.value)"></td>
+    <td><input value="${esc(l.language || '')}" onchange="editLadder(${i},'language',this.value)"></td>
+    <td><input value="${esc(l.grading_company || '')}" onchange="editLadder(${i},'grading_company',this.value)"></td>
+    <td><input value="${esc(l.grade || '')}" onchange="editLadder(${i},'grade',this.value)"></td>
+    <td><button class="btn sm ghost" onclick="dropLadder(${i})">✕</button></td>
+  </tr>`).join('') : '<tr><td colspan="7"><div class="empty">No chases declared.</div></td></tr>';
+}
+
+window.saveLadder = async () => {
+  const r = await api('PUT', `/api/runs/${encodeURIComponent(RUN.public_id)}/ladder`, { ladder: LADDER });
+  say('ladder_msg', r.ok ? 'saved' : (r.json?.error || `HTTP ${r.status}`), r.ok ? 'ok' : 'bad');
+  if (r.ok) { LADDER = r.json.ladder; renderLadder(); }
+};
+
+// ---- claims + guarantee ----------------------------------------------------------------------------
+
+async function loadClaims() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/claims`);
+  CLAIMS = r.json?.claims || [];
+  VOCAB = r.json?.vocabulary || null;
+}
+window.addClaim = () => { CLAIMS.push({ claim_type: 'grader', subject: SPECS[0]?.slot || 'bundle', operator: 'eq', value: '', published: 1 }); refreshGuarantee(); };
+window.dropClaim = (i) => { CLAIMS.splice(i, 1); refreshGuarantee(); };
+window.editClaim = (i, k, v) => {
+  CLAIMS[i][k] = v;
+  // The operator is a property of the claim type, not a choice — one per type, which is why there is no
+  // "or better" anywhere in this vocabulary.
+  if (k === 'claim_type' && VOCAB && VOCAB[v]) CLAIMS[i].operator = VOCAB[v].operator;
+  refreshGuarantee();
+};
+
+window.saveClaims = async () => {
+  say('g_msg', 'saving…');
+  const r = await api('PUT', `/api/runs/${encodeURIComponent(RUN.public_id)}/claims`, { claims: CLAIMS });
+  if (!r.ok) { say('g_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  CLAIMS = r.json.claims;
+  say('g_msg', 'saved', 'ok');
+  refreshGuarantee();
+};
+
+window.refreshGuarantee = async () => {
+  renderClaims([]);
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/guarantee`, null, authed());
+  if (!r.ok) { say('g_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  const g = r.json;
+
+  $('g_verdict').className = 'pill ' + (g.holds ? 'ok' : 'bad');
+  $('g_verdict').textContent = g.holds ? 'every claim holds' : 'a claim fails';
+  $('g_sentence').className = 'sentence' + (g.sentence ? '' : ' bad');
+  $('g_sentence').textContent = g.sentence || (g.sentence_error ? 'No sentence: ' + g.sentence_error : 'No claims yet.');
+
+  const gate = $('g_gate');
+  if (!g.detail) {
+    gate.classList.remove('hide');
+    gate.innerHTML = '<b>Which cards fail is gated.</b> The counts below are safe to show; the bundle and cert '
+      + 'of an offending card are the pre-sale answer sheet. <button class="btn sm ghost" '
+      + 'onclick="diagToken(true);refreshGuarantee();">Enter DIAG_TOKEN</button>';
+  } else gate.classList.add('hide');
+
+  renderClaims(g.results || []);
+}
+
+function renderClaims(results) {
+  const byKey = new Map(results.map((r) => [`${r.claim.claim_type} ${r.claim.subject}`, r]));
+  const types = VOCAB ? Object.keys(VOCAB) : ['grader'];
+  const subjects = ['bundle', ...SPECS.map((s) => s.slot)];
+
+  $('g_rows').innerHTML = CLAIMS.length ? CLAIMS.map((c, i) => {
+    const r = byKey.get(`${c.claim_type} ${c.subject}`);
+    const verdict = !r ? '<span class="pill wait">unsaved</span>'
+      : r.deferred ? '<span class="pill warn" title="counts across the whole run">deferred</span>'
+      : r.holds ? '<span class="pill ok">✓</span>'
+      : `<span class="pill bad">✗ ${r.counterexample_count}</span>`;
+    const detail = r && r.counterexamples && r.counterexamples.length
+      ? `<div class="mono" style="color:var(--red);padding-top:4px;">`
+        + r.counterexamples.slice(0, 4).map((x) => `${esc(x.bundle)}${x.cert ? ' · ' + esc(x.cert) : ''} — got ${esc(x.got)}`).join('<br>')
+        + (r.counterexamples.length > 4 ? `<br>… and ${r.counterexamples.length - 4} more` : '') + '</div>'
+      : '';
+    return `<tr>
+      <td><select onchange="editClaim(${i},'claim_type',this.value)">${types.map((t) => `<option value="${t}"${t === c.claim_type ? ' selected' : ''}>${t}</option>`).join('')}</select></td>
+      <td><select onchange="editClaim(${i},'subject',this.value)">${subjects.map((sname) => `<option value="${esc(sname)}"${sname === c.subject ? ' selected' : ''}>${esc(sname)}</option>`).join('')}</select></td>
+      <td class="mono">${esc(c.operator)}</td>
+      <td><input value="${esc(c.value)}" onchange="editClaim(${i},'value',this.value)" placeholder="PSA">${detail}</td>
+      <td>${verdict}</td>
+      <td><button class="btn sm ghost" onclick="dropClaim(${i})">✕</button></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6"><div class="empty">No claims. A run with no claims promises nothing.</div></td></tr>';
+}
+
+// ---- manifest grid ---------------------------------------------------------------------------------
+
+function renderManifest() {
+  $('m_head').innerHTML = '<th style="width:100px;">Bundle</th>'
+    + SPECS.map((s) => `<th>${esc(s.slot)} <span style="color:var(--faint);">${s.qty_per_bundle}</span></th>`).join('')
+    + '<th style="width:90px;">Status</th><th style="width:70px;">Pin</th>';
+
+  const done = FILL.filter((b) => b.complete).length;
+  $('m_progress').className = 'pill ' + (done === FILL.length && FILL.length ? 'ok' : 'wait');
+  $('m_progress').textContent = `${done} / ${FILL.length} complete`;
+
+  const pinned = new Map(BUNDLES.map((b) => [b.bundle_no, b.pinned]));
+  $('m_rows').innerHTML = FILL.map((b) => {
+    const cells = SPECS.map((s) => {
+      const cell = b.slots[s.slot] || { want: s.qty_per_bundle, have: 0, complete: false };
+      const cls = cell.complete ? 'ok' : cell.have ? 'warn' : 'wait';
+      const lines = cellContents(b.bundle_no, s.slot);
+      // With a token the cell shows WHAT is in it; without one it stays a count, because the contents
+      // are the pre-sale answer sheet and the page must not demand a token to be useful.
+      const what = (lines && lines.length)
+        ? '<div class="mono" style="margin-top:4px;opacity:.85;">'
+          + lines.map((l) => esc([l.display_name, l.cert_number && ('#' + l.cert_number)]
+            .filter(Boolean).join(' '))).join('<br>') + '</div>'
+        : '';
+      const add = (!cell.complete && RUN && RUN.status === 'draft')
+        ? ' <button class="btn sm ghost" onclick="openAssign(' + b.bundle_no + ",'" + s.slot + "')\""
+          + ' title="place a specific card here">+</button>'
+        : '';
+      return '<td><span class="pill ' + cls + '">' + cell.have + '/' + cell.want + '</span>' + add + what + '</td>';
+    }).join('');
+    return `<tr>
+      <td class="mono">${esc(b.label)}</td>${cells}
+      <td>${b.complete ? '<span class="pill ok">built</span>' : '<span class="pill wait">open</span>'}</td>
+      <td><input type="checkbox" ${pinned.get(b.bundle_no) ? 'checked' : ''} onchange="setPin(${b.bundle_no},this.checked)" title="god bundle — excluded from chase randomisation"></td>
+    </tr>`;
+  }).join('');
+}
+
+// ---- seals, amendments, audit ----------------------------------------------------------------------
+
+async function loadSeals() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/seals`);
+  const s = r.json || {};
+  $('seal_state').className = 'pill ' + (s.ready ? 'ok' : 'wait');
+  $('seal_state').textContent = s.ready ? 'all assigned' : `${s.missing ?? '—'} without a serial`;
+}
+
+window.assignSeals = async () => {
+  const roll = $('rollBox').value.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+  if (!roll.length) { say('seal_msg', 'paste the roll first', 'bad'); return; }
+  const r = await api('POST', `/api/runs/${encodeURIComponent(RUN.public_id)}/seals`, { roll });
+  if (!r.ok) { say('seal_msg', r.json?.error || `HTTP ${r.status}`, 'bad'); return; }
+  // The mapping is deliberately NOT shown: it is as sensitive as the manifest, and this panel is on
+  // the page an operator leaves open.
+  say('seal_msg', `${r.json.assigned} assigned, ${r.json.spare} spare`, 'ok');
+  $('rollBox').value = '';
+  loadSeals();
+  loadAudit();
+};
+
+async function loadChain() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/amendments`);
+  const j = r.json || {};
+  const chain = j.chain || {};
+  $('chain_state').className = 'pill ' + (chain.ok === false ? 'bad' : (j.amendments || []).length ? 'warn' : 'ok');
+  $('chain_state').textContent = chain.ok === false ? 'chain broken'
+    : (j.amendments || []).length ? `${j.amendments.length} amendment(s)` : 'unamended';
+
+  $('chainRows').innerHTML = (j.amendments || []).length
+    ? (j.amendments).map((a) => `<div class="finding" style="border-left:3px solid var(--amber);border-radius:10px;padding:9px 12px;margin-bottom:8px;background:rgba(255,255,255,.015);">
+        <div style="font-weight:600;">#${a.seq} — ${esc(a.reason)}</div>
+        <div class="mono" style="color:var(--muted);margin-top:3px;">bundles ${esc(a.affected_bundles)} · ${esc(String(a.amended_at).slice(0, 16))}</div>
+        <div class="mono" style="color:var(--faint);margin-top:3px;">${esc(String(a.prior_header).slice(0, 12))}… → ${esc(String(a.new_header).slice(0, 12))}…</div>
+      </div>`).join('')
+      + (chain.problems || []).map((x) => `<div class="warn">${esc(x)}</div>`).join('')
+    : '<div class="empty">Nothing amended. A run only gets amendments after it is locked.</div>';
+}
+
+async function loadAudit() {
+  const r = await api('GET', `/api/runs/${encodeURIComponent(RUN.public_id)}/audit?limit=60`, null, authed());
+  const rows = r.json?.audit || [];
+  $('auditRows').innerHTML = rows.length ? rows.map((a) => `<tr>
+      <td class="mono">${esc(String(a.ts).slice(0, 16))}</td>
+      <td><span class="pill">${esc(a.action)}</span></td>
+      <td class="mono">${esc(a.bundle || '')}</td>
+      <td class="mono">${esc(a.actor || '')}</td>
+      <td style="color:var(--muted);">${esc(a.note || '')}</td>
+    </tr>`).join('') : '<tr><td colspan="5"><div class="empty">Nothing recorded yet.</div></td></tr>';
+}
+
+window.setPin = async (no, pinned) => {
+  await api('PATCH', `/api/runs/${encodeURIComponent(RUN.public_id)}/bundles/${no}`, { pinned });
+  await pickRun(RUN.public_id);
+};
+
+// ---- lock ------------------------------------------------------------------------------------------
+//
+// The digest is shown BEFORE the button commits anything, because locking cannot be undone: the codes,
+// the salts, the blob file and the anchored header are minted once and can never be re-issued. A card
+// found wrong afterwards needs an amendment and a new published root, not an edit.
+
+let LOCKED = null;
+
+function renderLock() {
+  const locked = RUN && RUN.status !== 'draft';
+  $('lk_state').className = 'pill ' + (locked ? 'ok' : 'wait');
+  $('lk_state').textContent = RUN ? RUN.status : '-';
+  $('lk_btn').disabled = !RUN || locked;
+  $('lk_btn').textContent = locked ? 'Locked' : 'Lock this run...';
+
+  const d = LOCKED || (locked
+    ? { header_digest: RUN.header_digest, run_root: RUN.run_root, guarantee: RUN.guarantee_text }
+    : null);
+  $('lk_digest').classList.toggle('hide', !d);
+  if (!d) return;
+  $('lk_hd').textContent = d.header_digest || '-';
+  $('lk_root').textContent = d.run_root || '-';
+  $('lk_codes').textContent = d.codes_commit || '-';
+  $('lk_blob').textContent = d.blob_hash ? (d.blob_hash + ' - ' + d.blob_length + ' bytes') : '-';
+  $('lk_guarantee').textContent = d.guarantee || '-';
+  $('lk_guarantee').className = 'plain';
+}
+
+window.refreshLock = () => renderLock();
+
+function renderLockProblems(body) {
+  const el = $('lk_problems');
+  const problems = (body && body.problems) || [];
+  if (!problems.length) { el.classList.add('hide'); return; }
+  el.classList.remove('hide');
+  const rows = problems.map((pr) => {
+    const cx = ((pr.detail && pr.detail.counterexamples) || []).slice(0, 6).map((c) =>
+      '<div class="mono" style="margin-left:14px;opacity:.85;">' + esc(c.bundle)
+      + (c.cert ? ' - cert ' + esc(c.cert) : '')
+      + ' - got ' + esc(c.got) + ', want ' + esc(c.want) + '</div>').join('');
+    return '<div style="margin-top:7px;">' + esc(pr.message) + cx + '</div>';
+  }).join('');
+  el.innerHTML = '<b>' + problems.length + ' problem(s) - nothing was written.</b>' + rows;
+}
+
+window.doLock = async () => {
+  if (!RUN) return;
+  if (!diagToken(false)) diagToken(true);
+  if (!diagToken(false)) return say('lk_msg', 'a token is needed - locking mints bearer secrets', 'bad');
+
+  // TYPED CONFIRMATION, not a click. Everything past this point is irreversible and anchored, and the
+  // run identifier is the one thing an operator cannot type by accident against the wrong run.
+  let typed = null;
+  try {
+    typed = window.prompt('Locking ' + RUN.public_id + ' is IRREVERSIBLE - codes, salts and the anchored digest are minted once. Type the run identifier to confirm:', '');
+  } catch { return say('lk_msg', 'confirmation is unavailable here', 'bad'); }
+  if (String(typed || '').trim() !== RUN.public_id) {
+    return say('lk_msg', 'not locked - the identifier did not match', '');
+  }
+
+  say('lk_msg', 'locking - deriving a key per bundle takes a moment...');
+  $('lk_btn').disabled = true;
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/lock',
+    { actor: 'runs.html' }, authed());
+  if (r.status === 401 || r.status === 403) {
+    diagToken(true); $('lk_btn').disabled = false;
+    return say('lk_msg', 'token rejected - press Lock again', 'bad');
+  }
+  if (!r.ok) {
+    // A refusal is the answer, not an error: it names every problem at once, each with the bundle and
+    // cert that caused it, so a manifest is fixed in one pass rather than one attempt per fault.
+    renderLockProblems(r.json);
+    $('lk_btn').disabled = false;
+    return say('lk_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  }
+  $('lk_problems').classList.add('hide');
+  LOCKED = r.json;
+  say('lk_msg', 'locked - now submit the digest for timestamping', 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// ---- anchor ----------------------------------------------------------------------------------------
+
+async function loadAnchors() {
+  if (!RUN) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/anchors');
+  const anchors = (r.json && r.json.anchors) || [];
+  const gate = (r.json && r.json.gate) || { open: false, reasons: [] };
+
+  $('an_rows').innerHTML = anchors.length
+    ? anchors.map((x) => '<tr><td>' + esc(x.method) + '</td><td>' + esc(x.scope) + '</td><td>'
+        + '<span class="pill ' + (x.state === 'confirmed' ? 'ok' : x.state === 'failed' ? 'bad' : 'wait')
+        + '">' + esc(x.label) + '</span></td><td class="mono">'
+        + esc(String(x.digest).slice(0, 24)) + '...</td></tr>').join('')
+    : '<tr><td colspan="4" class="muted">nothing submitted yet</td></tr>';
+
+  $('an_gate').className = 'pill ' + (gate.open ? 'ok' : 'wait');
+  $('an_gate').textContent = gate.open ? 'sales may open' : 'sales shut';
+  const rs = $('an_reasons');
+  rs.classList.toggle('hide', gate.open || !gate.reasons.length);
+  // The gate's reasons, verbatim. "You cannot sell yet" is useless without which condition is
+  // outstanding, which is why saleGate returns a list rather than a boolean.
+  if (!gate.open && gate.reasons.length) {
+    rs.innerHTML = '<b>Sales are refused because:</b>'
+      + gate.reasons.map((x) => '<div style="margin-top:5px;">- ' + esc(x) + '</div>').join('');
+  }
+}
+
+window.doAnchor = async () => {
+  if (!RUN) return;
+  say('an_msg', 'submitting...');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/anchor',
+    { actor: 'runs.html' });
+  say('an_msg', r.ok ? ('submitted - ' + r.json.label) : ((r.json && r.json.error) || ('error ' + r.status)),
+    r.ok ? 'ok' : 'bad');
+  await loadAnchors();
+};
+
+window.doUpgrade = async () => {
+  if (!RUN) return;
+  // The sweep does this on its own schedule; the button is for when you are watching and waiting.
+  say('an_msg', 'asking the calendars...');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/anchor/upgrade', {});
+  if (!r.ok) return say('an_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  const confirmed = ((r.json && r.json.anchors) || []).filter((x) => x.state === 'confirmed').length;
+  say('an_msg', confirmed ? (confirmed + ' confirmed')
+    : 'still pending - that is normal for the first hours', confirmed ? 'ok' : '');
+  await loadAnchors();
+};
+
+// ---- publish ---------------------------------------------------------------------------------------
+//
+// Phase 2 of the lock. It is separate from phase 1 because it makes network calls and cannot be one
+// transaction, and it is safely retryable because phase 1 already built and hash-committed the bytes:
+// re-encrypting here would mint fresh nonces and produce ciphertext no longer matching the anchored
+// blob hash.
+
+async function loadArtifacts() {
+  if (!RUN) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/artifacts');
+  const rows = (r.json && r.json.artifacts) || [];
+  $('pb_rows').innerHTML = rows.length
+    ? rows.map((x) => '<tr><td>' + esc(x.kind) + (x.seq > 1 ? ' #' + x.seq : '')
+        + (x.superseded_at ? ' <span class="pill">superseded</span>' : '') + '</td>'
+        + '<td class="mono">' + x.bytes + '</td>'
+        + '<td>' + (x.readback_at ? '<span class="pill ok">ok</span>' : '<span class="pill wait">-</span>') + '</td>'
+        + '<td class="mono"><a href="' + esc(x.url || '') + '" target="_blank" rel="noopener">'
+        + esc(String(x.url || '-').slice(0, 78)) + '</a></td></tr>').join('')
+    : '<tr><td colspan="4" class="muted">nothing published yet</td></tr>';
+
+  const published = rows.some((x) => x.kind === 'commitment');
+  $('pb_state').className = 'pill ' + (published ? 'ok' : 'wait');
+  $('pb_state').textContent = published ? 'published' : 'not published';
+  $('pb_btn').disabled = !RUN || RUN.status === 'draft';
+  await loadStorefront();
+}
+
+async function loadStorefront() {
+  if (!RUN) return;
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/storefront');
+  const rows = (r.json && r.json.listings) || [];
+  $('sf_rows').innerHTML = rows.length
+    ? rows.map((x) => '<tr><td class="mono">' + esc(x.sku) + '</td>'
+        + '<td><span class="pill ' + (x.state === 'live' ? 'ok' : 'warn') + '">' + esc(x.state) + '</span></td>'
+        + '<td class="mono">' + (x.available_qty == null ? '-' : x.available_qty) + '</td>'
+        + '<td class="mono" style="opacity:.7;">' + esc(String(x.variant_gid || '-').slice(-24)) + '</td></tr>').join('')
+    : '<tr><td colspan="4" class="muted">not listed yet</td></tr>';
+
+  // 'unpublished' is the state that cost a whole rehearsal once: the product existed, the variants were
+  // stocked, the drift check read clean - and the storefront had no page at all, because the product
+  // had been created as a DRAFT. It gets its own wording rather than sharing "listed".
+  const live = rows.filter((x) => x.state === 'live').length;
+  $('sf_state').className = 'pill ' + (live ? 'ok' : rows.length ? 'bad' : 'wait');
+  $('sf_state').textContent = live ? (live + ' of ' + rows.length + ' live')
+    : rows.length ? 'listed but NOT on the storefront' : 'not listed';
+  $('sf_btn').disabled = !RUN || RUN.status === 'draft';
+}
+
+window.doPublish = async () => {
+  if (!RUN) return;
+  if (!diagToken(false)) diagToken(true);
+  if (!diagToken(false)) return say('pb_msg', 'a token is needed', 'bad');
+  say('pb_msg', 'uploading and reading back...');
+  $('pb_btn').disabled = true;
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/publish',
+    { actor: 'runs.html' }, authed());
+  $('pb_btn').disabled = false;
+  if (r.status === 401 || r.status === 403) { diagToken(true); return say('pb_msg', 'token rejected', 'bad'); }
+
+  const rs = $('pb_reasons');
+  if (r.status === 409 && r.json && r.json.code === 'not_armed') {
+    // The arming guard names every outstanding condition rather than refusing flatly, because
+    // 'not armed' on its own tells an operator nothing about what to change.
+    rs.classList.remove('hide');
+    rs.innerHTML = '<b>Not armed to publish to "' + esc(r.json.target) + '":</b>'
+      + (r.json.reasons || []).map((x) => '<div style="margin-top:5px;">- ' + esc(x.message) + '</div>').join('');
+    return say('pb_msg', 'refused', 'bad');
+  }
+  rs.classList.add('hide');
+  if (!r.ok) return say('pb_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+
+  // THE RECEIPT CAN FAIL INSIDE A 200. It is published in its own try/catch so a failure there cannot
+  // fail the commitment and the blob - which is right - and the failure comes back as
+  // { receipt: { error } }. Nothing read it, so a run whose timestamp never reached the CDN reported
+  // "published and read back" and turned its pill green, and the buyer's page would show no timestamp
+  // at all with nothing anywhere saying why.
+  const receipt = r.json.receipt || {};
+  if (receipt.error) {
+    rs.classList.remove('hide');
+    rs.innerHTML = '<b>The commitment and blob published, but the timestamp receipt did not:</b>'
+      + '<div style="margin-top:5px;">- ' + esc(receipt.error) + '</div>'
+      + '<div style="margin-top:8px;opacity:.8;">A buyer can still verify their bundle; they just cannot'
+      + ' see the timestamp. Publish again once the cause is fixed.</div>';
+    return say('pb_msg', 'published, receipt failed', 'bad');
+  }
+  say('pb_msg', r.json.alreadyDone ? 'already published - nothing re-uploaded' : 'published and read back', 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// ---- the manifest grid, with what is actually in each bundle -----------------------------------------
+//
+// The grid used to show have/want counts only and never fetched /manifest, which made it a progress bar
+// rather than a manifest. The contents are the pre-sale answer sheet, so they need the token - and
+// without one the page falls back to counts rather than demanding it.
+
+let LINES = null;
+
+async function loadManifest() {
+  LINES = null;
+  if (!RUN || !diagToken(false)) { renderManifest(); return; }
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/manifest', null, authed());
+  if (r.ok) LINES = r.json.lines || [];
+  renderManifest();
+}
+
+function cellContents(bundleNo, slot) {
+  if (!LINES) return null;
+  const b = BUNDLES.find((x) => x.bundle_no === bundleNo);
+  return LINES.filter((l) => l.bundle_id === (b && b.id) && l.slot === slot);
+}
+
+// ---- assign drawer -----------------------------------------------------------------------------------
+//
+// GET /candidates and POST /reservations/:id/assign have both existed since R0 with no caller in any
+// page, so the only way to fill a bundle was the bulk deal. That is fine for a rehearsal and no use at
+// all for a real edition, where a specific card goes in a specific number.
+
+let ASSIGN = null;   // { bundleId, bundleNo, slot }
+
+window.openAssign = async (bundleNo, slot) => {
+  const b = BUNDLES.find((x) => x.bundle_no === bundleNo);
+  if (!b) return;
+  // The SLOT decides which table the item id is looked up in and how many units one placement binds.
+  // Hard-coding 'inventory' here is what made every sealed slot unfillable from this page.
+  const spec = SPECS.find((s) => s.slot === slot) || {};
+  ASSIGN = { bundleId: b.id, bundleNo, slot, kind: spec.kind || 'inventory', qty: spec.qty_per_bundle || 1 };
+  $('as_target').textContent = b.label + ' \u00b7 ' + slot;
+  $('assignCard').classList.remove('hide');
+  $('as_q').value = '';
+  $('assignCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await loadCandidates();
+};
+
+window.closeAssign = () => { ASSIGN = null; $('assignCard').classList.add('hide'); };
+
+window.loadCandidates = async () => {
+  if (!ASSIGN) return;
+  say('as_msg', 'searching\u2026');
+  const q = encodeURIComponent($('as_q').value.trim());
+  const r = await api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id)
+    + '/candidates?slot=' + encodeURIComponent(ASSIGN.slot) + '&q=' + q + '&limit=60');
+  if (!r.ok) return say('as_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  const rows = r.json.candidates || r.json.items || [];
+  $('as_rows').innerHTML = rows.length ? rows.map((c) => {
+    // The state is the whole value of this list: an item already live on a channel has to be withdrawn
+    // first, and one earmarked for a later edition is a deliberate override rather than a mistake.
+    // /candidates returns available/reserved_units/on_hand/reserved_by/channel_hold - never `state`.
+    // Reading c.state first meant the earmark and channel-hold cases could never render.
+    //
+    // A hold with no run is stock the intake page set aside FOR runs and never arranged. It reads as
+    // unavailable here - it has a live reservation - but it is precisely what this drawer is for, so it
+    // gets its own state and is placed by adopting the hold rather than making a second one.
+    const spare = c.reserved_by && !c.reserved_by.run;
+    const state = c.channel_hold ? 'listed elsewhere'
+      : spare ? 'held for runs'
+        : c.reserved_by ? ('taken by ' + (c.reserved_by.run || '?') + (c.reserved_by.bundle ? ' \u00b7 ' + c.reserved_by.bundle : ''))
+          : c.available ? 'available' : 'unavailable';
+    const cls = state === 'available' ? 'ok' : spare ? 'warn' : 'bad';
+    return '<tr><td class="mono">' + esc(c.sku || '') + '</td>'
+      + '<td>' + esc(c.name || c.display_name || '') + '</td>'
+      + '<td class="mono">' + esc(c.cert_number || '') + '</td>'
+      + '<td>' + esc(c.grade == null ? '' : c.grade) + '</td>'
+      + '<td><span class="pill ' + cls + '">' + esc(state) + '</span></td>'
+      + '<td>' + (state === 'available' || spare
+        ? '<button class="btn sm" onclick="assignItem(' + c.id + ','
+          + (spare ? c.reserved_by.reservation_id : 'null') + ')">place</button>' : '') + '</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="muted">nothing free for this slot</td></tr>';
+  say('as_msg', rows.length + ' candidate(s)');
+};
+
+window.assignItem = async (itemId, existingReservation) => {
+  if (!ASSIGN) return;
+  say('as_msg', existingReservation ? 'placing\u2026' : 'holding\u2026');
+  // Two steps, and deliberately so: the hold is what blocks the item everywhere, and the assignment
+  // promotes that same row onto a slot rather than creating a second one - which is what keeps the
+  // one-live-reservation index meaningful.
+  //
+  // Unless the item is ALREADY held for runs with no run named, in which case there is nothing to hold:
+  // a second hold would collide with the very index above. assignToSlot adopts a null run_id, so the
+  // existing row is promoted straight onto the slot.
+  let reservationId = existingReservation;
+  if (!reservationId) {
+    const hold = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/hold',
+      { kind: ASSIGN.kind, item_id: itemId, qty: ASSIGN.qty });
+    if (!hold.ok) return say('as_msg', (hold.json && hold.json.error) || ('error ' + hold.status), 'bad');
+    reservationId = hold.json.id;
+  }
+  const asg = await api('POST', '/api/runs/reservations/' + reservationId + '/assign',
+    { bundle_id: ASSIGN.bundleId, slot: ASSIGN.slot });
+  if (!asg.ok) return say('as_msg', (asg.json && asg.json.error) || ('error ' + asg.status), 'bad');
+  say('as_msg', 'placed', 'ok');
+  await pickRun(RUN.public_id);
+  if (ASSIGN) await loadCandidates();
+};
+
+// ---- ledger and close-out ----------------------------------------------------------------------------
+
+let AVAIL = { available: [], paused: false };
+
+async function loadLedger() {
+  if (!RUN) return;
+  const [l, c] = await Promise.all([
+    api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/ledger'),
+    api('GET', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/close-check'),
+  ]);
+  const led = l.json || { entries: [], available: [] };
+  AVAIL = { available: led.available || [], paused: !!led.paused };
+
+  // The chain verifies IN THIS BROWSER, from the published entries. The isomorphic half of the ledger
+  // module makes that free, and it is the same check a buyer runs.
+  $('lg_verdict').className = 'pill ' + (led.verified ? 'ok' : led.entries.length ? 'bad' : 'wait');
+  $('lg_verdict').textContent = led.entries.length
+    ? (led.verified ? 'chain verifies' : 'CHAIN BROKEN') : 'no entries';
+
+  const sold = new Set((led.entries || []).filter((e) => e.bundleNo).map((e) => Number(e.bundleNo)));
+  const free = new Set(led.available || []);
+  $('lg_numbers').innerHTML = BUNDLES.map((b) => {
+    const gone = !free.has(b.bundle_no);
+    return '<div class="num ' + (gone ? 'gone' : 'free') + '" style="cursor:pointer;"'
+      + ' onclick="document.getElementById(\'lg_no\').value=' + b.bundle_no + '" title="' + esc(b.label)
+      + (gone ? ' - accounted for' : ' - available') + ' \u00b7 click to select">'
+      + String(b.bundle_no).padStart(3, '0') + '</div>';
+  }).join('');
+
+  $('lg_rows').innerHTML = (led.entries || []).length
+    ? led.entries.map((e, i) => '<tr><td class="mono">' + (Number(e.seq) || '-') + '</td>'
+        + '<td>' + esc(e.kind) + '</td><td class="mono">' + esc(e.bundleNo || '') + '</td>'
+        + '<td class="mono">' + esc(String(e.occurredAt).replace('T', ' ').slice(0, 19)) + '</td>'
+        + '<td>' + esc(e.detail || '') + '</td></tr>').join('')
+    : '<tr><td colspan="5" class="muted">nothing sold yet</td></tr>';
+
+  const cc = c.json || {};
+  const el = $('lg_close');
+  // Reasons are shown whether or not the run can close. NOTE-prefixed reasons are advisory and are
+  // ONLY ever emitted when the run CAN close, so hiding the box on can_close dropped the single
+  // advisory the check exists to give - "the close-by date you promised has already passed".
+  el.classList.toggle('hide', !(cc.reasons || []).length);
+  if ((cc.reasons || []).length) {
+    el.innerHTML = '<b>' + (cc.can_close ? 'Worth knowing before you close:' : 'This run cannot close yet:') + '</b>'
+      + cc.reasons.map((x) => '<div style="margin-top:5px;">- ' + esc(String(x).replace(/^NOTE /, '')) + '</div>').join('');
+  }
+}
+
+window.pollOrders = async () => {
+  if (!diagToken(false)) diagToken(true);
+  say('lg_msg', 'reading orders\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/poll', {}, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  const d = r.json.drift && r.json.drift.drift ? r.json.drift.drift.length : 0;
+  const errs = r.json.errors || [];
+  const refused = r.json.refused || [];
+  // A read that FAILED used to look exactly like a read that found nothing: errors were collected into
+  // the payload, the route answered 200, and this line painted it green. Say the reasons out loud -
+  // every refusal already carries a full sentence explaining itself.
+  const bits = [r.json.appended + ' new', r.json.duplicates + ' seen before'];
+  if (r.json.seen != null) bits.push(r.json.seen + ' order(s) read');
+  if (d) bits.push(d + ' drifted');
+  say('lg_msg', bits.join(' \u00b7 '), errs.length || refused.length || d ? 'bad' : 'ok');
+  const notes = [
+    ...errs.map((e) => 'could not read orders: ' + (e.message || e.error || e)),
+    ...refused.map((x) => 'refused ' + (x.bundleNo || '') + ': ' + (x.why || '')),
+  ];
+  const box = $('lg_close');
+  if (notes.length) {
+    box.classList.remove('hide');
+    box.innerHTML = '<b>The order read did not go cleanly:</b>'
+      + notes.map((n) => '<div style="margin-top:5px;">- ' + esc(n) + '</div>').join('');
+  }
+  await loadLedger();
+};
+
+window.closeRun = async () => {
+  if (!diagToken(false)) diagToken(true);
+  say('lg_msg', 'closing\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/close',
+    { actor: 'runs.html' }, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  say('lg_msg', 'closed', 'ok');
+  await pickRun(RUN.public_id);
+};
+
+window.discloseRun = async (dry) => {
+  if (!diagToken(false)) diagToken(true);
+  // A dry run is always forced past the grace gate - it publishes nothing, so the wait protects
+  // nobody. A REAL disclosure is forced only when the operator ticks the box, because the grace period
+  // is the buyer's, not ours: it exists so a parcel is in someone's hands before its contents are public.
+  const force = !!dry || $('lg_force').checked;
+  if (!dry && !force && !confirm('Publish the close-out disclosure? Contents become public and this cannot be taken back.')) return;
+  say('lg_msg', dry ? 'building and verifying\u2026' : 'publishing\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/disclose',
+    { dry_run: !!dry, force, actor: 'runs.html' }, authed());
+  if (!r.ok) {
+    const j = r.json || {};
+    return say('lg_msg', (j.errors && j.errors.length ? j.errors[0] : j.error) || ('error ' + r.status), 'bad');
+  }
+  say('lg_msg', dry
+    ? ('verifies \u00b7 ' + r.json.openings + ' opening(s)')
+    : ('disclosed \u00b7 ' + r.json.openings + ' opening(s)'), 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// /pack and /dispatch, the two fulfilment acts. Packing is the one with consequences beyond a
+// timestamp: it consumes the reservations, which is what actually draws this run's stock down, and it
+// is the only thing that moves a bundle off status 'open' - which is half of what stops a republish
+// offering a number that is already in the post.
+// The step that had no button. A dry run builds the productSet input and calls nothing, so it is the
+// safe way to see the refusals - and there are two quite different ones worth telling apart: not_armed
+// means we are not switched on, sale_gate means the COMMITMENT is not ready and no flag will help.
+window.doProduct = async (dry) => {
+  if (!RUN) return;
+  if (!diagToken(false)) diagToken(true);
+  if (!diagToken(false)) return say('sf_msg', 'a token is needed', 'bad');
+  const status = $('sf_status').value;
+  if (!dry && !confirm('Publish ' + RUN.unit_count + ' bundle(s) to the storefront as ' + status + '?')) return;
+  say('sf_msg', dry ? 'building\u2026' : 'publishing\u2026');
+  $('sf_reasons').classList.add('hide');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/publish-product',
+    { dry_run: !!dry, status, actor: 'runs.html' }, authed());
+  if (!r.ok) {
+    const j = r.json || {};
+    const why = [].concat(j.reasons || [], j.errors || []);
+    if (why.length) {
+      $('sf_reasons').classList.remove('hide');
+      $('sf_reasons').innerHTML = '<b>' + esc(j.error || 'refused') + '</b>'
+        + why.map((x) => '<div style="margin-top:5px;">- ' + esc(x) + '</div>').join('')
+        + (j.code === 'not_armed'
+          ? '<div style="margin-top:8px;opacity:.8;">Arming lives in settings &rsaquo; Keeper\u2019s Runs, and needs the Shopify publish switch on as well. Turn both off again when the rehearsal ends.</div>'
+          : '');
+    }
+    return say('sf_msg', j.error || ('error ' + r.status), 'bad');
+  }
+  say('sf_msg', dry ? ('dry run ok \u00b7 ' + (r.json.variants || []).length + ' variant(s) prepared')
+    : ('published \u00b7 ' + (r.json.stocked || r.json.variants || []).length + ' variant(s)'), 'ok');
+  if (!dry) await loadStorefront();
+};
+
+window.bundleAct = async (what) => {
+  if (!diagToken(false)) diagToken(true);
+  const no = Number($('lg_no').value);
+  if (!no) return say('lg_msg', 'pick a bundle number first', 'bad');
+  say('lg_msg', what === 'pack' ? 'packing\u2026' : 'recording dispatch\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/' + what,
+    { bundle_no: no, actor: 'runs.html' }, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  say('lg_msg', what === 'pack'
+    ? (r.json.bundle + ' packed \u00b7 ' + (r.json.consumed || []).length + ' reservation(s) consumed')
+    : (r.json.bundle + (r.json.already ? ' was already dispatched' : ' dispatched')), 'ok');
+  await pickRun(RUN.public_id);
+};
+
+// The escape from the close-out deadlock. Unsold-policy v2 forbids withdrawing a bundle and forbids
+// buying it ourselves, so a number nobody wants is opened on a public stream and recorded as opened -
+// which accounts for it, and lets the run close without weakening what the chase count means.
+window.openedLive = async () => {
+  if (!diagToken(false)) diagToken(true);
+  const no = Number($('lg_no').value);
+  if (!no) return say('lg_msg', 'pick a bundle number first', 'bad');
+  const detail = prompt('How was bundle ' + no + ' opened? This goes in the published ledger.',
+    'opened on a public stream');
+  if (detail == null) return;
+  say('lg_msg', 'recording\u2026');
+  const r = await api('POST', '/api/runs/' + encodeURIComponent(RUN.public_id) + '/ledger',
+    { kind: 'opened_live', bundle_no: no, detail, actor: 'runs.html' }, authed());
+  if (!r.ok) return say('lg_msg', (r.json && r.json.error) || ('error ' + r.status), 'bad');
+  say('lg_msg', 'bundle ' + no + ' recorded as opened', 'ok');
+  await loadLedger();
+};
+
+window.diagToken = diagToken;
+loadRuns();
+</script>
+</body>
+</html>

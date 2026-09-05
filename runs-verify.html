@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify a bundle &middot; Binders Keepers</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--field:#0b0d12;
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;--blue:#6ab0ff;--purple:#d9a4ff;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;min-height:100vh;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(212,176,114,.07),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.055),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:940px;margin:0 auto;position:relative;z-index:1;}
+  a{color:var(--gold);text-decoration:none;} a:hover{text-decoration:underline;text-underline-offset:3px;}
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;letter-spacing:-.015em;margin:0;line-height:1.02;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);}
+  .sub .dot{color:var(--faint);margin:0 7px;}
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:.16s ease;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);transform:translateY(-1px);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.go:hover{background:rgba(67,214,160,.17);border-color:var(--green);}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  input{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:9px 11px;font-size:13px;font-family:var(--mono);width:100%;}
+  input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft);}
+  label{display:block;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:5px;}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 17px;margin-bottom:16px;}
+  .card h2{font-family:var(--serif);font-weight:600;font-size:17px;margin:0 0 4px;}
+  .cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);}
+  .note{color:var(--muted);font-size:12.5px;line-height:1.65;margin:0 0 14px;}
+  .note b{color:var(--text);font-weight:600;}
+  .mono{font-family:var(--mono);font-size:11.5px;word-break:break-all;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr auto;gap:11px;align-items:end;}
+  @media(max-width:720px){.grid3{grid-template-columns:1fr;}}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;font-family:var(--mono);white-space:nowrap;border:1px solid var(--line2);color:var(--muted);}
+  .pill.ok{color:var(--green);border-color:rgba(67,214,160,.4);background:rgba(67,214,160,.09);}
+  .pill.bad{color:var(--red);border-color:rgba(240,102,110,.4);background:rgba(240,102,110,.08);}
+  .pill.warn{color:var(--amber);border-color:rgba(240,192,74,.4);background:rgba(240,192,74,.08);}
+  /* The verdict is the page. Nothing else may be louder. */
+  .verdict{border-radius:14px;padding:20px 22px;margin-bottom:16px;border:1px solid var(--line2);display:none;}
+  .verdict.show{display:block;}
+  .verdict h2{font-family:var(--serif);font-size:24px;margin:0 0 6px;}
+  .verdict.pass{border-color:rgba(67,214,160,.45);background:rgba(67,214,160,.08);}
+  .verdict.pass h2{color:var(--green);}
+  .verdict.fail{border-color:rgba(240,102,110,.5);background:rgba(240,102,110,.08);}
+  .verdict.fail h2{color:var(--red);}
+  .verdict.warn{border-color:rgba(240,192,74,.45);background:rgba(240,192,74,.08);}
+  .verdict.warn h2{color:var(--amber);}
+  .verdict p{margin:0;color:var(--text);font-size:13.5px;line-height:1.6;}
+  .steps{list-style:none;margin:14px 0 0;padding:0;}
+  .steps li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line);font-size:13px;}
+  .steps li:first-child{border-top:none;}
+  .steps .mark{flex:none;width:18px;font-family:var(--mono);font-weight:600;}
+  .steps .mark.ok{color:var(--green);} .steps .mark.bad{color:var(--red);} .steps .mark.pend{color:var(--faint);}
+  .steps .what{flex:1;}
+  .steps .why{color:var(--muted);font-size:12px;margin-top:2px;line-height:1.55;}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;margin-top:12px;}
+  .kv dt{color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;}
+  .kv dd{margin:0;font-family:var(--mono);font-size:11.5px;word-break:break-all;}
+  .foot{margin-top:13px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.6;}
+  .hide{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Verify <span class="thin">a bundle</span></h1>
+        <p class="sub">Provably Packed<span class="dot">&middot;</span>the local twin of the storefront verifier</p>
+      </div>
+    </div>
+    <a class="btn ghost" href="/runs.html">Runs</a>
+  </header>
+
+  <div class="card">
+    <p class="note">
+      This is the <b>same verifier the storefront runs</b>, on the same modules, so the owner can prove the
+      public page is right without trusting it. Everything happens in this browser: the code and the
+      certification number are never sent anywhere. A wrong code fails at decryption and a wrong cert fails
+      at comparison, both here, so neither produces a signal anyone else can observe.
+    </p>
+    <div class="grid3">
+      <div>
+        <label for="run">Run</label>
+        <input id="run" placeholder="E1" autocomplete="off">
+      </div>
+      <div>
+        <label for="code">Verification code &mdash; from the insert inside the parcel</label>
+        <input id="code" placeholder="K7M4-QX92-3RTB-9F5W-2HJD-X8N6-PV" autocomplete="off">
+      </div>
+      <button class="btn go" id="go">Verify</button>
+    </div>
+    <div style="margin-top:11px;max-width:420px;">
+      <label for="cert">Certification number printed on the slab in your hand</label>
+      <input id="cert" placeholder="12345678" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="verdict" id="verdict"><h2 id="vhead"></h2><p id="vbody"></p></div>
+
+  <div class="card hide" id="detail">
+    <div class="cap">What was checked</div>
+    <ul class="steps" id="steps"></ul>
+    <dl class="kv" id="kv"></dl>
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+
+<script src="/extras.js"></script>
+<script type="module">
+// The verifier itself is the SHIPPED library, imported over HTTP — not a copy. Golden Rule 9 exists
+// because a hand-maintained mirror drifts, and a verifier that has drifted from the producer fails an
+// HONEST bundle, which is worse than not verifying at all.
+import { canonicalCode, blobKey, formatCode } from '/lib/runs-codes.mjs';
+import { openBlobFile, blobHash, parseBlobFile } from '/lib/runs-blob.mjs';
+import { bundleTree, leafOf, merkleProof, verifyProof, codeLeaf } from '/lib/runs-merkle.mjs';
+import { verifyCommitment } from '/lib/runs-public.mjs';
+import { normalizeValue, toHex } from '/lib/runs-canonical.mjs';
+
+const $ = (id) => document.getElementById(id);
+const steps = [];
+const push = (state, what, why) => { steps.push({ state, what, why }); render(); };
+
+function render() {
+  $('detail').classList.remove('hide');
+  $('steps').innerHTML = steps.map((s) => `
+    <li><span class="mark ${s.state}">${s.state === 'ok' ? '✓' : s.state === 'bad' ? '✕' : '·'}</span>
+      <span class="what">${esc(s.what)}${s.why ? `<div class="why">${esc(s.why)}</div>` : ''}</span></li>`).join('');
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function verdict(kind, head, body) {
+  const el = $('verdict');
+  el.className = `verdict show ${kind}`;
+  $('vhead').textContent = head;
+  $('vbody').textContent = body;
+}
+
+// §5.4: the code travels in the URL FRAGMENT, which RFC 3986 strips before dereferencing — it is never
+// sent in an HTTP request and never reaches a server log or a CDN log. It does NOT protect against
+// malicious page script, browser history sync, a QR-scanner app or a screenshot; the code is a bearer
+// secret and a buyer has to be told so.
+(function fromFragment() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  if (p.get('r')) $('run').value = p.get('r');
+  if (p.get('c')) $('code').value = p.get('c');
+})();
+
+/** §5.3.3 plaintextBody is a run of netstrings. Parsed strictly: a short read is a corrupt record. */
+function readNetstrings(bytes) {
+  const dec = new TextDecoder();
+  const out = [];
+  let at = 0;
+  while (at < bytes.length) {
+    let colon = at;
+    while (colon < bytes.length && bytes[colon] !== 0x3a) colon++;
+    if (colon >= bytes.length) throw new Error('truncated record: no length delimiter');
+    const len = Number(dec.decode(bytes.subarray(at, colon)));
+    if (!Number.isInteger(len) || len < 0) throw new Error('corrupt record: bad length');
+    const start = colon + 1;
+    const end = start + len;
+    if (end >= bytes.length + 1 && bytes[end] !== 0x2c) throw new Error('truncated record');
+    if (bytes[end] !== 0x2c) throw new Error('corrupt record: missing terminator');
+    out.push(dec.decode(bytes.subarray(start, end)));
+    at = end + 1;
+  }
+  return out;
+}
+
+async function run() {
+  steps.length = 0;
+  $('verdict').className = 'verdict';
+  const runId = $('run').value.trim();
+  const rawCode = $('code').value.trim();
+  const cert = normalizeValue($('cert').value);
+  if (!runId || !rawCode) { verdict('warn', 'Two things needed', 'Enter the run and the code from your insert.'); return; }
+
+  let code;
+  try { code = canonicalCode(rawCode); }
+  catch (e) { verdict('fail', 'That code is not readable', String(e.message || e)); return; }
+  push('ok', 'The code is well formed', `${formatCode(code)} — 26 Crockford symbols`);
+
+  // 1. The commitment, PREFERRED FROM THE CDN.
+  //
+  // §5.3.2 is the whole reason: verification must not depend on us being reachable. This app is
+  // LAN-only, and a buyer scanning an insert at 11pm on a public holiday must not get a connection
+  // refused. So the page asks our API only for the published URLs, then fetches the artifacts
+  // themselves from the CDN — and falls back to the LAN copy when a run has not published yet, which
+  // is what makes this page usable during a rehearsal.
+  let c = null;
+  let source = 'this server';
+  const artifacts = await fetch(`/api/runs/${encodeURIComponent(runId)}/artifacts`)
+    .then((r) => (r.ok ? r.json() : { artifacts: [] })).catch(() => ({ artifacts: [] }));
+  const published = Object.fromEntries((artifacts.artifacts || [])
+    .filter((a) => a.url && !a.superseded_at).map((a) => [a.kind, a.url]));
+
+  if (published.commitment) {
+    try {
+      const res = await fetch(published.commitment);
+      if (res.ok) { c = await res.json(); source = 'the published CDN copy'; }
+    } catch { /* fall through to the LAN copy */ }
+  }
+  if (!c) {
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/commitment`);
+      if (!res.ok) throw new Error(`the run's commitment is not published (${res.status})`);
+      c = await res.json();
+    } catch (e) { verdict('fail', 'No published commitment', String(e.message || e)); return; }
+  }
+  push('ok', `Commitment read from ${source}`, published.commitment || '');
+
+  try {
+    await verifyCommitment(c);
+    push('ok', 'The commitment hashes to its own header digest',
+      'So the chase ladder, the guarantee sentence, the composition and the unsold policy are all covered by the anchored value — none of them can have been rewritten after sales opened.');
+  } catch (e) { push('bad', 'The commitment does not hash to its header digest', String(e.message || e)); }
+
+  // 2. The blob file, checked against the hash the header commits to BEFORE anything is decrypted.
+  let file = null;
+  if (published.blob) {
+    try {
+      const res = await fetch(published.blob);
+      if (res.ok) file = new Uint8Array(await res.arrayBuffer());
+    } catch { /* fall through */ }
+  }
+  if (!file) {
+    try {
+      const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/blob`);
+      if (!res.ok) throw new Error(`the blob file is not published (${res.status})`);
+      file = new Uint8Array(await res.arrayBuffer());
+    } catch (e) { verdict('fail', 'No published blob file', String(e.message || e)); return; }
+  }
+
+  const got = await blobHash(file);
+  if (got !== c.blob_hash) {
+    push('bad', 'The blob file is not the one that was committed', `it hashes to ${got}`);
+    verdict('fail', 'The published record has been replaced', 'The file served does not match the hash inside the anchored digest. Stop and contact the seller.');
+    return;
+  }
+  push('ok', 'The blob file matches the committed hash', `${file.length} bytes, SHA-256 ${got.slice(0, 16)}…`);
+  try { parseBlobFile(file, { unitCount: c.unit_count }); } catch (e) { push('bad', 'The blob container is malformed', String(e.message || e)); }
+
+  // 3. Derive the key and trial-decrypt. ~600ms of PBKDF2, which is the point of the parameter.
+  let opened;
+  let key;
+  try {
+    key = await blobKey(code, c.run);
+    opened = await openBlobFile(file, { blobKeyHex: key, publicId: c.run, unitCount: c.unit_count });
+  } catch (e) {
+    push('bad', 'No entry opened with that code', String(e.message || e));
+    verdict('fail', 'That code does not open a bundle in this run', 'Check the code on your insert, and that the run is the one printed alongside it.');
+    return;
+  }
+
+  // 4. The record, and the leaf it rebuilds to.
+  const fields = readNetstrings(opened.body);
+  const [magic, publicId, bundleNo, saltHex, attrCount] = fields;
+  if (magic !== 'BKR1-BLOB') { push('bad', 'The decrypted record is not a bundle record', magic); }
+  const attrs = [];
+  for (let i = 5; i + 1 < fields.length; i += 2) attrs.push({ name: fields[i], value: fields[i + 1] });
+  if (attrs.length !== Number(attrCount)) push('bad', 'The record declares a different attribute count', `${attrs.length} vs ${attrCount}`);
+  push('ok', `Your bundle is number ${bundleNo} of ${c.unit_count}`, `${attrs.length} committed attributes`);
+
+  const tree = await bundleTree(saltHex, attrs);
+  const leaves = c.leaves;
+  const index = Number(bundleNo) - 1;
+  const rebuilt = await leafOf(tree.root);
+  if (rebuilt !== leaves[index]) {
+    push('bad', 'The record does not rebuild the published leaf', `${rebuilt.slice(0, 16)}… vs ${String(leaves[index]).slice(0, 16)}…`);
+  } else {
+    push('ok', 'The record rebuilds exactly the leaf published for that number',
+      'This is the check that binds your parcel to the commitment: the contents you just decrypted hash to a value published before anything sold.');
+  }
+
+  // 5. The proof to the anchored root, derived here rather than served — a proof you were handed proves
+  //    only that someone handed it to you.
+  const proof = await merkleProof(leaves, index);
+  const ok = await verifyProof({ leaf: leaves[index], proof, root: c.root, index, size: leaves.length });
+  push(ok.ok ? 'ok' : 'bad', ok.ok ? `The leaf proves membership of the run root in ${proof.length} step(s)` : 'The membership proof failed', ok.error || '');
+
+  // 6. The code itself is committed, so codes cannot have been minted after the buyers were known.
+  const cl = await codeLeaf(key);
+  const ci = c.code_leaves.indexOf(cl);
+  if (ci !== index) {
+    push('bad', 'Your code is not committed at your bundle number', ci < 0 ? 'it is not in the published set at all' : `it is committed at ${ci + 1}`);
+  } else {
+    const cp = await merkleProof(c.code_leaves, ci);
+    const cok = await verifyProof({ leaf: cl, proof: cp, root: c.codes_commit, index: ci, size: c.code_leaves.length });
+    push(cok.ok ? 'ok' : 'bad', 'Your code was committed before the run sold', cok.error || 'so it cannot have been minted after the buyers were known');
+  }
+
+  // 7. The cert in your hand. Compared HERE, never sent — there is no request anywhere that accepts a
+  //    bundle number paired with a certification number, which is what stops the enumeration attack.
+  const certAttr = attrs.find((a) => /^slot\..+\.cert_number$/.test(a.name) && a.value);
+  let certOk = null;
+  if (!cert) {
+    push('pend', 'Certification number not entered', 'Type the number printed on the slab to complete the check.');
+  } else if (!certAttr) {
+    push('pend', 'This bundle commits no certification number', 'Nothing to compare against.');
+  } else {
+    certOk = normalizeValue(certAttr.value) === cert;
+    push(certOk ? 'ok' : 'bad', certOk ? 'The certification number matches what was committed' : 'THE CERTIFICATION NUMBER DOES NOT MATCH',
+      certOk ? '' : `the record commits ${certAttr.value}`);
+  }
+
+  // 8. Anchors, reported honestly.
+  let anchors = [];
+  try {
+    // §5.7.6: the receipt is the ONE artifact that may be revised, so it is a separate file and the
+    // commitment freezes with an empty anchors array. Read the receipt when there is one.
+    anchors = c.anchors || [];
+    if (!anchors.length && published.anchor) {
+      const r = await fetch(published.anchor).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+      if (r && r.header_digest === c.header_digest) anchors = r.anchors || [];
+    }
+    for (const a of anchors) {
+      push(a.state === 'confirmed' ? 'ok' : 'pend',
+        `Timestamp: ${a.label}`,
+        a.state === 'confirmed'
+          ? 'Anyone with a Bitcoin node can check this without trusting us.'
+          : 'A pending timestamp is not yet independently checkable. It is not a failure — it is in flight.');
+    }
+    if (!anchors.length) push('pend', 'No timestamp published for this run yet', '');
+  } catch { /* the commitment simply carries none */ }
+
+  $('kv').innerHTML = [
+    ['Run', c.run], ['Bundle', `${bundleNo} of ${c.unit_count}`],
+    ['Header digest', c.header_digest], ['Run root', c.root],
+    ['Guarantee', c.guarantee || '—'],
+  ].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+
+  const bad = steps.filter((s) => s.state === 'bad');
+  const amended = (c.amendments || []).some((a) => (a.affected || []).includes(Number(bundleNo)));
+  $('foot').innerHTML = `Verified entirely in this browser. The independent verifier for the timestamp is
+    <a href="https://opentimestamps.org/" target="_blank" rel="noopener">opentimestamps.org</a> — you never
+    have to trust this page.`;
+
+  if (bad.length) {
+    verdict('fail', 'This does not check out', `${bad.length} check${bad.length > 1 ? 's' : ''} failed. Do not accept the parcel as verified.`);
+  } else if (amended) {
+    // §10.5 finding 6: a bundle touched by an amendment may NEVER render a plain green tick, or an
+    // amendment could launder a swap made after the original commitment.
+    verdict('warn', 'Verified, with an amendment on record',
+      'Every check passed, but this bundle was amended after the run was first committed. Read the amendment before accepting it.');
+  } else if (certOk === null) {
+    verdict('warn', 'Everything published checks out',
+      'The record matches the commitment. Enter the certification number from your slab to finish the check.');
+  } else {
+    verdict('pass', 'Verified',
+      `Bundle ${bundleNo} holds exactly what was committed for it, and that commitment was published before anything in this run was sold.`);
+  }
+}
+
+$('go').addEventListener('click', () => { $('go').disabled = true; run().finally(() => { $('go').disabled = false; }); });
+for (const id of ['run', 'code', 'cert']) {
+  $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') $('go').click(); });
+}
+if ($('run').value && $('code').value) $('go').click();
+</script>
+</body>
+</html>
