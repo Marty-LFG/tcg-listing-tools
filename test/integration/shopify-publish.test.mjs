@@ -104,8 +104,8 @@ function stub(url, init = {}) {
 // cache hit instead — this test is about wiring, and shopify-media's own upload dance has 22 unit tests.
 function seedMediaCache() {
   for (const [h, gid] of [['h-front', 'gid://shopify/MediaImage/1'], ['h-og', 'gid://shopify/MediaImage/2']]) {
-    db.prepare(`INSERT INTO shopify_files (content_hash, file_gid, status, ready_at) VALUES (?,?,'ready',datetime('now'))
-                ON CONFLICT(content_hash) DO UPDATE SET file_gid = excluded.file_gid, status = 'ready'`).run(h, gid);
+    db.prepare(`INSERT INTO shopify_files (content_hash, store, file_gid, status, ready_at) VALUES (?,'dev',?,'ready',datetime('now'))
+                ON CONFLICT(content_hash, store) DO UPDATE SET file_gid = excluded.file_gid, status = 'ready'`).run(h, gid);
   }
 }
 
@@ -237,6 +237,22 @@ describe('the condition list', () => {
     const out = await rebuildIdentity(ENV, db, { identityHandle: 'ident-x', fetchImpl: stub });
     assert.equal(out.ok, true, out.error);
     assert.deepEqual(out.listings, ['gid://shopify/Product/1', 'gid://shopify/Product/2', 'gid://shopify/Product/3', 'gid://shopify/Product/4']);
+  });
+
+  // A slab derives the SAME identity handle as the raw copies of its card — identityKeyFor drops the
+  // last stockKey segment, and for a graded row that segment is the grade. That is deliberate (one
+  // card, one identity), but `listings` is the CONDITION selector and a grade is not a condition: a
+  // slab swept in here renders a fifth tile with no condition on it, ranked last, leading to a product
+  // that is not an alternative condition of anything. Slabs belong on the identity's `graded` field.
+  it('leaves a graded slab out of the condition list, even under the same identity', async () => {
+    const raw = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, condition, quantity) VALUES ('AAC-200','pokemon','base1-59','Charizard','Near Mint',1)`).run();
+    db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES ('AAC-200',?,'gid://shopify/Product/raw','ident-slab','live')`).run(raw.lastInsertRowid);
+    const slab = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, quantity, grading_company, grade, cert_number) VALUES ('AAC-201','pokemon','base1-59','Charizard',1,'PSA',9,'84512203')`).run();
+    db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES ('AAC-201',?,'gid://shopify/Product/slab','ident-slab','live')`).run(slab.lastInsertRowid);
+
+    const out = await rebuildIdentity(ENV, db, { identityHandle: 'ident-slab', fetchImpl: stub });
+    assert.equal(out.ok, true, out.error);
+    assert.deepEqual(out.listings, ['gid://shopify/Product/raw'], 'the slab must not become a condition tile');
   });
 
   it('writes an EMPTY list rather than skipping, so a sold-out identity stops advertising tiles', async () => {

@@ -429,8 +429,32 @@ describe('validateProduct — the refusals land before the scope does', () => {
     assert.match(errs({ game: 'mtg' }), /Pokémon only/);
   });
 
-  it('refuses a graded slab — it is the next slice, not this one', () => {
-    assert.match(errs({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '1' }), /RAW singles only/);
+  // Was "refuses a graded slab — it is the next slice, not this one". The slice landed: the mapping had
+  // been written and tested behind that refusal all along, and what it lacked was any requirement that
+  // a graded row carry the facts the mapping depends on.
+  it('accepts a complete graded slab', () => {
+    assert.deepEqual(check({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '84512203' }).errors, []);
+  });
+
+  it('refuses a graded row with no grading company', () => {
+    assert.match(errs({ graded: 1, grade: 9, cert_number: '84512203' }), /grading company/);
+  });
+
+  it('refuses a graded row with no grade', () => {
+    assert.match(errs({ graded: 1, grading_company: 'PSA', cert_number: '84512203' }), /needs its grade/);
+  });
+
+  // The one that is not merely tidiness: productHandleFor falls back to slug(company-grade) with no
+  // cert, so two PSA 9s of one card derive ONE handle and the second productSet upserts over the first.
+  it('refuses a certless slab, because two of them would collide on one handle', () => {
+    assert.match(errs({ graded: 1, grading_company: 'PSA', grade: 9 }), /certification number/);
+  });
+
+  it('files a slab under the graded-slab type and the gaming-cards taxonomy', () => {
+    const p = toShopifyProduct(row({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '84512203' }), {});
+    assert.equal(p.productType, 'Graded Slab');
+    assert.equal(p.taxonomyCategory, TAXONOMY.slab);
+    assert.equal(p.taxonomyCategory, TAXONOMY.single, 'a graded card is still a gaming card');
   });
 
   it('refuses a provisional SKU, so a preview can never burn a shelf label', () => {
