@@ -201,9 +201,9 @@ describe('the cache is what stops Shopify Files filling with orphans', () => {
   it('only a READY row is reusable — a staged or failed one is not', async () => {
     const h = seedStore('halfmade-1');
     db.prepare(`INSERT INTO shopify_files (content_hash, status, resource_url) VALUES (?, 'staged', 'x')`).run(h);
-    assert.equal(cachedFile(db, h), null, 'a half-made row was handed out as reusable');
+    assert.equal(cachedFile(db, h, 'dev'), null, 'a half-made row was handed out as reusable');
     db.prepare(`UPDATE shopify_files SET status='ready', file_gid='gid://shopify/MediaImage/9' WHERE content_hash=?`).run(h);
-    assert.equal(cachedFile(db, h).file_gid, 'gid://shopify/MediaImage/9');
+    assert.equal(cachedFile(db, h, 'dev').file_gid, 'gid://shopify/MediaImage/9');
   });
 });
 
@@ -312,7 +312,7 @@ describe('a timeout is an unfinished wait, not a failure', () => {
     assert.equal(second.calls.staged, 0, 'it re-staged bytes for a file that already existed');
     assert.equal(second.calls.fileCreate, 0, 'it minted a DUPLICATE file — this is the orphan pile');
     assert.equal(r.adopted, 1);
-    assert.equal(cachedFile(db, h).status, 'ready');
+    assert.equal(cachedFile(db, h, 'dev').status, 'ready');
   });
 
   it('records the id even when Shopify FAILED the image, so the orphan is at least nameable', async () => {

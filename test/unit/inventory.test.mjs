@@ -76,14 +76,21 @@ describe('summarizeInventory (portfolio roll-up — quantity-aware, GR3)', () =>
     assert.equal(s.counts.in_stock, 2);
     assert.equal(s.byCompany.PSA, 1);
   });
-  it('realized P/L on a sold lot scales by quantity', () => {
-    const rows = [{ status: 'sold', game: 'mtg', quantity: 10,
+  it('realized P/L on a sold lot scales by SALE_QTY, not the zeroed quantity', () => {
+    // The sale sets quantity to 0, so scaling by `quantity || 1` said one unit for a lot of ten and
+    // charged COGS once for the whole lot. sale_qty is what the sale actually covered.
+    const rows = [{ status: 'sold', game: 'mtg', quantity: 0, sale_qty: 10,
       sale_price_cents: 500, sale_fees_cents: 50, cost_cents: 100, acq_fees_cents: 10 }];
     const s = summarizeInventory(rows);
-    // (500 - 50 - 100 - 10) × 10 = 3400c
     assert.equal(s.realizedPlCents, (500 - 50 - 100 - 10) * 10);
     assert.equal(s.units, 0, 'sold rows are not counted as held units');
     assert.equal(s.counts.sold, 1);
+  });
+
+  it('a sold row with no sale_qty is one unit — every slab and single, and every legacy row', () => {
+    const s = summarizeInventory([{ status: 'sold', game: 'mtg', quantity: 0,
+      sale_price_cents: 500, sale_fees_cents: 50, cost_cents: 100, acq_fees_cents: 10 }]);
+    assert.equal(s.realizedPlCents, 500 - 50 - 100 - 10);
   });
   it('missing quantity defaults to 1 (no-op) and null value is skipped', () => {
     const rows = [

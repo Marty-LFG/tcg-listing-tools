@@ -204,14 +204,26 @@ describe('summarizeSealed — cost is PER UNIT, like value', () => {
     assert.equal(s.valueByCurrency.AUD, 32915);
   });
 
-  it('realized P/L on a sold row also scales cost by quantity', () => {
-    // Sold 3 boxes bought at A$300 each for A$1,200 with A$100 of fees: 1200 - 100 - 900 = A$200.
-    const s = summarizeSealed([{ ...boxes, status: 'sold', quantity: 3, sale_price_cents: 120000, sale_fees_cents: 10000 }], upcMap);
-    assert.equal(s.realizedPlCents, 120000 - 10000 - 30000 * 3);
+  // REWRITTEN. This asserted sale_price_cents as a LINE TOTAL while its inventory twin asserted the
+  // same column PER UNIT — one column, two conventions, in twin functions. Per unit wins, because that
+  // is what cost_cents and acq_fees_cents beside it already are.
+  it('realized P/L on a sold row scales every money term by SALE_QTY', () => {
+    // Sold 3 boxes bought at A$300 each, for A$400 each with A$33.34 of fees each.
+    const s = summarizeSealed([{ ...boxes, status: 'sold', quantity: 0, sale_qty: 3,
+      sale_price_cents: 40000, sale_fees_cents: 3334 }], upcMap);
+    assert.equal(s.realizedPlCents, (40000 - 3334 - 30000) * 3);
     assert.equal(s.units, 0, 'sold stock is not held stock');
   });
 
-  it('a sold row with no quantity recorded is treated as one unit, not zero', () => {
+  it('does not read the cost off the quantity the sale just zeroed', () => {
+    // The old expression multiplied unitCost by the row's CURRENT quantity, which a sale sets to 0 —
+    // so the cost vanished and an automated sealed sale contributed exactly nothing.
+    const s = summarizeSealed([{ ...boxes, status: 'sold', quantity: 0, sale_qty: 1,
+      sale_price_cents: 40000, sale_fees_cents: 0 }], upcMap);
+    assert.equal(s.realizedPlCents, 40000 - 30000, 'the cost basis must still be charged');
+  });
+
+  it('a sold row with no sale_qty recorded is treated as one unit, not zero', () => {
     const s = summarizeSealed([{ ...boxes, status: 'sold', quantity: null, sale_price_cents: 40000, sale_fees_cents: 0 }], upcMap);
     assert.equal(s.realizedPlCents, 40000 - 30000);
   });

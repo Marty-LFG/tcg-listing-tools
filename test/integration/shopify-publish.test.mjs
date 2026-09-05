@@ -70,6 +70,11 @@ function stub(url, init = {}) {
   if (q.includes('metaobjectUpsert')) {
     calls.push({ op: q.includes('BkIdentityListings') ? 'identityListings' : 'identity', variables: v });
     if (bend.identity) return resp(200, { data: { metaobjectUpsert: { userErrors: [{ field: null, message: bend.identity, code: 'INVALID' }] } } });
+    // A store whose bk_card_identity definition has no `graded` field yet — what every store looks
+    // like until bk-shopify's apply-metaobject-definitions has been run against it.
+    if (bend.rejectGradedField && (v.metaobject.fields || []).some((f) => f.key === 'graded')) {
+      return resp(200, { data: { metaobjectUpsert: { userErrors: [{ field: ['metaobject', 'fields'], message: "Field 'graded' is not defined", code: 'INVALID' }] } } });
+    }
     return resp(200, { data: { metaobjectUpsert: { metaobject: { id: 'gid://shopify/Metaobject/9', handle: v.handle.handle }, userErrors: [] } } });
   }
   if (q.includes('productSet')) {
@@ -104,8 +109,8 @@ function stub(url, init = {}) {
 // cache hit instead — this test is about wiring, and shopify-media's own upload dance has 22 unit tests.
 function seedMediaCache() {
   for (const [h, gid] of [['h-front', 'gid://shopify/MediaImage/1'], ['h-og', 'gid://shopify/MediaImage/2']]) {
-    db.prepare(`INSERT INTO shopify_files (content_hash, file_gid, status, ready_at) VALUES (?,?,'ready',datetime('now'))
-                ON CONFLICT(content_hash) DO UPDATE SET file_gid = excluded.file_gid, status = 'ready'`).run(h, gid);
+    db.prepare(`INSERT INTO shopify_files (content_hash, store, file_gid, status, ready_at) VALUES (?,'dev',?,'ready',datetime('now'))
+                ON CONFLICT(content_hash, store) DO UPDATE SET file_gid = excluded.file_gid, status = 'ready'`).run(h, gid);
   }
 }
 
@@ -239,6 +244,22 @@ describe('the condition list', () => {
     assert.deepEqual(out.listings, ['gid://shopify/Product/1', 'gid://shopify/Product/2', 'gid://shopify/Product/3', 'gid://shopify/Product/4']);
   });
 
+  // A slab derives the SAME identity handle as the raw copies of its card — identityKeyFor drops the
+  // last stockKey segment, and for a graded row that segment is the grade. That is deliberate (one
+  // card, one identity), but `listings` is the CONDITION selector and a grade is not a condition: a
+  // slab swept in here renders a fifth tile with no condition on it, ranked last, leading to a product
+  // that is not an alternative condition of anything. Slabs belong on the identity's `graded` field.
+  it('leaves a graded slab out of the condition list, even under the same identity', async () => {
+    const raw = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, condition, quantity) VALUES ('AAC-200','pokemon','base1-59','Charizard','Near Mint',1)`).run();
+    db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES ('AAC-200',?,'gid://shopify/Product/raw','ident-slab','live')`).run(raw.lastInsertRowid);
+    const slab = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, quantity, grading_company, grade, cert_number) VALUES ('AAC-201','pokemon','base1-59','Charizard',1,'PSA',9,'84512203')`).run();
+    db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES ('AAC-201',?,'gid://shopify/Product/slab','ident-slab','live')`).run(slab.lastInsertRowid);
+
+    const out = await rebuildIdentity(ENV, db, { identityHandle: 'ident-slab', fetchImpl: stub });
+    assert.equal(out.ok, true, out.error);
+    assert.deepEqual(out.listings, ['gid://shopify/Product/raw'], 'the slab must not become a condition tile');
+  });
+
   it('writes an EMPTY list rather than skipping, so a sold-out identity stops advertising tiles', async () => {
     const out = await rebuildIdentity(ENV, db, { identityHandle: 'nothing-here', fetchImpl: stub });
     assert.equal(out.ok, true);
@@ -247,10 +268,44 @@ describe('the condition list', () => {
     assert.equal(field.value, '[]');
   });
 
-  it('never touches any field other than listings', async () => {
+  it('never touches any field other than the two it computes', async () => {
     await rebuildIdentity(ENV, db, { identityHandle: 'ident-x', fetchImpl: stub });
     const keys = calls.at(-1).variables.metaobject.fields.map((f) => f.key);
-    assert.deepEqual(keys, ['listings'], 'a rebuild that resends descriptive fields can overwrite a hand edit');
+    // display_name, game, set_code and the rest are DESCRIPTIVE and are written at publish time. A
+    // rebuild that resent them would overwrite a hand edit in the admin with a derived value.
+    assert.deepEqual(keys, ['listings', 'graded'], 'a rebuild may only write what it recomputes');
+  });
+
+  it('files the slabs of a card under `graded`, best grade first', async () => {
+    const mk = (sku, gid, company, grade, cert) => {
+      const r = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, quantity, grading_company, grade, cert_number) VALUES (?,'pokemon','base1-60','Blastoise',1,?,?,?)`).run(sku, company, grade, cert);
+      db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES (?,?,?,'ident-g','live')`).run(sku, r.lastInsertRowid, gid);
+    };
+    mk('AAC-300', 'gid://shopify/Product/psa9', 'PSA', 9, '111');
+    mk('AAC-301', 'gid://shopify/Product/psa10', 'PSA', 10, '222');
+    const out = await rebuildIdentity(ENV, db, { identityHandle: 'ident-g', fetchImpl: stub });
+    assert.equal(out.ok, true, out.error);
+    assert.deepEqual(out.graded, ['gid://shopify/Product/psa10', 'gid://shopify/Product/psa9']);
+    assert.deepEqual(out.listings, [], 'no raw copies of this one');
+  });
+
+  // `graded` is a field on a metaobject DEFINITION that lives in bk-shopify and is applied by hand.
+  // Until that has run the store refuses an upsert naming it — and refusing the whole rebuild would
+  // blank the condition selector for a card whose listings were perfectly computable.
+  it('still writes the condition list when the store has no `graded` field yet', async () => {
+    for (const [sku, cond, gid] of [['AAC-400', 'Near Mint', 'gid://shopify/Product/n'], ['AAC-401', 'Lightly Played', 'gid://shopify/Product/l']]) {
+      const r = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, condition, quantity) VALUES (?,'pokemon','base1-61','Venusaur',?,1)`).run(sku, cond);
+      db.prepare(`INSERT INTO shopify_listings (sku, item_id, product_gid, identity_handle, state) VALUES (?,?,?,'ident-nofield','live')`).run(sku, r.lastInsertRowid, gid);
+    }
+    bend.rejectGradedField = true;
+    const out = await rebuildIdentity(ENV, db, { identityHandle: 'ident-nofield', fetchImpl: stub });
+    assert.equal(out.ok, true, 'a missing field definition must not blank the condition selector');
+    assert.equal(out.listings.length, 2, 'the conditions still went');
+    assert.deepEqual(out.graded, []);
+    assert.match(out.warning, /WITHOUT its graded copies/);
+    assert.match(out.warning, /apply-metaobject-definitions/);
+    assert.deepEqual(calls.at(-1).variables.metaobject.fields.map((f) => f.key), ['listings'],
+      'the retry must drop the field the store rejected, not resend it');
   });
 });
 
@@ -493,7 +548,11 @@ describe('the corrections the review forced', () => {
   });
 
   it('validation refuses BEFORE any byte is uploaded, so a refused row leaves no orphan file', async () => {
-    db.prepare('UPDATE inventory_items SET game = ? WHERE id = ?').run('lorcana', itemId);
+    // A game that is not merely out of the storefront's scope but not STOCKABLE either, so this test
+    // keeps refusing however far V1_GAMES is widened. It used to say 'lorcana', which stopped being a
+    // refusal the moment the lane opened past Pokémon — and the assertion below would then have been
+    // quietly checking that a SUCCESSFUL publish uploaded nothing.
+    db.prepare('UPDATE inventory_items SET game = ? WHERE id = ?').run('yugioh', itemId);
     const r = await post('/publish', { itemId });
     assert.equal(r.json.ok, false);
     assert.match(r.json.error, /validation/);

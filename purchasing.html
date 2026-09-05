@@ -1283,9 +1283,18 @@ function reasonText(b) {
     : b.reason === 'split_not_supported' ? (b.detail || 'this line cannot split across spots')
     : b.reason === 'grading_submissions_required' ? 'pick the grading submissions this fee is for'
     : b.reason === 'grading_count_mismatch' ? ('counted ' + b.counted + ' but named ' + b.submissions + ' submission(s) — one per card')
+    // This one blocks the WHOLE order and the receive screen has no submission editor, so the message
+    // has to carry the remedy — otherwise the operator is left with a raw identifier and no next step.
+    // The grading count is readonly, so editing the line is not it: the line has to be deleted.
+    : b.reason === 'grading_submissions_unusable'
+      ? ('submission ' + (b.submission_ids || []).join(', ') + ' is gone or already promoted, so the fee '
+         + 'would land on nothing — delete this line on the Lines tab and re-add it against a live submission')
     : b.reason === 'lot_units_too_large' ? ('a lot of ' + b.lot_units + ' items is beyond the ' + b.max + ' cap')
     : b.reason === 'fx_required' ? 'no FX rate — stock is stored in AUD, so capture a rate or settle the order'
-    : b.reason;
+    // The server sends a `detail` sentence with every blocker. Preferring it to the raw identifier means
+    // a reason added later degrades to a readable sentence instead of leaking its own enum value —
+    // which is exactly how grading_submissions_unusable reached an operator in the first place.
+    : (b.detail || b.reason);
 }
 
 async function doCommit() {

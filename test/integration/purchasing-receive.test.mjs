@@ -405,6 +405,54 @@ describe('a grading line', () => {
     });
   });
 
+  // THE CURRENCY BUG. card-grader.html seeds grading_cost_cents in the company's NATIVE currency —
+  // data/grading.config.json: "Only PCG quotes in AUD; every other company's figures below are native
+  // USD" — and a receive adds AUD to it. Blind, that produced a number that was neither.
+  it('replaces a native-currency fee rather than adding AUD to it', async () => {
+    const subId = (await (await fetch(base + '/api/inventory/submissions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        game: 'pokemon', name: 'Charizard', grading_company: 'PSA', status: 'submitted',
+        grading_cost_cents: 7999, grading_cost_currency: 'USD',   // the grader's USD sticker price
+      }),
+    })).json()).id;
+
+    const orderId = await makeOrder({ supplier: 'PSA' });
+    const line = await addLine(orderId, {
+      line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'PSA Regular',
+      qty_ordered: 1, unit_cost_cents: 12000, submission_ids: [subId],
+    });
+    await count(line, { qty_received: 1 });
+    const r = await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+
+    withDb((db) => {
+      const row = db.prepare('SELECT grading_cost_cents, grading_cost_currency FROM grading_submissions WHERE id = ?').get(subId);
+      assert.equal(row.grading_cost_cents, 12000, 'the invoiced AUD fee replaces the USD estimate — 7999 + 12000 is not a number');
+      assert.equal(row.grading_cost_currency, 'AUD', 'and the row says which currency it is now in');
+    });
+  });
+
+  it('still ADDS when the column is already AUD, so two invoices for one card total correctly', async () => {
+    const subId = (await (await fetch(base + '/api/inventory/submissions', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        game: 'pokemon', name: 'Blastoise', grading_company: 'PSA', status: 'submitted',
+        grading_cost_cents: 500, grading_cost_currency: 'AUD',
+      }),
+    })).json()).id;
+    const orderId = await makeOrder({ supplier: 'PSA' });
+    const line = await addLine(orderId, {
+      line_kind: 'grading', target: 'inventory', game: 'pokemon', name: 'PSA Regular',
+      qty_ordered: 1, unit_cost_cents: 12000, submission_ids: [subId],
+    });
+    await count(line, { qty_received: 1 });
+    await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    withDb((db) => {
+      assert.equal(db.prepare('SELECT grading_cost_cents c FROM grading_submissions WHERE id = ?').get(subId).c, 12500);
+    });
+  });
+
   it('refuses a submission that is gone or already promoted, instead of paying it into nothing', async () => {
     const orderId = await makeOrder({ supplier: 'PSA' });
     const line = await addLine(orderId, {
@@ -468,6 +516,73 @@ describe('a foreign order with no rate', () => {
     withDb((db) => {
       const row = db.prepare('SELECT cost_cents FROM sealed_items WHERE po_line_id = ?').get(line);
       assert.ok(row.cost_cents > 10000, 'the AUD cost basis reflects the settled rate, not the USD figure');
+    });
+  });
+});
+
+// THE LEDGER INVARIANT, end to end and through the real routes rather than the module's own API:
+// after a receive, a sale, a partial sale and a cancellation, SUM(stock_movements.delta) == quantity
+// for every row in both stock tables.
+describe('the stock ledger balances against what actually happened', () => {
+  it('every row squares after a receive, and the movements name the purchase order', async () => {
+    const orderId = await makeOrder({ supplier: 'Ledger Co' });
+    const sealedLine = await addLine(orderId, {
+      target: 'sealed', game: 'pokemon', product_type: 'booster_box', name: 'White Flare Box',
+      qty_ordered: 4, unit_cost_cents: 18000,
+    });
+    const singleLine = await addLine(orderId, {
+      target: 'inventory', game: 'pokemon', name: 'Iono', qty_ordered: 1, unit_cost_cents: 4000,
+    });
+    await count(sealedLine, { qty_received: 4, placements: [{ location: 'Shelf A', quantity: 4 }] });
+    await count(singleLine, { qty_received: 1, placements: [{ location: 'Binder 1', quantity: 1 }] });
+    const r = await api(`/orders/${orderId}/receive`, { method: 'POST' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+
+    withDb((db) => {
+      // Scoped to the rows THIS receive created — the file shares one database across tests, and rows
+      // left by earlier ones were written before the ledger existed. po_line_id is the stamp the
+      // receive puts on everything it stocks.
+      const drift = db.prepare(`
+        SELECT 'inventory' k, i.id, i.quantity q, COALESCE((SELECT SUM(delta) FROM stock_movements m
+                 WHERE m.kind='inventory' AND m.item_id=i.id),0) l
+          FROM inventory_items i WHERE i.po_line_id IN (?,?)
+        UNION ALL
+        SELECT 'sealed', s.id, s.quantity, COALESCE((SELECT SUM(delta) FROM stock_movements m
+                 WHERE m.kind='sealed' AND m.item_id=s.id),0)
+          FROM sealed_items s WHERE s.po_line_id IN (?,?)
+      `).all(sealedLine, singleLine, sealedLine, singleLine).filter((x) => Number(x.q) !== Number(x.l));
+      assert.deepEqual(drift, [], 'the cache and the ledger disagree after a receive');
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM inventory_items WHERE po_line_id = ?').get(singleLine).n, 1,
+        'the fixture must actually have stocked something for the assertion above to mean anything');
+
+      // And the units are explicable: a receive, pointed at the line that brought them in.
+      const moves = db.prepare(`SELECT reason, delta, ref_kind FROM stock_movements
+                                 WHERE reason = 'receive' AND ref_kind = 'po_line' AND ref_id IN (?,?) ORDER BY id`)
+        .all(String(sealedLine), String(singleLine));
+      assert.ok(moves.length >= 2, 'both lines should have filed a movement');
+      assert.ok(moves.every((m) => m.ref_kind === 'po_line'), 'a receive with no purchase-order line is not explicable');
+      assert.equal(moves.reduce((a, m) => a + m.delta, 0), 5, '4 boxes + 1 single');
+    });
+  });
+
+  it('a hand edit is a movement too, so a number nobody can explain cannot appear', async () => {
+    const orderId = await makeOrder({ supplier: 'Ledger Co' });
+    const line = await addLine(orderId, {
+      target: 'inventory', game: 'pokemon', name: 'Charizard', qty_ordered: 2, unit_cost_cents: 4000,
+    });
+    await count(line, { qty_received: 2, placements: [{ location: 'Binder 1', quantity: 2 }] });
+    await api(`/orders/${orderId}/receive`, { method: 'POST' });
+
+    const itemId = withDb((db) => db.prepare("SELECT id FROM inventory_items WHERE name = 'Charizard'").get().id);
+    const r = await fetch(`${base}/api/inventory/items/${itemId}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ quantity: 5 }),
+    });
+    assert.equal(r.status, 200);
+    withDb((db) => {
+      assert.equal(db.prepare('SELECT quantity q FROM inventory_items WHERE id = ?').get(itemId).q, 5);
+      const last = db.prepare("SELECT reason, delta FROM stock_movements WHERE kind = 'inventory' AND item_id = ? ORDER BY id DESC LIMIT 1").get(itemId);
+      assert.equal(last.reason, 'manual', 'a hand edit that leaves no movement is exactly the hole the ledger fills');
+      assert.equal(last.delta, 3);
     });
   });
 });
