@@ -140,10 +140,15 @@ async function stub(url, init = {}) {
   throw new Error('unstubbed call: ' + (q || u).slice(0, 90));
 }
 
+// Seeded PER STORE, with a different gid on each, because that is the truth being modelled: the bytes
+// are identical but a MediaImage id exists on one store only. A suite that seeded dev alone would make
+// the live tests upload instead of reuse — which is exactly what caught the missing store key.
 function seedMediaCache() {
-  for (const [h, gid] of [['h-front', 'gid://shopify/MediaImage/1'], ['h-og', 'gid://shopify/MediaImage/2']]) {
-    db.prepare(`INSERT INTO shopify_files (content_hash, file_gid, status, ready_at) VALUES (?,?,'ready',datetime('now'))
-                ON CONFLICT(content_hash) DO UPDATE SET file_gid = excluded.file_gid, status = 'ready'`).run(h, gid);
+  const ins = db.prepare(`INSERT INTO shopify_files (content_hash, store, file_gid, status, ready_at) VALUES (?,?,?,'ready',datetime('now'))
+              ON CONFLICT(content_hash, store) DO UPDATE SET file_gid = excluded.file_gid, status = 'ready'`);
+  for (const [h, n] of [['h-front', 1], ['h-og', 2]]) {
+    ins.run(h, 'dev', `gid://shopify/MediaImage/${n}`);
+    ins.run(h, 'live', `gid://shopify/MediaImage/live-${n}`);
   }
 }
 
@@ -218,7 +223,9 @@ const postStream = async (p, body) => {
     summary: (events.find((e) => e.summary) || {}).summary,
   };
 };
-const mirror = (sku) => db.prepare('SELECT * FROM shopify_listings WHERE sku = ?').get(sku);
+// Store-aware, defaulting to dev — the mirror holds one row per (sku, store), so an unqualified read
+// would answer with whichever row SQLite reached first.
+const mirror = (sku, store = 'dev') => db.prepare('SELECT * FROM shopify_listings WHERE sku = ? AND store = ?').get(sku, store);
 
 // ---------------------------------------------------------------------------
 describe('runShopifyBatchPublish — the happy path', () => {
@@ -251,6 +258,44 @@ describe('runShopifyBatchPublish — the happy path', () => {
     await postStream('/publish/batch', { itemIds: ids });
     assert.equal(maxInFlight, 1, 'productSet overlapped — the shelf-label claim is no longer safe');
     assert.equal(calls.filter((c) => c.op === 'productSet').length, 4);
+  });
+
+  // The other half of the same hazard. Sequential WITHIN a batch was already enforced and tested; two
+  // BATCHES overlapping was not, and the only defence was a per-tab in-memory flag a second tab cannot
+  // see. Overlapping runs peek the same free shelf label and the second productSet overwrites the
+  // first's product — the exact failure the watermark test above exists to prevent, one level up.
+  it('refuses a second batch while one is running', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const b = addItem({ name: 'Beta', number: '59/102' });
+    const first = postStream('/publish/batch', { itemIds: [a] });
+    const second = await post('/publish/batch', { itemIds: [b] });
+    assert.equal(second.status, 409, 'a second concurrent batch must be refused, not run');
+    assert.equal(second.json.code, 'batch_running');
+    const done = await first;
+    assert.equal(done.rows[0].status, 'published', 'and the first must be unaffected');
+  });
+
+  // The shelf-label claim used to be written eight lines BEFORE validation, so a row the v1 scope gate
+  // refuses claimed a number it could never publish under — and labelTaken reads a claim row as spent,
+  // so that label was gone for good. Phases that widen the lane make refusals ordinary, not rare.
+  it('a refused row does not retire a shelf label', async () => {
+    const seq = () => db.prepare("SELECT seq FROM sku_counter WHERE namespace = 'LABEL'").get()?.seq ?? 0;
+    const before = seq();
+    const bad = addItem({ name: 'Sealed', number: '61/102', game: 'sealed-thing' });
+    const refused = await postStream('/publish/batch', { itemIds: [bad] });
+
+    assert.notEqual(refused.rows[0].status, 'published', 'the scope gate should have refused this row');
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM shopify_listings WHERE item_id = ?").get(bad).n, 0,
+      'a refused row must leave no claim row — that claim is what retires the label');
+    assert.equal(seq(), before, 'the label counter moved for a row that can never publish');
+  });
+
+  it('releases the lock once the batch finishes', async () => {
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    await postStream('/publish/batch', { itemIds: [a] });
+    const b = addItem({ name: 'Beta', number: '59/102' });
+    const again = await postStream('/publish/batch', { itemIds: [b] });
+    assert.equal(again.rows[0].status, 'published', 'the lock outlived its run');
   });
 
   it('audits the run in channel_exports under the shopify channel', async () => {
@@ -530,6 +575,28 @@ describe('the live store is a separate switch', () => {
     assert.equal(r.rows[0].status, 'published', 'the dev path must be untouched by the live guard');
   });
 
+  // THE CUTOVER BUG, pinned. The mirror was keyed on sku alone, so a card published during the dev
+  // rehearsal read as already-live to the live run and was skipped — the estate would have come out of
+  // R1 missing exactly the cards that were rehearsed most.
+  it('does not let a dev publish make the live run skip the card', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
+    const a = addItem({ name: 'Alpha', number: '58/102' });
+    const dev = await postStream('/publish/batch', { itemIds: [a] });
+    assert.equal(dev.rows[0].status, 'published');
+    const sku = dev.rows[0].sku;
+    assert.equal(mirror(sku, 'dev').state, 'live', 'the dev rehearsal recorded its own row');
+    assert.equal(mirror(sku, 'live'), undefined, 'and wrote nothing under live');
+
+    writeConfig({ ...LIVE_PINNED, publish: { enabled: true, status: 'ACTIVE', allowLive: true } });
+    const live = await postStream('/publish/batch?store=live', { itemIds: [a] });
+    assert.equal(live.rows[0].status, 'published', 'the live run must publish it, not skip it as already live');
+    assert.equal(live.summary.skipped, 0);
+
+    // Two rows, two stores, two product GIDs — and the dev row is untouched.
+    assert.equal(mirror(sku, 'dev').state, 'live');
+    assert.equal(mirror(sku, 'live').state, 'live');
+  });
+
   // "Disarmed" has to mean disarmed for every route that writes. /identity/rebuild was passing only
   // credentials and the live guard, so with publish.enabled false it still performed a metaobjectUpsert
   // against the store while /publish returned 409.
@@ -796,9 +863,9 @@ describe('a stale image cache heals itself, once', () => {
   });
 
   it('forgets only the gid the store named, leaving the rest of the cache alone', async () => {
-    db.prepare(`INSERT INTO shopify_files (content_hash, file_gid, status, ready_at)
-                VALUES ('h-other','gid://shopify/MediaImage/999','ready',datetime('now'))
-                ON CONFLICT(content_hash) DO UPDATE SET file_gid = excluded.file_gid`).run();
+    db.prepare(`INSERT INTO shopify_files (content_hash, store, file_gid, status, ready_at)
+                VALUES ('h-other','dev','gid://shopify/MediaImage/999','ready',datetime('now'))
+                ON CONFLICT(content_hash, store) DO UPDATE SET file_gid = excluded.file_gid`).run();
     const before = db.prepare('SELECT COUNT(*) n FROM shopify_files').get().n;
     const a = addItem({ name: 'Beta', number: '59/102' });
     bend.staleMedia = true;
