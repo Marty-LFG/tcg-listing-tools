@@ -171,12 +171,46 @@ describe('the per-run cap counts the overflow rather than hiding it', () => {
 });
 
 describe('the nag', () => {
+  // RELATIVE, LIKE ITS SIBLING, AND FOR A REASON WORTH KEEPING.
+  //
+  // creation_time used to be the literal '2026-08-28T22:10:00.000Z'. sweepOpenMessages drops anything
+  // older than nag_window_hours - 168, a week - so on the day it was written the fixture sat inside the
+  // window and eight days later it did not. Both nag tests then failed for ever, and they failed
+  // SILENTLY in the sense that matters: the sweep found nothing, reported a clean {open: 0}, and only
+  // the assertion noticed. A fixture that encodes "now" as a literal has a shelf life.
+  //
+  // -10 hours puts the message inside the week-long window with enormous margin, and just before the
+  // alert at -9, which is the real order of events: the buyer asks, then we card it, then we nag.
   const seedAlerted = () => {
     db.prepare(`INSERT INTO member_messages
       (message_id, message_type, sender_id, ebay_item_id, subject, body, status, creation_time, alert_sent_at, nag_count)
       VALUES ('m1','AskSellerQuestion','buyer_bob','123456789012','Is this the alt art?','well?','Unanswered',
-              '2026-08-28T22:10:00.000Z', datetime('now','-9 hours'), 0)`).run();
+              datetime('now','-10 hours'), datetime('now','-9 hours'), 0)`).run();
   };
+
+  // THE WINDOW ITSELF, which nothing covered - which is why the fixture could drift out of it and take
+  // two tests down with it. Both directions, because a window is only meaningful if it lets something
+  // through as well as keeping something out.
+  it('stops re-reading a thread once it is older than the window', async () => {
+    db.prepare(`INSERT INTO member_messages
+      (message_id, message_type, sender_id, subject, body, status, creation_time, alert_sent_at, nag_count)
+      VALUES ('old','AskSellerQuestion','buyer_bob','ancient','well?','Unanswered',
+              datetime('now','-200 hours'), datetime('now','-9 hours'), 0)`).run();
+    const { sent, send } = recorder();
+    const r = await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([]), send });
+    assert.equal(r.open, 0, 'a thread past nag_window_hours must fall out of the sweep');
+    assert.equal(sent.length, 0);
+  });
+
+  it('and still reads one inside it, so the window is a window and not a wall', async () => {
+    // The assertion the drifted fixture was accidentally making. If this ever fails while the one above
+    // passes, a fixture has aged out again rather than the sweep having broken.
+    seedAlerted();
+    const { sent, send } = recorder();
+    const r = await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([]), send });
+    assert.equal(r.open, 1);
+    assert.equal(sent.length, 1);
+  });
 
   it('nudges a message eBay still calls unanswered', async () => {
     seedAlerted();
