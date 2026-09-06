@@ -40,6 +40,27 @@ Do **not** create an A record. The tunnel creates its own proxied CNAME in step 
 
 ## 2. Install cloudflared on ALCSERVER
 
+> ⚠ **SUPERSEDED — this section describes a locally-managed tunnel, which is NOT what runs.**
+>
+> ALCSERVER runs `tcg-tools` as a **remotely managed** tunnel:
+> `cloudflared.exe tunnel run --token-file C:\ProgramData\cloudflared\token`. A token-run tunnel
+> takes its ingress from the **Cloudflare dashboard**, and a local `config.yml` is ignored entirely —
+> the two paths are mutually exclusive by design.
+>
+> So the `config.yml` below **does nothing**. Two copies of it existed on ALCSERVER for months, both
+> naming a tunnel UUID that is not even in the account, and both looked authoritative enough to send
+> two people down the wrong path. Rename them `.UNUSED-remotely-managed`; do not recreate them.
+>
+> **To add or change a route:** Networking → Tunnels → `tcg-tools` → Routes → Add route → Published
+> application. The Path field takes a Go regular expression and matches only — the full path reaches
+> the origin unstripped. Verify with `curl` against the public hostname, never by reading a file.
+> See AGENTS.md §2 golden rule 11 for the current ingress table and the two non-negotiable rules
+> (path-scoped routes, and an edge 404 for anything unmatched).
+>
+> Steps 0 and 1 (the domain on Cloudflare, the tokens in `.env`) still apply. Everything from here to
+> the end of this section is kept only so the abandoned attempt is recognisable if someone finds its
+> leftovers again.
+
 Run on the server itself (192.168.4.200), not the dev box:
 
 ```bat

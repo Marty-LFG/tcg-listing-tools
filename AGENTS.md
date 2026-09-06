@@ -167,6 +167,43 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
     `249`, so `249` is what ships. Run through the Pokémon formatter, HOB #1 came out
     `001`, a number that is not on the card.
 
+11. **Cloudflare and cloudflared are changed in the DASHBOARD, never in a file.**
+    The `tcg-tools` tunnel on ALCSERVER is **remotely managed** — the service runs as
+    `cloudflared.exe tunnel run --token-file C:\ProgramData\cloudflared\token`, and a
+    token-run tunnel takes its entire ingress from the Cloudflare dashboard (or the
+    `/cfd_tunnel/{id}/configurations` API). **A local `config.yml` is ignored entirely** —
+    the two configuration paths are mutually exclusive by design.
+
+    This has already cost a round trip. Two `config.yml` files exist on ALCSERVER — in
+    `C:\Users\server\.cloudflared\` and in the systemprofile directory — both naming a
+    tunnel UUID (`d0454b54…`) that **is not in the account**, while the tunnel actually
+    running is `tcg-tools` (`3834d06d…`) with live connections. They are abandoned
+    leftovers from a locally-managed attempt, they look authoritative, and editing them
+    does nothing. Rename them `.UNUSED-remotely-managed` if that has not been done, and
+    do not recreate them.
+
+    So: to add or change a route, add a **Published application** route under
+    Networking → Tunnels → `tcg-tools` → Routes. The Path field takes a **Go regular
+    expression** and is used for matching only — the full path is forwarded to the origin
+    unstripped, which is what the receivers rely on. Verify with `curl` against the public
+    hostname, never by reading a YAML file.
+
+    Ingress today (both on `binderskeepers.click`, which is separate from the store's
+    `binderskeepers.cards` on Route 53 — no Cloudflare change can touch the live store):
+
+    | hostname | path | origin |
+    |---|---|---|
+    | `ebay-notify.binderskeepers.click` | `^/ebay/(notifications\|account-deletion)$` | `127.0.0.1:5274` |
+    | `keepers.binderskeepers.click` | `^/(shopify/(keepers\|compliance)\|apps/keepers(/.*)?)$` | `127.0.0.1:5275` |
+
+    Two rules that are not negotiable when adding one: the route is **path-scoped**, never
+    a bare hostname, and anything unmatched must fall through to a 404 at the edge. That
+    is what keeps a tunnel from ever reaching `/api/*` on the dev server — the same
+    invariant `test/invariants/*-isolation.test.mjs` guards from the code side.
+
+    `scripts/EBAY_NOTIFICATIONS.md` documents the locally-managed flow that was NOT used;
+    its §2 is corrected to point here.
+
 ---
 
 ## 3. Run / dev loop
