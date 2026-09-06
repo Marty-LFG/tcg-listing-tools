@@ -12,7 +12,7 @@ import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
   validateShopifyHooksConfig, registerConsumer, registeredConsumers, subscribedTopics,
-  registerProxyHandler, __handleRequestForTest, __resetShopifyHooks, getShopifyHooksState,
+  registerProxyHandler, __handleRequestForTest, __resetShopifyHooks, getShopifyHooksState, complianceTopics,
   DEFAULT_CONFIG, KNOWN_TOPICS, BUSINESS_TOPICS, COMPLIANCE_TOPICS,
 } from '../../lib/shopify-hooks.mjs';
 import { buildSignedString } from '../../lib/keepers-proxy-verify.mjs';
@@ -139,13 +139,22 @@ describe('consumers', () => {
     assert.throws(() => registerConsumer({ name: 'x' }), /needs a record/);
   });
 
-  it('unions topics for the subscription set, and always includes the compliance topics', () => {
+  it('unions topics for the subscription set, subscribing a shared topic once', () => {
     registerConsumer({ name: 'keepers', topics: ['orders/paid', 'refunds/create'], record: () => ({}) });
     registerConsumer({ name: 'stock', topics: ['orders/paid', 'orders/cancelled'], record: () => ({}) });
     const t = subscribedTopics();
     assert.equal(t.filter((x) => x === 'orders/paid').length, 1, 'subscribed once, not twice');
-    for (const c of COMPLIANCE_TOPICS) assert.ok(t.includes(c), `${c} is mandatory`);
     assert.ok(t.includes('orders/cancelled') && t.includes('refunds/create'));
+  });
+
+  it('EXCLUDES the compliance topics from the subscription set', () => {
+    // They are not members of Shopify's WebhookSubscriptionTopic enum — verified by introspection
+    // against 2026-07 — because they are configured once at the app level rather than per shop.
+    // Returning them here would make a reconciliation job fail on every run.
+    registerConsumer({ name: 'keepers', topics: ['orders/paid'], record: () => ({}) });
+    const t = subscribedTopics();
+    for (const c of COMPLIANCE_TOPICS) assert.equal(t.includes(c), false, `${c} is app-level, not subscribable`);
+    assert.deepEqual(complianceTopics().sort(), [...COMPLIANCE_TOPICS].sort());
   });
 });
 

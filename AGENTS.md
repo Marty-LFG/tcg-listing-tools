@@ -204,6 +204,34 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
     `scripts/EBAY_NOTIFICATIONS.md` documents the locally-managed flow that was NOT used;
     its §2 is corrected to point here.
 
+12. **Five files in `data/` are TRACKED but hold per-machine state. Never revert them casually.**
+
+    The convention almost everywhere in `data/` is right: `x.config.example.json` is tracked source,
+    the live `x.config.json` is server-owned and gitignored. Five predate it and are **tracked**:
+
+    ```
+    data/backup.config.json    data/bulk-pricing.config.json   data/collectr.config.json
+    data/grading.config.json   data/refresh.config.json        data/tracker.config.json
+    ```
+
+    So ALCSERVER's real settings show as permanent working-tree modifications, and **any
+    `git checkout`, `git stash -u`, branch switch or `git checkout -- data/` silently reverts them to
+    the repo defaults.** Nothing warns you. The setting is simply different afterwards.
+
+    This has already come within one command of biting: `git stash -u` before a branch switch swept up
+    `data/tracker.config.json` carrying `cadence_hours: 6` — the price tracker's real polling interval
+    on the server, against a repo default of `24`. Dropping that stash, which is the obvious thing to
+    do with a stash full of line-ending noise, would have quartered the tracker's cadence with no
+    error and no obvious moment of breakage.
+
+    **Before dropping any stash or reverting anything under `data/`, run `git stash show -p` and read
+    it.** A one-line diff in one of these five is a real setting, not noise.
+
+    Same shape as the stale `config.yml` problem in rule 11: a file that looks like source and is
+    actually machine state. The proper fix is to move all five to the example/live split the rest of
+    the directory uses — worth doing, not yet done, and noted here so the next near-miss is a near-miss
+    rather than a loss.
+
 ---
 
 ## 3. Run / dev loop

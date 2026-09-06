@@ -96,9 +96,14 @@ describe('the listener binds where it was told to', () => {
   it('reports the Keepers consumer and the topics it wants', () => {
     const st = hooks.getShopifyHooksState();
     assert.deepEqual(st.consumers.map((c) => c.name), ['keepers']);
-    // The union always carries the three mandatory compliance topics.
-    for (const t of hooks.COMPLIANCE_TOPICS) assert.ok(st.topics.includes(t), t);
     assert.ok(st.topics.includes('orders/paid'));
+    // The subscription set is business topics ONLY. The three compliance topics are not members of
+    // Shopify's WebhookSubscriptionTopic enum — verified by introspection against 2026-07 — because
+    // they are configured once at the app level rather than subscribed per shop. Listing them here
+    // would make the reconciliation job try to register three topics the API rejects.
+    for (const t of hooks.COMPLIANCE_TOPICS) {
+      assert.equal(st.topics.includes(t), false, `${t} is app-level, not subscribable`);
+    }
   });
 });
 
