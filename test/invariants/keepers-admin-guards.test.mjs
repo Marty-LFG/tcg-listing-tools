@@ -16,11 +16,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { read } from '../helpers/extract-inline.mjs';
+import { SETTINGS } from '../../lib/status.mjs';
 
 const keepers = read('lib/keepers.mjs');
 const status = read('lib/status.mjs');
 const boot = read('test/helpers/boot-server.mjs');
 const ignore = read('.gitignore');
+const redeem = read('lib/keepers-redeem.mjs');
+const project = read('lib/keepers-project.mjs');
+const page = read('keepers.html');
 
 describe('the points ledger is not a tracked file', () => {
   it('.gitignore covers data/keepers.db and both WAL sidecars', () => {
@@ -81,8 +85,10 @@ describe('minting a real discount code is gated on mode AND on the store', () =>
   // project.allowLive; shopifyGraphQL resolves store==='live' to the production shop. So these two
   // checks are the only thing between this route and a spendable code on binderskeepers.cards, and
   // they must live in the route because the function below it will not do them.
+  // Sliced to a real boundary, not a magic length: the first version used `at + 3200` and silently
+  // stopped covering the mint call the moment the branch grew by a paragraph.
   const at = keepers.indexOf('const mint = /^');
-  const branch = keepers.slice(at, at + 3200);
+  const branch = keepers.slice(at, keepers.indexOf("if (p === '/checkin'", at));
 
   it('refuses unless mode is apply', () => {
     assert.match(branch, /if \(cfg\.mode !== 'apply'\)/,
@@ -161,7 +167,9 @@ describe('the unauthenticated settings PUT cannot arm live', () => {
   });
 
   it('refuses project.allowLive through the API', () => {
-    assert.match(entry, /if \(c\.project\?\.allowLive === true\)/);
+    // `!= null && !== false`, not `=== true` — see the behavioural suite below, which probes the real
+    // validator with 1, "true", [] and {}. Those are all truthy to every consumer of this value.
+    assert.match(entry, /if \(c\.project\?\.allowLive != null && c\.project\.allowLive !== false\)/);
   });
 
   it('still delegates the rest to validateKeepersConfig, rather than restating it', () => {
@@ -189,5 +197,122 @@ describe('status wiring', () => {
 
   it('the self-test is registered as a probe', () => {
     assert.match(status, /keepers: '\/api\/keepers\/self-test'/);
+  });
+});
+
+/* ------------------------------------------------------------------------------------------------
+   The five findings an adversarial review confirmed against the first version of this surface. Each
+   one is pinned here because each was invisible to a runtime test: the code refused correctly on the
+   day, and would have stopped refusing the moment a line moved.
+------------------------------------------------------------------------------------------------ */
+
+describe('revoke asks Shopify whether the code was spent, before handing points back', () => {
+  // r.status is OUR copy and this module's premise is that it lags — markUsedByOrder runs off a
+  // webhook Shopify says not to rely on, and reconcileRedemptions only runs from the 30-minute sweep,
+  // and only in mode 'apply'. Revoking inside that window gave the discount AND refunded the points,
+  // then hid it: a 'revoked' row is excluded from reconcileRedemptions' scan (status='active') and
+  // from markUsedByOrder's update (status IN ('active','used')), so neither reading could catch up.
+  const fn = redeem.slice(redeem.indexOf('export async function revokeRedemption'));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+
+  it('reads usage before deactivating', () => {
+    const readAt = body.indexOf('READ_QUERY');
+    const deactivateAt = body.indexOf('DEACTIVATE_MUTATION');
+    assert.ok(readAt > 0, 'revokeRedemption must consult Shopify for asyncUsageCount');
+    assert.ok(deactivateAt > readAt, 'the usage read must come first');
+  });
+
+  it('refuses when the code has been spent, instead of refunding', () => {
+    assert.match(body, /const used = Number\(node\?\.asyncUsageCount \|\| 0\);/);
+    assert.match(body, /if \(used > 0\)/);
+    const at = body.indexOf('if (used > 0)');
+    assert.match(body.slice(at, at + 900), /reason: 'already used'/);
+  });
+
+  it('records what it learned rather than discarding it', () => {
+    // This is exactly what the lost webhook would have said, and 'used' is the state both readings
+    // can still act on.
+    assert.match(body, /SET status='used'/);
+  });
+
+  it('fails closed when usage cannot be read', () => {
+    // A refund we cannot justify is money out the door; a refusal is a retry.
+    assert.match(body, /reason: 'usage_unreadable'/);
+    const at = body.indexOf("reason: 'usage_unreadable'");
+    assert.ok(at < body.indexOf('DEACTIVATE_MUTATION'), 'the refusal must precede any deactivate');
+  });
+});
+
+describe('allowLive is refused on VALUE, not on identity', () => {
+  // Every consumer reads it loosely — keepers-project's guard was `if (store === 'live' &&
+  // !allowLive)` — so 1, "true", [] and {} were all as good as true to them while sailing past a
+  // strict-equality refusal in the validator. The saved file would then read "allowLive": 1
+  // permanently, the dashboard would already say "live writes allowed", and the operator's later
+  // hand-edit of `store` — the one switch the API does refuse, and so the one deliberate decision
+  // they believe they are making — would arm both at once.
+  const base = {
+    mode: 'apply', store: 'dev', config_ttl_sec: 900, drain_limit: 50,
+    sweep_max_per_run: 500, project_limit: 50, retain_days: 30, shows: [],
+  };
+  const check = (allowLive) => SETTINGS.keepers.validate({ ...base, project: { enabled: true, allowLive } });
+
+  for (const truthy of [true, 1, 'true', 'yes', [], {}]) {
+    it(`refuses allowLive ${JSON.stringify(truthy)}`, () => {
+      assert.ok(check(truthy), `${JSON.stringify(truthy)} is truthy to every consumer and must be refused`);
+    });
+  }
+
+  it('still accepts false and absent — those are the safe values', () => {
+    assert.equal(check(false), null);
+    assert.equal(SETTINGS.keepers.validate({ ...base, project: { enabled: true } }), null);
+  });
+
+  it('the last gate before real customer metafields is strict too', () => {
+    assert.match(project, /if \(store === 'live' && allowLive !== true\)/,
+      "keepers-project's live guard must not treat a truthy 1 as consent");
+  });
+});
+
+describe('the live seatbelt is scoped to calls that actually reach the store', () => {
+  // A row that never minted has discount_gid NULL and revokeRedemption makes zero Shopify calls for
+  // it. Gating that on the store protected nothing and stranded real points — reachable in the
+  // documented soak config (store 'live', mode 'apply', project.enabled false), where open debited
+  // the points, mint 409'd, revoke 409'd on the same gate, and uq_kr_open blocked another attempt.
+  const at = keepers.indexOf('const mint = /^');
+  const branch = keepers.slice(at, keepers.indexOf("if (p === '/checkin'", at));
+
+  it('revoke of a never-minted row does not consult the store gate', () => {
+    assert.match(branch, /SELECT discount_gid FROM keepers_redemptions WHERE id = \?/);
+    assert.match(branch, /const touchesStore = Boolean\(mint\) \|\| Boolean\(target && target\.discount_gid\);/);
+    assert.match(branch, /if \(touchesStore && cfg\.store === 'live'/);
+  });
+});
+
+describe('the admin page does not swallow its own answers', () => {
+  it('every action result goes through say(), which keeps it in STATE', () => {
+    // Each handler wrote into an output node and then reloaded, and a reload replaces the whole
+    // panel — so a 409 refusal appeared for the length of five fetches and then vanished. On screen
+    // the click looked like it did nothing, so the operator clicked again.
+    assert.match(page, /function say\(where, text\) \{ STATE\.out = \{ where, text \};/);
+    assert.ok(!/out\.textContent = 'HTTP '/.test(page), 'no handler may write straight to a node it is about to destroy');
+    const renders = page.match(/say\('(gOut|rOut)', 'HTTP '/g) || [];
+    assert.ok(renders.length >= 6, `expected every mutating handler to report through say(), found ${renders.length}`);
+  });
+
+  it('renderPanel puts the last answer back', () => {
+    assert.match(page, /if \(STATE\.out\.where\) \{ const el = \$\(STATE\.out\.where\); if \(el\) el\.textContent = STATE\.out\.text; \}/);
+  });
+
+  it('the heartbeat defers while the page is in use', () => {
+    // An unguarded tick blanked a half-typed grant note, threw focus to document.body so the next
+    // keystrokes went nowhere, and disarmed a Mint button mid-decision.
+    assert.match(page, /setInterval\(\(\) => \{ if \(!busy\(\)\) loadAll\(\); \}, 60000\);/);
+    assert.match(page, /function busy\(\)/);
+    assert.match(page, /\/\^\(INPUT\|SELECT\|TEXTAREA\)\$\/\.test\(a\.tagName\)/);
+    assert.match(page, /document\.querySelector\('button\[data-armed="1"\]'\)/);
+  });
+
+  it('esc() escapes quotes, because this page writes values into attributes', () => {
+    assert.match(page, /\.replace\(\/"\/g,'&quot;'\)/);
   });
 });

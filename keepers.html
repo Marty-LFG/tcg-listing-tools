@@ -153,7 +153,14 @@
 <script src="/datetime.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// Quotes too, unlike the sibling pages' esc(). This one writes values into ATTRIBUTES — the search
+// box's own text, a customer gid, the armed Mint button's description — and a bare " ends the
+// attribute early. The search box is the reachable case and it is only self-XSS, but an error string
+// rendered from a Shopify response lands in the same helper, and paying one line here means never
+// having to work out which call sites are attribute context and which are not.
+const esc = (s) => String(s==null?'':s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const when = (t) => t ? TZ.dateTime(t) : '—';   // Sydney (AEST/AEDT), via datetime.js
 // GR3: money is integer cents. keepers_events.basis_cents carries NO currency column (unlike
 // keepers_orders right beside it), so this is labelled A$ on the honest understanding that the store
@@ -189,7 +196,14 @@ let STATE = {
   tab:'queue', state:null, config:null, webhooks:[], redemptions:[], drift:null,
   customers:[], sel:null, ledger:null, projection:null, err:null,
   q:'', hookStatus:'', redStatus:'',
+  // The last thing a button said, kept in STATE rather than only in the DOM. Every mutating handler
+  // writes its result into an output node and then reloads, and a reload replaces the whole panel —
+  // so a 409 refusal ("mode is 'off' — minting a real code needs mode 'apply'") used to appear for
+  // the length of five fetches and then vanish. On screen the click looked like it did nothing, with
+  // no hint why, so the operator clicked again and reached the same invisible refusal.
+  out: { where:null, text:'' },
 };
+function say(where, text) { STATE.out = { where, text }; const el = $(where); if (el) el.textContent = text; }
 
 /* ---------------------------------------------------------------------------------------------
    The banner. It says three things in this order because that is their order of consequence:
@@ -469,6 +483,8 @@ function renderPanel() {
     : t==='redemptions' ? renderRedemptions()
     : renderReconcile();
   wirePanel();
+  // Put the last answer back. renderPanel just destroyed the node it was written to.
+  if (STATE.out.where) { const el = $(STATE.out.where); if (el) el.textContent = STATE.out.text; }
   const s = STATE.state || {};
   const w = s.webhooks || {};
   $('n_queue').textContent = w.failed ? '('+w.failed+' failed)' : '';
@@ -537,15 +553,14 @@ function wirePanel() {
     tr.addEventListener('click', () => loadCustomer(tr.dataset.gid)));
 
   on('gGo','click', async (e) => {
-    const out = $('gOut');
     const xp = parseInt($('gXp').value || '0', 10) || 0;
     const pts = parseInt($('gPts').value || '0', 10) || 0;
-    e.target.disabled = true; out.textContent = 'granting…';
+    e.target.disabled = true; say('gOut', 'granting…');
     const r = await post('/grant', {
       customerGid: STATE.sel, xp, points: pts,
       reason: $('gReason').value, idempotencyKey: GKEY, note: $('gNote').value || null,
     });
-    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    say('gOut', 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2));
     e.target.disabled = false;
     // A NEW key only after one that actually landed. Reusing it is what makes a double-click safe;
     // rotating it on a refusal would turn a corrected retry into a second grant.
@@ -553,28 +568,25 @@ function wirePanel() {
   });
 
   on('bGo','click', async (e) => {
-    const out = $('gOut');
-    e.target.disabled = true; out.textContent = 'granting badge…';
+    e.target.disabled = true; say('gOut', 'granting badge…');
     const r = await post('/grant-badge', { customerGid: STATE.sel, badgeId: $('bBadge').value.trim() });
-    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    say('gOut', 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2));
     e.target.disabled = false;
     if (r.ok && r.body.ok) await loadCustomer(STATE.sel);
   });
 
   on('ciGo','click', async (e) => {
-    const out = $('gOut');
-    e.target.disabled = true; out.textContent = 'checking in…';
+    e.target.disabled = true; say('gOut', 'checking in…');
     const r = await post('/checkin', { customerGid: STATE.sel });
-    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    say('gOut', 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2));
     e.target.disabled = false;
     if (r.ok && r.body.ok) await loadCustomer(STATE.sel);
   });
 
   on('rGo','click', async (e) => {
-    const out = $('gOut');
-    e.target.disabled = true; out.textContent = 'opening redemption…';
+    e.target.disabled = true; say('gOut', 'opening redemption…');
     const r = await post('/redemptions', { customerGid: STATE.sel, tier: $('rTier').value });
-    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    say('gOut', 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2));
     e.target.disabled = false;
     if (r.ok && r.body.ok) { await loadAll(); await loadCustomer(STATE.sel); }
   });
@@ -582,7 +594,6 @@ function wirePanel() {
   // TWO TAPS on mint, and the armed label carries the whole decision: the percent, the points, the
   // customer and the store. An "are you sure?" that repeats nothing specific is a reflex, not a check.
   document.querySelectorAll('button[data-mint]').forEach(b => b.addEventListener('click', async () => {
-    const out = $('rOut');
     const store = (STATE.state||{}).store || '?';
     if (b.dataset.armed !== '1') {
       document.querySelectorAll('button[data-mint]').forEach(x => { x.dataset.armed=''; x.textContent='Mint'; x.classList.remove('danger'); x.classList.add('warn'); });
@@ -591,18 +602,17 @@ function wirePanel() {
       b.textContent = '⚠ Confirm — ' + b.dataset.desc + ' on ' + store;
       return;
     }
-    b.disabled = true; b.textContent = 'minting…'; out.textContent = '';
+    b.disabled = true; b.textContent = 'minting…'; say('rOut', 'minting…');
     const r = await post('/redemptions/' + b.dataset.mint + '/mint');
-    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    say('rOut', 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2));
     await loadAll();
   }));
 
   document.querySelectorAll('button[data-revoke]').forEach(b => b.addEventListener('click', async () => {
-    const out = $('rOut');
     if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = '⚠ Confirm revoke (refunds the points)'; return; }
-    b.disabled = true; b.textContent = 'revoking…'; out.textContent = '';
+    b.disabled = true; b.textContent = 'revoking…'; say('rOut', 'revoking…');
     const r = await post('/redemptions/' + b.dataset.revoke + '/revoke');
-    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    say('rOut', 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2));
     await loadAll();
   }));
 }
@@ -642,8 +652,27 @@ $('btnSweepApply').addEventListener('click', () => {
 $('btnPass').addEventListener('click', () => diag('/pass', 'projection pass'));
 $('btnGate').addEventListener('click', () => diag('/gate-audit', 'gate audit', 'GET'));
 
+/**
+ * The heartbeat, with one rule: never redraw the panel out from under someone who is using it.
+ *
+ * renderPanel replaces the whole subtree, so an unguarded tick blanked a half-typed grant note, threw
+ * focus to document.body so the next keystrokes went nowhere, and disarmed a Mint button mid-decision
+ * — or worse, left it armed against a row that had moved. The reload is a convenience; the operator's
+ * input is not.
+ *
+ * Busy means: focus is inside a form control on the panel, or any destructive button is armed. Both
+ * end on their own — a blur, or the second tap — so this defers, never cancels.
+ */
+function busy() {
+  const a = document.activeElement;
+  const panel = $('panel');
+  if (a && panel && panel.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return true;
+  if (sweepArmed) return true;
+  return Boolean(document.querySelector('button[data-armed="1"]'));
+}
+
 loadAll();
-setInterval(loadAll, 60000);
+setInterval(() => { if (!busy()) loadAll(); }, 60000);
 </script>
 </body>
 </html>
