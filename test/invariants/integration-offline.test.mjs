@@ -85,6 +85,16 @@ describe('no integration test may drive a channel-mutating route', () => {
     '/api/listings/publish',
     '/api/shopify/publish',
     '/api/shopify/identity/rebuild',
+    // The Keepers routes that reach a real Shopify store. `mint` is the sharpest of them: it creates
+    // a percentage discount code, which is a spendable money-equivalent object, and lib/keepers-redeem
+    // .mjs takes `store` as a plain parameter with no mode gate of its own — so nothing below the
+    // route stops a mint landing on binderskeepers.cards. `revoke` deactivates one. `sweep` and
+    // `pass` page real orders and write customer metafields. `gate-audit` only reads, but it makes
+    // the live store do work on an ungated GET.
+    '/api/keepers/redemptions',
+    '/api/keepers/sweep',
+    '/api/keepers/pass',
+    '/api/keepers/economy/refresh',
   ];
 
   it('every test that posts one is in the acknowledged list, with a reason', () => {

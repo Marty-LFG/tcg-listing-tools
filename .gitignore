@@ -12,6 +12,14 @@ data/repricer.db-shm
 data/postsale.db
 data/postsale.db-wal
 data/postsale.db-shm
+# The Keepers points ledger. It belongs here with the other three and was committed by mistake in
+# 18de0c5 — the only tracked .db in the repo, and the one holding customer XP and points balances.
+# It opens in WAL mode (lib/keepers-db.mjs), so a tracked copy also drops -wal/-shm into git status
+# and a checkout can revert the ledger to a stale snapshot while its write-ahead log points past it,
+# which is worse than the AGENTS.md GR12 problem: not a wrong setting, a corrupt database.
+data/keepers.db
+data/keepers.db-wal
+data/keepers.db-shm
 reports/
 
 # eBay channel secrets + artifacts (bulk listing tool) — NEVER commit.
@@ -113,6 +121,12 @@ data/listing-image.config.json
 # location and publication gids per store; re-seeded from the tracked
 # data/shopify.config.example.json on boot (lib/shopify.mjs ensureConfigSeeded).
 data/shopify.config.json
+# The Keepers engine's arming switches (mode · store · projection · show windows) and the shared
+# Shopify receiver's bind. SERVER-OWNED, same as the four above: what is armed on ALCSERVER is not
+# what is armed on a dev box, and committing either would push one machine's arming state onto the
+# other. Re-seeded from the tracked *.example.json on boot.
+data/keepers.config.json
+data/shopify-hooks.config.json
 # Composed listing images, content-addressed by the compose hash. Pure derived output: every file is
 # reproducible from its source image plus the layout config, exactly like data/img-cache/.
 data/composed/

@@ -105,6 +105,12 @@ export async function bootServer({ env: fakeEnv = {} } = {}) {
   process.env.TCG_TRACKER_DB = path.join(dataDir, 'tracker.db');
   process.env.TCG_REPRICER_DB = path.join(dataDir, 'repricer.db');
   process.env.TCG_POSTSALE_DB = path.join(dataDir, 'postsale.db');
+  // The Keepers points ledger. keepersPlugin is in the withRegistry array (vite.config.js), so
+  // bootServer already boots it — without this, the first integration test that touches
+  // /api/keepers writes real customer XP and points into data/keepers.db. KEEPERS_DB_PATH is a
+  // module-scope const (lib/keepers-db.mjs), so it has to be set HERE, before Vite loads the
+  // module, not in the test file.
+  process.env.TCG_KEEPERS_DB = path.join(dataDir, 'keepers.db');
   process.env.TCG_BACKUP_DIR = path.join(dataDir, 'backups');   // the backup job must never touch real data/backups
   for (const k of OFFLINE_ENV) process.env[k] = '';
   // Then, and only then, the caller's declared fakes.
@@ -129,6 +135,7 @@ export async function bootServer({ env: fakeEnv = {} } = {}) {
     trackerDb: process.env.TCG_TRACKER_DB,
     repricerDb: process.env.TCG_REPRICER_DB,
     postsaleDb: process.env.TCG_POSTSALE_DB,
+    keepersDb: process.env.TCG_KEEPERS_DB,
     dbFileExists: (p) => fs.existsSync(p),
     close: () => server.close(),
   };

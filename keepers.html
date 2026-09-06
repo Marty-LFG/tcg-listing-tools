@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Keepers · Binders Keepers</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);--green:#43d6a0;--amber:#f0c04a;--red:#f0666e;--blue:#6ab0ff;--purple:#c79bff;--pink:#e08a9b;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.72);
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 22px 80px;
+    background:radial-gradient(1200px 620px at 12% -12%,rgba(199,155,255,.06),transparent 60%),radial-gradient(1000px 560px at 112% -6%,rgba(106,176,255,.05),transparent 55%),linear-gradient(180deg,#0b0d12,#08090d 62%);background-attachment:fixed;}
+  .wrap{max-width:1180px;width:100%;margin:0 auto;}
+  a{color:var(--gold);text-decoration:none;}
+  .mast{display:flex;align-items:center;gap:14px;margin-bottom:20px;}
+  .monogram{width:46px;height:46px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:19px;color:var(--purple);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--shadow);}
+  h1{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.015em;margin:0;line-height:1.05;}
+  .mast p{color:var(--muted);font-size:12px;margin:4px 0 0;font-family:var(--mono);}
+  .mast .home{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);}
+  .banner{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;}
+  .banner .chip{font-family:var(--mono);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+  /* flex:none because the chip is a flex row and a dot is a shrinkable item in it. This page's chips
+     carry longer text than the other dashboards' ("economy not cached", "receiver down"), so the dots
+     were being squeezed to 6px wide — an oval, not a status light. */
+  .dot{width:9px;height:9px;flex:none;border-radius:50%;display:inline-block;background:var(--faint);}
+  .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(67,214,160,.55);} .dot.warn{background:var(--amber);} .dot.err{background:var(--red);} .dot.info{background:var(--blue);}
+  .banner b{color:var(--text);font-weight:600;}
+  /* The one thing on this page that must never be misread. Everything else is a number; this is
+     which STORE the buttons below will reach. */
+  .banner .live{color:var(--red);font-weight:700;}
+  .tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .tab{font-family:var(--mono);font-size:12px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer;transition:.15s;}
+  .tab:hover{border-color:var(--line2);color:var(--text);}
+  .tab.active{color:var(--ink);background:var(--purple);border-color:var(--purple);}
+  .tab .n{opacity:.7;font-weight:400;}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px;}
+  .card h2{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin:0;padding:14px 16px 0;font-weight:600;}
+  .card .lede{margin:6px 16px 0;font-size:12.5px;color:var(--muted);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:12px 14px;border-bottom:1px solid var(--line);}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:rgba(255,255,255,.018);}
+  tbody tr.clickable{cursor:pointer;}
+  tbody tr.sel{background:rgba(199,155,255,.07);}
+  .mono{font-family:var(--mono);}
+  .muted{color:var(--muted);} .faint{color:var(--faint);} .num{font-family:var(--mono);text-align:right;white-space:nowrap;}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:999px;border:1px solid var(--line2);color:var(--muted);}
+  .pill.handled,.pill.active,.pill.applied,.pill.paid{color:var(--green);border-color:rgba(67,214,160,.4);}
+  .pill.received,.pill.requested,.pill.minting,.pill.held{color:var(--blue);border-color:rgba(106,176,255,.4);}
+  .pill.failed,.pill.revoked{color:var(--red);border-color:rgba(240,102,110,.4);}
+  .pill.skipped,.pill.ignored,.pill.expired,.pill.void{color:var(--faint);}
+  .pill.used{color:var(--purple);border-color:rgba(199,155,255,.4);}
+  .pill.off{color:var(--faint);} .pill.observe{color:var(--amber);border-color:rgba(240,192,74,.4);} .pill.apply{color:var(--green);border-color:rgba(67,214,160,.4);}
+  .empty{padding:30px 16px;text-align:center;color:var(--faint);font-family:var(--mono);font-size:12.5px;}
+  /* NOT `.err`. That collided with the `.dot.err` state class two rules up — `.dot` is 9×9 with
+     border-box sizing, and this rule's 10/16px padding forced it to 32×20, so every red status dot
+     in the banner rendered as a fat pink slab. Same word, two jobs, one of them silently broken. */
+  .errline{color:var(--red);font-family:var(--mono);font-size:12px;padding:10px 16px;}
+  .warnrow{font-family:var(--mono);font-size:12px;color:var(--amber);padding:8px 16px;}
+  .warnrow.bad{color:var(--red);}
+  button.act{font-family:var(--mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid var(--line2);border-radius:7px;padding:4px 9px;cursor:pointer;transition:.15s;}
+  button.act:hover{border-color:var(--purple);color:var(--text);}
+  button.act.warn{color:var(--amber);border-color:rgba(240,192,74,.45);}
+  button.act.danger{color:var(--red);border-color:rgba(240,102,110,.45);}
+  button.act[disabled]{opacity:.4;cursor:default;}
+  .toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);}
+  .toolbar input,.toolbar select{background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;outline:none;}
+  .toolbar input:focus,.toolbar select:focus{border-color:var(--purple);}
+  .toolbar input.grow{flex:1;min-width:200px;}
+  .toolbar .sp{flex:1;}
+  .toolbar label{font-family:var(--mono);font-size:11px;color:var(--muted);}
+  .grid2{display:grid;grid-template-columns:1fr;gap:0;}
+  @media (min-width:900px){ .grid2{grid-template-columns:1fr 1fr;} .grid2 > div:first-child{border-right:1px solid var(--line);} }
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 16px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12.5px;}
+  .kv:last-child{border-bottom:0;}
+  .kv .k{color:var(--muted);} .kv .v{white-space:nowrap;}
+  .kv .v.chg{color:var(--amber);}
+  .form{padding:14px 16px;display:grid;gap:9px;}
+  .form .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap;}
+  .form input,.form select{background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;outline:none;}
+  .form input:focus,.form select:focus{border-color:var(--purple);}
+  .form input.wide{flex:1;min-width:170px;}
+  .form button{font-family:var(--mono);font-size:12px;background:var(--purple);color:var(--ink);border:0;border-radius:8px;padding:8px 13px;font-weight:600;cursor:pointer;}
+  .form button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line2);}
+  .form button.armed{background:var(--amber);color:var(--ink);}
+  .form button[disabled]{opacity:.45;cursor:default;}
+  .form .out{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto;}
+  .form .hint{font-family:var(--mono);font-size:11px;color:var(--faint);}
+  details.diag{margin-top:8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:0 14px;}
+  details.diag summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:11px 0;letter-spacing:.03em;list-style:none;}
+  details.diag summary::-webkit-details-marker{display:none;}
+  .diagrow{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:0 0 14px;}
+  .diagrow input{background:var(--ink);border:1px solid var(--line2);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;flex:1;min-width:180px;outline:none;}
+  .diagrow input:focus{border-color:var(--purple);}
+  .diagrow button{font-family:var(--mono);font-size:12px;background:var(--purple);color:var(--ink);border:0;border-radius:8px;padding:8px 13px;font-weight:600;cursor:pointer;}
+  .diagrow button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line2);}
+  .diagrow button.danger{background:transparent;color:var(--red);border:1px solid rgba(240,102,110,.45);}
+  #diagOut{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;padding:0 0 12px;}
+  .note{font-family:var(--mono);font-size:11px;color:var(--faint);padding:0 16px 12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mast">
+    <div class="monogram">BK</div>
+    <div>
+      <h1>The Keepers</h1>
+      <p>XP ledger · projection · redemption · show check-ins</p>
+    </div>
+    <a class="home" href="/settings.html" style="margin-left:auto;">⚙ System console →</a>
+    <a class="home" href="/">← all tools</a>
+  </div>
+
+  <div class="banner" id="banner"><span class="chip">loading…</span></div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-tab="queue">Queue <span class="n" id="n_queue"></span></div>
+    <div class="tab" data-tab="customers">Customers <span class="n" id="n_customers"></span></div>
+    <div class="tab" data-tab="ledger">Ledger <span class="n" id="n_ledger"></span></div>
+    <div class="tab" data-tab="redemptions">Redemptions <span class="n" id="n_redemptions"></span></div>
+    <div class="tab" data-tab="reconcile">Reconcile <span class="n" id="n_reconcile"></span></div>
+  </div>
+
+  <div id="panel"><div class="card"><div class="empty">loading…</div></div></div>
+
+  <details class="diag">
+    <summary>⚙ Diagnostics — manual triggers (needs DIAG_TOKEN)</summary>
+    <div class="diagrow">
+      <input id="diagToken" type="password" placeholder="DIAG_TOKEN (stored in this browser only)" autocomplete="off">
+      <button id="btnSelfTest" class="ghost">Self-test</button>
+      <button id="btnEconomy" class="ghost">Refresh economy</button>
+      <button id="btnSweepDry" class="ghost">Sweep (dry run)</button>
+      <button id="btnSweepApply" class="danger">Sweep — APPLY</button>
+      <button id="btnPass" class="ghost">Projection pass</button>
+      <button id="btnGate" class="ghost">Gate audit</button>
+    </div>
+    <div id="diagOut"></div>
+  </details>
+</div>
+
+<script src="/datetime.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const when = (t) => t ? TZ.dateTime(t) : '—';   // Sydney (AEST/AEDT), via datetime.js
+// GR3: money is integer cents. keepers_events.basis_cents carries NO currency column (unlike
+// keepers_orders right beside it), so this is labelled A$ on the honest understanding that the store
+// is AUD-only — see the note under the ledger table rather than a silent assumption.
+const money = (cents) => cents==null ? '—' : 'A$' + ((Math.round(+cents||0))/100).toFixed(2);
+// The drift lists are LIMIT 200 in SQL and their counts are the lengths of the capped arrays, so 200
+// means "at least 200" and rendering a bare 200 would read as an exact figure.
+const cap200 = (n) => (Number(n) >= 200 ? '≥200' : String(n ?? 0));
+const short = (gid) => String(gid||'').replace(/^gid:\/\/shopify\/\w+\//,'');
+
+function token() { return $('diagToken').value.trim(); }
+function withToken(path) { const t = token(); return t ? path + (path.includes('?')?'&':'?') + 'token=' + encodeURIComponent(t) : path; }
+
+async function api(path, opts) {
+  const r = await fetch('/api/keepers'+path, opts);
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw Object.assign(new Error(j.error||j.reason||('HTTP '+r.status)), { status:r.status, body:j });
+  return j;
+}
+// For the gated POSTs. A refusal is an ANSWER here, not an outage — the route replies 409 with a
+// reason on every business refusal — so this returns the body either way and lets the caller decide.
+async function post(path, body) {
+  const r = await fetch('/api/keepers'+withToken(path), {
+    method:'POST',
+    headers: body ? {'content-type':'application/json'} : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(()=>({}));
+  return { http:r.status, ok:r.ok, body:j };
+}
+
+let STATE = {
+  tab:'queue', state:null, config:null, webhooks:[], redemptions:[], drift:null,
+  customers:[], sel:null, ledger:null, projection:null, err:null,
+  q:'', hookStatus:'', redStatus:'',
+};
+
+/* ---------------------------------------------------------------------------------------------
+   The banner. It says three things in this order because that is their order of consequence:
+   which store the buttons reach, what the engine is allowed to do, and whether the receiver is up.
+--------------------------------------------------------------------------------------------- */
+function renderBanner() {
+  const s = STATE.state;
+  if (!s) { $('banner').innerHTML = '<span class="chip"><span class="dot err"></span>'+esc(STATE.err||'no engine state')+'</span>'; return; }
+  const r = s.receiver || {};
+  const chips = [];
+  const live = s.store === 'live';
+  chips.push('<span class="chip"><span class="dot '+(live?'err':'info')+'"></span>store <b class="'+(live?'live':'')+'">'+esc(s.store||'—')+'</b></span>');
+  chips.push('<span class="chip">mode <span class="pill '+esc(s.mode)+'">'+esc(s.mode||'—')+'</span></span>');
+  const proj = s.project || {};
+  chips.push('<span class="chip"><span class="dot '+(proj.enabled?'ok':'warn')+'"></span>projection '+(proj.enabled?'<b>ON</b>':'off')
+    + (proj.allowLive ? ' · <b class="live">live writes allowed</b>' : '') + '</span>');
+  chips.push('<span class="chip"><span class="dot '+(r.listening?'ok':'err')+'"></span>receiver '
+    + (r.listening ? esc(r.host+':'+r.port) : ('down'+(r.bind_error?' — '+esc(r.bind_error):''))) + '</span>');
+  const ec = s.economy;
+  chips.push('<span class="chip"><span class="dot '+(ec&&!ec.problem?'ok':(ec?'warn':'err'))+'"></span>economy '
+    + (ec ? esc(ec.source) + (ec.problem?' — '+esc(ec.problem):'') : '<b>not cached</b>') + '</span>');
+  if (s.config_problem) chips.push('<span class="chip"><span class="dot err"></span>config: '+esc(s.config_problem)+'</span>');
+  chips.push('<span class="chip">queue <b>'+esc(s.queue_depth ?? 0)+'</b></span>');
+  $('banner').innerHTML = chips.join('');
+}
+
+/* --- Queue ------------------------------------------------------------------------------------
+   Built on /webhooks, NOT /observations. /observations filters `observation IS NOT NULL` and only a
+   SUCCESSFUL delivery writes an observation — so a failed one has an error and no observation and is
+   invisible there. A queue view that shows a clean board while deliveries fail is worse than none.
+------------------------------------------------------------------------------------------------ */
+function renderQueue() {
+  const s = STATE.state || {};
+  const w = s.webhooks || {};                 // sparse: only statuses that exist appear
+  const r = s.receiver || {};
+  const counts = ['received','handled','skipped','ignored','failed']
+    .map(k => '<div class="kv"><span class="k">'+k+'</span><span class="v">'+(w[k] ?? 0)+'</span></div>').join('');
+  const rows = STATE.webhooks;
+  const table = !rows.length
+    ? '<div class="empty">No deliveries recorded'+(STATE.hookStatus?' with status “'+esc(STATE.hookStatus)+'”':'')+'.</div>'
+    : '<table><thead><tr><th>Received (Sydney)</th><th>Topic</th><th>Ref</th><th>Status</th><th class="num">Try</th><th>Action / error</th></tr></thead><tbody>'
+      + rows.map(x => '<tr>'
+          + '<td class="mono muted">'+esc(when(x.received_at))+'</td>'
+          + '<td class="mono">'+esc(x.topic)+'</td>'
+          + '<td class="mono faint">'+esc(short(x.ref_id)||'—')+'</td>'
+          + '<td><span class="pill '+esc(x.status)+'">'+esc(x.status)+'</span></td>'
+          + '<td class="num">'+esc(x.attempt ?? 0)+'</td>'
+          + '<td class="'+(x.error?'':'muted')+'" style="'+(x.error?'color:var(--red)':'')+'">'+esc(x.error || x.action || '—')+'</td>'
+        + '</tr>').join('')
+      + '</tbody></table>';
+
+  return '<div class="card"><h2>Receiver</h2>'
+    + '<div class="grid2"><div>'
+      + '<div class="kv"><span class="k">listening</span><span class="v">'+(r.listening?esc(r.host+':'+r.port):'no')+'</span></div>'
+      + '<div class="kv"><span class="k">public endpoint</span><span class="v">'+esc(r.public_endpoint||'—')+'</span></div>'
+      + '<div class="kv"><span class="k">expects shop</span><span class="v">'+esc(r.expect_shop_domain||'—')+'</span></div>'
+      + '<div class="kv"><span class="k">consumers</span><span class="v">'+esc((r.consumers||[]).map(c=>c.name).join(', ')||'none')+'</span></div>'
+      + '<div class="kv"><span class="k">signature failures</span><span class="v'+(r.sig_failures?' chg':'')+'">'+esc(r.sig_failures ?? 0)+'</span></div>'
+    + '</div><div>'+counts+'</div></div>'
+    + '<p class="note">A signature-failure count that climbs is the only warning that the app secret was rotated and every webhook is now being refused.</p>'
+    + '</div>'
+    + '<div class="card"><h2>Deliveries</h2>'
+      + '<div class="toolbar">'
+        + '<label>status</label><select id="hookStatus">'
+          + ['','received','handled','skipped','ignored','failed'].map(v =>
+              '<option value="'+v+'"'+(STATE.hookStatus===v?' selected':'')+'>'+(v||'all')+'</option>').join('')
+        + '</select><span class="sp"></span>'
+        + '<button class="act" id="hookReload">↻ reload</button>'
+      + '</div>' + table
+    + '</div>';
+}
+
+/* --- Customers -------------------------------------------------------------------------------- */
+function renderCustomers() {
+  const rows = STATE.customers;
+  const list = !rows.length
+    ? '<div class="empty">'+(STATE.q ? 'Nothing matches “'+esc(STATE.q)+'”.' : 'No Keepers on the ledger yet.')+'</div>'
+    : '<table><thead><tr><th>Customer</th><th>Handle</th><th>Joined</th><th>Referral</th><th>Dirty</th></tr></thead><tbody>'
+      + rows.map(c => '<tr class="clickable'+(STATE.sel===c.customer_gid?' sel':'')+'" data-gid="'+esc(c.customer_gid)+'">'
+          + '<td class="mono">'+esc(short(c.customer_gid))+'</td>'
+          + '<td class="mono muted">'+esc(c.handle||'—')+'</td>'
+          + '<td class="mono muted">'+esc(c.joined_at?when(c.joined_at):'—')+'</td>'
+          + '<td class="mono faint">'+esc(c.referral_code||'—')+'</td>'
+          + '<td>'+(c.dirty?'<span class="pill received">queued</span>':'<span class="faint">—</span>')+'</td>'
+        + '</tr>').join('')
+      + '</tbody></table>';
+
+  return '<div class="card"><h2>Find a Keeper</h2>'
+    + '<p class="lede">Matches customer id, handle, numeric id or referral code — never name or email. The ledger does not hold either (D-022).</p>'
+    + '<div class="toolbar"><input class="grow" id="q" placeholder="gid, handle, numeric id or referral code — blank lists the most recent" value="'+esc(STATE.q)+'">'
+      + '<button class="act" id="qGo">Search</button></div>'
+    + list + '</div>'
+    + (STATE.sel ? renderSelected() : '<div class="card"><div class="empty">Pick a Keeper above to see their ledger, projection and grants.</div></div>');
+}
+
+function renderSelected() {
+  const l = STATE.ledger, pr = STATE.projection;
+  if (!l) return '<div class="card"><div class="empty">loading '+esc(short(STATE.sel))+'…</div></div>';
+  const c = l.customer || {}, w = c.written || {}, t = l.totals || {};
+  const p = pr && pr.projection;
+
+  // written vs would-write, side by side. The projection is the only place the CURRENT truth lives:
+  // `written` is a record of the last successful push, which is a different thing and is exactly the
+  // pair someone needs to see when a storefront number looks wrong.
+  const cmp = (k, wv, pv) => {
+    const changed = p && String(wv ?? '') !== String(pv ?? '');
+    return '<div class="kv"><span class="k">'+k+'</span><span class="v'+(changed?' chg':'')+'">'
+      + esc(wv==null?'—':wv) + (p ? ' → ' + esc(pv==null?'—':pv) : '') + '</span></div>';
+  };
+
+  let projBox;
+  if (pr && pr.projection === null) {
+    projBox = '<div class="empty">No ledger events at all — the projection is deliberately null, so nothing is written and the storefront keeps reading “not started”.</div>';
+  } else if (!pr) {
+    projBox = '<div class="empty">projection unavailable — the economy has to be cached first.</div>';
+  } else {
+    projBox = cmp('xp', w.xp, p.xp) + cmp('points', w.points, p.points) + cmp('level', w.level, p.level)
+      + cmp('rank', '—', p.rankName) + cmp('badges', w.badges, (p.badges||[]).join(','))
+      + '<div class="kv"><span class="k">in step with Shopify</span><span class="v">'+(pr.unchanged===null?'—':(pr.unchanged?'yes':'<b class="live">no — a pass would write</b>'))+'</span></div>'
+      + (p.negativeShortfall ? '<div class="kv"><span class="k">points shortfall</span><span class="v chg">'+esc(p.negativeShortfall)+' owed back before any balance shows</span></div>' : '')
+      + '<div class="kv"><span class="k">fields a pass would send</span><span class="v">'+esc((pr.would_write||[]).length)+'</span></div>';
+  }
+
+  const reasons = Object.keys((STATE.config && STATE.config.grant_reasons) || {});
+  const tiers = ((STATE.config && STATE.config.economy && STATE.config.economy.tiers) || []);
+
+  return '<div class="card"><h2>'+esc(short(STATE.sel))+'</h2>'
+    + '<div class="grid2">'
+      + '<div>'
+        + '<div class="kv"><span class="k">handle</span><span class="v">'+esc(c.handle||'—')+'</span></div>'
+        + '<div class="kv"><span class="k">joined</span><span class="v">'+esc(c.joinedAt?when(c.joinedAt):'—')+'</span></div>'
+        + '<div class="kv"><span class="k">referral code</span><span class="v">'+esc(c.referralCode||'—')+'</span></div>'
+        + '<div class="kv"><span class="k">last written</span><span class="v">'+esc(w.at?when(w.at):'never')+'</span></div>'
+        + (c.writeError ? '<div class="kv"><span class="k">write error</span><span class="v chg">'+esc(c.writeError)+'</span></div>' : '')
+        + '<div class="kv"><span class="k">events</span><span class="v">'+esc(t.events??0)+' ('+esc(t.held??0)+' held · '+esc(t.void??0)+' void)</span></div>'
+      + '</div>'
+      + '<div>'+projBox+'</div>'
+    + '</div>'
+    + '<div class="form">'
+      + '<div class="row">'
+        + '<select id="gReason">'+reasons.map(r=>'<option value="'+esc(r)+'">'+esc(r)+'</option>').join('')+'</select>'
+        + '<input id="gXp" class="" style="width:90px" placeholder="XP" inputmode="numeric">'
+        + '<input id="gPts" class="" style="width:100px" placeholder="points" inputmode="numeric">'
+        + '<input id="gNote" class="wide" placeholder="note (optional)">'
+        + '<button id="gGo">Grant</button>'
+      + '</div>'
+      + '<div class="row"><span class="hint">Idempotency key: <span class="mono" id="gKey"></span> — regenerated after every successful grant, so a double-click cannot award twice. Negative values are recorded as a correction. Cap ' + esc((STATE.config&&STATE.config.max_grant)||1000) + ' per grant.</span></div>'
+      + '<div class="row">'
+        + '<input id="bBadge" style="width:190px" placeholder="badge id, e.g. first-pull">'
+        + '<button id="bGo" class="ghost">Grant badge</button>'
+        + '<button id="ciGo" class="ghost">Manual check-in</button>'
+        + (tiers.length
+            ? '<select id="rTier">'+tiers.map(t=>'<option value="'+esc(t.handle)+'">'+esc(t.handle)+' — '+esc(t.pointsCost)+' pts → '+esc(t.percentOff)+'%</option>').join('')+'</select>'
+              + '<button id="rGo" class="ghost">Open redemption</button>'
+            : '<span class="hint">no redemption tiers cached — refresh the economy</span>')
+      + '</div>'
+      + '<div class="out" id="gOut"></div>'
+    + '</div></div>';
+}
+
+/* --- Ledger ------------------------------------------------------------------------------------ */
+function renderLedger() {
+  if (!STATE.sel) return '<div class="card"><div class="empty">Pick a Keeper on the Customers tab — the ledger is per customer.</div></div>';
+  const l = STATE.ledger;
+  if (!l) return '<div class="card"><div class="empty">loading…</div></div>';
+  const ev = l.events || [], t = l.totals || {};
+  const body = !ev.length
+    ? '<div class="empty">No events. This customer exists on the ledger but has earned nothing yet.</div>'
+    : '<table><thead><tr><th>When (Sydney)</th><th>Kind</th><th class="num">XP</th><th class="num">Points</th><th>Source</th><th class="num">Basis</th><th>Status</th><th>Note</th></tr></thead><tbody>'
+      + ev.map(e => '<tr>'
+          + '<td class="mono muted">'+esc(when(e.occurred_at || e.recorded_at))+'</td>'
+          + '<td class="mono">'+esc(e.kind)+(e.badge_id?' <span class="faint">'+esc(e.badge_id)+'</span>':'')+'</td>'
+          + '<td class="num" style="'+(e.xp_delta<0?'color:var(--red)':'')+'">'+esc(e.xp_delta)+'</td>'
+          + '<td class="num" style="'+(e.points_delta<0?'color:var(--red)':'')+'">'+esc(e.points_delta)+'</td>'
+          + '<td class="mono faint">'+esc(e.source)+(e.source_ref?' · '+esc(short(e.source_ref)):'')+'</td>'
+          + '<td class="num muted">'+esc(money(e.basis_cents))+'</td>'
+          + '<td><span class="pill '+esc(e.status)+'">'+esc(e.status)+'</span>'+(e.hold_until?' <span class="faint mono">→'+esc(when(e.hold_until))+'</span>':'')+'</td>'
+          + '<td class="muted">'+esc(e.note||'—')+'</td>'
+        + '</tr>').join('')
+      + '</tbody></table>';
+
+  return '<div class="card"><h2>'+esc(short(STATE.sel))+' — ledger</h2>'
+    + '<div class="grid2"><div>'
+      + '<div class="kv"><span class="k">XP (applied)</span><span class="v">'+esc(t.xp??0)+'</span></div>'
+      + '<div class="kv"><span class="k">points (applied)</span><span class="v">'+esc(t.points??0)+'</span></div>'
+    + '</div><div>'
+      + '<div class="kv"><span class="k">held</span><span class="v">'+esc(t.held??0)+'</span></div>'
+      + '<div class="kv"><span class="k">void</span><span class="v">'+esc(t.void??0)+'</span></div>'
+    + '</div></div>'
+    + body
+    + '<p class="note">Newest first, capped at 200 events — and the totals above are summed over the rows FETCHED, so past 200 they are a page total rather than a lifetime one. Basis is shown in A$: keepers_events has no currency column, and the store sells in AUD only.</p>'
+    + '</div>';
+}
+
+/* --- Redemptions -------------------------------------------------------------------------------
+   Every button here spends or unspends something. Mint creates a percentage discount code on a real
+   Shopify store, which is a spendable money-equivalent object — so it arms first, and the armed label
+   names the store, the customer, the points and the percent rather than asking "are you sure?".
+------------------------------------------------------------------------------------------------ */
+function renderRedemptions() {
+  const rows = STATE.redemptions;
+  const s = STATE.state || {};
+  const live = s.store === 'live';
+  const body = !rows.length
+    ? '<div class="empty">No redemptions'+(STATE.redStatus?' with status “'+esc(STATE.redStatus)+'”':'')+'. Open one from a customer on the Customers tab.</div>'
+    : '<table><thead><tr><th class="num">#</th><th>Customer</th><th>Tier</th><th class="num">Points</th><th class="num">%</th><th>Code</th><th>Status</th><th>Minted / expires</th><th></th></tr></thead><tbody>'
+      + rows.map(x => {
+          const canMint = x.status === 'requested';
+          const canRevoke = ['requested','minting','active','failed'].includes(x.status);
+          return '<tr>'
+            + '<td class="num muted">'+esc(x.id)+'</td>'
+            + '<td class="mono">'+esc(short(x.customer_gid))+'</td>'
+            + '<td class="mono muted">'+esc(x.tier_handle||'—')+'</td>'
+            + '<td class="num">'+esc(x.points_cost)+'</td>'
+            + '<td class="num">'+esc(x.percent_off)+'%</td>'
+            + '<td class="mono">'+esc(x.code||'—')+'</td>'
+            + '<td><span class="pill '+esc(x.status)+'">'+esc(x.status)+'</span>'
+              + (x.status==='minting' ? '<div class="faint mono" style="font-size:10.5px">wedged — revoke to release</div>' : '')
+              + (x.error ? '<div class="mono" style="color:var(--red);font-size:10.5px">'+esc(x.error)+'</div>' : '')
+            + '</td>'
+            + '<td class="mono muted">'+esc(x.minted_at?when(x.minted_at):'—')+(x.expires_at?'<br><span class="faint">→ '+esc(when(x.expires_at))+'</span>':'')+'</td>'
+            + '<td>'
+              + (canMint ? '<button class="act warn" data-mint="'+esc(x.id)+'" data-desc="'+esc(x.percent_off+'% off · '+x.points_cost+' pts · '+short(x.customer_gid))+'">Mint</button> ' : '')
+              + (canRevoke ? '<button class="act danger" data-revoke="'+esc(x.id)+'">Revoke</button>' : '')
+            + '</td>'
+          + '</tr>';
+        }).join('')
+      + '</tbody></table>';
+
+  return '<div class="card"><h2>Redemptions</h2>'
+    + '<p class="lede">A mint creates a real, spendable discount code on the <b class="'+(live?'live':'')+'">'+esc(s.store||'?')+'</b> store. Minting needs mode <b>apply</b>; on live it also needs <b>project.allowLive</b>, which cannot be set from this page or any API — it is a file edit on the box.</p>'
+    + '<div class="toolbar">'
+      + '<label>status</label><select id="redStatus">'
+        + ['','requested','minting','active','used','expired','failed','revoked'].map(v =>
+            '<option value="'+v+'"'+(STATE.redStatus===v?' selected':'')+'>'+(v||'all')+'</option>').join('')
+      + '</select><span class="sp"></span><button class="act" id="redReload">↻ reload</button>'
+    + '</div>'
+    + body
+    + '<div class="form"><div class="out" id="rOut"></div></div>'
+    + '<p class="note">A row stuck at <b>minting</b> means a mint died mid-flight. Nothing moves it on its own, and the open-redemption index counts it — so that customer cannot redeem again until it is revoked. Revoke is the only exit.</p>'
+    + '</div>';
+}
+
+/* --- Reconcile --------------------------------------------------------------------------------- */
+function renderReconcile() {
+  const d = STATE.drift;
+  if (!d) return '<div class="card"><div class="empty">drift unavailable — '+esc(STATE.err||'the ledger could not be read')+'</div></div>';
+  const c = d.counts || {};
+  const list = (title, rows, cols) => '<div class="card"><h2>'+title+' ('+cap200(rows.length)+')</h2>'
+    + (!rows.length ? '<div class="empty">none</div>'
+      : '<table><thead><tr>'+cols.map(x=>'<th>'+x[0]+'</th>').join('')+'</tr></thead><tbody>'
+        + rows.slice(0,200).map(r=>'<tr>'+cols.map(x=>'<td class="mono muted">'+esc(x[1](r))+'</td>').join('')+'</tr>').join('')
+        + '</tbody></table>')
+    + '</div>';
+
+  return '<div class="card"><h2>Drift</h2>'
+    + '<div class="grid2"><div>'
+      + '<div class="kv"><span class="k">missing — an accruing order with no event</span><span class="v'+(c.missing?' chg':'')+'">'+cap200(c.missing)+'</span></div>'
+      + '<div class="kv"><span class="k">extra — an event with no accruing order</span><span class="v'+(c.extra?' chg':'')+'">'+cap200(c.extra)+'</span></div>'
+    + '</div><div>'
+      + '<div class="kv"><span class="k">unlinked — events with no customer yet</span><span class="v">'+cap200(c.unlinked)+'</span></div>'
+      + '<div class="kv"><span class="k">clean</span><span class="v">'+(d.clean?'yes':'<b class="live">no</b>')+'</span></div>'
+    + '</div></div>'
+    + '<p class="note">“Clean” ignores unlinked events by design — an unlinked event is a customer we have not identified yet, not a discrepancy. Counts saturate at 200 because each list is capped in SQL. A sweep with APPLY appends the missing rows; nothing ever deletes an extra one — that is a question for a person.</p>'
+    + '</div>'
+    + list('Missing', d.missing||[], [['Order', r=>short(r.order_gid)], ['Number', r=>r.order_number||'—']])
+    + list('Extra', d.extra||[], [['Event', r=>r.id], ['Source ref', r=>short(r.source_ref)], ['XP', r=>r.xp_delta], ['Points', r=>r.points_delta]])
+    + list('Unlinked', d.unlinked||[], [['Source ref', r=>short(r.source_ref)], ['Events', r=>r.n]]);
+}
+
+function renderPanel() {
+  const t = STATE.tab;
+  $('panel').innerHTML =
+      t==='queue' ? renderQueue()
+    : t==='customers' ? renderCustomers()
+    : t==='ledger' ? renderLedger()
+    : t==='redemptions' ? renderRedemptions()
+    : renderReconcile();
+  wirePanel();
+  const s = STATE.state || {};
+  const w = s.webhooks || {};
+  $('n_queue').textContent = w.failed ? '('+w.failed+' failed)' : '';
+  $('n_customers').textContent = STATE.customers.length ? '('+STATE.customers.length+')' : '';
+  $('n_ledger').textContent = STATE.ledger ? '('+((STATE.ledger.totals||{}).events||0)+')' : '';
+  const open = STATE.redemptions.filter(r => r.status==='requested' || r.status==='minting').length;
+  $('n_redemptions').textContent = open ? '('+open+')' : '';
+  const dc = (STATE.drift||{}).counts || {};
+  const bad = (dc.missing||0) + (dc.extra||0);
+  $('n_reconcile').textContent = bad ? '('+bad+')' : '';
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Loading. NOT one Promise.all: getKeepersEngineState opens the ledger and runs three queries, and
+   /drift does too, so on a box that has never run the plugin either can 500 — and a rejected member
+   of a Promise.all would blank the whole page instead of one panel. Each call catches its own.
+--------------------------------------------------------------------------------------------- */
+const soft = (p) => p.catch((e) => { STATE.err = e.message; return null; });
+
+async function loadAll() {
+  STATE.err = null;
+  const [state, config, hooks, reds, drift] = await Promise.all([
+    soft(api('/state')),
+    soft(api('/config')),
+    soft(api('/webhooks?limit=100' + (STATE.hookStatus ? '&status='+encodeURIComponent(STATE.hookStatus) : ''))),
+    soft(api('/redemptions?limit=100' + (STATE.redStatus ? '&status='+encodeURIComponent(STATE.redStatus) : ''))),
+    soft(api('/drift')),
+  ]);
+  STATE.state = state; STATE.config = config;
+  STATE.webhooks = (hooks && hooks.rows) || [];
+  STATE.redemptions = (reds && reds.rows) || [];
+  STATE.drift = drift;
+  const cust = await soft(api('/customers?q=' + encodeURIComponent(STATE.q)));
+  STATE.customers = (cust && cust.rows) || [];
+  renderBanner(); renderPanel();
+}
+
+async function loadCustomer(gid) {
+  STATE.sel = gid; STATE.ledger = null; STATE.projection = null;
+  renderPanel();
+  STATE.ledger = await soft(api('/customers/' + encodeURIComponent(gid)));
+  STATE.projection = await soft(api('/customers/' + encodeURIComponent(gid) + '/projection'));
+  renderPanel();
+}
+
+/* --- events ------------------------------------------------------------------------------------
+   Re-bound after every render, because renderPanel replaces the whole subtree. Cheap, and it means
+   no handler can ever be attached to a node that is no longer on the page.
+------------------------------------------------------------------------------------------------ */
+function newKey() { return 'admin-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8); }
+let GKEY = newKey();
+
+function wirePanel() {
+  const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+
+  on('hookStatus','change', (e) => { STATE.hookStatus = e.target.value; loadAll(); });
+  on('hookReload','click', loadAll);
+  on('redStatus','change', (e) => { STATE.redStatus = e.target.value; loadAll(); });
+  on('redReload','click', loadAll);
+  on('qGo','click', () => { STATE.q = $('q').value.trim(); loadAll(); });
+  on('q','keydown', (e) => { if (e.key === 'Enter') { STATE.q = e.target.value.trim(); loadAll(); } });
+
+  const kEl = $('gKey'); if (kEl) kEl.textContent = GKEY;
+
+  document.querySelectorAll('tr[data-gid]').forEach(tr =>
+    tr.addEventListener('click', () => loadCustomer(tr.dataset.gid)));
+
+  on('gGo','click', async (e) => {
+    const out = $('gOut');
+    const xp = parseInt($('gXp').value || '0', 10) || 0;
+    const pts = parseInt($('gPts').value || '0', 10) || 0;
+    e.target.disabled = true; out.textContent = 'granting…';
+    const r = await post('/grant', {
+      customerGid: STATE.sel, xp, points: pts,
+      reason: $('gReason').value, idempotencyKey: GKEY, note: $('gNote').value || null,
+    });
+    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    e.target.disabled = false;
+    // A NEW key only after one that actually landed. Reusing it is what makes a double-click safe;
+    // rotating it on a refusal would turn a corrected retry into a second grant.
+    if (r.ok && r.body.ok) { GKEY = newKey(); await loadAll(); await loadCustomer(STATE.sel); }
+  });
+
+  on('bGo','click', async (e) => {
+    const out = $('gOut');
+    e.target.disabled = true; out.textContent = 'granting badge…';
+    const r = await post('/grant-badge', { customerGid: STATE.sel, badgeId: $('bBadge').value.trim() });
+    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    e.target.disabled = false;
+    if (r.ok && r.body.ok) await loadCustomer(STATE.sel);
+  });
+
+  on('ciGo','click', async (e) => {
+    const out = $('gOut');
+    e.target.disabled = true; out.textContent = 'checking in…';
+    const r = await post('/checkin', { customerGid: STATE.sel });
+    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    e.target.disabled = false;
+    if (r.ok && r.body.ok) await loadCustomer(STATE.sel);
+  });
+
+  on('rGo','click', async (e) => {
+    const out = $('gOut');
+    e.target.disabled = true; out.textContent = 'opening redemption…';
+    const r = await post('/redemptions', { customerGid: STATE.sel, tier: $('rTier').value });
+    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    e.target.disabled = false;
+    if (r.ok && r.body.ok) { await loadAll(); await loadCustomer(STATE.sel); }
+  });
+
+  // TWO TAPS on mint, and the armed label carries the whole decision: the percent, the points, the
+  // customer and the store. An "are you sure?" that repeats nothing specific is a reflex, not a check.
+  document.querySelectorAll('button[data-mint]').forEach(b => b.addEventListener('click', async () => {
+    const out = $('rOut');
+    const store = (STATE.state||{}).store || '?';
+    if (b.dataset.armed !== '1') {
+      document.querySelectorAll('button[data-mint]').forEach(x => { x.dataset.armed=''; x.textContent='Mint'; x.classList.remove('danger'); x.classList.add('warn'); });
+      b.dataset.armed = '1';
+      b.classList.remove('warn'); b.classList.add('danger');
+      b.textContent = '⚠ Confirm — ' + b.dataset.desc + ' on ' + store;
+      return;
+    }
+    b.disabled = true; b.textContent = 'minting…'; out.textContent = '';
+    const r = await post('/redemptions/' + b.dataset.mint + '/mint');
+    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    await loadAll();
+  }));
+
+  document.querySelectorAll('button[data-revoke]').forEach(b => b.addEventListener('click', async () => {
+    const out = $('rOut');
+    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = '⚠ Confirm revoke (refunds the points)'; return; }
+    b.disabled = true; b.textContent = 'revoking…'; out.textContent = '';
+    const r = await post('/redemptions/' + b.dataset.revoke + '/revoke');
+    out.textContent = 'HTTP ' + r.http + ' → ' + JSON.stringify(r.body, null, 2);
+    await loadAll();
+  }));
+}
+
+$('tabs').addEventListener('click', (e) => {
+  const t = e.target.closest('.tab'); if (!t) return;
+  STATE.tab = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x===t));
+  renderPanel();
+});
+
+/* --- diagnostics ------------------------------------------------------------------------------- */
+const tokenKey = 'keepers_diag_token';
+$('diagToken').value = localStorage.getItem(tokenKey) || '';
+$('diagToken').addEventListener('change', () => localStorage.setItem(tokenKey, token()));
+
+async function diag(path, label, method) {
+  $('diagOut').textContent = label + '…';
+  try {
+    const r = await fetch('/api/keepers' + withToken(path), { method: method || 'POST' });
+    const j = await r.json().catch(()=>({}));
+    $('diagOut').textContent = label + ' → HTTP ' + r.status + '\n' + JSON.stringify(j, null, 2);
+    await loadAll();
+  } catch (e) { $('diagOut').textContent = label + ' failed: ' + e.message; }
+}
+$('btnSelfTest').addEventListener('click', () => diag('/self-test', 'self-test', 'GET'));
+$('btnEconomy').addEventListener('click', () => diag('/economy/refresh', 'refresh economy'));
+$('btnSweepDry').addEventListener('click', () => diag('/sweep', 'sweep (dry run)'));
+// The one destructive button on the page that is not row-scoped, so it arms like the row ones do.
+let sweepArmed = false;
+$('btnSweepApply').addEventListener('click', () => {
+  const b = $('btnSweepApply');
+  if (!sweepArmed) { sweepArmed = true; b.textContent = '⚠ Confirm — sweep will ingest and advance the cursor'; return; }
+  sweepArmed = false; b.textContent = 'Sweep — APPLY';
+  diag('/sweep?apply=1', 'sweep (APPLY)');
+});
+$('btnPass').addEventListener('click', () => diag('/pass', 'projection pass'));
+$('btnGate').addEventListener('click', () => diag('/gate-audit', 'gate audit', 'GET'));
+
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
