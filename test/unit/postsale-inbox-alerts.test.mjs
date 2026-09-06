@@ -171,11 +171,45 @@ describe('the per-run cap counts the overflow rather than hiding it', () => {
 });
 
 describe('the nag', () => {
+  // Must match writeCfg()'s inbox_alerts.nag_window_hours. sweepOpenMessages drops any row older than
+  // this before it does anything else.
+  const NAG_WINDOW_HOURS = 168;
+
+  /**
+   * A message that was alerted 9 hours ago and is still open — the state every test below starts from.
+   *
+   * creation_time is RELATIVE, and that is load-bearing. It used to be the literal
+   * '2026-08-28T22:10:00.000Z', which put a 168-hour expiry date on this whole describe block:
+   * sweepOpenMessages filters `t >= Date.now() - nag_window_hours * 3600_000` and returns
+   * { open: 0, nagged: 0, deferred: 0 } the moment nothing survives it. The suite passed until
+   * 2026-09-04 and then went red on 09-06 with no code change on either side.
+   *
+   * The damage was wider than the two tests that failed. FOUR others here assert zero — no nag, no
+   * send, open 0, cursor unmoved — and the early return hands all of those back for free, so they kept
+   * passing while testing nothing at all. That is the failure mode worth engineering against: a red
+   * test tells you; a quietly vacuous one does not.
+   *
+   * Hence the precondition below. If the row ever falls outside the window again, every test in this
+   * block fails with a sentence naming the reason, instead of two failing obscurely and four going
+   * silent.
+   *
+   * ISO-8601 with a Z, not SQLite's `datetime('now', ...)`: this column holds eBay's own creationTime
+   * (see MSG()), the module reads it with Date.parse, and Date.parse treats SQLite's space-separated
+   * form as LOCAL time while datetime('now') is UTC — a silent offset on any box that is not on UTC.
+   * alert_sent_at stays in SQLite's form on purpose: nagDue compares it inside SQLite.
+   */
   const seedAlerted = () => {
+    const createdAt = new Date(Date.now() - 30 * 3600_000).toISOString();
     db.prepare(`INSERT INTO member_messages
       (message_id, message_type, sender_id, ebay_item_id, subject, body, status, creation_time, alert_sent_at, nag_count)
       VALUES ('m1','AskSellerQuestion','buyer_bob','123456789012','Is this the alt art?','well?','Unanswered',
-              '2026-08-28T22:10:00.000Z', datetime('now','-9 hours'), 0)`).run();
+              ?, datetime('now','-9 hours'), 0)`).run(createdAt);
+
+    const ageHours = (Date.now() - Date.parse(createdAt)) / 3600_000;
+    assert.ok(ageHours < NAG_WINDOW_HOURS,
+      `the seeded message is ${ageHours.toFixed(1)}h old, outside the ${NAG_WINDOW_HOURS}h nag window — `
+      + 'sweepOpenMessages will not see it, and every assertion in this block would then pass or fail '
+      + 'for a reason that has nothing to do with what it claims to test');
   };
 
   it('nudges a message eBay still calls unanswered', async () => {
@@ -193,6 +227,10 @@ describe('the nag', () => {
     const r = await sweepOpenMessages(ENV, db, loadCfg(), {
       fetchMessages: fetchOnce([MSG({ status: 'Answered' })]), send,
     });
+    // The row must have been PICKED UP and then declined — it is still 'Unanswered' when the select
+    // runs, and only the refresh turns it. Without this, a row the sweep never saw would satisfy the
+    // two assertions below just as well, which is exactly how this test spent two days proving nothing.
+    assert.equal(r.open, 1, 'the sweep has to have considered it for "stops" to mean anything');
     assert.equal(r.nagged, 0);
     assert.equal(sent.length, 0);
   });
@@ -202,6 +240,9 @@ describe('the nag', () => {
     db.prepare("UPDATE member_messages SET handled_at=datetime('now'), handled_by='marty' WHERE message_id='m1'").run();
     const { sent, send } = recorder();
     const r = await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([]), send });
+    // Zero because `handled_at IS NULL` excluded it in SQL — the seed's own precondition is what rules
+    // out the other way of reaching zero, which is the row having aged out of the window.
+    assert.equal(r.open, 0, 'the handled row must be filtered out of the select, not merely not nagged');
     assert.equal(r.nagged, 0);
     assert.equal(sent.length, 0);
   });
@@ -211,6 +252,8 @@ describe('the nag', () => {
     db.prepare("UPDATE member_messages SET nag_count=2 WHERE message_id='m1'").run();
     const { send } = recorder();
     const r = await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([]), send });
+    // Zero because `nag_count < nag_max` excluded it. Same note as above: the seed's precondition is
+    // what stops this reading as a pass when the row simply aged out.
     assert.equal(r.open, 0);
   });
 
@@ -233,7 +276,9 @@ describe('the nag', () => {
     seedAlerted();
     const before = getMeta(db, 'messages_cursor');
     const { send } = recorder();
-    await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([MSG({ status: 'Unanswered' })]), send });
+    const r = await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([MSG({ status: 'Unanswered' })]), send });
+    // A sweep that bailed at the window filter also never touches the cursor, and would pass this.
+    assert.equal(r.open, 1, 'the sweep has to have run its full path for the invariant to be tested');
     assert.equal(getMeta(db, 'messages_cursor'), before);
   });
 });
