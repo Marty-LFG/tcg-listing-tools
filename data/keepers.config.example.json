@@ -1,0 +1,13 @@
+{
+  "mode": "off",
+  "project": {
+    "enabled": false,
+    "allowLive": false
+  },
+  "store": "dev",
+  "config_ttl_sec": 900,
+  "drain_limit": 50,
+  "sweep_max_per_run": 500,
+  "project_limit": 50,
+  "retain_days": 30
+}
