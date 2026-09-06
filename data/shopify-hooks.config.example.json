@@ -1,0 +1,19 @@
+{
+  "enabled": false,
+  "listen_host": "127.0.0.1",
+  "listen_port": 5275,
+  "allow_lan_bind": false,
+  "webhook_path": "/shopify/keepers",
+  "compliance_path": "/shopify/compliance",
+  "proxy_path": "/apps/keepers",
+  "public_endpoint": "",
+  "shop": "dev",
+  "expect_shop_domain": "",
+  "proxy_prefix": "/apps/keepers",
+  "proxy_max_age_sec": 120,
+  "dispatch": {
+    "quiet_ms": 5000,
+    "max_wait_ms": 60000,
+    "min_gap_ms": 5000
+  }
+}
