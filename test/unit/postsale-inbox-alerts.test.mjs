@@ -14,10 +14,26 @@ import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 
-const DIR = path.join(os.tmpdir(), 'tcg-postsale-inbox-' + process.pid);
-fs.mkdirSync(DIR, { recursive: true });
+// mkdtemp, NOT the process id.
+//
+// This was `os.tmpdir() + 'tcg-postsale-inbox-' + process.pid`, and two facts combined to make that
+// a flake. Windows RECYCLES pids, so the name is not unique across runs; and the after() below could
+// not delete the directory, because rmSync on a folder holding an open SQLite handle fails EPERM —
+// which the old `catch {}` swallowed. 197 of these directories had piled up in temp, every one
+// holding a postsale.db with a deal_requests row for message 'm1'.
+//
+// So a run whose pid matched one of them opened a database that was not empty. beforeEach cleared
+// member_messages but not deal_requests, and recordDealFromMessage inserts ON CONFLICT DO NOTHING
+// against uq_deal_open_message — a partial unique index on message_id WHERE status is open. The
+// carried-over row swallowed the insert, recordDealFromMessage returned 0, and
+// 'stays quiet when the deal classifier already carded it' failed on `r.deals` with actual 0,
+// expected 1. Reproduced both ways: deterministically by seeding a stale db, and naturally on the
+// first run of a repeat loop.
+//
+// tmpDir gives a guaranteed-unique directory, so a leaked one can never be inherited again.
+const DIR = tmpDir('tcg-postsale-inbox-');
 const CFG = path.join(DIR, 'postsale.config.json');
 const writeCfg = (extra = {}) => fs.writeFileSync(CFG, JSON.stringify({
   enabled: true, messaging: false, alerts: true, dry_run: true,
@@ -36,7 +52,13 @@ const { pollMemberMessages, sweepOpenMessages, fireInboxAlert, inboxAlertsOn } =
 const { openPostsaleDb, getMeta, setMeta } = await import('../../lib/postsale-db.mjs');
 
 const db = openPostsaleDb();
-after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {} });
+after(() => {
+  // Close BEFORE removing. An open SQLite handle is what made rmSync fail EPERM on Windows and let
+  // these directories accumulate; the old catch hid it. Still best-effort — a leak is now only
+  // wasted disk, not inherited state — but it should succeed.
+  try { db.close(); } catch { /* already closed */ }
+  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows can still hold it */ }
+});
 
 // A token + chat id make the Telegram guards pass; the sender is injected, so nothing leaves the box.
 const ENV = { TELEGRAM_BOT_TOKEN: 'test-token', TELEGRAM_CHAT_ID: '-1001234567890' };
@@ -59,7 +81,12 @@ const recorder = () => {
 };
 
 beforeEach(() => {
+  // deal_requests as well as member_messages. Several tests below turn deal detection on, and a row
+  // surviving into the next test is invisible until it silently swallows an insert — which is exactly
+  // how the stale-database flake above expressed itself. The unique temp directory means this should
+  // never matter now; it is here so that if it ever does, it does not matter.
   db.exec('DELETE FROM member_messages');
+  db.exec('DELETE FROM deal_requests');
   setMeta(db, 'messages_cursor', '2026-08-28T00:00:00.000Z');
   setMeta(db, 'ebay_username', 'binderskeepers');       // pre-cached, so no GetUser round trip
   writeCfg();

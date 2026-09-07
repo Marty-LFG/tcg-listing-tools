@@ -16,10 +16,13 @@ import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 
-const DIR = path.join(os.tmpdir(), 'tcg-cursor-hold-' + process.pid);
-fs.mkdirSync(DIR, { recursive: true });
+// mkdtemp, not the pid — see the long note in postsale-inbox-alerts.test.mjs. Same shape, same
+// leak: 350 of these directories had accumulated because after() cannot remove a folder holding an
+// open SQLite handle, and a pid is not unique across runs on Windows. No flake had surfaced here yet,
+// which is the only difference.
+const DIR = tmpDir('tcg-cursor-hold-');
 // messaging off and no background sweep: this suite is about the cursor, and both of those would
 // otherwise reach the network on a path that has nothing to do with it.
 fs.writeFileSync(path.join(DIR, 'postsale.config.json'), JSON.stringify({
@@ -30,7 +33,13 @@ process.env.TCG_POSTSALE_DB = path.join(DIR, 'postsale.db');
 const { pollOrders } = await import('../../lib/postsale.mjs');
 const { openPostsaleDb } = await import('../../lib/postsale-db.mjs');
 
-after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows locks */ } });
+// Close BEFORE removing — an open SQLite handle is what makes rmSync fail EPERM on Windows, and that
+// is why 350 of these directories accumulated. `db` is declared below; this callback runs at
+// teardown, long after module evaluation, so the forward reference is fine.
+after(() => {
+  try { db.close(); } catch { /* already closed */ }
+  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows can still hold it */ }
+});
 
 const db = openPostsaleDb();
 const setMeta = (k, v) => db.prepare('INSERT INTO meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, v);
