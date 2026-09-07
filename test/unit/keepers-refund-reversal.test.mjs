@@ -111,8 +111,15 @@ describe('and the call sites actually score from the ledger', () => {
   const src = fs.readFileSync(new URL('../../lib/keepers-ingest.mjs', import.meta.url), 'utf8');
 
   it('the refund loop scores against orderLedger, not against `decision`', () => {
-    assert.ok(src.includes('refundReversal(orderLedger(db, String(orderGid)), { refundedCents: r.cents })'),
-      'the refund loop must score the reversal from the stored accrual');
+    // Matched in two parts rather than as one literal expression. The first version pinned the whole
+    // call verbatim and then failed the moment orderLedger was hoisted into a variable so the note
+    // could quote the same basis — a true guard firing on a correct change, which is the shape that
+    // gets a guard weakened out of irritation. These two together still catch the real regression
+    // (scoring from `decision`) without dictating how the ledger is spelled at the call site.
+    assert.ok(/const ledger = orderLedger\(db, String\(orderGid\)\);/.test(src),
+      'the refund loop must read the stored accrual');
+    assert.ok(/refundReversal\(ledger, \{ refundedCents: r\.cents \}\)/.test(src),
+      'and must score the reversal from it');
     assert.ok(!src.includes('reversalFor(decision, { refundedCents: r.cents })'),
       'the pre-fix call is back: `decision` carries a basis already net of refunds');
   });
@@ -122,6 +129,16 @@ describe('and the call sites actually score from the ledger', () => {
       'a cancellation must reverse what was accrued, not what the live order is now worth');
     assert.ok(!src.includes('clampReversal(db, String(orderGid), { xp: decision.xp, points: decision.points })'),
       'the pre-fix cancellation is back: a refunded-then-cancelled order would reverse nothing');
+  });
+
+  it('the reversal note quotes the ORIGINAL basis too', () => {
+    // The amount was fixed before the sentence describing it was. A fully refunded order recorded
+    // `refund 198c of 0c` — correct money, and a note claiming the order had been worth nothing.
+    // Notes are what someone reconstructs history from, so a wrong denominator is a wrong record.
+    assert.ok(src.includes('note: `refund ${r.cents}c of ${ledger.basisCents}c`'),
+      'the reversal note must quote the accrual basis it was scored against');
+    assert.ok(!src.includes('${decision.basisCents}c'),
+      'the note is back on the live basis — it will read "of 0c" for every full refund');
   });
 
   it('reversalFor itself is unchanged — the arithmetic was never the bug', () => {
