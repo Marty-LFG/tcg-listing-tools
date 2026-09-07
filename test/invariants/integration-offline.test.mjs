@@ -100,28 +100,81 @@ describe('no integration test may drive a channel-mutating route', () => {
   // A deliberate allow-list rather than a ban: runner-stage genuinely needs to prove the guard fires,
   // and proving a refusal is the safest thing such a test can do — ONCE the refusal is guaranteed
   // rather than incidental. Adding a file here should be a decision someone makes on purpose.
+  // Each entry names the guarantee it depends on AND the token that proves that guarantee is still in
+  // the file. Two mechanisms are in play and they are not interchangeable — OFFLINE_ENV blanks the
+  // credentials a route would need, while a stubbed fetchImpl means no request leaves the process at
+  // all. Recording which one applies is the point: the check below used to assume OFFLINE_ENV for
+  // everything, which would have quietly passed a file that had stopped relying on anything.
   const ACKNOWLEDGED = {
-    'runner-stage.test.mjs': 'asserts /api/listings/batch REFUSES with 409 not_connected; safe only because OFFLINE_ENV guarantees the disconnection',
-    'keepers-admin.test.mjs': 'POSTs all four MUTATING Keepers prefixes (redemptions create/mint/revoke, sweep, pass, economy/refresh) and asserts each 403s; safe because it sends no Authorization header and no ?token=, AND because OFFLINE_ENV blanks DIAG_TOKEN so diagOk is shut from the server side too',
+    'runner-stage.test.mjs': {
+      why: 'asserts /api/listings/batch REFUSES with 409 not_connected; safe only because OFFLINE_ENV guarantees the disconnection',
+      relies: 'OFFLINE_ENV',
+    },
+    'keepers-admin.test.mjs': {
+      why: 'POSTs all four MUTATING Keepers prefixes (redemptions create/mint/revoke, sweep, pass, economy/refresh) and asserts each 403s; it sends no Authorization header and no ?token=, and OFFLINE_ENV blanks DIAG_TOKEN so diagOk is shut from the server side too',
+      relies: 'OFFLINE_ENV',
+    },
+    // These two were invisible to BOTH earlier detectors — they build their routes from a shared
+    // `const API = '/api/shopify'`, so neither the post()-adjacent match nor a whole-path substring
+    // test ever saw them, and they had been driving two MUTATING routes unacknowledged since they
+    // were written. Reviewed on discovery. They are safe for a STRONGER reason than any other entry
+    // here: they do not merely lack credentials, they never make a network call at all — both mount
+    // makeShopifyRouter({ db, fetchImpl }) with a stubbed fetch, their own temp database, and a `base`
+    // of http://127.0.0.1:1. shopify-publish's own header explains why it avoids bootServer: that
+    // would run all 30 plugins against the real tracker.db.
+    'shopify-publish.test.mjs': {
+      why: 'drives /api/shopify/publish and /identity/rebuild through makeShopifyRouter with a stubbed fetchImpl and its own temp DB — no real request can leave the process, which is stronger than absent credentials',
+      relies: 'fetchImpl',
+    },
+    'shopify-batch.test.mjs': {
+      why: 'same harness, including the ?store=live paths: stubbed fetchImpl, own temp DB, own config path — the store parameter selects a code path, not a destination',
+      relies: 'fetchImpl',
+    },
   };
 
-  it('every test that mentions one is in the acknowledged list, with a reason', () => {
-    // MENTION-BASED, not post()-adjacent, and the difference is the whole guard. The original detector
-    // required the path to be a string literal sitting inside post(...). keepers-admin.test.mjs drives
-    // its routes through a loop over an array of [path, body] pairs, so the four /api/keepers entries
-    // added to MUTATING on the same branch as that file matched ZERO files on the day they were
-    // written — including the file they were written for. A loop, a template literal or a shared
-    // constant all dodge a literal-adjacent match; a substring test over the source dodges none of
-    // them. It costs false positives — a file that only NAMES a route in a comment trips it — and that
-    // is the right trade: clearing one is a single line here, which is the deliberate review this
-    // guard exists to force.
+  // SPLIT, because a whole-path substring test is not enough either.
+  //
+  // The first detector required the path to be a string literal inside post(...). keepers-admin
+  // .test.mjs drives its routes through a loop, so the four /api/keepers entries added alongside it
+  // matched ZERO files on the day they were written — including the file they were written for.
+  //
+  // The obvious repair, a substring test for the whole route, is ALSO defeated, and by the commonest
+  // idiom in this very directory: shopify-publish.test.mjs and shopify-batch.test.mjs both open with
+  // `const API = '/api/shopify'` and then build `API + '/publish'`. The string '/api/shopify/publish'
+  // never appears in either file, so both drove a MUTATING route unflagged and unacknowledged.
+  //
+  // So a route is considered driven when the file mentions the whole path, OR mentions its service
+  // prefix and its tail separately. That catches the shared-constant split without matching a bare
+  // '/publish' in a file that has nothing to do with the service.
+  const mentions = (src, route) => {
+    if (src.includes(route)) return true;
+    const m = /^(\/api\/[a-z-]+)(\/.+)$/.exec(route);
+    return Boolean(m) && src.includes(m[1]) && src.includes(m[2]);
+  };
+
+  it('every test that drives one is in the acknowledged list, with a reason', () => {
+    // It costs false positives — a file that only NAMES a route in a comment trips it — and that is
+    // the right trade: clearing one is a single line here, which is the deliberate review this guard
+    // exists to force.
     const offenders = [];
     for (const f of integrationFiles()) {
       const src = fs.readFileSync(path.join(INTEGRATION_DIR, f), 'utf8');
-      if (MUTATING.some((r) => src.includes(r)) && !ACKNOWLEDGED[f]) offenders.push(f);
+      if (MUTATING.some((r) => mentions(src, r)) && !ACKNOWLEDGED[f]) offenders.push(f);
     }
     assert.deepEqual(offenders, [],
       `these integration tests drive a channel-mutating route without being acknowledged: ${offenders.join(', ')}`);
+  });
+
+  it('the detector is not defeated by the shared-constant idiom this directory uses', () => {
+    // Pinned, because this is the exact evasion that let two files through. If a future simplification
+    // reduces `mentions` back to a plain substring test, this fails.
+    const split = "const API = '/api/shopify';\nawait post(API + '/publish', {});";
+    assert.equal(mentions(split, '/api/shopify/publish'), true,
+      'a route assembled from a shared prefix constant must still be detected');
+    assert.equal(mentions("post('/api/shopify/publish', {})", '/api/shopify/publish'), true,
+      'and the plain literal must still be detected');
+    assert.equal(mentions("await post('/publish', {})", '/api/shopify/publish'), false,
+      'but a bare tail with no service prefix must NOT trip it');
   });
 
   it('every acknowledged test still says out loud what it is relying on', () => {
@@ -129,8 +182,10 @@ describe('no integration test may drive a channel-mutating route', () => {
     // original author reasonably did, that "this box has no eBay consent" is a property of the world.
     // Every entry above carries the same obligation, so this iterates rather than naming one file.
     for (const f of Object.keys(ACKNOWLEDGED)) {
-      assert.match(read('test/integration/' + f), /OFFLINE_ENV/,
-        `${f} must name the guarantee it depends on, or the next reader will assume it is incidental again`);
+      const { relies } = ACKNOWLEDGED[f];
+      assert.ok(read('test/integration/' + f).includes(relies),
+        `${f} is acknowledged on the grounds that it relies on ${relies}, and that no longer appears in the file — `
+        + 'either it stopped relying on it, or the acknowledgement was never true');
     }
   });
 });

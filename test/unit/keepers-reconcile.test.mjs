@@ -9,6 +9,7 @@
 // every decision it makes that does not need Shopify.
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   windowFloorProblem, defaultCursor, driftReport,
   ORDER_WINDOW_DAYS, WINDOW_MARGIN_DAYS, CURSOR_KEY, cursorDecision,
@@ -195,5 +196,33 @@ describe('the cursor never moves on a run that wrote nothing', () => {
         assert.equal(cursorDecision({ clean: false, apply, observeOnly }).advance, false);
       }
     }
+  });
+});
+
+describe('and sweepOrders actually USES that decision', () => {
+  // The assertions above drive the pure function. Every one of them passed with the call site
+  // restored to its pre-fix `clean && apply` — I checked — so on their own they prove the rule is
+  // right and nothing whatsoever about the rule being applied. sweepOrders reaches Shopify, so no
+  // unit test can drive it; a source assertion is the honest substitute, and it catches precisely the
+  // regression the pure tests cannot see.
+  const src = fs.readFileSync(new URL('../../lib/keepers-reconcile.mjs', import.meta.url), 'utf8');
+
+  it('the only cursor write in the file is guarded by the decision', () => {
+    const writes = src.split(/\r?\n/).filter((l) => l.includes('setMeta(db, CURSOR_KEY'));
+    assert.equal(writes.length, 1, 'expected exactly one cursor write, found:\n' + writes.join('\n'));
+    assert.ok(writes[0].includes('decision.advance'),
+      'the cursor must move only when cursorDecision says so — a second condition here is how the mode came to be ignored');
+  });
+
+  it('the pre-fix condition is gone, not merely bypassed', () => {
+    assert.ok(!src.includes('if (clean && apply && maxUpdatedAt > cursor)'),
+      'the old `clean && apply` guard is back, and it advances the cursor in observe mode');
+  });
+
+  it('releasing held events is gated on the mode too, not just on apply', () => {
+    // Same class of bug: releaseHeldEvents MUTATES the ledger, so `apply` alone let a store switched
+    // back to observe keep promoting held referral awards while claiming to append nothing.
+    assert.ok(src.includes('const released = (apply && !observeOnly) ? releaseHeldEvents('),
+      'releaseHeldEvents must be gated on the mode as well as the flag');
   });
 });

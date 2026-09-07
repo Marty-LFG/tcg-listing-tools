@@ -224,12 +224,29 @@ describe('the two switches the check-in used to ignore', () => {
     return [{ slug: 'now-show', name: 'Right Now', starts_at: new Date(now - 3600000).toISOString(), ends_at: new Date(now + 3600000).toISOString() }];
   };
   const url = (p) => new URL(`http://x${p}`);
+  // A FRESH SHOW AND CUSTOMER PER CASE. The handler's claiming path opens the SINGLETON — redirected
+  // to a temp file by TCG_KEEPERS_DB at the top of this file — and that database persists across every
+  // test in the file. Sharing one customer between cases means a before/after comparison can be
+  // satisfied by idempotency (a second claim for the same show returns `already` and adds nothing)
+  // rather than by the gate under test, which is not the same thing at all.
+  let seq = 0;
+  const freshIds = () => { seq += 1; return { slug: `mode-show-${seq}`, gid: `gid://shopify/Customer/9${seq}00` }; };
+  const showAt = (slug) => {
+    const now = Date.now();
+    return [{ slug, name: 'Right Now', starts_at: new Date(now - 3600000).toISOString(), ends_at: new Date(now + 3600000).toISOString() }];
+  };
+  const claimAs = (over, ids) => makeCheckinHandler(async () => ({ shows: showAt(ids.slug), rules: RULES, ...over }))(
+    {}, { customerGid: ids.gid, url: url('/apps/keepers/checkin'), method: 'POST' });
+
+  // NO try/catch. A read that throws must fail the test, not quietly report zero — a swallowed error
+  // here would make every "nothing was written" assertion below pass for the wrong reason, which is
+  // exactly the toothless shape this file is meant to be guarding against.
+  const eventsFor = (gid) => openKeepersDb()
+    .prepare("SELECT COUNT(*) c FROM keepers_events WHERE customer_gid = ? AND kind = 'checkin'")
+    .get(String(gid)).c;
+
   const claim = (over) => makeCheckinHandler(async () => ({ shows: liveShow(), rules: RULES, ...over }))(
     {}, { customerGid: GID, url: url('/apps/keepers/checkin'), method: 'POST' });
-  // The handler's claiming path opens the SINGLETON — redirected to a temp file by TCG_KEEPERS_DB at
-  // the top of this file — not the :memory: handle beforeEach hands each test. Reading the wrong one
-  // makes a test failure look like a code failure.
-  const singletonXp = () => { try { return ledgerTotals(openKeepersDb(), GID).xp; } catch { return 0; } };
 
   it('checkIn refuses when the programme is off', () => {
     const r = checkIn(db, { customerGid: GID, show: { slug: 's', name: 'S' }, rules: { ...RULES, enabled: false } });
@@ -252,20 +269,24 @@ describe('the two switches the check-in used to ignore', () => {
   });
 
   it('a CLAIM in observe mode awards nothing, and says what it would have given', async () => {
-    const before = singletonXp();
-    const res = await claim({ mode: 'observe' });
+    // A customer and show nothing else has touched, so "no rows" cannot be satisfied by an earlier
+    // claim's idempotency. Counting rows for THIS customer beats comparing a shared total.
+    const ids = freshIds();
+    assert.equal(eventsFor(ids.gid), 0, 'precondition: this customer starts with no check-in');
+    const res = await claimAs({ mode: 'observe' }, ids);
     assert.equal(res.status, 200, 'a warm answer — this is our configuration problem, not theirs');
     assert.equal(res.body.ok, false);
     assert.equal(res.body.reason, 'not_applying');
     assert.equal(res.body.would_award, 50, 'the soak can still see what it was worth');
-    assert.equal(singletonXp(), before, 'and the ledger the soak keeps empty is untouched');
+    assert.equal(eventsFor(ids.gid), 0, 'and the ledger the soak keeps empty is untouched');
   });
 
   it('...and in mode off', async () => {
-    const before = singletonXp();
-    const res = await claim({ mode: 'off' });
+    const ids = freshIds();
+    assert.equal(eventsFor(ids.gid), 0);
+    const res = await claimAs({ mode: 'off' }, ids);
     assert.equal(res.body.reason, 'not_applying');
-    assert.equal(singletonXp(), before);
+    assert.equal(eventsFor(ids.gid), 0);
   });
 
   it('but a GET status read is fine in any mode — it appends nothing', async () => {
@@ -276,9 +297,13 @@ describe('the two switches the check-in used to ignore', () => {
   });
 
   it('apply still awards, so none of the above broke the happy path', async () => {
-    const res = await claim({ mode: 'apply' });
+    // The positive control. Without it, every assertion above could pass because the handler is
+    // broken rather than because the gate works.
+    const ids = freshIds();
+    assert.equal(eventsFor(ids.gid), 0);
+    const res = await claimAs({ mode: 'apply' }, ids);
     assert.equal(res.body.ok, true);
     assert.equal(res.body.xp, 50);
-    assert.ok(singletonXp() >= 50, 'and it genuinely reached the ledger');
+    assert.equal(eventsFor(ids.gid), 1, 'and it genuinely reached the ledger');
   });
 });
