@@ -10,7 +10,9 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  redemptionProblem, openRedemption, refundRedemption, mintRedemption,
+  redemptionProblem, openRedemption, refundRedemption, mintRedemption, revokeRedemption,
+  findMintedDiscount, mintTitle,
+  CREATE_MUTATION, SEARCH_QUERY, READ_QUERY, DEACTIVATE_MUTATION,
   eligibleCustomerIds, eligibilityProblem, markUsedByOrder,
 } from '../../lib/keepers-redeem.mjs';
 import { openKeepersDbAt, upsertCustomer, appendEvent, ledgerTotals, withTransaction } from '../../lib/keepers-db.mjs';
@@ -196,5 +198,203 @@ describe('markUsedByOrder — the second, independent reading', () => {
 
   it('ignores a code we never minted', () => {
     assert.equal(markUsedByOrder(db, 'WELCOME10', 'gid://shopify/Order/5'), 0);
+  });
+});
+
+// --- a create that FAILED is not proof that nothing was created ----------------------------------
+//
+// THE BUG THIS EXISTS TO PREVENT. shopifyGraphQL returns ok:false for a network failure, a 30s abort
+// and a userError alike, so a create that COMMITTED on Shopify before its response was lost is
+// indistinguishable, from inside this function, from one that never happened. It used to be read as
+// the latter: mark the row failed, refund the points — while a live, correctly-scoped, single-use
+// code sat on the store that no row, no query and no sweep in this repo could name. The customer had
+// their points back AND a spendable code, and since 'failed' is not in uq_kr_open they could
+// immediately mint another. Same points, two rewards.
+//
+// The Shopify client is INJECTED below, and that is what makes any of this testable. Before it, the
+// only branch reachable offline was 'not_configured', so every recovery path here would have shipped
+// unexercised — the exact shape of gap this file's own header warns about.
+describe('mintRedemption — a lost response, and the code that outlives it', () => {
+  const openOne = () => {
+    let r; withTransaction(db, () => { r = openRedemption(db, { customerGid: GID, tier: TIER, rules: RULES, nowMs: NOW }); });
+    return r.id;
+  };
+  const row = (id) => db.prepare('SELECT * FROM keepers_redemptions WHERE id=?').get(id);
+
+  // Sent, and the answer never came back. attempts >= 1 is what says "this left the machine".
+  const LOST = { ok: false, attempts: 1, errors: [{ code: 'network', message: 'socket hang up' }] };
+  // Never left the machine: no credentials, no request, nothing to look for afterwards.
+  const NEVER_SENT = { ok: false, attempts: 0, errors: [{ code: 'not_configured', message: 'no creds' }] };
+
+  const node = (code, over = {}) => ({
+    id: 'gid://shopify/DiscountCodeNode/1',
+    codeDiscount: {
+      title: 't', status: 'ACTIVE', endsAt: '2027-01-01T00:00:00Z', asyncUsageCount: 0,
+      codes: { nodes: [{ code }] },
+      context: { customers: [{ id: GID }] },
+      ...over,
+    },
+  });
+  const searchHit = (code, over) => ({ ok: true, attempts: 1, data: { codeDiscountNodes: { nodes: [node(code, over)] } } });
+  const searchMiss = { ok: true, attempts: 1, data: { codeDiscountNodes: { nodes: [] } } };
+
+  /** Routes each call by the query it was handed, so a test can answer create and search differently. */
+  const client = ({ create, search, read, deactivate }) => {
+    const calls = [];
+    const fn = async (env, q, vars) => {
+      if (q === CREATE_MUTATION) { calls.push('create'); return typeof create === 'function' ? create(vars) : create; }
+      if (q === SEARCH_QUERY) { calls.push('search'); return typeof search === 'function' ? search(vars) : search; }
+      if (q === READ_QUERY) { calls.push('read'); return read; }
+      if (q === DEACTIVATE_MUTATION) { calls.push('deactivate'); return deactivate || { ok: true }; }
+      throw new Error('unexpected query');
+    };
+    fn.calls = calls;
+    return fn;
+  };
+
+  it('writes the code BEFORE calling Shopify, so a lost response is still findable', async () => {
+    const id = openOne();
+    let onDiskAtCallTime = null;
+    const g = client({ create: () => { onDiskAtCallTime = row(id).code; return NEVER_SENT; }, search: searchMiss });
+    await mintRedemption({}, db, id, { rules: RULES, nowMs: NOW, graphql: g });
+    assert.ok(onDiskAtCallTime, 'the code must be on the row before the create, or it can never be recovered');
+    assert.match(onDiskAtCallTime, /^BK-/);
+  });
+
+  it('a lost response whose code DID land is adopted, and the points stay spent', async () => {
+    const id = openOne();
+    const g = client({ create: LOST, search: (vars) => searchHit(row(id).code) });
+    const out = await mintRedemption({}, db, id, { rules: RULES, nowMs: NOW, graphql: g });
+
+    assert.equal(out.ok, true, 'the code exists on Shopify — the customer must be told it is theirs');
+    assert.equal(out.recovered, true, 'a recovered mint is surfaced, not swallowed: it means a round trip was lost');
+    assert.equal(row(id).status, 'active');
+    assert.equal(row(id).discount_gid, 'gid://shopify/DiscountCodeNode/1');
+    assert.equal(ledgerTotals(db, GID).points, 100, 'refunding here would be paying twice for one code');
+    assert.deepEqual(g.calls, ['create', 'search']);
+  });
+
+  it('a lost response whose code did NOT land refunds, as it always should have', async () => {
+    const id = openOne();
+    const g = client({ create: LOST, search: searchMiss });
+    const out = await mintRedemption({}, db, id, { rules: RULES, nowMs: NOW, graphql: g });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'create_failed');
+    assert.equal(row(id).status, 'failed');
+    assert.equal(ledgerTotals(db, GID).points, 600, 'nothing was created, so the debit must come back');
+  });
+
+  it('when the SEARCH also fails it refuses to decide — no refund, still minting', async () => {
+    // The distinction the whole fix rests on. "Not created" and "cannot tell" must never share a
+    // branch: one justifies handing points back, the other justifies refusing to guess. Refunding
+    // here could pay out for a code that is live; marking it failed would bury it.
+    const id = openOne();
+    const g = client({ create: LOST, search: { ok: false, attempts: 1, errors: [{ code: 'network' }] } });
+    const out = await mintRedemption({}, db, id, { rules: RULES, nowMs: NOW, graphql: g });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'mint_unverifiable');
+    assert.equal(row(id).status, 'minting', 'the row stays resolvable — revoke can settle it later');
+    assert.ok(row(id).code, 'and it keeps the code, which is the handle revoke will search on');
+    assert.equal(ledgerTotals(db, GID).points, 100, 'points must NOT come back while a code may be live');
+  });
+
+  it('a request that never left the machine refunds WITHOUT searching', async () => {
+    // attempts: 0 means no HTTP happened, so there is nothing on Shopify to find. Making an operator
+    // resolve a wedged row because credentials were missing would be a worse outcome than the bug.
+    const id = openOne();
+    const g = client({ create: NEVER_SENT, search: searchMiss });
+    const out = await mintRedemption({}, db, id, { rules: RULES, nowMs: NOW, graphql: g });
+    assert.equal(out.ok, false);
+    assert.equal(row(id).status, 'failed');
+    assert.equal(ledgerTotals(db, GID).points, 600);
+    assert.deepEqual(g.calls, ['create'], 'no search — the request never went out');
+  });
+
+  it('a RECOVERED code still has to pass the eligibility echo', async () => {
+    // An orphan is still a code, and a store-wide one is the money leak this module exists to stop.
+    // Recovery must not become a way around the check that matters most.
+    const id = openOne();
+    const g = client({ create: LOST, search: () => searchHit(row(id).code, { context: { customers: [] } }) });
+    const out = await mintRedemption({}, db, id, { rules: RULES, nowMs: NOW, graphql: g });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'eligibility_mismatch');
+    assert.ok(g.calls.includes('deactivate'), 'a store-wide code must be killed, not merely reported');
+    assert.equal(ledgerTotals(db, GID).points, 600, 'the code is dead, so the points come back');
+  });
+});
+
+describe('revokeRedemption — a row wedged at minting', () => {
+  const openOne = () => {
+    let r; withTransaction(db, () => { r = openRedemption(db, { customerGid: GID, tier: TIER, rules: RULES, nowMs: NOW }); });
+    return r.id;
+  };
+  const row = (id) => db.prepare('SELECT * FROM keepers_redemptions WHERE id=?').get(id);
+  /** The state a crash between the create and the commit leaves: minting, code on it, no gid. */
+  const wedge = (id) => db.prepare("UPDATE keepers_redemptions SET status='minting', code='BK-WEDG-EDXX' WHERE id=?").run(id);
+
+  const client = ({ search, read, deactivate }) => {
+    const calls = [];
+    const fn = async (env, q) => {
+      if (q === SEARCH_QUERY) { calls.push('search'); return search; }
+      if (q === READ_QUERY) { calls.push('read'); return read; }
+      if (q === DEACTIVATE_MUTATION) { calls.push('deactivate'); return deactivate || { ok: true }; }
+      throw new Error('unexpected query');
+    };
+    fn.calls = calls;
+    return fn;
+  };
+  const found = {
+    ok: true,
+    data: { codeDiscountNodes: { nodes: [{ id: 'gid://shopify/DiscountCodeNode/9',
+      codeDiscount: { codes: { nodes: [{ code: 'BK-WEDG-EDXX' }] }, context: { customers: [{ id: GID }] } } }] } },
+  };
+
+  it('asks Shopify about the code before refunding anything', async () => {
+    // It used to skip every check below, because the usage read lived inside `if (r.discount_gid)`
+    // and a wedged row has no gid BY CONSTRUCTION — the UPDATE that would set it is the step that did
+    // not run. So revoke refunded with zero Shopify calls while a live code sat on the store. Worse,
+    // keepers.html NAMES revoke as the fix for a wedged row, so the operator is led down that path.
+    const id = openOne();
+    wedge(id);
+    const g = client({ search: found, read: { ok: true, data: { codeDiscountNode: { codeDiscount: { asyncUsageCount: 0 } } } } });
+    const out = await revokeRedemption({}, db, id, { nowMs: NOW, graphql: g });
+    assert.equal(out.ok, true);
+    assert.deepEqual(g.calls, ['search', 'read', 'deactivate'],
+      'the found code must go through the SAME usage read and deactivate as any other');
+    assert.equal(row(id).status, 'revoked');
+    assert.equal(ledgerTotals(db, GID).points, 600);
+  });
+
+  it('refuses when the search fails — it cannot tell whether a code is live', async () => {
+    const id = openOne();
+    wedge(id);
+    const g = client({ search: { ok: false, errors: [{ code: 'network' }] } });
+    const out = await revokeRedemption({}, db, id, { nowMs: NOW, graphql: g });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'usage_unreadable');
+    assert.equal(out.wedged, true);
+    assert.equal(ledgerTotals(db, GID).points, 100, 'a refund we cannot justify is money out the door');
+  });
+
+  it('a wedged code that was already SPENT is recorded as used, not revoked', async () => {
+    const id = openOne();
+    wedge(id);
+    const g = client({ search: found, read: { ok: true, data: { codeDiscountNode: { codeDiscount: { asyncUsageCount: 1 } } } } });
+    const out = await revokeRedemption({}, db, id, { nowMs: NOW, graphql: g });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, 'already used');
+    assert.equal(row(id).status, 'used');
+    assert.equal(ledgerTotals(db, GID).points, 100, 'it was spent — the points are gone, correctly');
+  });
+
+  it("a 'requested' row still needs no Shopify call at all", async () => {
+    // The half that must NOT change: nothing was ever sent for a requested row and it carries no
+    // code, so there is nothing to ask about. Gating or delaying it would strand a customer's points.
+    const id = openOne();
+    const g = client({});
+    const out = await revokeRedemption({}, db, id, { nowMs: NOW, graphql: g });
+    assert.equal(out.ok, true);
+    assert.deepEqual(g.calls, [], 'no Shopify call for a row that never reached Shopify');
+    assert.equal(ledgerTotals(db, GID).points, 600);
   });
 });

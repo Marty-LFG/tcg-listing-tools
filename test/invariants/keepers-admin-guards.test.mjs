@@ -317,10 +317,28 @@ describe('the live seatbelt is scoped to calls that actually reach the store', (
   const at = keepers.indexOf('const mint = /^');
   const branch = keepers.slice(at, keepers.indexOf("if (p === '/checkin'", at));
 
-  it('revoke of a never-minted row does not consult the store gate', () => {
-    assert.match(branch, /SELECT discount_gid FROM keepers_redemptions WHERE id = \?/);
-    assert.match(branch, /const touchesStore = Boolean\(mint\) \|\| Boolean\(target && target\.discount_gid\);/);
+  it('revoke of a never-minted row does not consult the store gate — but a WEDGED row does', () => {
+    // The rule got one term wider, and the widening IS the fix rather than an exception to it. A row
+    // wedged at 'minting' has no discount_gid — that is what wedged means — yet revoke now searches
+    // Shopify for its code before deciding anything, so it reaches the store and must be gated like
+    // anything else that does. Judging on the gid alone would let exactly that search run against
+    // live with allowLive unset.
+    //
+    // What must stay true is the original reasoning: a 'requested' row made no Shopify call and
+    // carries no code, so it still skips the gate. Gating it would strand a customer's points behind
+    // a switch that protects nothing.
+    assert.match(branch, /SELECT discount_gid, status, code FROM keepers_redemptions WHERE id = \?/,
+      'the gate cannot judge a wedged row without its status and code');
+    assert.match(branch, /const wedged = Boolean\(target && !target\.discount_gid && target\.status === 'minting' && target\.code\);/,
+      "wedged is: no gid, still 'minting', and a code to search for");
+    assert.match(branch, /const touchesStore = Boolean\(mint\) \|\| Boolean\(target && target\.discount_gid\) \|\| wedged;/);
     assert.match(branch, /if \(touchesStore && cfg\.store === 'live'/);
+    // Scoped to the predicate rather than the whole branch: 'requested' legitimately appears
+    // elsewhere in this route span, and a blanket negative would fail on text that has nothing to do
+    // with the gate. What matters is that WEDGED names 'minting' and only 'minting'.
+    const wedgedLine = (branch.match(/const wedged = [^\n]*/) || [''])[0];
+    assert.ok(!wedgedLine.includes('requested'),
+      "a 'requested' row must not be gated — no Shopify call was made and there is no code to find");
   });
 });
 
