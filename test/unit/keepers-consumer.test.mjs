@@ -212,6 +212,9 @@ describe('getKeepersEngineState', () => {
     assert.equal(s.project.enabled, false);
     assert.equal(s.webhooks.received, 1);
     assert.equal(s.queue_depth, 0);
-    assert.deepEqual(Object.keys(s.drift).sort(), ['extra', 'missing', 'unlinked']);
+    // redemptions_unexplained is IN this shape on purpose: the design calls the two usage readings'
+    // disagreement its alarm, and this object is what /api/status publishes as drift. A count that is
+    // not here is a count nobody sees.
+    assert.deepEqual(Object.keys(s.drift).sort(), ['extra', 'missing', 'redemptions_unexplained', 'unlinked']);
   });
 });

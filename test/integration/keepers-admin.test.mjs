@@ -111,7 +111,7 @@ describe('the read surface', () => {
     const { status, json } = await get('/api/keepers/drift');
     assert.equal(status, 200);
     assert.equal(json.clean, true);
-    assert.deepEqual(json.counts, { missing: 0, extra: 0, unlinked: 0 });
+    assert.deepEqual(json.counts, { missing: 0, extra: 0, unlinked: 0, redemptions_unexplained: 0 });
   });
 
   it('GET /customers/<unknown> is a 404, not an empty object', async () => {

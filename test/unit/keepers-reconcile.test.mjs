@@ -93,7 +93,10 @@ describe('driftReport', () => {
     seedAccrual(ORDER);
     const r = driftReport(db);
     assert.equal(r.clean, true);
-    assert.deepEqual(r.counts, { missing: 0, extra: 0, unlinked: 0 });
+    // redemptions_unexplained belongs IN this shape rather than beside it: `counts` is exactly what
+    // /api/status and /api/keepers/state publish as `drift`, so a count that is not in here is a
+    // count nobody ever sees.
+    assert.deepEqual(r.counts, { missing: 0, extra: 0, unlinked: 0, redemptions_unexplained: 0 });
   });
 
   it('finds an accruing order with no accrual — the repairable kind', () => {

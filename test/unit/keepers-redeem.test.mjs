@@ -13,9 +13,11 @@ import {
   redemptionProblem, openRedemption, refundRedemption, mintRedemption, revokeRedemption,
   findMintedDiscount, mintTitle,
   CREATE_MUTATION, SEARCH_QUERY, READ_QUERY, DEACTIVATE_MUTATION,
+  reconcileRedemptions,
   eligibleCustomerIds, eligibilityProblem, markUsedByOrder,
 } from '../../lib/keepers-redeem.mjs';
 import { openKeepersDbAt, upsertCustomer, appendEvent, ledgerTotals, withTransaction } from '../../lib/keepers-db.mjs';
+import { driftReport } from '../../lib/keepers-reconcile.mjs';
 
 const GID = 'gid://shopify/Customer/8675309';
 const OTHER = 'gid://shopify/Customer/1111111';
@@ -396,5 +398,128 @@ describe('revokeRedemption — a row wedged at minting', () => {
     assert.equal(out.ok, true);
     assert.deepEqual(g.calls, [], 'no Shopify call for a row that never reached Shopify');
     assert.equal(ledgerTotals(db, GID).points, 600);
+  });
+});
+
+// --- expiry waits, and the disagreement is heard ---------------------------------------------------
+//
+// TWO BUGS, both found by auditing this path before exercising it, and both of a kind this file is
+// the right place to pin: a reading acted on too early, and an alarm nobody could hear.
+describe('reconcileRedemptions — the grace window and the alarm', () => {
+  const NOWMS = Date.parse('2026-09-06T12:00:00Z');
+  const iso = (ms) => new Date(ms).toISOString();
+
+  /** An active, minted redemption expiring at `expiresMs`. */
+  const seed = (expiresMs, over = {}) => {
+    let r; withTransaction(db, () => { r = openRedemption(db, { customerGid: GID, tier: TIER, rules: RULES, nowMs: NOWMS }); });
+    db.prepare(`UPDATE keepers_redemptions
+                SET status='active', code=?, discount_gid=?, expires_at=?, used_order_gid=?
+                WHERE id=?`)
+      .run(over.code || 'BK-EXPY-0001', 'gid://shopify/DiscountCodeNode/7', iso(expiresMs), over.usedOrderGid || null, r.id);
+    return r.id;
+  };
+  const row = (id) => db.prepare('SELECT * FROM keepers_redemptions WHERE id=?').get(id);
+  /** A Shopify client answering READ_QUERY with a fixed usage count. */
+  const seeing = (count) => async () => ({ ok: true, data: { codeDiscountNode: { codeDiscount: { asyncUsageCount: count } } } });
+
+  it('does NOT expire or refund a code that only just passed its endsAt', () => {
+    // The bug: asyncUsageCount is asynchronous and this sweep runs every 30 minutes, so a code spent
+    // shortly before endsAt can still read 0 here. Acting on that reading refunded the points for a
+    // code that HAD been spent, and nothing could correct it afterwards — 'expired' is excluded from
+    // this scan and from markUsedByOrder alike.
+    const id = seed(NOWMS - 60_000);           // expired one minute ago
+    const before = ledgerTotals(db, GID).points;
+    return reconcileRedemptions({}, db, { rules: RULES, nowMs: NOWMS, graphql: seeing(0) }).then((out) => {
+      assert.equal(row(id).status, 'active', 'it must stay active so a late reading can still land');
+      assert.equal(out.expired, 0);
+      assert.equal(out.refunded, 0);
+      assert.equal(out.awaitingGrace, 1, 'and be counted, so patience does not read as a stalled sweep');
+      assert.equal(ledgerTotals(db, GID).points, before);
+    });
+  });
+
+  it('a late asyncUsageCount inside the window still catches it — which is the point of waiting', async () => {
+    const id = seed(NOWMS - 60_000);
+    const before = ledgerTotals(db, GID).points;
+    const out = await reconcileRedemptions({}, db, { rules: RULES, nowMs: NOWMS, graphql: seeing(1) });
+    assert.equal(row(id).status, 'used', 'the row was still in the scan, so the lagging count reached it');
+    assert.equal(out.refunded, 0);
+    assert.equal(ledgerTotals(db, GID).points, before, 'it was spent — the points are gone, correctly');
+  });
+
+  it('expires and refunds once the window has passed with nothing said', async () => {
+    const id = seed(NOWMS - 2 * 60 * 60_000);   // two hours past, default grace is one
+    const before = ledgerTotals(db, GID).points;
+    const out = await reconcileRedemptions({}, db, { rules: RULES, nowMs: NOWMS, graphql: seeing(0) });
+    assert.equal(row(id).status, 'expired');
+    assert.equal(out.expired, 1);
+    assert.equal(out.refunded, 1);
+    assert.equal(ledgerTotals(db, GID).points, before + TIER.pointsCost, 'unused and truly expired — give them back');
+  });
+
+  it('the window is configurable, and zero means the old behaviour on purpose', async () => {
+    const id = seed(NOWMS - 60_000);
+    const out = await reconcileRedemptions({}, db,
+      { rules: { ...RULES, redemption_expiry_grace_min: 0 }, nowMs: NOWMS, graphql: seeing(0) });
+    assert.equal(row(id).status, 'expired', 'a grace of 0 is a deliberate choice, not an ignored setting');
+    assert.equal(out.expired, 1);
+  });
+
+  it('an unreadable grace setting falls back to the default rather than to zero', async () => {
+    // Falling back to 0 would silently restore the bug the moment somebody typed a bad value.
+    const id = seed(NOWMS - 60_000);
+    await reconcileRedemptions({}, db,
+      { rules: { ...RULES, redemption_expiry_grace_min: 'soon' }, nowMs: NOWMS, graphql: seeing(0) });
+    assert.equal(row(id).status, 'active');
+  });
+
+  it('a disagreement is recorded, warned about, AND left in a state the drift report can see', async () => {
+    // "Their disagreement is the alarm" — but the array was returned to callers that dropped it, and
+    // driftReport had no redemption term, so nothing could hear it. The durable half is the STATE:
+    // used, with no order of ours claiming it.
+    const id = seed(NOWMS + 86_400_000);        // not near expiry; this is about usage, not time
+    const warned = [];
+    const realWarn = console.warn;
+    console.warn = (...a) => warned.push(a.join(' '));
+    let out;
+    try { out = await reconcileRedemptions({}, db, { rules: RULES, nowMs: NOWMS, graphql: seeing(1) }); }
+    finally { console.warn = realWarn; }
+
+    assert.equal(out.disagreements.length, 1);
+    assert.equal(out.disagreements[0].id, id);
+    assert.ok(warned.some((w) => /spent on Shopify but no order of ours claims it/.test(w)),
+      'a returned array nobody reads is not an alarm — it has to say something out loud too');
+
+    const drift = driftReport(db);
+    assert.equal(drift.counts.redemptions_unexplained, 1,
+      'and the state must be visible in the report /api/status publishes');
+    assert.equal(drift.redemptionsUnexplained[0].id, id);
+  });
+
+  it('a redemption used on an order WE recorded is not a disagreement', () => {
+    // The negative half. If this counted, the alarm would fire on every normal redemption and be
+    // ignored within a week.
+    const id = seed(NOWMS + 86_400_000, { usedOrderGid: 'gid://shopify/Order/99' });
+    return reconcileRedemptions({}, db, { rules: RULES, nowMs: NOWMS, graphql: seeing(1) }).then((out) => {
+      assert.equal(out.disagreements.length, 0);
+      assert.equal(row(id).status, 'used');
+      assert.equal(driftReport(db).counts.redemptions_unexplained, 0);
+    });
+  });
+
+  it('an unexplained redemption does NOT make the drift report unclean', async () => {
+    // Deliberate: `clean` holds the reconcile cursor, and holding it would stop the only sweep able
+    // to resolve anything else. One unexplained redemption must not freeze every accrual behind it.
+    seed(NOWMS + 86_400_000);
+    // Compared BEFORE against AFTER rather than asserted absolutely. This file's harness seeds an
+    // accrual with no matching order row, so `clean` is already false here for a reason that has
+    // nothing to do with redemptions — what matters is that the disagreement does not MOVE it.
+    const cleanBefore = driftReport(db).clean;
+    const realWarn = console.warn; console.warn = () => {};
+    try { await reconcileRedemptions({}, db, { rules: RULES, nowMs: NOWMS, graphql: seeing(1) }); }
+    finally { console.warn = realWarn; }
+    const drift = driftReport(db);
+    assert.equal(drift.counts.redemptions_unexplained, 1);
+    assert.equal(drift.clean, cleanBefore, 'visible, but not a reason to stop the sweep');
   });
 });
