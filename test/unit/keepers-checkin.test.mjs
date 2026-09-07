@@ -24,7 +24,7 @@ const DIR = tmpDir('tcg-keepers-checkin-');
 process.env.TCG_KEEPERS_DB = path.join(DIR, 'keepers.db');
 
 const { activeShow, nextShow, checkIn, makeCheckinHandler } = await import('../../lib/keepers-checkin.mjs');
-const { openKeepersDbAt, closeKeepersDb, upsertCustomer, ledgerTotals, getCustomer } = await import('../../lib/keepers-db.mjs');
+const { openKeepersDbAt, openKeepersDb, closeKeepersDb, upsertCustomer, ledgerTotals, getCustomer } = await import('../../lib/keepers-db.mjs');
 
 const GID = 'gid://shopify/Customer/8675309';
 const RULES = { checkin_xp: 50 };
@@ -211,5 +211,74 @@ describe('the handler', () => {
     assert.equal(res.status, 503);
     assert.equal(res.body.reason, 'config_unavailable');
     assert.doesNotMatch(JSON.stringify(res.body), /shopify down/, 'internal detail must not reach the customer');
+  });
+});
+
+describe('the two switches the check-in used to ignore', () => {
+  // This was the one automatic, customer-triggered path that could write to the ledger with the
+  // programme switched off and the engine in observe. Order accrual honours both; the check-in
+  // honoured neither, and the only thing stopping it was an empty `shows` list — which DECISIONS.md
+  // explicitly instructs the owner to fill next.
+  const liveShow = () => {
+    const now = Date.now();
+    return [{ slug: 'now-show', name: 'Right Now', starts_at: new Date(now - 3600000).toISOString(), ends_at: new Date(now + 3600000).toISOString() }];
+  };
+  const url = (p) => new URL(`http://x${p}`);
+  const claim = (over) => makeCheckinHandler(async () => ({ shows: liveShow(), rules: RULES, ...over }))(
+    {}, { customerGid: GID, url: url('/apps/keepers/checkin'), method: 'POST' });
+  // The handler's claiming path opens the SINGLETON — redirected to a temp file by TCG_KEEPERS_DB at
+  // the top of this file — not the :memory: handle beforeEach hands each test. Reading the wrong one
+  // makes a test failure look like a code failure.
+  const singletonXp = () => { try { return ledgerTotals(openKeepersDb(), GID).xp; } catch { return 0; } };
+
+  it('checkIn refuses when the programme is off', () => {
+    const r = checkIn(db, { customerGid: GID, show: { slug: 's', name: 'S' }, rules: { ...RULES, enabled: false } });
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, 'programme_disabled');
+    assert.equal(ledgerTotals(db, GID).xp, 0, 'and nothing reached the ledger');
+  });
+
+  it('...including the STRING "false", which is the shape a metaobject actually sends', () => {
+    // Every metaobject field arrives as a string. A bare falsiness test reads "false" as true, which
+    // is the whole reason keepers-ingest.mjs uses the same coercion-tolerant comparison.
+    const r = checkIn(db, { customerGid: GID, show: { slug: 's', name: 'S' }, rules: { ...RULES, enabled: 'false' } });
+    assert.equal(r.reason, 'programme_disabled');
+  });
+
+  it('an explicit true still awards, so the gate is not simply refusing everything', () => {
+    const r = checkIn(db, { customerGid: GID, show: { slug: 's', name: 'S' }, rules: { ...RULES, enabled: 'true' } });
+    assert.equal(r.ok, true);
+    assert.equal(r.xp, 50);
+  });
+
+  it('a CLAIM in observe mode awards nothing, and says what it would have given', async () => {
+    const before = singletonXp();
+    const res = await claim({ mode: 'observe' });
+    assert.equal(res.status, 200, 'a warm answer — this is our configuration problem, not theirs');
+    assert.equal(res.body.ok, false);
+    assert.equal(res.body.reason, 'not_applying');
+    assert.equal(res.body.would_award, 50, 'the soak can still see what it was worth');
+    assert.equal(singletonXp(), before, 'and the ledger the soak keeps empty is untouched');
+  });
+
+  it('...and in mode off', async () => {
+    const before = singletonXp();
+    const res = await claim({ mode: 'off' });
+    assert.equal(res.body.reason, 'not_applying');
+    assert.equal(singletonXp(), before);
+  });
+
+  it('but a GET status read is fine in any mode — it appends nothing', async () => {
+    const h = makeCheckinHandler(async () => ({ mode: 'observe', shows: liveShow(), rules: RULES }));
+    const res = await h({}, { customerGid: GID, url: url('/apps/keepers'), method: 'GET' });
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.ready, true);
+  });
+
+  it('apply still awards, so none of the above broke the happy path', async () => {
+    const res = await claim({ mode: 'apply' });
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.xp, 50);
+    assert.ok(singletonXp() >= 50, 'and it genuinely reached the ledger');
   });
 });

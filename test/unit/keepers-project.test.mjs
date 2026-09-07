@@ -122,6 +122,8 @@ describe('metafieldInputs', () => {
     accrue();
     const p = projectionFor(db, GID, { rankTable: RANKS, badges: BADGES, rules: RULES });
     const mf = metafieldInputs(p);
+    // Five, because this fixture's customer has no referral code. The sixth field is covered below —
+    // this assertion passing was NOT evidence that referral_code is handled.
     assert.equal(mf.length, 5);
     for (const m of mf) {
       assert.equal(m.namespace, NAMESPACE);
@@ -263,5 +265,70 @@ describe('projectionQueueDepth', () => {
     assert.equal(projectionQueueDepth(db), 1);
     await projectDirty({}, db, { rankTable: RANKS, badges: BADGES, rules: RULES, writer: async () => ({ ok: true }) });
     assert.equal(projectionQueueDepth(db), 0);
+  });
+});
+
+describe('the referral code reaches Shopify', () => {
+  // It did not. metafieldInputs emitted five fields and referral_code was not one of them, while
+  // ensureReferralCode wrote the code to local SQLite only — so /pages/refer, which reads
+  // customer.metafields.keepers.referral_code, showed "give it a few minutes and refresh" to every
+  // Keeper, permanently. The definition had shipped to both stores; the writer never had.
+  const CODE = 'BK-7K4M-QX92';
+  const withCode = (gid) => {
+    upsertCustomer(db, { customerGid: gid });
+    db.prepare('UPDATE keepers_customers SET referral_code = ? WHERE customer_gid = ?').run(CODE, gid);
+  };
+
+  it('is emitted as a sixth metafield for a Keeper who has earned something', () => {
+    accrue();
+    db.prepare('UPDATE keepers_customers SET referral_code = ? WHERE customer_gid = ?').run(CODE, GID);
+    const mf = metafieldInputs(projectionFor(db, GID, { rankTable: RANKS, badges: BADGES, rules: RULES }));
+    assert.equal(mf.length, 6);
+    const rc = mf.find((m) => m.key === 'referral_code');
+    assert.ok(rc, 'referral_code must be written, or the referral earn action cannot start');
+    assert.equal(rc.value, CODE);
+    assert.equal(rc.type, 'single_line_text_field');
+    assert.equal(rc.namespace, NAMESPACE);
+  });
+
+  it('reaches a Keeper who has joined but never ordered — the whole point of the page', () => {
+    // Sharing a code is how someone GETS their first referral, so waiting for a first order is
+    // backwards. projectionFor used to return null here and nothing was ever written.
+    const gid = 'gid://shopify/Customer/77';
+    withCode(gid);
+    const p = projectionFor(db, gid, { rankTable: RANKS, badges: BADGES, rules: RULES });
+    assert.ok(p, 'a customer with a code and no events must still project');
+    assert.equal(p.codeOnly, true);
+    const mf = metafieldInputs(p);
+    assert.equal(mf.length, 1, 'and ONLY the code — xp 0 on a profile that has earned nothing is noise');
+    assert.equal(mf[0].key, 'referral_code');
+  });
+
+  it('still writes nothing for a customer with neither events nor a code', () => {
+    // The load-bearing null. Writing zeroes would flip the storefront out of "not started yet".
+    const gid = 'gid://shopify/Customer/78';
+    upsertCustomer(db, { customerGid: gid });
+    assert.equal(projectionFor(db, gid, { rankTable: RANKS, badges: BADGES, rules: RULES }), null);
+  });
+
+  it('isUnchanged sees an unwritten code as changed, and a written one as settled', () => {
+    // Without its own *_written column the code would only ever ride along on a pass where some
+    // other value happened to change.
+    const gid = 'gid://shopify/Customer/79';
+    withCode(gid);
+    const p = projectionFor(db, gid, { rankTable: RANKS, badges: BADGES, rules: RULES });
+    const row = () => db.prepare('SELECT * FROM keepers_customers WHERE customer_gid = ?').get(gid);
+    assert.equal(isUnchanged(row(), p), false, 'never pushed, so there is work to do');
+    db.prepare('UPDATE keepers_customers SET referral_code_written = ? WHERE customer_gid = ?').run(CODE, gid);
+    assert.equal(isUnchanged(row(), p), true, 'pushed, so a later pass must not rewrite it');
+  });
+
+  it('a changed code on a full projection is not mistaken for settled', () => {
+    accrue();
+    db.prepare('UPDATE keepers_customers SET referral_code = ?, referral_code_written = ? WHERE customer_gid = ?')
+      .run(CODE, 'BK-OLD1-OLD2', GID);
+    const p = projectionFor(db, GID, { rankTable: RANKS, badges: BADGES, rules: RULES });
+    const row = db.prepare('SELECT * FROM keepers_customers WHERE customer_gid = ?').get(GID);
+    assert.equal(isUnchanged(row, p), false);
   });
 });

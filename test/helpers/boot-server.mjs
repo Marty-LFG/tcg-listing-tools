@@ -84,6 +84,14 @@ export const OFFLINE_ENV = Object.freeze([
   'ANTHROPIC_API_KEY', 'OPENAI_API_KEY',
   // Everything else that spends money or touches an account we do not own.
   'BRICKLINK_CONSUMER_KEY', 'BRICKLINK_CONSUMER_SECRET', 'BRICKLINK_TOKEN', 'BRICKLINK_TOKEN_SECRET',
+  // Not a channel credential — the LOCAL ADMIN GATE. diagOk() is `if (!want) return false`, so blanking
+  // this closes every /api/keepers and /api/status mutating route from the server side. Without it the
+  // refusals asserted in test/integration/keepers-admin.test.mjs hold only because that file happens to
+  // send no Authorization header: exactly the "safe by what the box lacks" shape as the eBay hole above,
+  // inverted — safe by what the test forgot to send. Note .env.example ships DIAG_TOKEN commented out,
+  // so the self-maintaining check in test/invariants/integration-offline.test.mjs never sees it and
+  // cannot ask for it; it has to be here by hand.
+  'DIAG_TOKEN',
   // Read-only catalog keys. They cannot mutate anything, so they are a different risk class from the
   // ones above — but a test that makes a live upstream call is non-deterministic, burns someone's rate
   // limit, and fails on a plane. Every catalog the suite needs is baked into data/ already.

@@ -97,28 +97,40 @@ describe('no integration test may drive a channel-mutating route', () => {
     '/api/keepers/economy/refresh',
   ];
 
-  it('every test that posts one is in the acknowledged list, with a reason', () => {
-    // A deliberate allow-list rather than a ban: runner-stage genuinely needs to prove the guard fires,
-    // and proving a refusal is the safest thing such a test can do — ONCE the refusal is guaranteed
-    // rather than incidental. Adding a file here should be a decision someone makes on purpose.
-    const ACKNOWLEDGED = {
-      'runner-stage.test.mjs': 'asserts /api/listings/batch REFUSES with 409 not_connected; safe only because OFFLINE_ENV guarantees the disconnection',
-    };
+  // A deliberate allow-list rather than a ban: runner-stage genuinely needs to prove the guard fires,
+  // and proving a refusal is the safest thing such a test can do — ONCE the refusal is guaranteed
+  // rather than incidental. Adding a file here should be a decision someone makes on purpose.
+  const ACKNOWLEDGED = {
+    'runner-stage.test.mjs': 'asserts /api/listings/batch REFUSES with 409 not_connected; safe only because OFFLINE_ENV guarantees the disconnection',
+    'keepers-admin.test.mjs': 'POSTs all four MUTATING Keepers prefixes (redemptions create/mint/revoke, sweep, pass, economy/refresh) and asserts each 403s; safe because it sends no Authorization header and no ?token=, AND because OFFLINE_ENV blanks DIAG_TOKEN so diagOk is shut from the server side too',
+  };
+
+  it('every test that mentions one is in the acknowledged list, with a reason', () => {
+    // MENTION-BASED, not post()-adjacent, and the difference is the whole guard. The original detector
+    // required the path to be a string literal sitting inside post(...). keepers-admin.test.mjs drives
+    // its routes through a loop over an array of [path, body] pairs, so the four /api/keepers entries
+    // added to MUTATING on the same branch as that file matched ZERO files on the day they were
+    // written — including the file they were written for. A loop, a template literal or a shared
+    // constant all dodge a literal-adjacent match; a substring test over the source dodges none of
+    // them. It costs false positives — a file that only NAMES a route in a comment trips it — and that
+    // is the right trade: clearing one is a single line here, which is the deliberate review this
+    // guard exists to force.
     const offenders = [];
     for (const f of integrationFiles()) {
       const src = fs.readFileSync(path.join(INTEGRATION_DIR, f), 'utf8');
-      const posts = MUTATING.some((r) => new RegExp(`post\\(\\s*['"\`]${r.replace(/\//g, '\\/')}`).test(src));
-      if (posts && !ACKNOWLEDGED[f]) offenders.push(f);
+      if (MUTATING.some((r) => src.includes(r)) && !ACKNOWLEDGED[f]) offenders.push(f);
     }
     assert.deepEqual(offenders, [],
       `these integration tests drive a channel-mutating route without being acknowledged: ${offenders.join(', ')}`);
   });
 
-  it('the acknowledged test still says out loud what it is relying on', () => {
+  it('every acknowledged test still says out loud what it is relying on', () => {
     // The comment is the handover. Someone reading runner-stage.test.mjs must not conclude, as its
     // original author reasonably did, that "this box has no eBay consent" is a property of the world.
-    const src = read('test/integration/runner-stage.test.mjs');
-    assert.match(src, /OFFLINE_ENV/,
-      'runner-stage must name the guarantee it depends on, or the next reader will assume it is incidental again');
+    // Every entry above carries the same obligation, so this iterates rather than naming one file.
+    for (const f of Object.keys(ACKNOWLEDGED)) {
+      assert.match(read('test/integration/' + f), /OFFLINE_ENV/,
+        `${f} must name the guarantee it depends on, or the next reader will assume it is incidental again`);
+    }
   });
 });

@@ -2,17 +2,27 @@
 // server and a TEMP ledger.
 //
 // WHY THIS FILE EXISTS SEPARATELY from api.integration.test.mjs: that file is GET-only on purpose,
-// and this one has to POST. Every POST here is either refused for a missing DIAG_TOKEN or refused by
-// the mode/store gate — which is the point. The routes that reach Shopify (mint, revoke, sweep, pass,
-// economy/refresh) are in the MUTATING list in test/invariants/integration-offline.test.mjs, so this
-// file must never drive one to success; it drives them to their REFUSAL and asserts the refusal is
-// deliberate rather than incidental.
+// and this one has to POST. Every POST here is refused by the DIAG_TOKEN gate before the handler body
+// runs — which is the point. The routes that reach Shopify (mint, revoke, sweep, pass, economy/refresh)
+// are in the MUTATING list in test/invariants/integration-offline.test.mjs, which is why this file also
+// carries an ACKNOWLEDGED entry there. It must never drive one to success; it drives them to their
+// REFUSAL and asserts the refusal is deliberate rather than incidental.
 //
 // The refusals asserted below are guaranteed, not lucky:
-//   · bootServer blanks DIAG_TOKEN via OFFLINE_ENV, so every gated route 403s.
+//   · The gate is shut from both ends. No POST here sends an Authorization header or a ?token=, and
+//     diagOk() needs a timing-safe match against a supplied token, so it returns false for that reason
+//     alone; and OFFLINE_ENV lists DIAG_TOKEN, so `want` is empty and diagOk's `if (!want) return
+//     false` fires before that. Either half would do. Both are here because the 2026-08-23 incident
+//     was one guarantee, held by one machine's configuration, quietly not holding.
 //   · bootServer points TCG_KEEPERS_DB at a temp file, so nothing here can touch data/keepers.db.
-//   · bootServer points TCG_CONFIG_DIR at a temp COPY, so the seeded keepers.config.json is a copy
-//     and its mode is the example's, never the box's.
+//   · bootServer blanks SHOPIFY_SHOP and the client credentials, so a route that somehow cleared the
+//     gate would still have no store to reach.
+//
+// WHAT THE TEMP CONFIG DIR DOES NOT GUARANTEE — THE MODE. copyConfigs copies every data/*.config.json
+// into TCG_CONFIG_DIR verbatim, and data/keepers.config.json is gitignored and box-owned, so the copy
+// carries whatever mode THIS machine runs in — 'apply' included. The copy stops a settings PUT from
+// rewriting the real file; it does not reseed from data/keepers.config.example.json. Nothing below may
+// be written to depend on the mode being 'off'.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -130,9 +140,9 @@ describe('the projection route is reachable — the /customers/ prefix does not 
 });
 
 describe('every mutating route refuses without a diag token', () => {
-  // bootServer blanks DIAG_TOKEN through OFFLINE_ENV, so `diagOk` is false for all of them and the
-  // refusal is guaranteed rather than incidental — the standard test/invariants/integration-offline
-  // .test.mjs asks for.
+  // `post` below sends no token, and OFFLINE_ENV blanks DIAG_TOKEN, so diagOk is false for both
+  // reasons and the refusal is guaranteed rather than incidental — the standard test/invariants
+  // /integration-offline.test.mjs asks for.
   const GATED = [
     ['/api/keepers/grant', { customerGid: 'gid://shopify/Customer/1', xp: 10, reason: 'goodwill', idempotencyKey: 'k1' }],
     ['/api/keepers/grant-badge', { customerGid: 'gid://shopify/Customer/1', badgeId: 'first-pull' }],

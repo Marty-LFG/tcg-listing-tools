@@ -11,7 +11,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   windowFloorProblem, defaultCursor, driftReport,
-  ORDER_WINDOW_DAYS, WINDOW_MARGIN_DAYS, CURSOR_KEY,
+  ORDER_WINDOW_DAYS, WINDOW_MARGIN_DAYS, CURSOR_KEY, cursorDecision,
 } from '../../lib/keepers-reconcile.mjs';
 import { openKeepersDbAt, appendEvent, upsertCustomer, getMeta, setMeta } from '../../lib/keepers-db.mjs';
 
@@ -151,5 +151,49 @@ describe('the cursor lives in meta, so a restart resumes rather than restarts', 
     assert.equal(getMeta(db, CURSOR_KEY), null);
     setMeta(db, CURSOR_KEY, '2026-09-01T00:00:00Z');
     assert.equal(getMeta(db, CURSOR_KEY), '2026-09-01T00:00:00Z');
+  });
+});
+
+describe('the cursor never moves on a run that wrote nothing', () => {
+  // sweepOrders reaches Shopify, so nothing in this suite has ever driven it — which is precisely how
+  // the condition stayed `clean && apply` with no mention of the mode for as long as it did. Under
+  // observe, ingestOrder returns before writing even the keepers_orders row, yet the timer calls the
+  // sweep with apply defaulting to true. Every run advanced the cursor past orders it had chosen not
+  // to record, so flipping the mode to 'apply' would silently skip the entire soak window — and
+  // driftReport could not report it, because its `missing` query joins from the table observe never
+  // wrote. The rule is pure and has three inputs; it is worth enumerating.
+
+  it('observe holds the cursor even on a perfectly clean run', () => {
+    const d = cursorDecision({ clean: true, apply: true, observeOnly: true });
+    assert.equal(d.advance, false, 'this is the bug: a clean observe run used to advance');
+    assert.equal(d.holdReason, 'observe', 'and it must say so, or a held cursor reads as a fault');
+  });
+
+  it('a dry run holds it too, and is distinguishable from observe', () => {
+    assert.deepEqual(cursorDecision({ clean: true, apply: false, observeOnly: false }),
+      { advance: false, holdReason: 'dry_run' });
+  });
+
+  it('observe beats dry_run in the explanation — the mode is the reason, not the flag', () => {
+    assert.equal(cursorDecision({ clean: true, apply: false, observeOnly: true }).holdReason, 'observe');
+  });
+
+  it('only a clean applying run that is not observing may advance', () => {
+    assert.deepEqual(cursorDecision({ clean: true, apply: true, observeOnly: false }),
+      { advance: true, holdReason: null });
+  });
+
+  it('a real fault outranks the mode in the explanation', () => {
+    assert.equal(cursorDecision({ clean: false, apply: true, observeOnly: true, failed: true }).holdReason, 'query_failed');
+    assert.equal(cursorDecision({ clean: false, apply: true, observeOnly: false, truncated: true }).holdReason, 'truncated');
+    assert.equal(cursorDecision({ clean: false, apply: true, observeOnly: false, problems: 3 }).holdReason, 'order_errors');
+  });
+
+  it('nothing unclean ever advances, whatever the flags say', () => {
+    for (const apply of [true, false]) {
+      for (const observeOnly of [true, false]) {
+        assert.equal(cursorDecision({ clean: false, apply, observeOnly }).advance, false);
+      }
+    }
   });
 });
