@@ -2,9 +2,13 @@
 //
 // Mirrors the guard matrix of test/integration/listing-image-store.test.mjs, minus the server:
 // that suite boots one because its /file route dispatch is the thing under test; here the store
-// functions are pure fs and unit-testable directly. Like its sibling, the store has NO dir
-// override — its own suite exercises the real (gitignored) directory — so this one writes
-// distinctive random bytes into data/pregrade-images/ and removes exactly what it wrote.
+// functions are pure fs and unit-testable directly. UNLIKE its sibling, this store has no dir
+// override, and that is now a decision rather than a shared default: the composed-frame store gained
+// TCG_LISTING_IMAGE_DIR because its fixture is deterministic, so every run renamed onto the previous
+// run's two filenames. Nothing here can collide that way — every hash is sha256 of crypto.randomBytes
+// — so this one keeps writing distinctive random bytes into the real (gitignored)
+// data/pregrade-images/ and removing exactly what it wrote, which is also where the refcounted delete
+// has to be exercised. lib/pregrade-store.mjs carries the same reasoning at the point of decision.
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

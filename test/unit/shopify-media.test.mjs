@@ -1,7 +1,10 @@
 // test/unit/shopify-media.test.mjs — the Shopify media pipeline (lib/channels/shopify-media.mjs).
 //
 // Offline: a stub fetch answers the GraphQL endpoint and the staged-upload target, and the bytes come
-// from a real temp file in the content-addressed store. Nothing here touches a network or a real store.
+// from a real file in a redirected content-addressed store. Nothing here touches a network or the
+// real store — which the line above used to claim while doing the opposite: every fixture, including
+// a 21MB one, was seeded into the owner's own data/listing-images/ and swept up again by a
+// best-effort exit hook that a killed process would never run.
 //
 // The properties worth locking down are the ones whose failure is SILENT on a live store: a file
 // attached before it finished processing (broken image, no error anywhere), the same bytes uploaded
@@ -13,11 +16,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { openDbAt } from '../../lib/db.mjs';
-import { storePath } from '../../lib/listing-image-store.mjs';
-import { ensureShopifyMedia, postToStagedTarget, cachedFile } from '../../lib/channels/shopify-media.mjs';
-import { tmpFile } from '../helpers/tmp.mjs';
+import { tmpFile, tmpDir } from '../helpers/tmp.mjs';
 import { buildProductSetInput } from '../../lib/channels/shopify-product-api.mjs';
 import { toShopifyProduct } from '../../lib/channels/shopify-map.mjs';
+
+// Set BEFORE the two imports below, and that is why they are dynamic: STORE_DIR is resolved at module
+// scope, so a redirect applied after a static import reaches nothing. Same reason boot-server.mjs
+// imports the database modules late instead of at the top. shopify-media.mjs is on the list because
+// it imports the store transitively — redirecting only the direct import would have left the seeded
+// bytes and the reader pointing at different directories.
+process.env.TCG_LISTING_IMAGE_DIR = path.join(tmpDir('tcg-media-'), 'listing-images');
+const { storePath } = await import('../../lib/listing-image-store.mjs');
+const { ensureShopifyMedia, postToStagedTarget, cachedFile } = await import('../../lib/channels/shopify-media.mjs');
 
 const ENV = {
   SHOPIFY_DEV_SHOP: 'binders-keepers-dev',
@@ -25,14 +35,17 @@ const ENV = {
   SHOPIFY_CLIENT_SECRET: 'fake-client-secret',
 };
 
-// Put real bytes in the real content store under a hash we control, so storeLookup finds them.
+// Put real bytes in the (redirected) content store under a hash we control, so storeLookup finds them.
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 2, 3, 4, 5]);
 function seedStore(tag) {
   const hash = crypto.createHash('sha256').update(tag).digest('hex');
   const p = storePath(hash, 'jpg');
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JPEG);
-  process.on('exit', () => { try { fs.unlinkSync(p); } catch { /* best effort */ } });
+  // No per-file exit hook any more. The whole store is inside a tmpDir, which test/helpers/tmp.mjs
+  // removes with the retry policy Windows' handle-release lag needs. The hook this replaces was never
+  // a teardown: it registered one listener per seeded file, and a killed run ran none of them — so
+  // every fixture, including the 21MB one below, stayed in the real store with nothing looking.
   return hash;
 }
 

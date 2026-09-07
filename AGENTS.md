@@ -515,7 +515,10 @@ It runs the two suites:
   `TCG_REPRICER_DB` (never touches `data/*.db`) and the owner-editable configs redirected
   to a temp copy via `TCG_CONFIG_DIR` (never touches `data/*.config.json`, so a settings
   PUT can be exercised for real without dirtying the tree — `lib/config-paths.mjs` is the
-  single resolver every config reader goes through). Exercises `/api/*`, including the
+  single resolver every config reader goes through), plus the composed-frame store
+  redirected via `TCG_LISTING_IMAGE_DIR` (`POST /api/listing-image/build` writes real
+  ~1MB jpegs, and without it every run left them in the owner's `data/listing-images/`).
+  Exercises `/api/*`, including the
   `/api/status` no-secret-leak guard and `/api/settings` write validation.
 - **Opt-in live smoke**: `$env:TEST_LIVE='1'; pnpm test:integration` probes each upstream
   once through the proxies (keyless sources must answer; keyed sources may be
@@ -1684,6 +1687,17 @@ Routes: `GET /api/listing-image/targets`, `POST /api/listing-image/build`,
 `/api/listing-image` middleware, because connect matches by registration order, not longest prefix.
 **`rail-previews.html` is the proof surface**: pick any game, switch frames, see the alt text, the
 filename and the review flag.
+
+**`storePut` never renames onto an existing file**, in `listing-image-store.mjs` and its
+`pregrade-store.mjs` clone alike. The hash is the identity of the inputs, so a file already at that
+path IS the file being written and the put returns it untouched — the same reasoning `lib/backup.mjs`
+already applies to its image mirror. This is not tidiness: `fs.renameSync` onto an existing
+destination throws EPERM on Windows whenever anything else holds it open (Defender scanning a
+just-written jpeg is enough), which made `POST /build` 503 "nothing could be rendered" about one
+`pnpm verify` in ten. Measured: 2 failures in 400 such renames with no other reader, 393 in 400 with
+three; zero in 2100 renames onto a path that did not exist. A genuinely lost race — both writers past
+the existence check — is absorbed only when the destination actually appeared; any other errno still
+throws. `test/unit/content-store-put.test.mjs` holds both stores to this from one table.
 
 ```
 composeListingImage(input, meta, options?)

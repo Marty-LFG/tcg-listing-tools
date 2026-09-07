@@ -22,7 +22,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import {
   ASSET_VERSION, DEFAULT_CONFIG, VARIANTS,
-  composeHash, composeVersion, resolveLayout,
+  composeHash, composeVersion, resolveLayout, shopifyPixelKey,
 } from '../../lib/listing-image-config.mjs';
 import {
   SIDES, railPath, railsDigest, railsPresent, bandsDigest, bandsPresent,
@@ -143,5 +143,52 @@ describe('composeVersion — the audit token', () => {
 
   it('drops the digest segment when there is no art', () => {
     assert.equal(composeVersion('default', ''), 'v1/default');
+  });
+});
+
+// --- the shopify pixel segment is APPEND-ONLY ----------------------------------------------------
+//
+// IF THIS FILE'S OTHER PINS ARE ABOUT A FIELD LEAKING IN, THIS ONE IS ABOUT WHEN IT LEAKS IN.
+//
+// shopify.bandFraction / .quality / .og.* change pixels without passing through `layout`, so they had
+// to join the hash once lib/listing-image-store.mjs stopped overwriting an existing destination —
+// otherwise the first rendering of a card would be pinned for good and re-tuning the frame would do
+// nothing to anything already composed. The segment is written ONLY where a value differs from its
+// default, which is what keeps that from re-keying the entire store.
+//
+// The literal '' below is the whole guarantee, and it is pinned ABSOLUTELY rather than by comparing
+// two configs. A relative comparison cannot see this break: make the segment unconditional and both
+// sides of it shift together, so `compose({})` still equals `compose({quality: 88})` and the suite
+// stays green while every composite on disk has been silently orphaned. That mutation survived the
+// behavioural tests in listing-image-bands.test.mjs; it does not survive this.
+describe('the shopify pixel segment stays out of a stock hash', () => {
+  it('is empty for a stock config, on both kinds', () => {
+    for (const kind of ['band', 'og']) {
+      assert.equal(shopifyPixelKey(DEFAULT_CONFIG, kind), '',
+        `a stock config must contribute NO segment (${kind}) — anything else re-keys every composite `
+        + 'already on disk and forces a full re-upload');
+    }
+  });
+
+  it('is still empty when the defaults are spelled out explicitly', () => {
+    // Settings round-trip through data/listing-image.config.json, so a saved file routinely carries
+    // the default values written out. Keying on "present" rather than "different" would re-key the
+    // store the first time someone opened the settings page and pressed save.
+    const spelled = { shopify: { ...DEFAULT_CONFIG.shopify, og: { ...DEFAULT_CONFIG.shopify.og } } };
+    assert.equal(shopifyPixelKey(spelled, 'band'), '');
+    assert.equal(shopifyPixelKey(spelled, 'og'), '');
+  });
+
+  it('carries exactly the values that differ, and nothing else', () => {
+    const s = (over, kind = 'band') => shopifyPixelKey({ shopify: { ...DEFAULT_CONFIG.shopify, ...over } }, kind);
+    assert.equal(s({ bandFraction: 0.12 }), 'bf=0.12');
+    assert.equal(s({ quality: 40 }), 'q=40');
+    assert.equal(s({ quality: 40, bandFraction: 0.12 }), 'q=40,bf=0.12');
+    assert.equal(s({ og: { ...DEFAULT_CONFIG.shopify.og, railWidth: 240 } }, 'og'), 'og.railWidth=240');
+    // aspectWarnPct is advisory and changes no pixels (listing-image-config.mjs says so), so it must
+    // NOT re-key. A settings field that moves the hash without moving a pixel is a silent re-upload.
+    assert.equal(s({ aspectWarnPct: 20 }), '');
+    // og keys must not leak into the band frame, which never reads them.
+    assert.equal(s({ og: { ...DEFAULT_CONFIG.shopify.og, railWidth: 240 } }, 'band'), '');
   });
 });

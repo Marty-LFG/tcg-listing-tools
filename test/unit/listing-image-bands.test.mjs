@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tmpDir } from '../helpers/tmp.mjs';
 import {
-  bandText, aspectReview, composeBandImage, bandsAvailable,
+  bandText, aspectReview, composeBandImage, composeOgImage, bandsAvailable,
 } from '../../lib/listing-image-bands.mjs';
 import { resolveBandGeometry, DEFAULT_BAND_FRACTION, resolveTarget, resolveTargetFrame } from '../../lib/listing-image-targets.mjs';
 import { loadConfig } from '../../lib/listing-image-config.mjs';
@@ -338,5 +338,57 @@ describe('composeBandImage', { skip: SKIP }, () => {
       assert.equal(second.cached, true);
       assert.equal(Buffer.compare(first.buffer, second.buffer), 0);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+// --- the owner-editable settings that change pixels must change the key ---------------------------
+//
+// WHY THIS EXISTS. lib/listing-image-store.mjs no longer overwrites a destination that already holds
+// the hash it was about to write — it returns the stored file, because renaming onto an existing file
+// is what made `pnpm verify` flake on Windows. That turned a latent hash bug into a permanent one:
+// shopify.bandFraction, shopify.quality and shopify.og.* all change pixels without going through
+// `layout`, so before this they shared ONE contentHash. Measured then: 0.093 / 0.12 / quality 40 gave
+// 176,285 / 180,556 / 57,488 bytes under one key. With the store returning first-writer bytes, tuning
+// bandFraction would have done nothing to any card already composed, and the store would have ended
+// up half-framed one way and half the other.
+describe('shopify pixel settings are part of the content hash', { skip: SKIP }, () => {
+  const meta = { productType: 'single', cardName: 'Iono', setName: 'Paldea Evolved', cardNumber: '254/182', language: 'English' };
+  const withShopify = (over) => ({ ...cfg, shopify: { ...cfg.shopify, ...over } });
+  const compose = async (over) => composeBandImage(
+    await fakeCard(733, 1024), meta, { cfg: withShopify(over), trim: false });
+
+  it('a different band fraction is a different key AND different pixels', async () => {
+    const a = await compose({});
+    const b = await compose({ bandFraction: 0.12 });
+    assert.notEqual(a.contentHash, b.contentHash, 'two framings of one card must not share a key');
+    assert.notEqual(Buffer.compare(a.buffer, b.buffer), 0, 'precondition: the setting really does move pixels');
+  });
+
+  it('a different jpeg quality is a different key AND different pixels', async () => {
+    const a = await compose({});
+    const b = await compose({ quality: 40 });
+    assert.notEqual(a.contentHash, b.contentHash);
+    assert.notEqual(Buffer.compare(a.buffer, b.buffer), 0);
+  });
+
+  it('og geometry is keyed too, on the social card', async () => {
+    // The social card has its own entry point — composeBandImage refuses 'og-card' outright, because
+    // that frame uses vertical rails rather than bands — so it needs its own case here, or the
+    // shopify.og.* keys go unguarded.
+    const og = async (over) => composeOgImage(await fakeCard(733, 1024), meta, { cfg: withShopify(over), trim: false });
+    const a = await og({});
+    const b = await og({ og: { ...cfg.shopify.og, railWidth: 240 } });
+    assert.notEqual(a.contentHash, b.contentHash);
+    assert.notEqual(Buffer.compare(a.buffer, b.buffer), 0);
+  });
+
+  it('and STOCK settings key exactly as they did before the segment existed', async () => {
+    // The zero-blast-radius property, and the whole reason the segment is append-only. If this fails,
+    // every composite already on disk and every image already hosted is orphaned and the store
+    // re-uploads itself — an ASSET_VERSION-sized event, which this must never be.
+    const a = await compose({});
+    const explicitDefaults = await compose({ quality: cfg.shopify.quality, bandFraction: cfg.shopify.bandFraction });
+    assert.equal(a.contentHash, explicitDefaults.contentHash,
+      'spelling a default out must not re-key it — the segment is written only for values that DIFFER');
   });
 });

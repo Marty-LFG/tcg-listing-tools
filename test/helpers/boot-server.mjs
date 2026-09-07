@@ -120,6 +120,12 @@ export async function bootServer({ env: fakeEnv = {} } = {}) {
   // module, not in the test file.
   process.env.TCG_KEEPERS_DB = path.join(dataDir, 'keepers.db');
   process.env.TCG_BACKUP_DIR = path.join(dataDir, 'backups');   // the backup job must never touch real data/backups
+  // The composed-frame store. POST /api/listing-image/build writes real ~1MB jpegs, and without this
+  // every run that touched it deposited them in the repo's own data/listing-images/ — a gitignored
+  // directory holding the owner's actual composed listing images, so the residue was invisible and
+  // permanent. STORE_DIR is a module-scope const like the database paths above, so it has to be set
+  // HERE, before Vite loads the module.
+  process.env.TCG_LISTING_IMAGE_DIR = path.join(dataDir, 'listing-images');
   for (const k of OFFLINE_ENV) process.env[k] = '';
   // Then, and only then, the caller's declared fakes.
   for (const [k, v] of Object.entries(fakeEnv)) process.env[k] = v;
@@ -151,6 +157,7 @@ export async function bootServer({ env: fakeEnv = {} } = {}) {
     repricerDb: process.env.TCG_REPRICER_DB,
     postsaleDb: process.env.TCG_POSTSALE_DB,
     keepersDb: process.env.TCG_KEEPERS_DB,
+    listingImageDir: process.env.TCG_LISTING_IMAGE_DIR,
     dbFileExists: (p) => fs.existsSync(p),
     // Close the Vite server AND every database its plugins opened. Closing the server alone left
     // four SQLite handles open, and on Windows an open handle makes the temp directory's removal fail
