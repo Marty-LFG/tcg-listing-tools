@@ -6,7 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  channelOf, accrualBasisCents, keepersDiscountOf, evidenceOf, decideAccrual, reversalFor,
+  channelOf, accrualBasisCents, keepersDiscountOf, evidenceOf, decideAccrual, reversalFor, refundMerchandiseCents,
 } from '../../lib/keepers-ingest.mjs';
 
 const RULES = {
@@ -259,7 +259,13 @@ describe('the accrual basis is what was SPENT, not what survived the refunds', (
   const refunded = order({
     subtotalPriceSet: { shopMoney: { amount: '74.00', currencyCode: 'AUD' } },
     currentSubtotalPriceSet: { shopMoney: { amount: '34.00', currencyCode: 'AUD' } },
-    refunds: [{ id: 'gid://shopify/Refund/1', createdAt: '2026-09-01T00:00:00Z', totalRefundedSet: { shopMoney: { amount: '40.00' } } }],
+    // Carries refundLineItems because a real refund does, and because the merchandise total is now
+    // what scores the reversal — totalRefundedSet alone would include refunded postage.
+    refunds: [{
+      id: 'gid://shopify/Refund/1', createdAt: '2026-09-01T00:00:00Z',
+      totalRefundedSet: { shopMoney: { amount: '40.00' } },
+      refundLineItems: { nodes: [{ subtotalSet: { shopMoney: { amount: '40.00' } } }], pageInfo: { hasNextPage: false } },
+    }],
   });
 
   it('accrues on the pre-refund subtotal', () => {
@@ -287,5 +293,69 @@ describe('the accrual basis is what was SPENT, not what survived the refunds', (
     const noSub = order({ subtotalPriceSet: null, currentSubtotalPriceSet: { shopMoney: { amount: '34.00' } } });
     assert.equal(accrualBasisCents(noSub), null);
     assert.equal(decideAccrual(noSub, RULES).reason, 'no_subtotal');
+  });
+});
+
+// --- a refund only reverses the MERCHANDISE it refunded -------------------------------------------
+//
+// THE BUG THIS EXISTS TO PREVENT. The accrual basis excludes shipping on the stated grounds that
+// postage is passed through at no margin, but the reversal scored against totalRefundedSet — the
+// whole refund, postage included. One rule on the way in, abandoned on the way out, and the two
+// numbers were not measuring the same money.
+//
+// $74 of cards + $12 postage accrues 74 XP. Return one $20 card and refund the postage with it and
+// the old numerator was $32: share 3200/7400 took back 32 XP where 20 is honest. clampReversal bounds
+// it to partial refunds — a full refund still lands on zero — which is exactly why the #1010 soak,
+// being a full refund, could not surface it.
+describe('refundMerchandiseCents — postage never earned XP, so it cannot take any back', () => {
+  const refund = (lines, over = {}) => ({
+    id: 'gid://shopify/Refund/9',
+    totalRefundedSet: { shopMoney: { amount: '32.00' } },
+    refundLineItems: { nodes: lines.map((a) => ({ subtotalSet: { shopMoney: { amount: a } } })), pageInfo: { hasNextPage: false } },
+    ...over,
+  });
+
+  it('counts the refunded line items, not the refund total', () => {
+    // The whole finding in one assertion: $32 came back, $20 of it was a card.
+    assert.equal(refundMerchandiseCents(refund(['20.00'])), 2000);
+  });
+
+  it('sums every refunded line', () => {
+    assert.equal(refundMerchandiseCents(refund(['20.00', '4.50', '0.99'])), 2549);
+  });
+
+  it('a refund with NO line items reverses nothing', () => {
+    // Refunded postage on its own, or a goodwill adjustment. Neither un-buys a card, and the XP was
+    // earned on the cards — so there is nothing here to claw back.
+    assert.equal(refundMerchandiseCents(refund([])), 0);
+  });
+
+  it('an unreadable line is a refusal, not a zero', () => {
+    // Returning 0 would look exactly like "postage only" and silently skip a real reversal.
+    assert.equal(refundMerchandiseCents({ id: 'x', refundLineItems: { nodes: [{ subtotalSet: null }] } }), null);
+    assert.equal(refundMerchandiseCents({ id: 'x' }), null, 'no refundLineItems at all is unreadable, not empty');
+  });
+
+  it('the decision carries the merchandise figure through to the reversal', () => {
+    const o = order({
+      subtotalPriceSet: { shopMoney: { amount: '74.00', currencyCode: 'AUD' } },
+      currentSubtotalPriceSet: { shopMoney: { amount: '54.00', currencyCode: 'AUD' } },
+      refunds: [refund(['20.00'])],
+    });
+    const d = decideAccrual(o, RULES);
+    assert.equal(d.basisCents, 7400, 'basis is still the pre-refund merchandise subtotal');
+    assert.equal(d.refunds.length, 1);
+    assert.equal(d.refunds[0].cents, 2000,
+      'the reversal must be scored on $20 of cards, not the $32 that left the bank account');
+    // And the arithmetic that follows: 2000/7400 of 74 XP is 20, which is the honest answer.
+    assert.deepEqual(reversalFor({ basisCents: d.basisCents, xp: d.xp, points: d.points }, { refundedCents: d.refunds[0].cents }),
+      { xp: 20, points: 40 });
+  });
+
+  it('a refund with more lines than the query asks for is REPORTED, not silently short', () => {
+    const truncated = refund(['20.00'], { refundLineItems: { nodes: [{ subtotalSet: { shopMoney: { amount: '20.00' } } }], pageInfo: { hasNextPage: true } } });
+    const d = decideAccrual(order({ refunds: [truncated] }), RULES);
+    assert.equal(d.refunds[0].truncated, true,
+      'truncation must reach the caller — an under-reversal in the customer\'s favour is the kind nobody notices');
   });
 });
