@@ -5,8 +5,24 @@
 // code — so a wrong answer is not a log line, it is a conversation.
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { activeShow, nextShow, checkIn, makeCheckinHandler } from '../../lib/keepers-checkin.mjs';
-import { openKeepersDbAt, upsertCustomer, ledgerTotals, getCustomer } from '../../lib/keepers-db.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+
+// TCG_KEEPERS_DB MUST be set before lib/keepers-db.mjs is evaluated — KEEPERS_DB_PATH is a
+// module-scope const that captures it once — hence the dynamic imports below rather than static ones.
+// Static imports are hoisted and would run before this line.
+//
+// This file's own handle is `:memory:`, which reads as sufficient and is not. makeCheckinHandler's
+// claiming path does its own `openKeepersDb()` on the SINGLETON, so every POST test here has been
+// writing check-in events into the real data/keepers.db. That is not hypothetical: the live file held
+// exactly one event — a 50 XP check-in from customer 8675309 at show `now-show`, which is this file's
+// fixture slug and appears nowhere else in the repo.
+const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-keepers-checkin-'));
+process.env.TCG_KEEPERS_DB = path.join(DIR, 'keepers.db');
+
+const { activeShow, nextShow, checkIn, makeCheckinHandler } = await import('../../lib/keepers-checkin.mjs');
+const { openKeepersDbAt, upsertCustomer, ledgerTotals, getCustomer } = await import('../../lib/keepers-db.mjs');
 
 const GID = 'gid://shopify/Customer/8675309';
 const RULES = { checkin_xp: 50 };
@@ -113,7 +129,25 @@ describe('checkIn', () => {
 });
 
 describe('the handler', () => {
-  const handler = (over = {}) => makeCheckinHandler(async () => ({ rules: RULES, shows: SHOWS, ...over }));
+  // RELATIVE shows, not the fixed SHOWS above. makeCheckinHandler is the one entry point in this
+  // module with no injectable clock — it reads Date.now() itself — and the fixed fixture put two
+  // deadlines on this block: on 2026-11-14 newcastle-2026-11 becomes ACTIVE, so the refusal test
+  // stops refusing and its POST takes the claiming path instead; after 2026-12-06 nextShow returns
+  // null and the "names the next one" assertion fails forever. The first of those is the dangerous
+  // one, because the claiming path writes to the ledger.
+  //
+  // SHOWS itself stays fixed on purpose: every test using it passes nowMs explicitly, so those are
+  // correct whatever the date, and fixed dates read better in an assertion about a specific window.
+  const DAY = 86_400_000;
+  const HOURS9 = 9 * 3_600_000;
+  const relShows = () => {
+    const now = Date.now();
+    return [
+      { slug: 'last-one', name: 'Last Month', starts_at: new Date(now - 30 * DAY).toISOString(), ends_at: new Date(now - 30 * DAY + HOURS9).toISOString() },
+      { slug: 'next-one', name: 'Next Month', starts_at: new Date(now + 30 * DAY).toISOString(), ends_at: new Date(now + 30 * DAY + HOURS9).toISOString() },
+    ];
+  };
+  const handler = (over = {}) => makeCheckinHandler(async () => ({ rules: RULES, shows: relShows(), ...over }));
   const url = (p) => new URL(`http://x${p}`);
 
   it('awards on a POST to /checkin during a show', async () => {

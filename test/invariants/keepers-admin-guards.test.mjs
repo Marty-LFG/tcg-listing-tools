@@ -136,6 +136,42 @@ describe('minting a real discount code is gated on mode AND on the store', () =>
   });
 });
 
+describe('the rank-gate audit counts off the definition, not off a product search', () => {
+  // The obvious form does not work, and it fails in the worst direction. Shopify's product search has
+  // NO metafield terms — it parses them as free text and returns the ENTIRE CATALOGUE — so the one
+  // check standing behind CLAUDE.md invariant 5 reported every product in the store as rank-gated.
+  // Measured on dev 2026-09-07: `metafield:keepers.min_level:*` and `metafields.keepers.min_level:*`
+  // both returned everything including the gift card, and `metafield:keepers.min_level:8` returned
+  // four products that did not carry it while missing the one that did.
+  const at = keepers.indexOf("p === '/gate-audit'");
+  const branch = keepers.slice(at, keepers.indexOf('return send(404', at));
+
+  it('never asks for a metafield through the product query string', () => {
+    assert.ok(at > 0, 'the gate-audit route moved');
+    assert.ok(!/query:\s*"metafield/.test(branch),
+      'products(query: "metafield:...") silently matches everything — it cannot be used as a filter');
+    assert.ok(!/metafields?\.keepers\.min_level/.test(branch));
+  });
+
+  it('uses metafieldsCount, which is exact', () => {
+    assert.match(branch, /metafieldDefinitions\(first: 10, ownerType: PRODUCT, namespace: "keepers"\)/);
+    assert.match(branch, /metafieldsCount/);
+  });
+
+  it('fails loudly when it cannot see, instead of reporting clean', () => {
+    // No definition means nothing can be counted. That is not "clean", it is blind — and answering
+    // 200-with-zero there is the precise failure this route exists to prevent.
+    assert.match(branch, /if \(!def\)/);
+    assert.match(branch.slice(branch.indexOf('if (!def)'), branch.indexOf('if (!def)') + 400), /send\(503/);
+  });
+
+  it('says whether the named list is the whole list', () => {
+    // The count is exact; the walk that names offenders sees the first 250 products. If those
+    // disagree, the shorter list must not read as the whole truth.
+    assert.match(branch, /listed_all: count === gated\.length/);
+  });
+});
+
 describe('route ordering', () => {
   it('the projection route is registered ABOVE the /customers/ prefix branch', () => {
     // startsWith('/customers/') swallows every deeper path, so the order here is the whole
