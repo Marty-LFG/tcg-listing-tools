@@ -6,7 +6,7 @@
 //
 // Both eBay calls are injected, so every test here runs offline and can prove a call was never made —
 // rather than stubbing a transport and hoping nothing slipped past it.
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,10 +17,19 @@ import { sendDealInvoice, quoteDeal, getDeal, DEAL_REFUSALS } from '../../lib/po
 const CFG = { dry_run: false, deals: { enabled: true, invoice_note: 'One lot of postage on this one.' } };
 const DRY = { ...CFG, dry_run: true };
 
+// openPostsaleDbAt hands back an uncached handle, so this file holds the only reference to every db it
+// opens — and on Windows an open handle makes rmSync of tmpdir fail with EPERM. Each case gets its own
+// db, so each is closed at the end of the case that opened it.
 let tmpdir, n = 0;
+const opened = [];
 before(() => { tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-dealsend-')); });
+afterEach(() => { for (const db of opened.splice(0)) { try { db.close(); } catch {} } });
 after(() => { try { fs.rmSync(tmpdir, { recursive: true, force: true }); } catch {} });
-const freshDb = () => openPostsaleDbAt(path.join(tmpdir, `s${++n}.db`));
+const freshDb = () => {
+  const db = openPostsaleDbAt(path.join(tmpdir, `s${++n}.db`));
+  opened.push(db);
+  return db;
+};
 
 // A quote for two cards: $30 and $500. Signature band, so postage is $15.20 once.
 const LINES = [

@@ -11,10 +11,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { tmpDir } from '../helpers/tmp.mjs';
 
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-listing-cfg-'));
+// Via the helper, not a bare mkdtempSync: the directory must outlive every test (TCG_CONFIG_DIR is
+// read once, at module scope) and there is no later hook that could remove it, so exit is the only
+// moment cleanup can happen. Nothing here holds a file open, so that removal succeeds.
+const dir = tmpDir('tcg-listing-cfg-');
 process.env.TCG_CONFIG_DIR = dir;
 const CONFIG = path.join(dir, 'ebay-listing.config.json');
 

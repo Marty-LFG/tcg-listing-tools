@@ -4,7 +4,7 @@
 // matter are: WHICH orders a tap acts on, that a stale button can't act on the wrong set, that a
 // double tap can't run it twice, and that a failed eBay write leaves the order in the queue rather
 // than half-hiding it. All offline, against a temp SQLite file.
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -26,7 +26,17 @@ before(() => { tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-digest-')); }
 after(() => { try { fs.rmSync(tmpdir, { recursive: true, force: true }); } catch {} });
 
 let n = 0;
-const freshDb = () => openPostsaleDbAt(path.join(tmpdir, `d${++n}.db`));
+// openPostsaleDbAt hands back a fresh handle rather than the process singleton, so this file holds
+// the only reference and closePostsaleDb() would not reach it. On Windows an open handle makes the
+// rmSync below fail EPERM, and the whole tmpdir survives the run — so close each test's handles as
+// that test ends rather than letting thirty of them pile up.
+const openDbs = [];
+const freshDb = () => {
+  const db = openPostsaleDbAt(path.join(tmpdir, `d${++n}.db`));
+  openDbs.push(db);
+  return db;
+};
+afterEach(() => { for (const db of openDbs.splice(0)) { try { db.close(); } catch {} } });
 
 const mkOrder = (id, over = {}) => ({
   orderId: id, buyerUsername: 'buyer' + id, orderStatus: 'Completed', checkoutStatus: 'Complete',

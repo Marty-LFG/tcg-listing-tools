@@ -7,7 +7,7 @@
 // attached before it finished processing (broken image, no error anywhere), the same bytes uploaded
 // twice (Shopify Files fills with orphans that have no bulk delete), the social card leaking into the
 // product gallery, and the multipart field ordering GCS rejects.
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -94,6 +94,10 @@ const PRODUCT = toShopifyProduct({
 
 let db;
 beforeEach(() => { db = openDbAt(tmpFile('shopify-media-' + Math.random().toString(36).slice(2) + '.db')); });
+// openDbAt is the uncached variant, so no module-level closer knows about this handle — the test holds
+// the only reference. Left open, Windows refuses to remove the temp directory at exit (EPERM), and the
+// helper's retries cannot help: the handle has to actually close.
+afterEach(() => { try { db?.close(); } catch { /* teardown never throws */ } });
 
 describe('the happy path', () => {
   it('stages, uploads, registers and returns an ordered gallery', async () => {

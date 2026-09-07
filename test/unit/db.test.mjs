@@ -1,11 +1,11 @@
 // test/unit/db.test.mjs — tracker/inventory SQLite store (lib/db.mjs).
 // openDb() memoises one handle per process, so the second-open (idempotent DDL)
 // case runs in a child process against the same file.
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { openDb } from '../../lib/db.mjs';
+import { closeDb, openDb } from '../../lib/db.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
 import { ROOT } from '../helpers/extract-inline.mjs';
 
@@ -16,6 +16,12 @@ const TABLES = ['watchlist', 'price_snapshots', 'signals', 'card_cache', 'gradin
 
 const dbPath = tmpFile('tracker-test.db');
 const db = openDb(dbPath);
+
+// Every case shares this one singleton, so a single close at the end covers the file. Without it the
+// handle survives to process exit and Windows refuses to remove the temp directory (EPERM).
+after(() => {
+  try { closeDb(); } catch { /* teardown must never throw */ }
+});
 
 describe('openDb DDL', () => {
   it('creates every table on a blank file', () => {

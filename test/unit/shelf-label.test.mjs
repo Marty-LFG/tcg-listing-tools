@@ -7,7 +7,7 @@
 // hold for a second channel, a dry run on any channel spends nothing, and committing twice is a no-op.
 //
 // No network, no eBay stack — openDbAt only, per the singleton rule.
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDbAt } from '../../lib/db.mjs';
 import { reserveShelfLabel, commitShelfLabel, isProvisionalSku } from '../../lib/shelf-label.mjs';
@@ -29,6 +29,10 @@ beforeEach(() => {
   db = openDbAt(tmpFile('shelf-label-' + Math.random().toString(36).slice(2) + '.db'));
   seedStockLabels(db, seqForLabel('AAC-084'));        // the last one SPENT, so AAC-085 is next out
 });
+
+// openDbAt hands back a fresh handle, not the singleton, so this test is the only thing that can close
+// it — and on Windows the temp directory cannot be removed while it is open.
+afterEach(() => { try { db?.close(); } catch {} });
 
 describe('a dry run on ANY channel spends nothing', () => {
   for (const channel of ['ebay', 'shopify']) {
@@ -111,6 +115,7 @@ describe('refusals and failures', () => {
   it('refuses when the series is unseeded rather than starting at AAA-001', () => {
     // A fresh DB with no seeding at all. Publishing under the provisional would bind it to the listing
     // for life, which is the bug this whole mechanism replaces.
+    try { db.close(); } catch {}   // afterEach only ever sees the last db, so drop the seeded one here
     db = openDbAt(tmpFile('shelf-label-unseeded.db'));
     const item = addItem(nextProvisionalSku(db));
     const r = reserveShelfLabel(db, item, { channel: 'shopify' });

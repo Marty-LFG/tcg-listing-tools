@@ -3,7 +3,7 @@
 // The interesting decisions here are all about REFUSING, and about what a refusal says. This is the
 // one surface a customer touches directly, standing at a table, on a phone, having just scanned a
 // code — so a wrong answer is not a log line, it is a conversation.
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,7 +24,7 @@ const DIR = tmpDir('tcg-keepers-checkin-');
 process.env.TCG_KEEPERS_DB = path.join(DIR, 'keepers.db');
 
 const { activeShow, nextShow, checkIn, makeCheckinHandler } = await import('../../lib/keepers-checkin.mjs');
-const { openKeepersDbAt, upsertCustomer, ledgerTotals, getCustomer } = await import('../../lib/keepers-db.mjs');
+const { openKeepersDbAt, closeKeepersDb, upsertCustomer, ledgerTotals, getCustomer } = await import('../../lib/keepers-db.mjs');
 
 const GID = 'gid://shopify/Customer/8675309';
 const RULES = { checkin_xp: 50 };
@@ -39,6 +39,15 @@ const AFTER = Date.parse('2026-12-20T00:00:00Z');
 
 let db;
 beforeEach(() => { db = openKeepersDbAt(':memory:'); });
+// openKeepersDbAt hands back a fresh handle the test is the only owner of — a new one per case, so
+// each is closed where it was opened rather than tracked to the end.
+afterEach(() => { try { db?.close(); } catch { /* a teardown must not throw */ } db = null; });
+
+// The `:memory:` handle above is NOT the one that leaks. Every POST test goes through
+// makeCheckinHandler's claiming path, which does its own openKeepersDb() on the SINGLETON — a real
+// file at TCG_KEEPERS_DB, inside DIR. Left open, that handle is what makes tmpDir's exit cleanup
+// fail EPERM on Windows and strand the directory (with its WAL sidecars) forever.
+after(() => { try { closeKeepersDb(); } catch { /* a teardown must not throw */ } });
 
 describe('activeShow — the clock is what identifies the show', () => {
   it('finds the show that is on right now', () => {

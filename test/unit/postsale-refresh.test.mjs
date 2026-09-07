@@ -7,7 +7,7 @@
 // postage label is bought in Seller Hub. Everything here pins that behaviour.
 //
 // Runs against a temp SQLite file, never data/postsale.db.
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -26,7 +26,13 @@ before(() => { tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-refresh-')); 
 after(() => { try { fs.rmSync(tmpdir, { recursive: true, force: true }); } catch {} });
 
 let n = 0;
-const freshDb = () => openPostsaleDbAt(path.join(tmpdir, `t${++n}.db`));
+// openPostsaleDbAt hands back a fresh handle, not the process singleton, so no closeX() export can
+// reach these — the test holds the only reference. On Windows a still-open handle makes the rmSync
+// above EPERM out silently, and the temp dir survives the run.
+const open = [];
+const track = (db) => { open.push(db); return db; };
+const freshDb = () => track(openPostsaleDbAt(path.join(tmpdir, `t${++n}.db`)));
+afterEach(() => { while (open.length) { try { open.pop().close(); } catch {} } });
 
 const mkOrder = (id, over = {}) => ({
   orderId: id, buyerUsername: 'testbuyer', orderStatus: 'Completed', checkoutStatus: 'Complete',
@@ -414,7 +420,7 @@ describe('postsale_messages kind migration', () => {
               VALUES (41, 'OLD-1', 7, 'sent', 'Thanks!', 5551), (42, 'OLD-2', 7, 'awaiting_approval', 'Hi', 5552)`);
     raw.close();
 
-    const db = openPostsaleDbAt(file);
+    const db = track(openPostsaleDbAt(file));
     const rows = db.prepare('SELECT * FROM postsale_messages ORDER BY id').all();
     assert.deepEqual(rows.map((r) => r.id), [41, 42], 'ids must survive — Telegram cards key off them');
     assert.deepEqual(rows.map((r) => r.kind), ['purchase', 'purchase']);
@@ -428,7 +434,7 @@ describe('postsale_messages kind migration', () => {
     assert.equal(db.prepare(`SELECT COUNT(*) c FROM postsale_messages WHERE order_id='OLD-1'`).get().c, 2);
 
     // Re-opening must be inert, not a second rebuild.
-    const again = openPostsaleDbAt(file);
+    const again = track(openPostsaleDbAt(file));
     assert.deepEqual(again.prepare('SELECT id FROM postsale_messages ORDER BY id').all().map((r) => r.id), [41, 42, 43]);
   });
 });

@@ -27,7 +27,7 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve:
 const PEM = publicKey.export({ type: 'spki', format: 'pem' });
 
 const notify = await import('../../lib/ebay-notify.mjs');
-const { openPostsaleDb } = await import('../../lib/postsale-db.mjs');
+const { openPostsaleDb, closePostsaleDb } = await import('../../lib/postsale-db.mjs');
 const verify = await import('../../lib/ebay-notify-verify.mjs');
 
 // Seed our own key under the kid the signatures name, so the listener verifies for real without ever
@@ -80,6 +80,9 @@ before(async () => {
 
 after(() => {
   notify.stopNotifyListener();
+  // Close before removing: an open SQLite handle makes rmSync fail EPERM on Windows, and the catch
+  // below turned that into a silently leaked directory every run.
+  try { closePostsaleDb(); } catch { /* already closed */ }
   try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows file locks */ }
 });
 

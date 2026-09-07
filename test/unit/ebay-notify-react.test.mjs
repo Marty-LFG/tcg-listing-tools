@@ -14,11 +14,16 @@ import os from 'node:os';
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-react-'));
 process.env.TCG_CONFIG_DIR = DIR;
 process.env.TCG_POSTSALE_DB = path.join(DIR, 'postsale.db');
-const { openPostsaleDb } = await import('../../lib/postsale-db.mjs');
+const { openPostsaleDb, closePostsaleDb } = await import('../../lib/postsale-db.mjs');
 const { reactToOrderEvents } = await import('../../lib/ebay-notify-react.mjs');
 const { observationSummary } = await import('../../lib/ebay-notify-observe.mjs');
 
-after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows locks */ } });
+// The postsale handle has to go first: on Windows rmSync is EPERM while the db file is still open,
+// so leaving it to the process exit left this directory behind every run.
+after(() => {
+  try { closePostsaleDb(); } catch { /* nothing to close */ }
+  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows locks */ }
+});
 
 const db = openPostsaleDb();
 

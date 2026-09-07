@@ -4,7 +4,7 @@
 // gate, the dedupe that stops one ask becoming two Send buttons, and the fact that a stranger with no
 // buyer row still gets queued — which is the hole this closes, since maybeHandleReply only ever fires
 // for a KNOWN buyer with a PRIOR sent message.
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -15,9 +15,13 @@ import { recordDealFromMessage, synthMessageId } from '../../lib/postsale.mjs';
 const ON = { deals: { enabled: true, detect_from_messages: true, expire_hours: 72 } };
 
 let tmpdir, n = 0;
+const open = [];
 before(() => { tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-dealdet-')); });
+// openPostsaleDbAt hands back a fresh handle, not the singleton, so this test is the only thing holding
+// it — and on Windows the rmSync below fails EPERM while any of them is still open.
+afterEach(() => { while (open.length) { try { open.pop().close(); } catch {} } });
 after(() => { try { fs.rmSync(tmpdir, { recursive: true, force: true }); } catch {} });
-const freshDb = () => openPostsaleDbAt(path.join(tmpdir, `d${++n}.db`));
+const freshDb = () => { const db = openPostsaleDbAt(path.join(tmpdir, `d${++n}.db`)); open.push(db); return db; };
 
 const msg = (over = {}) => ({
   messageId: 'M-1', senderId: 'buyer_bob', itemId: '2255001',

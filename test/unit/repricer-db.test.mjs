@@ -1,11 +1,16 @@
 // test/unit/repricer-db.test.mjs — the repricer's separate SQLite store (lib/repricer-db.mjs).
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { openRepricerDb, migrate, getMeta, setMeta, recordChat, SCHEMA_VERSION } from '../../lib/repricer-db.mjs';
+import { openRepricerDb, closeRepricerDb, migrate, getMeta, setMeta, recordChat, SCHEMA_VERSION } from '../../lib/repricer-db.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
 
 const db = openRepricerDb(tmpFile('repricer-test.db'));
+
+// Left open, this singleton keeps its temp directory alive past exit: Windows refuses rmSync with
+// EPERM while SQLite still holds the file, and no amount of retrying outwaits a handle that is
+// genuinely still open. The WAL sidecars go with it.
+after(() => { try { closeRepricerDb(); } catch { /* teardown must not throw */ } });
 
 describe('openRepricerDb DDL', () => {
   it('creates the repricer tables', () => {

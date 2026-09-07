@@ -15,13 +15,16 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 import path from 'node:path';
 
 // The real data/riftbound.json and data/riftbound-prices.json are gitignored, so both loaders are
 // pointed at fixtures. lib/riftbound-data.mjs reads the env var per CALL for exactly this reason —
 // an ESM import is hoisted above every statement, so a module-level constant could not be moved.
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-rb-cards-'));
+// tmpDir, not a bare mkdtempSync: unique either way, but the helper is what registers the
+// process-exit cleanup. Without it nothing ever removed this directory — the file opens no
+// database at all, so its leak was pure neglect rather than a held handle.
+const TMP = tmpDir('tcg-rb-cards-');
 const CATALOG_PATH = path.join(TMP, 'riftbound.json');
 const PRICES_PATH = path.join(TMP, 'riftbound-prices.json');
 

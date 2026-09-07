@@ -1,15 +1,16 @@
 // test/unit/collector.test.mjs — the signal engine (lib/collector.mjs computeSignals). Seeds a
 // throwaway node:sqlite DB (never touches data/*.db); offline. Covers the tier-agnostic computed
 // path (pctFromHistory), the Scrydex percent_change path, and the null-AUD opportunity gate.
-import { describe, it, before, afterEach } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { openDb } from '../../lib/db.mjs';
+import { openDb, closeDb } from '../../lib/db.mjs';
 import { computeSignals, getThresholds, setThresholds } from '../../lib/collector.mjs';
 import { tmpFile } from '../helpers/tmp.mjs';
 
 const DEF = getThresholds();   // { opportunity_drop_pct:-10, momentum_rise_pct:15, downtrend_drop_pct:-8, min_price_aud:2 }
 let db, seq = 0;
 before(() => { db = openDb(tmpFile('collector-test.db')); });
+after(() => { try { closeDb(); } catch { /* teardown never throws */ } });   // left open, the handle makes the exit-time rmSync fail EPERM and the temp dir survives the run
 afterEach(() => setThresholds(DEF));   // THRESHOLDS is module-global — restore after any mutation
 
 function seedCard({ game = 'mtg', source = 'claude', name = 'C' } = {}) {

@@ -26,9 +26,21 @@ import { DEFAULT_POSTAGE_CONFIG } from '../../lib/postage.mjs';
 const CFG = { labels: false, messaging: false, dry_run: true, postage: DEFAULT_POSTAGE_CONFIG };
 
 let tmpdir, n = 0;
+// Every handle freshDb hands out, so they can all be closed. openPostsaleDbAt returns a FRESH,
+// non-cached database — closePostsaleDb() only clears the process singleton and would not reach any
+// of these — so the test holds the only reference and is the only thing that can close them. Eight
+// stayed open, and on Windows one open handle is enough to make the rmSync below fail EPERM.
+const opened = [];
 before(() => { tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-paidgate-')); });
-after(() => { try { fs.rmSync(tmpdir, { recursive: true, force: true }); } catch {} });
-const freshDb = () => openPostsaleDbAt(path.join(tmpdir, `p${++n}.db`));
+after(() => {
+  for (const db of opened) { try { db.close(); } catch { /* already closed */ } }
+  try { fs.rmSync(tmpdir, { recursive: true, force: true }); } catch {}
+});
+const freshDb = () => {
+  const db = openPostsaleDbAt(path.join(tmpdir, `p${++n}.db`));
+  opened.push(db);
+  return db;
+};
 
 const mkOrder = (id) => ({
   orderId: id, buyerUsername: 'buyer' + id, orderStatus: 'Completed', checkoutStatus: 'Complete',

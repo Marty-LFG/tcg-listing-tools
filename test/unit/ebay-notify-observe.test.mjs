@@ -13,10 +13,15 @@ import os from 'node:os';
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-observe-'));
 process.env.TCG_CONFIG_DIR = DIR;
 process.env.TCG_POSTSALE_DB = path.join(DIR, 'postsale.db');
-const { openPostsaleDb } = await import('../../lib/postsale-db.mjs');
+const { openPostsaleDb, closePostsaleDb } = await import('../../lib/postsale-db.mjs');
 const { observeOrderEvents, observationSummary } = await import('../../lib/ebay-notify-observe.mjs');
 
-after(() => { try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows locks */ } });
+after(() => {
+  // Windows refuses to remove a directory while the db file inside it is still open, and the rmSync
+  // below swallows the EPERM — so the close has to come first or DIR is left behind for good.
+  try { closePostsaleDb(); } catch { /* already gone */ }
+  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows locks */ }
+});
 
 const db = openPostsaleDb();
 

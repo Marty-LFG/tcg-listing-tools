@@ -39,6 +39,11 @@ import { ebayToken, ebayInsightsToken } from './lib/ebay-token.mjs'
 import { readJsonBody } from './lib/req-body.mjs'
 import { fetchCached } from './lib/img-cache.mjs'
 import { withRegistry } from './lib/plugin-registry.mjs'
+// The database closers, imported STATICALLY so they share the instance these plugins actually use.
+import { closeDb } from './lib/db.mjs'
+import { closePostsaleDb } from './lib/postsale-db.mjs'
+import { closeRepricerDb } from './lib/repricer-db.mjs'
+import { closeKeepersDb } from './lib/keepers-db.mjs'
 
 // Streams any remote image through the dev server (so the browser can blob-download it — cross-origin
 // <a download> is blocked otherwise) AND caches it on disk (data/img-cache/) keyed by URL hash. Card
@@ -58,6 +63,36 @@ const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data')
 // bake rather than once per request. Registered inside configureServer (not a returned callback) so
 // it runs BEFORE Vite's static handler; anything unexpected falls through to next() rather than
 // erroring, which keeps a bad path serving the plain file instead of a 500.
+// Closes the SQLite singletons when the dev server shuts down.
+//
+// WHY THIS CANNOT LIVE IN THE TEST HELPER, which is where it was tried first. Vite evaluates this
+// config in its OWN module graph, so lib/db.mjs and friends are instantiated TWICE in a test process:
+// once for these plugins, once for whatever the test imports directly. Their singletons are different
+// objects. bootServer calling closeDb() therefore closed nothing — measured, it returned false for
+// all four — while the plugins' handles stayed open, the temp directory could not be removed on
+// Windows, and every integration file that boots a server leaked its whole directory.
+//
+// A plugin is the only thing on the right side of that boundary. closeBundle fires when the dev
+// server closes, which is exactly the moment the databases stop being needed.
+//
+// Harmless in ordinary `vite dev` use: the process is exiting anyway, and closing a database it is
+// about to abandon costs nothing. The closers clear their singletons, so a reopen still works.
+const dbCleanup = {
+  name: 'db-cleanup',
+  // Vite may call this more than once per shutdown; the closers are idempotent — the second pass
+  // simply finds the singletons already cleared and reports nothing to do.
+  closeBundle() {
+    // STATIC imports, captured at the top of this file — not dynamic ones. Vite bundles this config
+    // before evaluating it, so a runtime import('./lib/db.mjs') loads a SECOND copy from disk with its
+    // own null singleton, which is the same two-instance trap one level down. Measured: the dynamic
+    // version closed nothing.
+    for (const close of [closeDb, closePostsaleDb, closeRepricerDb, closeKeepersDb]) {
+      // Never let a teardown throw: a shutdown is not the place to start failing.
+      try { close() } catch { /* already closed */ }
+    }
+  },
+}
+
 const dataGzip = {
   name: 'data-gzip',
   configureServer(server) {
@@ -400,7 +435,7 @@ export default defineConfig(({ mode }) => {
     // report which routes this PROCESS actually owns — and flag when the sources on disk are newer
     // than the running server (a `git pull` with no restart). One wrapper, so a plugin added later
     // is covered without anyone remembering to.
-    plugins: withRegistry([dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env)]),
+    plugins: withRegistry([dbCleanup, dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env)]),
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

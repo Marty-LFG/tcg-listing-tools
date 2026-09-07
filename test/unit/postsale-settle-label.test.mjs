@@ -8,7 +8,7 @@
 // would undo the live rule on every invocation. So it takes ids now, and the properties that matter
 // are: no ids clears nothing, a dry run writes nothing, and a second apply is a no-op. All offline,
 // against a temp SQLite file.
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -24,7 +24,16 @@ before(() => { tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-settle-')); }
 after(() => { try { fs.rmSync(tmpdir, { recursive: true, force: true }); } catch {} });
 
 let n = 0;
-const freshDb = () => openPostsaleDbAt(path.join(tmpdir, `s${++n}.db`));
+// openPostsaleDbAt hands back an uncached handle, so no singleton closer will ever reach these — the
+// test owns each one. On Windows an open handle makes the after() rmSync fail EPERM and the tmpdir
+// survives the run, so every handle goes back at the end of the case that opened it.
+const opened = [];
+const freshDb = () => {
+  const db = openPostsaleDbAt(path.join(tmpdir, `s${++n}.db`));
+  opened.push(db);
+  return db;
+};
+afterEach(() => { while (opened.length) { try { opened.pop().close(); } catch {} } });
 
 const mkOrder = (id, over = {}) => ({
   orderId: id, buyerUsername: 'buyer' + id, orderStatus: 'Completed', checkoutStatus: 'Complete',

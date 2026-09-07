@@ -89,6 +89,57 @@ describe('no test builds a scratch path from process.pid', () => {
   });
 });
 
+describe('the pieces that make a run leave nothing behind', () => {
+  // A full `pnpm verify` leaks ZERO temp directories. Getting there took three structural things, and
+  // any one of them going missing brings the leak back quietly — the symptom is disk, not a red test,
+  // so nothing else would notice. Measuring the leak properly means running a whole suite and counting
+  // temp, which is not something a unit test can do; these pins are the next best thing.
+  //
+  // To measure it by hand:
+  //   before=$(ls "$TEMP" | grep -cE '^(tcg-|sealimg-|sealed-listing-)')
+  //   pnpm verify
+  //   after=$(ls  "$TEMP" | grep -cE '^(tcg-|sealimg-|sealed-listing-)')   # after should equal before
+
+  it('the four database modules each export a closer', () => {
+    // A closer must CLEAR its singleton as well as closing the handle. Closing without clearing would
+    // leave every later open() returning a closed database — a failure nobody would trace to teardown.
+    for (const [file, fn, singleton] of [
+      ['lib/db.mjs', 'closeDb', '_db'],
+      ['lib/postsale-db.mjs', 'closePostsaleDb', '_pdb'],
+      ['lib/repricer-db.mjs', 'closeRepricerDb', '_rdb'],
+      ['lib/keepers-db.mjs', 'closeKeepersDb', '_kdb'],
+    ]) {
+      const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+      assert.ok(src.includes(`export function ${fn}(`), `${file} must export ${fn}`);
+      const body = src.slice(src.indexOf(`export function ${fn}(`));
+      assert.match(body.slice(0, 400), new RegExp(singleton + ' = null'),
+        `${fn} must clear ${singleton}, not just close the handle`);
+    }
+  });
+
+  it('vite.config.js closes them when the dev server shuts down', () => {
+    // THE SUBTLE ONE. Vite evaluates this config in its own module graph, so lib/db.mjs is
+    // instantiated twice in a test process — once for the plugins, once for whatever the test
+    // imports. Closing from the test side reached a different singleton and did nothing; measured, it
+    // returned false for all four. Only a plugin is on the right side of that boundary, and only a
+    // STATIC import shares the instance: a dynamic import() inside the plugin loads a third copy.
+    const cfg = fs.readFileSync(path.join(ROOT, 'vite.config.js'), 'utf8');
+    assert.match(cfg, /name: 'db-cleanup'/, 'the db-cleanup plugin is what closes the plugin-side databases');
+    for (const fn of ['closeDb', 'closePostsaleDb', 'closeRepricerDb', 'closeKeepersDb']) {
+      assert.ok(cfg.includes(`import { ${fn} } from`),
+        `${fn} must be imported STATICALLY — a dynamic import() gets a different module instance`);
+    }
+    assert.match(cfg, /plugins: withRegistry\(\[dbCleanup,/, 'the plugin has to be in the array to run');
+  });
+
+  it('the helper retries past Windows handle-release lag', () => {
+    // Closing a file does not always release its handle immediately on Windows, so an rmSync issued
+    // microseconds later can still get EPERM even when the owner did everything right.
+    const helper = fs.readFileSync(path.join(TEST_DIR, 'helpers', 'tmp.mjs'), 'utf8');
+    assert.match(helper, /maxRetries: \d+/, 'rmSync needs maxRetries or a correct teardown can still lose the race');
+  });
+});
+
 describe('no test writes scratch into the working tree', () => {
   it('nothing builds a temp path under test/ or the repo root', () => {
     // Two files used to put their cache in `test/.tmp-compose-cache-<pid>` and

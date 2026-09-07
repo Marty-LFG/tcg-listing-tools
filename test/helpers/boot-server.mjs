@@ -117,6 +117,13 @@ export async function bootServer({ env: fakeEnv = {} } = {}) {
   for (const [k, v] of Object.entries(fakeEnv)) process.env[k] = v;
 
   const port = await freePort();
+  // Imported here, not at the top: these modules resolve their database paths at module scope, so
+  // they must not load until the TCG_*_DB redirects above are in place.
+  const { closeDb } = await import('../../lib/db.mjs');
+  const { closePostsaleDb } = await import('../../lib/postsale-db.mjs');
+  const { closeRepricerDb } = await import('../../lib/repricer-db.mjs');
+  const { closeKeepersDb } = await import('../../lib/keepers-db.mjs');
+
   const { createServer } = await import('vite');
   const server = await createServer({
     root: ROOT,
@@ -137,6 +144,17 @@ export async function bootServer({ env: fakeEnv = {} } = {}) {
     postsaleDb: process.env.TCG_POSTSALE_DB,
     keepersDb: process.env.TCG_KEEPERS_DB,
     dbFileExists: (p) => fs.existsSync(p),
-    close: () => server.close(),
+    // Close the Vite server AND every database its plugins opened. Closing the server alone left
+    // four SQLite handles open, and on Windows an open handle makes the temp directory's removal fail
+    // EPERM — so tmpDir's exit-time cleanup silently gave up and every integration file that boots a
+    // server leaked its whole tcg-int- directory. That was 20 of the ~41 directories a full run left
+    // behind. The closers clear their singletons too, so this is safe even if something opens one
+    // again afterwards.
+    close: async () => {
+      await server.close();
+      for (const close of [closeDb, closePostsaleDb, closeRepricerDb, closeKeepersDb]) {
+        try { close(); } catch { /* never let a teardown throw */ }
+      }
+    },
   };
 }

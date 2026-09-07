@@ -22,7 +22,7 @@ process.env.TCG_TRACKER_DB = path.join(dataDir, 'tracker.db');
 const { makePregradeRouter } = await import('../../lib/pregrade.mjs');
 const { storePath } = await import('../../lib/pregrade-store.mjs');
 const { inventoryPlugin } = await import('../../lib/inventory.mjs');
-const { openDb } = await import('../../lib/db.mjs');
+const { openDb, closeDb } = await import('../../lib/db.mjs');
 
 let server, base, db;
 const writtenShas = [];   // [sha, ext] pairs — the store dir is the real one, so clean up after
@@ -47,6 +47,8 @@ before(async () => {
 });
 after(async () => {
   if (server) await new Promise((r) => server.close(r));
+  // The tracker handle keeps tmpDir's exit-time cleanup from removing tcg-pregrade-*.
+  try { closeDb(); } catch { /* already closed */ }
   for (const [sha, ext] of writtenShas) { try { fs.unlinkSync(storePath(sha, ext)); } catch { /* already gone */ } }
 });
 

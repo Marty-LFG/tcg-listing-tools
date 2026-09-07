@@ -7,7 +7,10 @@
 //
 // openDbAt / openPostsaleDbAt, never openDb / openPostsaleDb — those are process singletons that ignore
 // their path argument after the first call, so a test using them writes to the REAL database.
-import { describe, it } from 'node:test';
+// The *At variants hand back a fresh handle nothing else holds, so this file owns closing them —
+// closeDb()/closePostsaleDb() only reach the singletons. Windows refuses to delete a temp directory
+// whose database is still open, and tmp.mjs's exit cleanup then leaks it.
+import { describe, it, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDbAt } from '../../lib/db.mjs';
 import { openPostsaleDbAt } from '../../lib/postsale-db.mjs';
@@ -20,6 +23,7 @@ const cols = (db, t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c
 
 describe('migrateShopify — tables and indexes', () => {
   const db = openDbAt(tmpFile('shopify-schema.db'));
+  after(() => { try { db.close(); } catch {} });
 
   it('creates every second-channel table', () => {
     const have = tables(db);
@@ -75,9 +79,15 @@ describe('migrateShopify — tables and indexes', () => {
 });
 
 describe('migrateShopify — the channel_intent backfill', () => {
+  // This suite reopens the same file to stand in for successive boots, so a case ends holding several
+  // handles. Register each as it is opened and close the lot after the case.
+  const opened = [];
+  const openAt = (p) => { const db = openDbAt(p); opened.push(db); return db; };
+  afterEach(() => { for (const db of opened.splice(0)) { try { db.close(); } catch {} } });
+
   it('seeds one eBay intent row per existing listing, and is a no-op on re-run', () => {
     const p = tmpFile('shopify-backfill.db');
-    const db = openDbAt(p);
+    const db = openAt(p);
 
     // An estate that predates the second channel.
     db.prepare(`INSERT INTO inventory_items (sku, game, name, quantity) VALUES ('AAC-085','pokemon','Iono',1)`).run();
@@ -86,7 +96,7 @@ describe('migrateShopify — the channel_intent backfill', () => {
     db.prepare(`INSERT INTO ebay_listings (sku, marketplace, offer_id) VALUES ('AAC-086','EBAY_AU','of-2')`).run();
 
     // Second open = the next boot. This is where the backfill actually runs for a pre-existing DB.
-    const db2 = openDbAt(p);
+    const db2 = openAt(p);
     const seeded = db2.prepare(`SELECT sku, channel, mode, price_cents, item_id FROM channel_intent ORDER BY sku`).all();
     assert.equal(seeded.length, 2, 'one intent row per eBay listing');
     assert.deepEqual(seeded.map((r) => r.sku), ['AAC-085', 'AAC-086']);
@@ -99,7 +109,7 @@ describe('migrateShopify — the channel_intent backfill', () => {
 
     // Third boot. The backfill must not resurrect the default over an edited intent — that is exactly
     // the reconcile-clobbers-intent failure the intent/observation split exists to prevent.
-    const db3 = openDbAt(p);
+    const db3 = openAt(p);
     const after = db3.prepare(`SELECT sku, mode, hold_reason FROM channel_intent WHERE sku='AAC-085'`).get();
     assert.equal(after.mode, 'never', 'the backfill overwrote an operator decision');
     assert.equal(after.hold_reason, 'high value, one channel only');
@@ -107,13 +117,14 @@ describe('migrateShopify — the channel_intent backfill', () => {
   });
 
   it('seeds nothing from an empty eBay estate', () => {
-    const db = openDbAt(tmpFile('shopify-backfill-empty.db'));
+    const db = openAt(tmpFile('shopify-backfill-empty.db'));
     assert.equal(db.prepare(`SELECT COUNT(*) c FROM channel_intent`).get().c, 0);
   });
 });
 
 describe('postsale channel columns', () => {
   const db = openPostsaleDbAt(tmpFile('shopify-postsale.db'));
+  after(() => { try { db.close(); } catch {} });
 
   it('orders and order_line_items both carry a channel', () => {
     assert.ok(cols(db, 'orders').includes('channel'));
