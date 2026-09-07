@@ -28,7 +28,7 @@ const order = (over = {}) => ({
   publication: { name: 'Online Store' },
   tags: [],
   customer: { id: 'gid://shopify/Customer/8675309' },
-  currentSubtotalPriceSet: { shopMoney: { amount: '74.00', currencyCode: 'AUD' } },
+  subtotalPriceSet: { shopMoney: { amount: '74.00', currencyCode: 'AUD' } },
   totalRefundedSet: { shopMoney: { amount: '0.00' } },
   refunds: [],
   discountApplications: { nodes: [] },
@@ -67,7 +67,7 @@ describe('decideAccrual', () => {
   it('FLOORS, matching what the storefront promised on the product page', () => {
     // blocks/bk-keepers-earn.liquid floors. A customer told "74 XP" must not be handed 75, and two
     // roundings that disagree is exactly the broken promise that file's header warns about.
-    const d = decideAccrual(order({ currentSubtotalPriceSet: { shopMoney: { amount: '74.60' } } }), RULES);
+    const d = decideAccrual(order({ subtotalPriceSet: { shopMoney: { amount: '74.60' } } }), RULES);
     assert.equal(d.basisCents, 7460);
     assert.equal(d.xp, 74, '74.6 XP floors to 74');
     assert.equal(d.points, 149, '149.2 points floors to 149');
@@ -103,7 +103,7 @@ describe('decideAccrual', () => {
   });
 
   it('refuses an order with no readable subtotal', () => {
-    assert.equal(decideAccrual(order({ currentSubtotalPriceSet: null }), RULES).reason, 'no_subtotal');
+    assert.equal(decideAccrual(order({ subtotalPriceSet: null }), RULES).reason, 'no_subtotal');
   });
 
   it('always carries a reason when it declines', () => {
@@ -112,7 +112,7 @@ describe('decideAccrual', () => {
     for (const o of [
       order({ publication: null, app: null, sourceName: '' }),
       order({ publication: { name: 'eBay' } }),
-      order({ currentSubtotalPriceSet: null }),
+      order({ subtotalPriceSet: null }),
     ]) {
       const d = decideAccrual(o, RULES);
       assert.equal(d.accrues, false);
@@ -204,7 +204,7 @@ describe('accrualBasisCents', () => {
   it('returns null rather than 0 when there is no subtotal to read', () => {
     // 0 is a real basis (a fully-discounted order); null means we could not tell, and the caller
     // refuses on it.
-    assert.equal(accrualBasisCents(order({ currentSubtotalPriceSet: null })), null);
+    assert.equal(accrualBasisCents(order({ subtotalPriceSet: null })), null);
     assert.equal(accrualBasisCents({}), null);
   });
 });
@@ -237,5 +237,55 @@ describe('reversalFor — proportional, at the original rate', () => {
   it('floors, so a partial refund never gives back more than it took', () => {
     // One card refunded from a five-card order: 1/3 of 74 is 24.67, and 24 is the safe direction.
     assert.deepEqual(reversalFor(d, { refundedCents: 2467 }), { xp: 24, points: 49 });
+  });
+});
+
+// --- the accrual basis is BEFORE returns ----------------------------------------------------------
+//
+// THE BUG THIS EXISTS TO PREVENT, and it is invisible unless a fixture carries BOTH subtotals with
+// DIFFERENT values — which no fixture in this file did, because they all set one field and the code
+// read the same one. That is why 5000 tests missed it.
+//
+// accrualBasisCents used to read currentSubtotalPriceSet, which the Admin API documents as "after
+// returns and refunds". An accrual is write-once (uq_kev_source + ON CONFLICT DO NOTHING), so an
+// order whose FIRST ingest happened after money had moved banked a permanently reduced accrual — and
+// the reversal then took its share of that already-reduced figure, charging the refund twice.
+//
+// Reachable precisely when the ledger is armed: observe mode never advances the cursor, so the first
+// sweep after arming first-ingests everything updated in the last 50 days in the state it is in that
+// day, refunds included.
+describe('the accrual basis is what was SPENT, not what survived the refunds', () => {
+  // $74 order, $40 refunded. The two subtotals disagree, which is the whole point of the fixture.
+  const refunded = order({
+    subtotalPriceSet: { shopMoney: { amount: '74.00', currencyCode: 'AUD' } },
+    currentSubtotalPriceSet: { shopMoney: { amount: '34.00', currencyCode: 'AUD' } },
+    refunds: [{ id: 'gid://shopify/Refund/1', createdAt: '2026-09-01T00:00:00Z', totalRefundedSet: { shopMoney: { amount: '40.00' } } }],
+  });
+
+  it('accrues on the pre-refund subtotal', () => {
+    assert.equal(accrualBasisCents(refunded), 7400,
+      'the basis must be what the customer spent — reading the refund-net figure charges the refund twice');
+  });
+
+  it('and the decision carries that basis into the ledger', () => {
+    const d = decideAccrual(refunded, RULES);
+    assert.equal(d.accrues, true);
+    assert.equal(d.basisCents, 7400);
+    assert.equal(d.xp, 74, 'a $74 order earns 74 XP however much of it was later refunded');
+  });
+
+  it('the refund is still seen, so the reversal has something to score', () => {
+    // The fix must not accidentally hide the refund: the accrual goes up, and the reversal that
+    // brings it back down has to still be reachable from the same decision.
+    assert.equal(decideAccrual(refunded, RULES).refunds.length, 1);
+    assert.equal(decideAccrual(refunded, RULES).refunds[0].cents, 4000);
+  });
+
+  it('a missing pre-refund subtotal is a refusal, not a fallback to the live one', () => {
+    // Falling back to currentSubtotalPriceSet would reintroduce the bug on exactly the orders where
+    // it matters. No subtotal means no accrual.
+    const noSub = order({ subtotalPriceSet: null, currentSubtotalPriceSet: { shopMoney: { amount: '34.00' } } });
+    assert.equal(accrualBasisCents(noSub), null);
+    assert.equal(decideAccrual(noSub, RULES).reason, 'no_subtotal');
   });
 });

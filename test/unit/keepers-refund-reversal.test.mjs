@@ -141,6 +141,36 @@ describe('and the call sites actually score from the ledger', () => {
       'the note is back on the live basis — it will read "of 0c" for every full refund');
   });
 
+  it('the accrues gate covers the accrual and NOTHING that undoes it', () => {
+    // ORDER, not presence. `decision.accrues` is recomputed from CURRENT config, so once the
+    // programme is switched off — or a channel joins excluded_channels — it answers false for orders
+    // that already accrued. The old `if (!decision.accrues) return;` sat above the reversal loop, so
+    // a refund on such an order reversed nothing, the run reported clean, and the cursor moved past
+    // it for good. The XP stayed and the held referral award was never voided.
+    //
+    // A presence check cannot see this: the gate and the loop both exist either way. What matters is
+    // which side of the gate the loop falls on.
+    const gate = src.indexOf('if (decision.accrues) {');
+    const refundLoop = src.indexOf('for (const r of decision.refunds)');
+    const cancelBlock = src.indexOf('if (decision.cancelled) {');
+    const voidBlock = src.indexOf('voidClaimsForOrder(db, String(orderGid))');
+    const gateClose = src.indexOf('\n    }', gate);
+
+    assert.ok(gate > 0, 'the accrual must be gated on decision.accrues');
+    assert.ok(!src.includes('if (!decision.accrues) return;'),
+      'the early return is back — every reversal below it is unreachable once the programme is off');
+    for (const [name, at] of [['refund loop', refundLoop], ['cancellation', cancelBlock], ['referral void', voidBlock]]) {
+      assert.ok(at > gateClose,
+        `the ${name} must sit AFTER the accrues gate closes — undoing is not earning, and only the `
+        + 'ledger knows whether there is anything to undo');
+    }
+  });
+
+  it('but claiming a referral IS gated, because claiming is earning', () => {
+    assert.ok(src.includes('if (decision.accrues && customerGid && decision.evidence?.ref)'),
+      'an order that does not qualify to earn XP must not qualify a referral either');
+  });
+
   it('reversalFor itself is unchanged — the arithmetic was never the bug', () => {
     // Pinned so a future reader does not "fix" the pure function to paper over a caller that is
     // already correct. Given the original basis it has always been right.
