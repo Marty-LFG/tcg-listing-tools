@@ -13,7 +13,11 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// tmpFile ONLY, never tmpDir: this file already declares its own module-scope `tmpDir`
+// binding, and importing that name would be a SyntaxError that takes the whole file with it.
+// `os` stays — the other mkdtempSync below still uses it.
 import os from 'node:os';
+import { tmpFile } from '../helpers/tmp.mjs';
 import path from 'node:path';
 import http from 'node:http';
 import { openDbAt } from '../../lib/db.mjs';
@@ -121,7 +125,11 @@ const CFG = {
 // real data/shopify.config.json. lib/shopify.mjs honours TCG_SHOPIFY_CONFIG for exactly this reason:
 // writing the live file and restoring it in after() means a crashed run leaves the real box armed
 // against pins that do not exist. Set before the module is imported, so its module-level const sees it.
-const CONFIG_PATH = path.join(os.tmpdir(), 'tcg-shopify-cfg-' + process.pid + '.json');
+// A UNIQUE directory, not one named after the process id. Windows recycles pids, so the old name was
+// not unique across runs, and this file's teardown could not delete what it made — see f409b32 for the
+// flake that came of exactly this. Uniqueness is the half that matters: a leaked directory with a
+// unique name can never be inherited.
+const CONFIG_PATH = tmpFile('shopify.config.json', 'tcg-shopify-cfg-');
 process.env.TCG_SHOPIFY_CONFIG = CONFIG_PATH;
 function writeConfig(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2)); }
 

@@ -7,7 +7,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 
 // TCG_KEEPERS_DB MUST be set before lib/keepers-db.mjs is evaluated — KEEPERS_DB_PATH is a
 // module-scope const that captures it once — hence the dynamic imports below rather than static ones.
@@ -18,7 +18,9 @@ import os from 'node:os';
 // writing check-in events into the real data/keepers.db. That is not hypothetical: the live file held
 // exactly one event — a 50 XP check-in from customer 8675309 at show `now-show`, which is this file's
 // fixture slug and appears nowhere else in the repo.
-const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tcg-keepers-checkin-'));
+// tmpDir, not a bare mkdtempSync: unique either way, but the helper also registers a process-exit
+// cleanup. Written without it earlier today and it had already left 29 directories behind.
+const DIR = tmpDir('tcg-keepers-checkin-');
 process.env.TCG_KEEPERS_DB = path.join(DIR, 'keepers.db');
 
 const { activeShow, nextShow, checkIn, makeCheckinHandler } = await import('../../lib/keepers-checkin.mjs');

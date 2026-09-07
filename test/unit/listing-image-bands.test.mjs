@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { tmpDir } from '../helpers/tmp.mjs';
 import {
   bandText, aspectReview, composeBandImage, bandsAvailable,
 } from '../../lib/listing-image-bands.mjs';
@@ -322,8 +323,12 @@ describe('composeBandImage', { skip: SKIP }, () => {
   });
 
   it('the disk cache round-trips on the target extension', async () => {
-    const dir = path.join(process.cwd(), 'test', '.tmp-band-cache-' + process.pid);
-    fs.rmSync(dir, { recursive: true, force: true });
+    // Out of the working tree and into a unique temp directory. This was
+    // `test/.tmp-band-cache-<pid>`, which git does NOT ignore — a leak here turns up in
+    // `git status` and is commitable, unlike every other leak in this sweep. The pre-clean that
+    // used to sit here was load-bearing (the first compose must miss the cache for
+    // `first.cached === false` to mean anything); mkdtemp guarantees an empty directory instead.
+    const dir = tmpDir('tcg-band-cache-');
     try {
       const bytes = await fakeCard(733, 1024);
       const first = await composeBandImage(bytes, meta, { cfg, cacheDir: dir, trim: false });

@@ -10,6 +10,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { tmpDir } from '../helpers/tmp.mjs';
 import { fileURLToPath } from 'node:url';
 import {
   composeListingImage, composeAvailable, describeCompositor, hashFor, trimDetector, ComposeUnavailable,
@@ -224,8 +225,9 @@ describe('composeListingImage', { skip: SKIP }, () => {
 
   describe('disk cache', () => {
     it('a hit returns the cached bytes without re-rendering', async () => {
-      const dir = path.join(ROOT, 'test', '.tmp-compose-cache-' + process.pid);
-      fs.rmSync(dir, { recursive: true, force: true });
+      // Out of the working tree — see the note in listing-image-bands.test.mjs. The pre-clean is
+      // gone because mkdtemp already guarantees the directory is empty.
+      const dir = tmpDir('tcg-compose-cache-');
       try {
         const meta = { language: 'English', setName: 'Cached Set' };
         const first = await compose(card, meta, { cacheDir: dir });

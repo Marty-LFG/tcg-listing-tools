@@ -9,11 +9,14 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 
-const DIR = path.join(os.tmpdir(), 'tcg-repricer-cfg-' + process.pid);
+// A UNIQUE directory, not one named after the process id. Windows recycles pids, so the old name was
+// not unique across runs, and this file's teardown could not delete what it made — see f409b32 for the
+// flake that came of exactly this. Uniqueness is the half that matters: a leaked directory with a
+// unique name can never be inherited.
+const DIR = tmpDir('tcg-repricer-cfg-');
 process.env.TCG_CONFIG_DIR = DIR;
-fs.mkdirSync(DIR, { recursive: true });
 const { ensureConfigSeeded } = await import('../../lib/repricer.mjs');
 
 const FILE = path.join(DIR, 'repricer.config.json');

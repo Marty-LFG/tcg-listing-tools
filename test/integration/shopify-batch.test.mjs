@@ -14,7 +14,11 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+// tmpFile ONLY, never tmpDir: this file already declares its own module-scope `tmpDir`
+// binding, and importing that name would be a SyntaxError that takes the whole file with it.
+// `os` stays — the other mkdtempSync below still uses it.
 import os from 'node:os';
+import { tmpFile } from '../helpers/tmp.mjs';
 import path from 'node:path';
 import http from 'node:http';
 import { openDbAt } from '../../lib/db.mjs';
@@ -33,7 +37,11 @@ const ENV = {
 
 // Set before importing lib/shopify.mjs, so its module-level const sees the temp path and the
 // operator's real data/shopify.config.json is never touched.
-const CONFIG_PATH = path.join(os.tmpdir(), 'tcg-shopify-batch-cfg-' + process.pid + '.json');
+// A UNIQUE directory, not one named after the process id. Windows recycles pids, so the old name was
+// not unique across runs, and this file's teardown could not delete what it made — see f409b32 for the
+// flake that came of exactly this. Uniqueness is the half that matters: a leaked directory with a
+// unique name can never be inherited.
+const CONFIG_PATH = tmpFile('shopify.config.json', 'tcg-shopify-batch-cfg-');
 process.env.TCG_SHOPIFY_CONFIG = CONFIG_PATH;
 const { makeShopifyRouter, shopifyBatchPreflight } = await import('../../lib/shopify.mjs');
 

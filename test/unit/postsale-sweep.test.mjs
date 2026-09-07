@@ -14,10 +14,13 @@ import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 
-const DIR = path.join(os.tmpdir(), 'tcg-postsale-sweep-' + process.pid);
-fs.mkdirSync(DIR, { recursive: true });
+// A UNIQUE directory, not one named after the process id. Windows recycles pids, so the old name was
+// not unique across runs, and this file's teardown could not delete what it made — see f409b32 for the
+// flake that came of exactly this. Uniqueness is the half that matters: a leaked directory with a
+// unique name can never be inherited.
+const DIR = tmpDir('tcg-postsale-sweep-');
 fs.writeFileSync(path.join(DIR, 'postsale.config.json'), JSON.stringify({ enabled: true, messaging: false }, null, 2));
 process.env.TCG_CONFIG_DIR = DIR;
 process.env.TCG_POSTSALE_DB = path.join(DIR, 'postsale.db');

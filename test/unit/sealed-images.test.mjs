@@ -9,7 +9,7 @@
 // graded card. There is a test for exactly that at the bottom.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 import path from 'node:path';
 import fs from 'node:fs';
 import { openDbAt } from '../../lib/db.mjs';
@@ -20,7 +20,10 @@ const future = () => new Date(Date.now() + 30 * 864e5).toISOString();
 const past = () => new Date(Date.now() - 864e5).toISOString();
 
 function freshDb() {
-  const p = path.join(os.tmpdir(), `sealimg-${process.pid}-${Math.round(process.hrtime()[1])}.db`);
+  // pid + hrtime was very nearly unique, which is not the same as unique — and freshDb() is called
+  // repeatedly inside one process, so the nanosecond counter was carrying the whole burden.
+  // mkdtemp asks the operating system for the guarantee instead.
+  const p = path.join(tmpDir('tcg-sealimg-'), 'sealed.db');
   const db = openDbAt(p);
   db.prepare(`INSERT INTO sealed_pools (pool_sku, product_type) VALUES (?, 'booster_box')`).run(POOL);
   return { db, p };

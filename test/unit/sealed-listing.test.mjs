@@ -5,7 +5,7 @@
 // missing, because "publish failed" on a listing with eight preconditions is not a diagnosis.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 import path from 'node:path';
 import fs from 'node:fs';
 import { openDbAt } from '../../lib/db.mjs';
@@ -157,7 +157,10 @@ describe('validateSealedListing — every refusal names its one cause', () => {
 
 describe('publishSealedPool — refuses before any eBay call, and audits the refusal', () => {
   const freshDb = () => {
-    const p = path.join(os.tmpdir(), `sealed-listing-${process.pid}-${Math.round(process.hrtime()[1])}.db`);
+      // pid + hrtime was very nearly unique, which is not the same as unique — and freshDb() is called
+    // repeatedly inside one process, so the nanosecond counter was carrying the whole burden.
+    // mkdtemp asks the operating system for the guarantee instead.
+    const p = path.join(tmpDir('tcg-sealed-listing-'), 'sealed.db');
     return { db: openDbAt(p), p };
   };
   const seed = (db, over = {}) => {

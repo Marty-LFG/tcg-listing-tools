@@ -12,11 +12,20 @@ import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 
-const TDB = path.join(os.tmpdir(), 'tcg-scan-t-' + process.pid + '.db');
-const RDB = path.join(os.tmpdir(), 'tcg-scan-r-' + process.pid + '.db');
-const PDB = path.join(os.tmpdir(), 'tcg-scan-p-' + process.pid + '.db');
+// A UNIQUE directory, not one named after the process id. Windows recycles pids, so the old name was
+// not unique across runs, and this file's teardown could not delete what it made — see f409b32 for the
+// flake that came of exactly this. Uniqueness is the half that matters: a leaked directory with a
+// unique name can never be inherited.
+//
+// One directory holding all three, rather than three loose files side by side in the temp root.
+// This file opens THREE handles, so it had the worst version of the leak — up to nine files a run
+// once the WAL sidecars are counted.
+const DIR = tmpDir('tcg-scan-');
+const TDB = path.join(DIR, 'tracker.db');
+const RDB = path.join(DIR, 'repricer.db');
+const PDB = path.join(DIR, 'postsale.db');
 process.env.TCG_TRACKER_DB = TDB;
 process.env.TCG_REPRICER_DB = RDB;
 process.env.TCG_POSTSALE_DB = PDB;
@@ -91,7 +100,6 @@ const scan = (opts = {}) => scanListings({ env: ENV, rdb, tdb, cfg: CFG, base: '
 const checks = () => rdb.prepare('SELECT * FROM price_checks ORDER BY id').all();
 
 before(() => {
-  for (const f of [TDB, RDB, PDB]) { try { fs.unlinkSync(f); } catch {} }
   tdb = openDb(); rdb = openRepricerDb(); pdb = openPostsaleDb();
 });
 // Corroboration defaults to `require`: a raise built purely from ASKING prices is refused unless
@@ -110,7 +118,13 @@ afterEach(() => {
   tdb.exec('DELETE FROM ebay_seller_listings');
   pdb.exec('DELETE FROM order_line_items'); pdb.exec('DELETE FROM orders');
 });
-after(() => { for (const f of [TDB, RDB, PDB]) for (const x of ['', '-wal', '-shm']) { try { fs.unlinkSync(f + x); } catch {} } });
+after(() => {
+  // Close all three BEFORE removing. This file already unlinked the -wal/-shm sidecars by hand,
+  // which was the most careful teardown of the set — but it still could not delete files whose
+  // handles were open, so it leaked ~224 of each. One directory removal replaces the whole loop.
+  for (const h of [tdb, rdb, pdb]) { try { h.close(); } catch { /* already closed */ } }
+  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows can still hold it */ }
+});
 
 describe('scanListings — the pass is read-only', () => {
   it('NEVER sends a write, whatever it decides', async () => {

@@ -8,9 +8,14 @@ import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { tmpDir } from '../helpers/tmp.mjs';
 
-const DB_PATH = path.join(os.tmpdir(), 'tcg-import-test-' + process.pid + '.db');
+// A UNIQUE directory, not one named after the process id. Windows recycles pids, so the old name was
+// not unique across runs, and this file's teardown could not delete what it made — see f409b32 for the
+// flake that came of exactly this. Uniqueness is the half that matters: a leaked directory with a
+// unique name can never be inherited.
+const DIR = tmpDir('tcg-import-test-');
+const DB_PATH = path.join(DIR, 'tracker.db');
 process.env.TCG_TRACKER_DB = DB_PATH;
 
 const { openDb } = await import('../../lib/db.mjs');
@@ -37,13 +42,19 @@ function stub(pages = 1) {
 }
 
 before(() => {
-  try { fs.unlinkSync(DB_PATH); } catch {}
   db = openDb();
   db.prepare(`INSERT INTO inventory_items (game,name,set_name,number,sku,quantity,status,created_at,updated_at)
               VALUES ('pokemon','Wailord','Journey Together','162/159','AAC-084',1,'in_stock',datetime('now'),datetime('now'))`).run();
 });
 afterEach(() => { globalThis.fetch = realFetch; });
-after(() => { try { fs.unlinkSync(DB_PATH); } catch {} });
+after(() => {
+  // Close BEFORE removing. An open SQLite handle is what makes the removal fail EPERM on
+  // Windows, and the bare `catch {}` hid it — around 220 of these databases had piled up in
+  // temp. Removing the DIRECTORY also takes the -wal and -shm sidecars, which unlinking the
+  // .db alone never did: a stale WAL outliving its database is replayed into the fresh one.
+  try { db.close(); } catch { /* already closed */ }
+  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* windows can still hold it */ }
+});
 
 const rowsNow = () => Object.fromEntries(db.prepare('SELECT listing_id, sku, state, created_via, item_id FROM ebay_seller_listings').all()
   .map((r) => [r.listing_id, r]));
