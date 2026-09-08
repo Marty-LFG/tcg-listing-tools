@@ -170,6 +170,10 @@ const money = (cents) => cents==null ? '—' : 'A$' + ((Math.round(+cents||0))/1
 // means "at least 200" and rendering a bare 200 would read as an exact figure.
 const cap200 = (n) => (Number(n) >= 200 ? '≥200' : String(n ?? 0));
 const short = (gid) => String(gid||'').replace(/^gid:\/\/shopify\/\w+\//,'');
+// A refusal is only useful if it says WHICH kind. sig_failures counts a bad HMAC and a valid
+// signature from the wrong shop on ONE number, and those two have opposite fixes — rotate the
+// secret, or fix the store pair. Only the reason tells them apart.
+const refusal = (lr) => lr ? (esc(lr.what+' '+lr.reason) + (lr.detail?' — '+esc(lr.detail):'') + ' · ' + esc(when(lr.at))) : '—';
 
 function token() { return $('diagToken').value.trim(); }
 function withToken(path) { const t = token(); return t ? path + (path.includes('?')?'&':'?') + 'token=' + encodeURIComponent(t) : path; }
@@ -225,6 +229,17 @@ function renderBanner() {
   const ec = s.economy;
   chips.push('<span class="chip"><span class="dot '+(ec&&!ec.problem?'ok':(ec?'warn':'err'))+'"></span>economy '
     + (ec ? esc(ec.source) + (ec.problem?' — '+esc(ec.problem):'') : '<b>not cached</b>') + '</span>');
+  // shop_mismatch reads BEFORE config, because config_problem is a fault inside one file while
+  // shop_mismatch is a fault in the PAIR — the receiver accepting one store's deliveries while the
+  // engine reads another — and it has two shapes, only one of them loud. Point the receiver at dev
+  // while the engine says live and every delivery 401s: sig_failures climbs, and it reads exactly
+  // like a rotated secret. Point it at live while the engine still says dev and every delivery is
+  // ACCEPTED, stored and drained, then re-read against a store where that order id does not exist —
+  // nothing refused, sig_failures flat, nothing in the log, and the only symptom is "orders arrive
+  // and nothing happens". The quiet shape is the one this chip is for: it is the sole thing on the
+  // page that says it. The API refusal cannot cover either shape, because both configs are
+  // hand-edited on the box, which is exactly what going live requires.
+  if (s.shop_mismatch) chips.push('<span class="chip"><span class="dot err"></span>store pairing: '+esc(s.shop_mismatch)+'</span>');
   if (s.config_problem) chips.push('<span class="chip"><span class="dot err"></span>config: '+esc(s.config_problem)+'</span>');
   chips.push('<span class="chip">queue <b>'+esc(s.queue_depth ?? 0)+'</b></span>');
   $('banner').innerHTML = chips.join('');
@@ -262,8 +277,9 @@ function renderQueue() {
       + '<div class="kv"><span class="k">expects shop</span><span class="v">'+esc(r.expect_shop_domain||'—')+'</span></div>'
       + '<div class="kv"><span class="k">consumers</span><span class="v">'+esc((r.consumers||[]).map(c=>c.name).join(', ')||'none')+'</span></div>'
       + '<div class="kv"><span class="k">signature failures</span><span class="v'+(r.sig_failures?' chg':'')+'">'+esc(r.sig_failures ?? 0)+'</span></div>'
+      + '<div class="kv"><span class="k">last refusal</span><span class="v'+(r.last_refusal?' chg':'')+'">'+refusal(r.last_refusal)+'</span></div>'
     + '</div><div>'+counts+'</div></div>'
-    + '<p class="note">A signature-failure count that climbs is the only warning that the app secret was rotated and every webhook is now being refused.</p>'
+    + '<p class="note">A climbing signature-failure count means deliveries are being refused — but it counts two different refusals on one number. A bad or missing HMAC usually means the app secret was rotated; a valid signature from the wrong shop means this receiver and the engine disagree about which store they serve. The last refusal is what tells them apart.</p>'
     + '</div>'
     + '<div class="card"><h2>Deliveries</h2>'
       + '<div class="toolbar">'

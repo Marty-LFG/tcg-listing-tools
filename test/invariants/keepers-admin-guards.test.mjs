@@ -370,3 +370,68 @@ describe('the admin page does not swallow its own answers', () => {
     assert.match(page, /\.replace\(\/"\/g,'&quot;'\)/);
   });
 });
+
+describe('the operator can see WHY deliveries are being refused', () => {
+  // The pair check landed in 976a1f4 and reached no human. The engine computed shop_mismatch on every
+  // /state read, this page fetched it, held it, and drew nothing — while drawing sig_failures, which a
+  // wrong-shop refusal increments on the same counter as a bad HMAC. So the page showed the symptom
+  // and hid the cause, on the one path the check's own docblock says it cannot refuse: the hand edit
+  // on the box, which is exactly what going live requires.
+
+  it('the banner draws shop_mismatch, the way it already draws config_problem', () => {
+    assert.match(page, /if \(s\.shop_mismatch\) chips\.push\('<span class="chip"><span class="dot err"><\/span>store pairing: '\+esc\(s\.shop_mismatch\)\+'<\/span>'\);/,
+      'a guard whose only delivery path is a screen must actually reach the screen');
+  });
+
+  it('it reads BEFORE the config chip, because it is a fault in the pair', () => {
+    const i = page.indexOf('s.shop_mismatch) chips.push');
+    const j = page.indexOf('s.config_problem) chips.push');
+    assert.ok(i > -1 && j > -1 && i < j,
+      'config_problem is a fault inside one file; shop_mismatch means every delivery from the real store is being refused right now');
+  });
+
+  it('no caller of the pair check resolves against process.env', () => {
+    // loadEnv() never writes to process.env, so a process.env default means resolveShop throws and
+    // the domain half of the check silently does not run. That is how it shipped, and a source
+    // assertion is the only thing that catches it coming back: both callers pass, and a wrong
+    // default still returns a plausible null.
+    assert.match(keepers, /export function shopMismatchProblem\(env = keepersEnv\(\)/,
+      'the default env must be the one the plugin was built with');
+    assert.ok(!/shopMismatchProblem\(process\.env/.test(status),
+      'lib/status.mjs must not hand it the shell environment either');
+    assert.match(keepers, /export function keepersPlugin\(env\) {\s*if \(env && typeof env === .object.\) _env = env;/,
+      'and the plugin has to actually remember it');
+  });
+
+  it('the receiver card names the last refusal beside the count', () => {
+    assert.match(page, /<span class="k">last refusal<\/span>/);
+    assert.match(page, /refusal\(r\.last_refusal\)/);
+    assert.match(page, /const refusal = \(lr\) => lr \?/, 'and it says which kind, with the detail');
+  });
+
+  it('the note no longer claims the counter can only mean a rotated secret', () => {
+    // It said "the ONLY warning that the app secret was rotated". That was false the day the shop
+    // check was written, and it is the sentence that would send someone to rotate a working secret.
+    // Anchored on "signature-failure" (unique to the receiver note among this page's four) and
+    // terminated at the paragraph, not at the first child tag: [^<]* would truncate the moment
+    // someone bolds a word, which is how every other note on this page is written, and the failure
+    // would then be a false statement about the file.
+    const note = (page.match(/<p class="note">[^\n]*signature-failure[^\n]*?<\/p>/) || [''])[0];
+    assert.ok(note, 'the receiver note must still explain the counter');
+    // Both surfaces, and case-insensitive: the same sentence lived twice — once as this note and
+    // once as a comment in lib/status.mjs above keepersJobState, which is the copy the next person
+    // reads. Correcting one and leaving the other is how a false claim survives being fixed.
+    for (const [name, src] of [['keepers.html', page], ['lib/status.mjs', status]]) {
+      assert.ok(!/only warning/i.test(src),
+        name + ' may not claim sig_failures has a single cause');
+    }
+    assert.match(note, /wrong shop/, 'the note has to name the other cause');
+    assert.match(note, /tells them apart/);
+    // And it must not swap one identity claim for another. A bad HMAC is not proof of a rotated
+    // secret: an unsigned POST from the internet lands on this same counter as no_signature, and on
+    // a public endpoint that is the commonest cause of all. The note has to say MISSING as well as
+    // bad, or it sends the operator to rotate a working secret — the exact error it replaced.
+    assert.match(note, /missing/,
+      'an unsigned POST increments sig_failures too; the note must not read as bad-HMAC-only');
+  });
+});

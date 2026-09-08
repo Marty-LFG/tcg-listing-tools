@@ -206,6 +206,37 @@ describe('webhook verification and the ack contract', () => {
     assert.equal(seen.length, 0);
   });
 
+  it('RECORDS the wrong-shop refusal, not just counts it', async () => {
+    const body = '{"id":1}';
+    await post({ headers: hookHeaders('orders/paid', body, { 'x-shopify-shop-domain': 'someone-else.myshopify.com' }) });
+    const st = getShopifyHooksState();
+    assert.equal(st.sig_failures, 1);
+    assert.ok(st.last_refusal, 'a refusal that leaves no record is a climbing number with no cause');
+    assert.equal(st.last_refusal.what, 'webhook');
+    assert.equal(st.last_refusal.reason, 'wrong_shop');
+    // The detail names BOTH sides. Nothing else in the state does, and "which shop delivered" is the
+    // whole question when the two configs have been hand-edited apart on the box.
+    assert.match(st.last_refusal.detail, /someone-else/);
+    assert.match(st.last_refusal.detail, /binders-keepers-dev\.myshopify\.com/);
+  });
+
+  it('tells a rotated secret apart from a wrong shop — the two refusals share one counter', async () => {
+    // This is the reason the record exists. sig_failures counts both, so the number alone cannot say
+    // whether the fix is "rotate the secret" or "fix the store pair". Before the wrong-shop branch
+    // recorded anything, the SECOND refusal here left last_refusal still naming the FIRST — the
+    // operator read a stale cause for a live fault. logRejection is no help either: it goes quiet
+    // after five, and a real mismatch refuses every delivery.
+    const body = '{"id":1}';
+    await post({ headers: hookHeaders('orders/paid', body, { 'x-shopify-hmac-sha256': sign('tampered') }) });
+    const afterHmac = getShopifyHooksState().last_refusal;
+    assert.equal(afterHmac.reason !== 'wrong_shop', true, 'a bad HMAC is not a wrong shop');
+
+    await post({ headers: hookHeaders('orders/paid', body, { 'x-shopify-shop-domain': 'someone-else.myshopify.com' }) });
+    const afterShop = getShopifyHooksState().last_refusal;
+    assert.equal(getShopifyHooksState().sig_failures, 2, 'both land on the same counter, deliberately');
+    assert.equal(afterShop.reason, 'wrong_shop', 'the newer refusal must replace the older cause');
+  });
+
   it('503s when a consumer cannot record — never a silent 200', async () => {
     // Shopify retries a 5xx for 48 hours. Acking something nobody stored loses it for good.
     __resetShopifyHooks(); CFG = testConfig();

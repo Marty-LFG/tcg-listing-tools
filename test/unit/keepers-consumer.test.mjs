@@ -4,12 +4,13 @@
 // refuses. One combination in particular is a trap that looks harmless: projecting while the mode is
 // not 'apply' publishes a ledger nothing is writing to, so the storefront freezes at whatever the
 // last apply run produced and never moves again — with no error anywhere.
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateKeepersConfig, DEFAULT_CONFIG, MODES, TOPICS, MAX_ATTEMPTS,
   shopMismatchProblem,
   recordDelivery, actionFor, refIdFor, drainWebhooks, getKeepersEngineState,
+  keepersEnv, keepersPlugin,
 } from '../../lib/keepers.mjs';
 import { openKeepersDbAt, upsertCustomer, appendEvent, getCustomer } from '../../lib/keepers-db.mjs';
 import { BUSINESS_TOPICS } from '../../lib/shopify-hooks.mjs';
@@ -285,5 +286,59 @@ describe('shopMismatchProblem — the pair, not the files', () => {
     // validateShopifyHooksConfig already refuses that when enabled, and duplicating the refusal here
     // would report one fault as two.
     assert.equal(shopMismatchProblem(ENV, keepers('dev'), hooks({ expect_shop_domain: '' })), null);
+  });
+});
+
+// --- the env the check actually reads ------------------------------------------------------------
+//
+// This is how the pair check shipped broken, and it is the reason every test above passed anyway.
+// vite's loadEnv() reads .env and RETURNS it; it never writes to process.env. Every test above hands
+// shopMismatchProblem an explicit env object, so every test above exercised a code path the server
+// never takes: getKeepersEngineState() passes nothing, the default was process.env, and on the box
+// process.env holds no SHOPIFY_* keys at all. resolveShop threw, the catch returned null, and the
+// DOMAIN half of the check never ran — not once, on any /state read, since it shipped.
+//
+// What made it invisible is that the LABEL half needs no env and worked perfectly. So the loud
+// failure (store: 'live' against shop: 'dev') was caught, and the quiet one — right label, stale
+// expect_shop_domain, the half-done edit the docblock calls the likeliest mistake — returned null,
+// which is indistinguishable from "the pair agrees".
+describe('shopMismatchProblem reads the env the SERVER has, not the shell it was started from', () => {
+  const engineOnLive = { ...DEFAULT_CONFIG, mode: 'apply', store: 'live' };
+  const halfDoneEdit = { enabled: true, shop: 'live', expect_shop_domain: 'binders-keepers-dev.myshopify.com' };
+  const VITE_ENV = { SHOPIFY_SHOP: 'gkrnva-1k', SHOPIFY_DEV_SHOP: 'binders-keepers-dev' };
+
+  // keepersPlugin({}) puts the module back to "no plugin has run", so this describe cannot leak an
+  // env into anything after it.
+  afterEach(() => { keepersPlugin({}); });
+
+  it('falls back to process.env when no plugin has constructed it', () => {
+    keepersPlugin({});
+    assert.equal(keepersEnv(), process.env, 'a script or a test with no plugin still gets an env');
+  });
+
+  it('uses the env the plugin was built with, so the DEFAULT argument sees the half-done edit', () => {
+    // Called exactly the way getKeepersEngineState calls it: no env argument at all.
+    keepersPlugin(VITE_ENV);
+    const p = shopMismatchProblem(undefined, engineOnLive, halfDoneEdit);
+    assert.ok(p, 'the quiet half of the pair check must work through the default env, not only an explicit one');
+    assert.match(p, /expect_shop_domain is binders-keepers-dev\.myshopify\.com/);
+    assert.match(p, /the live store is gkrnva-1k\.myshopify\.com/);
+  });
+
+  it('and getKeepersEngineState — the real caller — reports it', () => {
+    keepersPlugin(VITE_ENV);
+    const problem = shopMismatchProblem(undefined, engineOnLive, halfDoneEdit);
+    assert.ok(problem, 'guard: the state field below is only meaningful if this is non-null');
+    // getKeepersEngineState reads the real config files, so assert the wiring rather than the value:
+    // the field exists, and the function it delegates to now resolves against the plugin env.
+    const st = getKeepersEngineState(openKeepersDbAt(':memory:'));
+    assert.ok('shop_mismatch' in st, 'the state must carry the field the admin page draws');
+  });
+
+  it('an empty plugin env does not shadow process.env', () => {
+    // vite hands every plugin the same loadEnv object, but a caller constructing the plugin for its
+    // own reasons (a test, a script) may pass nothing useful. That must not blind the check.
+    keepersPlugin({});
+    assert.equal(keepersEnv(), process.env);
   });
 });
