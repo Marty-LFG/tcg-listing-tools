@@ -8,6 +8,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateKeepersConfig, DEFAULT_CONFIG, MODES, TOPICS, MAX_ATTEMPTS,
+  shopMismatchProblem,
   recordDelivery, actionFor, refIdFor, drainWebhooks, getKeepersEngineState,
 } from '../../lib/keepers.mjs';
 import { openKeepersDbAt, upsertCustomer, appendEvent, getCustomer } from '../../lib/keepers-db.mjs';
@@ -216,5 +217,73 @@ describe('getKeepersEngineState', () => {
     // disagreement its alarm, and this object is what /api/status publishes as drift. A count that is
     // not here is a count nobody sees.
     assert.deepEqual(Object.keys(s.drift).sort(), ['extra', 'missing', 'redemptions_unexplained', 'unlinked']);
+  });
+});
+
+// --- the receiver and the engine must point at the same store -------------------------------------
+//
+// TWO CONFIG FILES, ONE DECISION. shopify-hooks.config.json decides which store's deliveries are
+// ACCEPTED; keepers.config.json decides which store the engine READS BACK from. Going live means
+// editing both, by hand, on the box, and until now nothing refused or even noticed when only one of
+// them moved.
+//
+// Both failure directions are quiet in their own way, which is what earns this a check rather than a
+// comment. Receiver on live with the engine on dev: every live order is accepted, stored and drained,
+// then re-read against a store where that order id does not exist — nothing written wrongly, nothing
+// working, symptom "orders arrive and nothing happens". The other way round: the receiver 401s every
+// delivery, Shopify retries for 48 hours, and sig_failures climbs, poisoning the one counter that
+// means "the app secret rotated".
+describe('shopMismatchProblem — the pair, not the files', () => {
+  const ENV = { SHOPIFY_DEV_SHOP: 'binders-keepers-dev', SHOPIFY_SHOP: 'gkrnva-1k' };
+  const keepers = (store) => ({ ...DEFAULT_CONFIG, mode: 'apply', store });
+  const hooks = (over = {}) => ({ enabled: true, shop: 'dev', expect_shop_domain: 'binders-keepers-dev.myshopify.com', ...over });
+
+  it('is silent when both agree', () => {
+    assert.equal(shopMismatchProblem(ENV, keepers('dev'), hooks()), null);
+    assert.equal(shopMismatchProblem(ENV, keepers('live'), hooks({ shop: 'live', expect_shop_domain: 'gkrnva-1k.myshopify.com' })), null);
+  });
+
+  it('catches a receiver on live while the engine still reads dev', () => {
+    const p = shopMismatchProblem(ENV, keepers('dev'), hooks({ shop: 'live', expect_shop_domain: 'gkrnva-1k.myshopify.com' }));
+    assert.match(p, /receiver accepts deliveries from the live store/);
+    assert.match(p, /engine reads the dev store/);
+  });
+
+  it('catches the reverse — the 48-hour-retry direction', () => {
+    const p = shopMismatchProblem(ENV, keepers('live'), hooks());
+    assert.match(p, /receiver accepts deliveries from the dev store/);
+    assert.match(p, /engine reads the live store/);
+  });
+
+  it('catches the HALF-DONE edit: right label, wrong domain', () => {
+    // The likeliest way to get this wrong, and the reason the check does not stop at the label.
+    // `shop: 'live'` is a label; expect_shop_domain is the string every delivery is compared against.
+    // Setting the first and forgetting the second leaves a config that looks migrated and behaves
+    // exactly as it did before.
+    const p = shopMismatchProblem(ENV, keepers('live'), hooks({ shop: 'live' }));
+    assert.match(p, /expect_shop_domain is binders-keepers-dev\.myshopify\.com/);
+    assert.match(p, /the live store is gkrnva-1k\.myshopify\.com/);
+  });
+
+  it('accepts a bare subdomain in .env, because resolveShop does', () => {
+    // .env may hold either form. Re-deriving the domain here instead of reusing resolveShop would be
+    // a second implementation of that rule, and the two would disagree the first time one changed.
+    assert.equal(shopMismatchProblem({ SHOPIFY_DEV_SHOP: 'binders-keepers-dev.myshopify.com' }, keepers('dev'), hooks()), null);
+  });
+
+  it('says nothing when the receiver is disabled — nothing arrives, nothing can disagree', () => {
+    assert.equal(shopMismatchProblem(ENV, keepers('dev'), hooks({ enabled: false, shop: 'live' })), null);
+  });
+
+  it('says nothing when the store is not configured in .env', () => {
+    // An unconfigured store is a different problem that already reports itself elsewhere; claiming a
+    // mismatch here would send someone to the wrong file.
+    assert.equal(shopMismatchProblem({}, keepers('live'), hooks({ shop: 'live' })), null);
+  });
+
+  it('says nothing when expect_shop_domain is blank', () => {
+    // validateShopifyHooksConfig already refuses that when enabled, and duplicating the refusal here
+    // would report one fault as two.
+    assert.equal(shopMismatchProblem(ENV, keepers('dev'), hooks({ expect_shop_domain: '' })), null);
   });
 });
