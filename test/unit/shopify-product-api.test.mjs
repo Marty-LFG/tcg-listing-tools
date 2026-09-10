@@ -308,10 +308,12 @@ describe('setAvailableQty — read first, then compare-and-swap', () => {
 // --- the orchestrator -----------------------------------------------------------------------------
 
 describe('publishProduct — the order is the safety', () => {
-  it('runs identity, then productSet, then inventory, then publish', async () => {
+  it('runs identity, then set identity, then productSet, then inventory, then publish', async () => {
     const { r, stub } = await run({}, { level: [] });
     assert.equal(r.ok, true, r.error);
-    assert.deepEqual(stub.ops(), ['identity', 'productSet', 'readLevel', 'activate', 'publish']);
+    // The set identity is a second metaobject upsert and lands beside the card one, BEFORE productSet,
+    // because its GID is spliced into the product's bkc.set metafield.
+    assert.deepEqual(stub.ops(), ['identity', 'identity', 'productSet', 'readLevel', 'activate', 'publish']);
   });
 
   it('publishes LAST, so a product is never visible before it is stocked', async () => {
@@ -401,7 +403,7 @@ describe('publishProduct — the order is the safety', () => {
 
   it('records every hop in steps[], so a half-finished publish is diagnosable', async () => {
     const { r } = await run({}, { level: [] });
-    assert.deepEqual(r.steps.map((s) => s.step), ['validate', 'identity', 'product_set', 'inventory', 'publish']);
+    assert.deepEqual(r.steps.map((s) => s.step), ['validate', 'identity', 'set_identity', 'product_set', 'inventory', 'publish']);
     assert.ok(r.steps.every((s) => s.ok));
   });
 });

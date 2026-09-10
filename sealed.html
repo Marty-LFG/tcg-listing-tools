@@ -438,14 +438,19 @@ function valSrcHtml(it){if(it.value_cents==null||!it.value_source)return '';var 
 function totalValueAud(it){const v=valueAud(it);return v==null?null:v*(it.quantity||1);}
 function unrealized(it){const tv=totalValueAud(it);if(tv==null)return null;return tv-costAud(it);}
 function blendedUnitCost(it){return unitCostAud(it);}   // already per unit
-// Sale price and sale fees are what the SALE brought in and cost, as entered. Cost is per unit, so it
-// scales with how many units the row covers.
+// EVERY term is per unit — sale price and sale fees as much as cost — and the multiplier is sale_qty,
+// how many units the sale covered. It cannot be the row's quantity: the sale sets that to zero, which
+// is what made costAud() drop the cost basis out of this figure entirely.
+function soldQtyOf(it){return it.sale_qty!=null?Math.max(0,+it.sale_qty):1;}
 function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
-  return (it.sale_price_cents-(it.sale_fees_cents||0))/100-costAud(it);}
+  return ((it.sale_price_cents-(it.sale_fees_cents||0))/100-unitCostAud(it))*soldQtyOf(it);}
 function plBadge(d){if(d==null)return '<span class="badge flat">—</span>';
   const cls=d>0.005?'up':d<-0.005?'down':'flat';const s=d>0?'+':'';return '<span class="badge '+cls+'">'+s+aud(d)+'</span>';}
 
 // ---- rendering ----
+// A cost of NULL means UNKNOWN, and both summaries coerce it to zero — which presents as a 100%
+// margin. The counters exist so the tile can say how much of it is missing rather than looking exact.
+function costCaveat(s,n){const k=(s.noCostHeld||0)+(s.noCostSold||0);return k?n+' · '+k+' with no cost recorded':n;}
 function tile(lbl,valHtml,sub2){return '<div class="tile"><div class="lbl">'+lbl+'</div><div class="val">'+valHtml+'</div>'+(sub2?'<div class="sub2">'+sub2+'</div>':'')+'</div>';}
 function renderSummary(s){
   let totalVal=0, fxOk=true;
@@ -456,7 +461,7 @@ function renderSummary(s){
     tile('Inventory value','<span>'+aud(totalVal)+'</span>',(fxOk?'':'FX unavailable — approx · ')+(s.counts.in_stock+s.counts.listed)+' active')
     +tile('Total cost',aud(cost),'held stock')
     +tile('Unrealized P/L','<span class="'+uCls+'">'+(unreal>0?'+':'')+aud(unreal)+'</span>','vs live value')
-    +tile('Realized P/L','<span class="'+rCls+'">'+(real>0?'+':'')+aud(real)+'</span>',s.counts.sold+' sold')
+    +tile('Realized P/L','<span class="'+rCls+'">'+(real>0?'+':'')+aud(real)+'</span>',costCaveat(s,s.counts.sold+' sold'))
     +tile('Sealed units',(s.units||0),'held (sum of qty)');
 }
 function sparkHtml(it){

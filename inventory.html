@@ -456,12 +456,18 @@ function valueAud(it){
 function qtyOf(it){return Math.max(1, it.quantity||1);}
 function costAud(it){return (((it.cost_cents||0)+(it.acq_fees_cents||0))/100)*qtyOf(it);}
 function unrealized(it){const v=valueAud(it);if(v==null)return null;return v*qtyOf(it)-costAud(it);}
+// Scaled by sale_qty, mirroring summarizeInventory. qtyOf() reads the row's CURRENT quantity, which a
+// sale sets to 0 — so this used to charge COGS once for a whole lot and overstate the profit on it.
+function soldQtyOf(it){return it.sale_qty!=null?Math.max(0,+it.sale_qty):1;}
 function realized(it){if(it.status!=='sold'||it.sale_price_cents==null)return null;
-  return ((it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100)*qtyOf(it);}
+  return ((it.sale_price_cents-(it.sale_fees_cents||0)-(it.cost_cents||0)-(it.acq_fees_cents||0))/100)*soldQtyOf(it);}
 function plBadge(d){if(d==null)return '<span class="badge flat">—</span>';
   const cls=d>0.005?'up':d<-0.005?'down':'flat';const s=d>0?'+':'';return '<span class="badge '+cls+'">'+s+aud(d)+'</span>';}
 
 // ---- rendering ----
+// A cost of NULL means UNKNOWN, and both summaries coerce it to zero — which presents as a 100%
+// margin. The counters exist so the tile can say how much of it is missing rather than looking exact.
+function costCaveat(s,n){const k=(s.noCostHeld||0)+(s.noCostSold||0);return k?n+' · '+k+' with no cost recorded':n;}
 function tile(lbl,valHtml,sub2){return '<div class="tile"><div class="lbl">'+lbl+'</div><div class="val">'+valHtml+'</div>'+(sub2?'<div class="sub2">'+sub2+'</div>':'')+'</div>';}
 function renderSummary(s){
   let totalVal=0, fxOk=true;
@@ -472,7 +478,7 @@ function renderSummary(s){
     tile('Inventory value','<span>'+aud(totalVal)+'</span>',(fxOk?'':'FX unavailable — approx · ')+(s.counts.in_stock+s.counts.listed)+' active')
     +tile('Total cost',aud(cost),'held stock')
     +tile('Unrealized P/L','<span class="'+uCls+'">'+(unreal>0?'+':'')+aud(unreal)+'</span>','vs live value')
-    +tile('Realized P/L','<span class="'+rCls+'">'+(real>0?'+':'')+aud(real)+'</span>',s.counts.sold+' sold');
+    +tile('Realized P/L','<span class="'+rCls+'">'+(real>0?'+':'')+aud(real)+'</span>',costCaveat(s,s.counts.sold+' sold'));
 }
 function sparkHtml(it){
   const s=(it.spark||[]).filter(p=>p.price!=null);
@@ -626,7 +632,7 @@ function subRow(sub){
     +'<div style="min-width:200px;flex:1;">'
       +'<div class="nm">'+esc(sub.name)+' <span class="grade-badge">'+esc(sub.grading_company)+(sub.tier?' · '+esc(sub.tier):'')+'</span></div>'
       +'<div class="key">'+esc(GAME_NAMES[sub.game]||sub.game)+(sub.number?' · #'+esc(sub.number):'')+(sub.variant?' · '+esc(sub.variant):'')+'</div>'
-      +'<div class="note">'+(sub.grading_cost_cents!=null?'cost '+centsAud(sub.grading_cost_cents)+' · ':'')+(sub.submitted_at?'sent '+esc(TZ.date(sub.submitted_at))+' · ':'')+eta+(sub.tracking?' · 📦 '+esc(sub.tracking):'')+(sub.result_grade!=null?' · got '+esc(sub.grading_company)+' '+esc(sub.result_grade):'')+'</div>'
+      +'<div class="note">'+(sub.grading_cost_cents!=null?'cost '+gradingFeeText(sub)+' · ':'')+(sub.submitted_at?'sent '+esc(TZ.date(sub.submitted_at))+' · ':'')+eta+(sub.tracking?' · 📦 '+esc(sub.tracking):'')+(sub.result_grade!=null?' · got '+esc(sub.grading_company)+' '+esc(sub.result_grade):'')+'</div>'
     +'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">'
       +(sub.promoted_item_id?'<span class="pill in_stock">promoted</span>':'')
@@ -788,6 +794,17 @@ function openSub(){editSubId=null;document.getElementById('subTitle').textConten
   ['s_name','s_set','s_number','s_variant','s_declared','s_cost','s_submitted','s_tracking','s_notes'].forEach(i=>setV(i,''));
   setV('s_lang','EN');document.getElementById('s_game').value='pokemon';document.getElementById('s_company').value=COMPANIES[0];document.getElementById('s_status').value='draft';fillTiers();
   resetCur('s');document.getElementById('subOverlay').classList.add('on');}
+// The grading fee, shown in the currency it was actually recorded in. It used to go through
+// centsAud() unconditionally, which printed a USD sticker price from card-grader.html as though it
+// were Australian dollars. A null currency is legacy — written before the column existed, when every
+// writer and reader assumed AUD — so it keeps reading as AUD rather than being flagged as unknown.
+function gradingFeeText(sub){
+  const cur=String(sub.grading_cost_currency||'AUD').toUpperCase();
+  if(cur==='AUD')return centsAud(sub.grading_cost_cents);
+  // Native amount, named. No live conversion here: this is a list row, and a rate that moved between
+  // renders would make the same fee look like two different numbers.
+  return cur+' '+(sub.grading_cost_cents/100).toFixed(2);
+}
 function editSub(id){const sub=SUBS.find(x=>x.id===id);if(!sub)return;editSubId=id;document.getElementById('subTitle').textContent='Edit submission';
   setV('s_name',sub.name);setV('s_set',sub.set_name);setV('s_number',sub.number);setV('s_variant',sub.variant);setV('s_lang',sub.language||'EN');
   document.getElementById('s_game').value=sub.game;document.getElementById('s_company').value=sub.grading_company;fillTiers();document.getElementById('s_tier').value=sub.tier||'';
@@ -801,6 +818,11 @@ async function saveSub(btn){
   if(cur==='USD'&&usdRate()==null){alert('FX rate unavailable — switch the currency to AUD (or retry once the FX proxy is up).');return;}
   const body={game:val('s_game'),name:val('s_name'),set_name:val('s_set')||null,number:val('s_number')||null,variant:val('s_variant')||null,language:val('s_lang')||'EN',
     grading_company:val('s_company'),tier:val('s_tier')||null,declared_value_cents:dcAud('s_declared',cur),grading_cost_cents:dcAud('s_cost',cur),
+    // dcAud CONVERTS to AUD whichever way the toggle is set, so what lands in the column is always
+    // AUD. Stamped rather than left null because the same column is seeded in native USD by
+    // card-grader.html, and a receive adds to it — without the currency those three cannot be told
+    // apart and get summed (GR3).
+    grading_cost_currency:'AUD',
     submitted_at:val('s_submitted')||null,status:val('s_status')||'draft',tracking:val('s_tracking')||null,notes:val('s_notes')||null};
   btn.disabled=true;
   try{

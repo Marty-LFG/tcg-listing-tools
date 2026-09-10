@@ -571,3 +571,48 @@ describe('stock label series — previewing and setting where a run starts', () 
     assert.equal((await get('/api/inventory/labels')).json.next, 'AAF-020');
   });
 });
+
+// A hard DELETE cascades inventory_valuations and listing_images away with the row, so deleting a SOLD
+// item destroys the only record of what it cost and what it made — realized P&L just drops. The BATCH
+// delete has refused exactly this since it was written (`AND status = 'in_stock'`); the single-item
+// route deleted anything.
+describe('deleting stock that is not in_stock', () => {
+  const mkItem = async (over) => (await (await fetch(srv.base + '/api/inventory/items', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ game: 'pokemon', name: 'Pikachu', quantity: 1, ...over }),
+  })).json());
+
+  it('refuses to delete a SOLD row, naming what would be lost', async () => {
+    const it = await mkItem({ status: 'sold', sale_price_cents: 5000, cost_cents: 1000 });
+    const r = await fetch(`${srv.base}/api/inventory/items/${it.id}`, { method: 'DELETE' });
+    assert.equal(r.status, 409);
+    const j = await r.json();
+    assert.equal(j.code, 'not_in_stock');
+    assert.match(j.error, /cost basis and sale history/);
+    const still = await (await fetch(`${srv.base}/api/inventory/items/${it.id}`)).json();
+    assert.ok(still.item || still.id, 'the row must still be there');
+  });
+
+  it('refuses to delete a LISTED row, because nothing would delist it', async () => {
+    const it = await mkItem({ status: 'listed' });
+    const r = await fetch(`${srv.base}/api/inventory/items/${it.id}`, { method: 'DELETE' });
+    assert.equal(r.status, 409);
+    assert.match((await r.json()).error, /nothing would delist it/);
+  });
+
+  it('deletes an in_stock row without ceremony, and honours ?force=1 on the rest', async () => {
+    const plain = await mkItem({ status: 'in_stock' });
+    assert.equal((await fetch(`${srv.base}/api/inventory/items/${plain.id}`, { method: 'DELETE' })).status, 200);
+    const sold = await mkItem({ status: 'sold' });
+    assert.equal((await fetch(`${srv.base}/api/inventory/items/${sold.id}?force=1`, { method: 'DELETE' })).status, 200);
+  });
+
+  it('guards the sealed twin the same way', async () => {
+    const made = await (await fetch(srv.base + '/api/sealed/items', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ game: 'pokemon', product_type: 'booster_box', name: 'Box', quantity: 1, status: 'sold' }),
+    })).json();
+    const r = await fetch(`${srv.base}/api/sealed/items/${made.id || made.item?.id}`, { method: 'DELETE' });
+    assert.equal(r.status, 409);
+  });
+});

@@ -239,6 +239,36 @@ describe('the nag', () => {
       + 'for a reason that has nothing to do with what it claims to test');
   };
 
+  // THE WINDOW ITSELF, which nothing covered - which is why the fixture could drift out of it and take
+  // two tests down with it. Both directions, because a window is only meaningful if it lets something
+  // through as well as keeping something out.
+  it('stops re-reading a thread once it is older than the window', async () => {
+    // ISO-8601 with a Z for the same reason seedAlerted uses one: Date.parse reads SQLite's
+    // space-separated form as LOCAL time while datetime('now') is UTC, so the SQLite form would put
+    // this row's real age a whole timezone away from the 200h this test names. At 200h against a 168h
+    // window the skew would not have flipped the result — but a negative control that is only
+    // accidentally outside the window is not a control.
+    const createdAt = new Date(Date.now() - 200 * 3600_000).toISOString();
+    db.prepare(`INSERT INTO member_messages
+      (message_id, message_type, sender_id, subject, body, status, creation_time, alert_sent_at, nag_count)
+      VALUES ('old','AskSellerQuestion','buyer_bob','ancient','well?','Unanswered',
+              ?, datetime('now','-9 hours'), 0)`).run(createdAt);
+    const { sent, send } = recorder();
+    const r = await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([]), send });
+    assert.equal(r.open, 0, 'a thread past nag_window_hours must fall out of the sweep');
+    assert.equal(sent.length, 0);
+  });
+
+  it('and still reads one inside it, so the window is a window and not a wall', async () => {
+    // The assertion the drifted fixture was accidentally making. If this ever fails while the one above
+    // passes, a fixture has aged out again rather than the sweep having broken.
+    seedAlerted();
+    const { sent, send } = recorder();
+    const r = await sweepOpenMessages(ENV, db, loadCfg(), { fetchMessages: fetchOnce([]), send });
+    assert.equal(r.open, 1);
+    assert.equal(sent.length, 1);
+  });
+
   it('nudges a message eBay still calls unanswered', async () => {
     seedAlerted();
     const { sent, send } = recorder();

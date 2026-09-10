@@ -33,6 +33,10 @@
 // twenty ids has no business writing schema to the box that trades. DB_PATH is just a resolved path.
 import { DatabaseSync } from 'node:sqlite';
 import { DB_PATH } from '../lib/db.mjs';
+// The mirror is keyed (sku, store), so selection has to know which store it is asking about — and it
+// runs before the preflight that would otherwise report it. Read the same config the server reads,
+// rather than a second copy of the defaulting rule that could drift from storeFor().
+import { loadConfig } from '../lib/shopify.mjs';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -74,6 +78,10 @@ const FORCE = has('--force');
 // it is opt-in rather than the default.
 const INCLUDE_LISTED = has('--include-listed');
 const STATUSES = INCLUDE_LISTED ? ['in_stock', 'listed'] : ['in_stock'];
+// Which store the mirror questions below are about. There is no --store flag by design (see the banner
+// at the bottom of the preview): the target comes from defaultStore, and this must resolve it exactly
+// as the server's storeFor() does or selection and publish would disagree about what is already live.
+const STORE = String(loadConfig()?.defaultStore || 'dev');
 const API = BASE + '/api/shopify';
 
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
@@ -125,16 +133,16 @@ async function main() {
     rows = db.prepare(`
       SELECT i.id, i.sku, i.game, i.name, i.condition, i.status, i.quantity, i.target_price_cents
       FROM inventory_items i
-      LEFT JOIN shopify_listings s ON s.kind = 'inventory' AND s.item_id = i.id AND s.state = 'live'
+      LEFT JOIN shopify_listings s ON s.store = ? AND s.kind = 'inventory' AND s.item_id = i.id AND s.state = 'live'
       WHERE i.game = ? AND i.status IN (${STATUSES.map(() => '?').join(',')}) AND i.quantity > 0
         AND i.target_price_cents IS NOT NULL AND i.target_price_cents > 0
         AND s.sku IS NULL
       ORDER BY i.id
-      LIMIT ?`).all(GAME, ...STATUSES, LIMIT);
+      LIMIT ?`).all(STORE, GAME, ...STATUSES, LIMIT);
   }
 
   const totals = db.prepare('SELECT COUNT(*) n FROM inventory_items').get().n;
-  const mirrored = db.prepare("SELECT COUNT(*) n FROM shopify_listings WHERE state = 'live'").get().n;
+  const mirrored = db.prepare("SELECT COUNT(*) n FROM shopify_listings WHERE store = ? AND state = 'live'").get(STORE).n;
 
   console.log(bold('\nShopify batch — ' + (LIVE ? red('LIVE') : DRY ? yellow('server dry run') : 'preview')));
   console.log(dim(`  database   ${DB_PATH}`));
@@ -142,9 +150,9 @@ async function main() {
   console.log(dim(`  selected   ${rows.length}${IDS.length ? ' by id' : ` × ${GAME}, ${STATUSES.join('/')}, priced, not yet on Shopify`}`));
   if (!IDS.length && !INCLUDE_LISTED) {
     const held = db.prepare(`SELECT COUNT(*) n FROM inventory_items i
-      LEFT JOIN shopify_listings s ON s.kind = 'inventory' AND s.item_id = i.id AND s.state = 'live'
+      LEFT JOIN shopify_listings s ON s.store = ? AND s.kind = 'inventory' AND s.item_id = i.id AND s.state = 'live'
       WHERE i.game = ? AND i.status = 'listed' AND i.quantity > 0
-        AND i.target_price_cents IS NOT NULL AND i.target_price_cents > 0 AND s.sku IS NULL`).get(GAME).n;
+        AND i.target_price_cents IS NOT NULL AND i.target_price_cents > 0 AND s.sku IS NULL`).get(STORE, GAME).n;
     if (held) console.log(dim(`             ${held} more are listed on eBay — --include-listed adds them (dual-live; see EBAY-RESET R1)`));
   }
   db.close();

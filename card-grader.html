@@ -1641,6 +1641,11 @@ async function addToInventory(){
     grading_company:co, tier:tier?tier.tier:null,
     declared_value_cents: valUSD!=null?Math.round(valUSD*100):null,
     grading_cost_cents: (tier&&tier.price!=null)?Math.round(tier.price*100):null,
+    // NATIVE, not converted. data/grading.config.json says so in its own fx note: "Only PCG quotes
+    // in AUD; every other company's figures below are native USD and are NOT converted." The column
+    // used to carry that number with nothing saying which currency it was, so the inventory list
+    // rendered a USD sticker price through centsAud() and a purchase receive added AUD to it.
+    grading_cost_currency: (co==='PCG'?'AUD':'USD'),
     status:'draft',
     pregrade_id:_reportId,
     notes:'From pre-grader — predicted '+co+' '+(p?gradeStr(p.grade):'?')+(p?' ('+p.confidence+' conf)':'')

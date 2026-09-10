@@ -59,6 +59,32 @@ describe('decrementSealedItem', () => {
     assert.equal(r.sold, true);
     assert.equal(db.prepare('SELECT status, channel_status FROM sealed_items WHERE id=?').get(id).status, 'sold');
   });
+  // THE SALE WAS NEVER RECORDED. decrementSealedItem was called with three arguments while its
+  // inventory twin on the same line received li.unit_price_cents, and neither UPDATE wrote
+  // sale_price_cents or sold_at — so summarizeSealed read NULL revenue and multiplied the cost by a
+  // quantity the same statement had just zeroed. A sealed sale moved realized P&L by exactly nothing.
+  it('records what the sale brought in, so it is not invisible to P&L', () => {
+    const id = db.prepare(`INSERT INTO sealed_items (sku, game, name, product_type, quantity, status, cost_cents) VALUES ('BK-SLD-PKM-9','pokemon','Booster Box','booster_box',2,'listed',18000)`).run().lastInsertRowid;
+    db.prepare('INSERT INTO sealed_placements (item_id, location, quantity) VALUES (?,?,?)').run(id, 'Shelf A', 2);
+    const r = decrementSealedItem(db, id, 2, 32000);
+    assert.equal(r.sold, true);
+    const row = db.prepare('SELECT sale_price_cents, sale_qty, sold_at, status FROM sealed_items WHERE id=?').get(id);
+    assert.equal(row.sale_price_cents, 32000, 'PER UNIT, matching cost_cents beside it');
+    assert.equal(row.sale_qty, 2, 'and how many units it covered — quantity is zero by now');
+    assert.ok(row.sold_at, 'a sold row with no sold_at cannot be reported on by date');
+    assert.equal(row.status, 'sold');
+  });
+
+  it('does not stamp a sale on a PARTIAL draw-down — the item is still on the shelf', () => {
+    const id = db.prepare(`INSERT INTO sealed_items (sku, game, name, product_type, quantity, status) VALUES ('BK-SLD-PKM-10','pokemon','Booster Box','booster_box',3,'listed')`).run().lastInsertRowid;
+    db.prepare('INSERT INTO sealed_placements (item_id, location, quantity) VALUES (?,?,?)').run(id, 'Shelf A', 3);
+    decrementSealedItem(db, id, 1, 32000);
+    const row = db.prepare('SELECT sale_price_cents, sold_at, status FROM sealed_items WHERE id=?').get(id);
+    assert.equal(row.sale_price_cents, null, 'the row has not sold — two units are still for sale');
+    assert.equal(row.sold_at, null);
+    assert.equal(row.status, 'listed');
+  });
+
   it('falls back to scalar quantity when the item has no placements', () => {
     const id = db.prepare(`INSERT INTO sealed_items (sku, game, name, product_type, quantity, status) VALUES ('BK-SLD-PKM-3','pokemon','Tin','tin',5,'listed')`).run().lastInsertRowid;
     const r = decrementSealedItem(db, id, 2);

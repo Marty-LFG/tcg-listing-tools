@@ -1174,6 +1174,11 @@ function patchRow(r) {
     const msgs = [];
     // The server's verdict outranks anything this page thinks — it is the one that decides.
     if (r.serverBlocked && r.serverBlocked.length) for (const m of r.serverBlocked) msgs.push('<span class="w-x">Server held this row:</span> ' + esc(m));
+    // The Shopify twin. Named separately rather than folded into serverBlocked so the operator knows
+    // WHICH channel refused — the two lanes have different scope gates, and "held" without a channel
+    // sends you looking in the wrong place.
+    else if (r.shopBlocked && r.shopBlocked.length) for (const m of r.shopBlocked) msgs.push('<span class="w-x">Shopify held this row:</span> ' + esc(m));
+    else if (r.shopFailed) msgs.push('<span class="w-x">Shopify:</span> ' + esc(r.shopFailed));
     else if (r.note) msgs.push('<span style="color:var(--muted)">' + esc(r.note) + '</span>');
     else if (st === 'HELD') msgs.push('<span class="w-x">Held:</span> a ' + esc(r.cond) + ' card cannot be listed with the catalog image — eBay bans stock photos on used items. Open it in the single uploader and add real front/back photos.');
     else if (st === 'EYES' && !r.pricing) msgs.push('<span class="w-x">Needs eyes:</span> no confident eBay AU comps' + (r.comps && r.comps.reason ? ' (' + esc(r.comps.reason) + ')' : '') + '. Check the BIN and sold links and type a price, or drop the row.');
@@ -1373,7 +1378,7 @@ function applyVisibility() {
     const settled = st === 'READY' || st === 'CHECKED' || st === 'LIVE' || st === 'STAGED';
     let hide = false;
     if (DISAGREE_ONLY) hide = !(r.askAud > 0 && r.mktAud > 0 && (r.askAud / r.mktAud > DISAGREE_HI || r.askAud / r.mktAud < DISAGREE_LO));
-    else if (VERIFY) hide = settled && !(r.serverBlocked && r.serverBlocked.length);
+    else if (VERIFY) hide = settled && !(r.serverBlocked && r.serverBlocked.length) && !(r.shopBlocked && r.shopBlocked.length) && !r.shopFailed;
     if (r.open) hide = false;   // an open drawer always stays visible, even once it is settled
     tr.style.display = hide ? 'none' : '';
     if (whyTr) whyTr.style.display = hide ? 'none' : '';

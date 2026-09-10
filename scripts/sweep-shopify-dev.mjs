@@ -155,7 +155,12 @@ const DEL_P = `mutation D($input: ProductDeleteInput!){ productDelete(input:$inp
 const DEL_C = `mutation D($input: CollectionDeleteInput!){ collectionDelete(input:$input){ deletedCollectionId userErrors{ message } } }`;
 
 const db = new DatabaseSync(DB_PATH);
-const forget = db.prepare('DELETE FROM shopify_listings WHERE sku = ?');
+// Scoped to the DEV row, and that scope is the whole point. The mirror is keyed (sku, store), and this
+// script deletes products from the dev store only — so an unscoped DELETE would empty dev on Shopify
+// and simultaneously erase the LIVE mirror row for the same SKU, making the tool re-publish a card that
+// is already for sale on the real shop. The file is structurally dev-only everywhere else; this is the
+// one statement that could still reach across.
+const forget = db.prepare("DELETE FROM shopify_listings WHERE store = 'dev' AND sku = ?");
 let gone = 0, failed = 0, forgot = 0;
 
 console.log('');
@@ -194,7 +199,10 @@ if (WANT.collections) {
 // left for those references to point at anyway. The publish path also self-heals this now, so a stale
 // row is recoverable rather than fatal — but not creating them is better than recovering from them.
 if (gone && (WANT.seed || WANT.published)) {
-  try { files = db.prepare('DELETE FROM shopify_files').run().changes || 0; } catch { /* GR7 */ }
+  // DEV ROWS ONLY. Unqualified, this emptied the cache for BOTH stores — so a sweep of the dev store
+  // also made every live product re-stage and re-upload bytes Shopify already holds, minting a
+  // duplicate MediaImage per frame in a Files section that has no bulk delete.
+  try { files = db.prepare("DELETE FROM shopify_files WHERE store = 'dev'").run().changes || 0; } catch { /* GR7 */ }
 }
 db.close();
 

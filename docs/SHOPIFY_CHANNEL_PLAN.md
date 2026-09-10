@@ -499,6 +499,36 @@ split across a chunk boundary becomes U+FFFD in a card name.
 `dryRun`. So a clean dry run says the data is good, not that the store round-trip works. The first armed
 `DRAFT` run is the real test, which is exactly why `status` starts at `DRAFT`.
 
+### Phase 2 — the other two stock shapes, and the related row (2026-09-05)
+
+This section did not exist. The plan ran Phase 1 (raw Pokémon singles) straight into the D-023 interlude
+and Phase 3, and "graded slabs follow, then sealed" in §0 was the only trace of the slice in between.
+
+| ID | Task | Files | State |
+|---|---|---|---|
+| **P0** | `shopify_listings` and `shopify_files` re-keyed per STORE, all 13 consumers scoped, batch single-flight, Runner status fields wired, shelf label claimed AFTER validation | `lib/db.mjs`, `lib/shopify.mjs`, `lib/channels/shopify-media.mjs`, `scripts/*`, `stock-runner.html` | **DONE** — this is open defect 1, and it had two more consumers than the write-up listed: `recordShopifyListing`'s own `ON CONFLICT(sku)` upsert (the root cause) and `sweep-shopify-dev`, whose `DELETE FROM shopify_files` had no WHERE at all and emptied the cache for both stores |
+| **P1** | Graded slabs publish | `lib/channels/shopify-map.mjs` | **DONE** — the mapping was already written and tested behind the refusal; what it lacked was any requirement that a graded row carry its company, grade and **cert**. Without a cert `productHandleFor` falls back to `slug(company-grade)`, which is not unique: two PSA 9s of one card upsert onto one handle. `TAXONOMY.slab` added — it was hardcoded to `TAXONOMY.single` for every type and no test asserted a graded row's category |
+| **P2** | Sealed pools publish, one product at quantity N | `lib/sealed-shopify.mjs` (new), `lib/sealed.mjs` | **DONE** — its own module, per the rule `lib/runs-shopify.mjs` states: do not widen a working, test-pinned pipeline to serve an unarmed lane. Reuses `buildProductSetInput`/`setAvailableQty`/`publishToChannel` unchanged. No shelf label, no card identity, `item_id` NULL because `sealed_pools` has a text PK. `TAXONOMY.sealed` and the sealed weight sub-table had been tested since they were written, for a lane that could not produce a product to use them |
+| **P3** | `V1_GAMES` widened to every stockable game | `lib/channels/shopify-map.mjs` | **DONE** — still an explicit frozen list, not derived from `STOCK_GAMES`, so adding a game to the card pipeline cannot silently open the storefront. Two structural assertions keep it honest: every entry must be stockable, and must have a real `GAME_WORD` rather than falling through to `titleCase` and printing "Swu" |
+| **P4** | Related items (D-032) | `lib/shopify.mjs`, `lib/channels/shopify-map.mjs`, `../bk-shopify`, `../bk-theme` | **DATA DONE, STORE PENDING** — see below |
+
+**P4 is the one with a dependency outside this repo.** The tool writes `bk_card_identity.graded`, a new
+`bk_set_identity` metaobject and the `bkc.set` reference; the theme's `bk-related-row` reads them. None
+of it renders until **bk-shopify's two definition scripts have been run against dev and live** — and
+`apply-metaobject-definitions.ps1` was create-only, so it now carries a field-update pass **whose
+mutation shape is unverified**: run `introspect-schema.ps1` first.
+
+Both halves degrade rather than breaking meanwhile. `rebuildIdentity` writes `listings` and `graded`
+together and, on any refusal, retries with `listings` alone and warns naming the script. `bkc.set` is
+spliced onto a product only when its metaobject GID resolved — the same condition `bkc.card` already
+carries, and load-bearing for the same reason: a `metaobject_reference` naming a definition the store
+does not have fails the whole `productSet` call.
+
+**Still open from the 2026-08-25 review:** defect 4 (the 500-row cap truncating silently) and defect 6
+(one image per product). Defects 1, 2 and 3 are closed by P0.
+
+---
+
 ### Interlude — the D-023 eBay reset
 
 R1 re-catalogs the physical estate into Shopify through the path M1 just delivered, R2 ends everything on
