@@ -7,6 +7,7 @@ import { read } from '../helpers/extract-inline.mjs';
 import { availableBakes } from '../../lib/refresh.mjs';
 import { LAYOUT_OVERRIDE_KEYS, TEXT_OVERRIDE_KEYS, BADGE_OVERRIDE_KEYS, VARIANTS, resolveLayout } from '../../lib/listing-image-config.mjs';
 import { validateBands } from '../../lib/shipping-bands.mjs';
+import { ANCHOR_MODES, validateRunsConfig } from '../../lib/runs-config.mjs';
 
 const cfg = (name) => JSON.parse(read(`data/${name}`));
 
@@ -65,6 +66,42 @@ describe('bulk-pricing.config.json', () => {
         }
       }
     }
+  });
+});
+
+describe('runs.config.example.json', () => {
+  // runs.config.json is gitignored (server-owned); validate the tracked template, which is also the
+  // shipped default a fresh deploy boots on.
+  const c = cfg('runs.config.example.json');
+
+  it('HARD INVARIANT: ships DISARMED — building this must not inherit the singles pipeline arming', () => {
+    assert.equal(c.publish.enabled, false);
+    assert.equal(c.publish.store, 'dev');
+  });
+
+  it("HARD INVARIANT: no money is ever customer-facing, and contents are not published before close", () => {
+    // Both are guarantees made to buyers rather than preferences, so they are pinned in two places:
+    // here, and in validateRunsConfig, which refuses a settings PUT that turns either off.
+    assert.equal(c.public.no_prices, true);
+    assert.equal(c.public.publish_contents_before_close, false);
+  });
+
+  it('anchors to a known mode, and every calendar is https', () => {
+    assert.ok(ANCHOR_MODES.includes(c.anchor.mode), `unknown anchor mode ${c.anchor.mode}`);
+    assert.ok(Array.isArray(c.anchor.calendars) && c.anchor.calendars.length);
+    for (const u of c.anchor.calendars) assert.match(u, /^https:\/\//, u);
+    assert.ok(c.anchor.upgrade_interval_min >= 5);
+  });
+
+  // The validator is what a settings PUT runs, so the shipped file passing it is the check that the
+  // two have not drifted apart — a default the validator would reject is a config nobody can save.
+  it('the shipped default passes its own validator', () => {
+    assert.equal(validateRunsConfig(JSON.parse(JSON.stringify(c, (k, v) => (k === '_comment' ? undefined : v)))), null);
+  });
+
+  it('a stub anchor can never target the live store', () => {
+    const armed = { ...c, publish: { enabled: true, store: 'live' }, anchor: { ...c.anchor, mode: 'stub' } };
+    assert.match(String(validateRunsConfig(armed)), /stub anchor/);
   });
 });
 

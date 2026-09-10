@@ -1,0 +1,60 @@
+{
+  "canon": "BKR1",
+  "generated_by": "scripts/export-verifier.mjs",
+  "modules": [
+    {
+      "module": "runs-canonical.mjs",
+      "asset": "bk-runs-canonical.js",
+      "specifier": "./bk-runs-canonical.js",
+      "source_sha256": "dd8ff73753127cd6cd1449ac9c1f117318be6e6a90470a0cd57909b4a79c50d6"
+    },
+    {
+      "module": "runs-language.mjs",
+      "asset": "bk-runs-language.js",
+      "specifier": "./bk-runs-language.js",
+      "source_sha256": "1cdc1643a50e61a7a1598746484e6c20487dc172fa4019601d24be35d32bf448"
+    },
+    {
+      "module": "runs-rarity.mjs",
+      "asset": "bk-runs-rarity.js",
+      "specifier": "./bk-runs-rarity.js",
+      "source_sha256": "42660a32678dc70bb69cd4762028994b06a27ed69e013fbbedb442af7b0a1b76"
+    },
+    {
+      "module": "runs-merkle.mjs",
+      "asset": "bk-runs-merkle.js",
+      "specifier": "./bk-runs-merkle.js",
+      "source_sha256": "9a8988b0fbe0d6635eb9da9cb5c913f439855d9b389ed2f7233e9472df989fe3"
+    },
+    {
+      "module": "runs-claims.mjs",
+      "asset": "bk-runs-claims.js",
+      "specifier": "./bk-runs-claims.js",
+      "source_sha256": "a0ba437f68ce44da9a0f3f9d13da4d590d9d2a1253fab77e71eb9ceb11c90849"
+    },
+    {
+      "module": "runs-header.mjs",
+      "asset": "bk-runs-header.js",
+      "specifier": "./bk-runs-header.js",
+      "source_sha256": "b0eb0d3134076b7e346c9cc9b7f667462682dfbac45675c482f937e3e08a49f2"
+    },
+    {
+      "module": "runs-public.mjs",
+      "asset": "bk-runs-public.js",
+      "specifier": "./bk-runs-public.js",
+      "source_sha256": "a140661031152ea9f8919ec5e0fb01a5ca87a47ec034f6ae05db939078b354f5"
+    },
+    {
+      "module": "runs-codes.mjs",
+      "asset": "bk-runs-codes.js",
+      "specifier": "./bk-runs-codes.js",
+      "source_sha256": "b691be03d98a3c48b5476b0a976816149459eb444586f14273bee95164b4f469"
+    },
+    {
+      "module": "runs-blob.mjs",
+      "asset": "bk-runs-blob.js",
+      "specifier": "./bk-runs-blob.js",
+      "source_sha256": "ba28030a6ee6fe8dfbdff9a5b8bc2503bc14fc16e0d42a49605c7bad7230dd89"
+    }
+  ]
+}

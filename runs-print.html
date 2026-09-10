@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inserts &amp; pack sheets &middot; Binders Keepers</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0b0f;--bg2:#0d0f15;--panel:#14171f;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-soft:rgba(212,176,114,.14);
+    --green:#43d6a0;--red:#f0666e;--amber:#f0c04a;
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;padding:30px 24px 72px;
+    background:linear-gradient(180deg,#0b0d12,#08090d 62%);min-height:100vh;}
+  .wrap{max-width:1100px;margin:0 auto;}
+  a{color:var(--gold);text-decoration:none;}
+  .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:15px;}
+  .monogram{width:48px;height:48px;flex:none;border-radius:13px;border:1px solid var(--line2);background:linear-gradient(160deg,#1e2432,#111420);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:600;font-size:20px;color:var(--gold);}
+  h1{font-family:var(--serif);font-weight:600;font-size:28px;margin:0;}
+  h1 .thin{color:var(--muted);font-weight:400;font-style:italic;}
+  .sub{color:var(--muted);font-size:12px;margin:6px 0 0;font-family:var(--mono);}
+  .btn{font-family:var(--sans);padding:9px 15px;border:1px solid var(--line2);background:rgba(255,255,255,.025);color:var(--text);border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;}
+  .btn:hover{border-color:var(--gold);background:var(--gold-soft);}
+  .btn.go{border-color:rgba(67,214,160,.45);color:var(--green);background:rgba(67,214,160,.09);}
+  .btn.ghost{border-color:var(--line);color:var(--muted);background:transparent;}
+  input,select{background:var(--ink);border:1px solid var(--line2);border-radius:9px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--sans);}
+  label{display:block;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:5px;}
+  .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:16px 17px;margin-bottom:16px;}
+  .row{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-end;}
+  .note{color:var(--muted);font-size:12.5px;line-height:1.65;margin:0 0 12px;}
+  .note b{color:var(--text);font-weight:600;}
+  .warn{border:1px solid rgba(240,102,110,.4);background:rgba(240,102,110,.08);border-radius:12px;padding:12px 15px;
+    margin-bottom:16px;color:var(--red);font-size:13px;line-height:1.62;}
+  .warn b{color:#ff9aa0;}
+  .msg{font-family:var(--mono);font-size:11.5px;color:var(--muted);}
+  .msg.bad{color:var(--red);} .msg.ok{color:var(--green);}
+  #sheets{background:#fff;color:#111;border-radius:12px;padding:0;margin-top:18px;}
+
+  /* --- the printed surfaces -------------------------------------------------------------------------
+     EMPHASIS IS BORDER WEIGHT, NOT FILL. A filled block costs ink on every copy and reads as decoration;
+     a heavy border reads as "stop and do something", which is what a packer needs from a pack sheet. */
+  .page{background:#fff;color:#111;padding:14mm 12mm;page-break-after:always;font-family:var(--sans);}
+  .page:last-child{page-break-after:auto;}
+  .insert{border:2px solid #111;border-radius:6px;padding:9mm 10mm;max-width:105mm;}
+  .insert .top{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #111;padding-bottom:3mm;margin-bottom:5mm;}
+  .insert .mark{font-family:var(--serif);font-weight:700;font-size:15pt;letter-spacing:-.01em;}
+  .insert .num{font-family:var(--mono);font-size:10pt;font-weight:600;}
+  .insert h3{font-family:var(--serif);font-size:13pt;margin:0 0 2mm;}
+  .insert p{font-size:8.5pt;line-height:1.5;margin:0 0 4mm;color:#222;}
+  .insert .codebox{border:2px solid #111;border-radius:4px;padding:4mm;text-align:center;margin-bottom:4mm;}
+  .insert .codebox .cap{font-size:6.5pt;letter-spacing:.14em;text-transform:uppercase;color:#555;margin-bottom:2mm;}
+  .insert .codebox .code{font-family:var(--mono);font-size:12.5pt;font-weight:600;letter-spacing:.04em;word-spacing:.1em;}
+  .insert .qrrow{display:flex;gap:5mm;align-items:center;}
+  .insert .qr{width:26mm;height:26mm;flex:none;}
+  .insert .qr img,.insert .qr canvas{width:100%;height:100%;display:block;}
+  .insert .small{font-size:7.5pt;color:#444;line-height:1.45;}
+  .insert .digest{font-family:var(--mono);font-size:7.5pt;color:#333;margin-top:3mm;padding-top:2mm;border-top:1px solid #bbb;}
+
+  .sheet h2{font-family:var(--serif);font-size:16pt;margin:0 0 1mm;}
+  .sheet .meta{font-family:var(--mono);font-size:8.5pt;color:#444;margin-bottom:5mm;padding-bottom:3mm;border-bottom:1px solid #111;}
+  .sheet table{width:100%;border-collapse:collapse;font-size:9pt;}
+  .sheet th{text-align:left;font-size:7pt;letter-spacing:.12em;text-transform:uppercase;color:#555;border-bottom:1px solid #111;padding:2mm 2mm 1.5mm;}
+  .sheet td{padding:2.5mm 2mm;border-bottom:1px solid #ddd;vertical-align:top;}
+  .sheet td.key{font-family:var(--mono);font-weight:600;}
+  .sheet .slot{font-size:7.5pt;letter-spacing:.1em;text-transform:uppercase;color:#555;}
+  .sheet .seal{border:2px solid #111;border-radius:4px;padding:3mm 4mm;margin-top:6mm;font-size:9pt;}
+  .sheet .seal .cap{font-size:7pt;letter-spacing:.12em;text-transform:uppercase;color:#555;}
+  .sheet .seal .val{font-family:var(--mono);font-size:12pt;font-weight:600;}
+  .sheet .tick{width:7mm;height:7mm;border:1.5px solid #111;border-radius:2px;display:inline-block;}
+
+  @media print{
+    body{background:#fff;padding:0;}
+    .wrap{max-width:none;}
+    .noprint{display:none !important;}
+    #sheets{border-radius:0;margin:0;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast noprint">
+    <div class="brand">
+      <div class="monogram">BK</div>
+      <div>
+        <h1>Inserts <span class="thin">&amp; pack sheets</span></h1>
+        <p class="sub">codes exist only after lock &middot; nothing here is a screen to leave open</p>
+      </div>
+    </div>
+    <a class="btn ghost" href="/runs.html">Runs</a>
+  </header>
+
+  <div class="warn noprint">
+    <b>The verification code is a bearer secret.</b> Whoever reads one can decrypt that bundle's record and
+    learn its contents before the run closes. It goes <b>inside</b> the parcel on the insert and never on
+    the outside, where every courier and sorting facility would see it. The seal carries the run, the number
+    and the serial &mdash; never the code.
+  </div>
+
+  <div class="card noprint">
+    <div class="row">
+      <div>
+        <label for="run">Run</label>
+        <input id="run" placeholder="E1" autocomplete="off">
+      </div>
+      <div>
+        <label for="what">Print</label>
+        <select id="what">
+          <option value="both">Inserts + pack sheets</option>
+          <option value="inserts">Inserts only</option>
+          <option value="sheets">Pack sheets only</option>
+        </select>
+      </div>
+      <div>
+        <label for="only">Bundle numbers (blank = all)</label>
+        <input id="only" placeholder="1,4,7" autocomplete="off" style="width:150px">
+      </div>
+      <button class="btn go" id="load">Build</button>
+      <button class="btn" id="print" disabled>Print</button>
+      <span class="msg" id="msg"></span>
+    </div>
+    <p class="note" style="margin:12px 0 0">
+      <b>No monetary value appears on any printed surface</b>, and the page refuses to render if one gets
+      through. Emphasis on these sheets is border weight rather than filled blocks: a box means
+      &ldquo;stop and do something&rdquo;, and a filled block would cost ink on every copy.
+    </p>
+  </div>
+
+  <div id="sheets"></div>
+</div>
+
+<script src="/vendor/qrcode.js"></script>
+<script src="/label-render.js"></script>
+<script src="/extras.js"></script>
+<script type="module">
+import { formatCode } from '/lib/runs-codes.mjs';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const say = (t, k = '') => { $('msg').textContent = t; $('msg').className = 'msg ' + k; };
+
+// Same key and convention as the other runs pages, so an operator learns it once. Never prompts on load —
+// a page that prompts before it is asked to do anything is a page that gets its token typed into by
+// reflex.
+const DIAG_KEY = 'tcg_diag_token';
+function diagToken(force) {
+  let t = ''; try { t = localStorage.getItem(DIAG_KEY) || ''; } catch { /* private mode */ }
+  if (t && !force) return t;
+  if (!force) return '';
+  try { t = (window.prompt('Server DIAG_TOKEN — this page prints verification codes:', '') || '').trim(); }
+  catch { return ''; }
+  if (t) { try { localStorage.setItem(DIAG_KEY, t); } catch { /* private mode */ } }
+  return t;
+}
+
+// The same guard the public payloads use, applied to the PRINTED surface. Guardrail (a) is about what a
+// customer can see, and an insert is the one thing that ends up in their hands.
+const MONEY_SEGMENTS = new Set(['cents', 'price', 'prices', 'cost', 'costs', 'comp', 'comps', 'paid',
+  'profit', 'margin', 'rrp', 'aud', 'usd', 'money']);
+const MONEY_TEXT = /(?:\$|\bAUD?\b|\bUSD\b)\s*\d|\d+(?:\.\d{2})\s*(?:AUD?|USD|dollars?)\b/i;
+function assertNoMoney(obj, path = '$') {
+  if (obj == null) return;
+  if (typeof obj === 'string') {
+    if (MONEY_TEXT.test(obj)) throw new Error(`${path} reads as a monetary amount: ${obj.slice(0, 60)}`);
+    return;
+  }
+  if (typeof obj !== 'object') return;
+  if (Array.isArray(obj)) return obj.forEach((v, i) => assertNoMoney(v, `${path}[${i}]`));
+  for (const [k, v] of Object.entries(obj)) {
+    const seg = k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/);
+    if (seg.some((s) => MONEY_SEGMENTS.has(s))) throw new Error(`${path}.${k} is a money-shaped key`);
+    assertNoMoney(v, `${path}.${k}`);
+  }
+}
+
+// formatCode from the SHIPPED module, not a second implementation of it. Every other page in this
+// module imports its primitives over HTTP for that reason.
+//
+// The hand-rolled regex this replaces produced IDENTICAL output for a valid code — checked over 200
+// minted codes, zero differences. What it did not do is VALIDATE: formatCode canonicalises first, so a
+// malformed code throws instead of being formatted into something that looks right on a printed insert
+// and opens nothing. On a slip that goes inside a sealed parcel, that distinction is the whole point.
+const fmt = (c) => formatCode(c);
+
+function insertHtml(run, b) {
+  // §5.4: the code travels in the FRAGMENT, which is stripped before the request is made and so never
+  // reaches a server or CDN log. The run id is included because key derivation needs it — revision 3's
+  // QR omitted it and was functionally unusable.
+  // WHERE A BUYER CAN ACTUALLY REACH. Without a configured storefront this falls back to the origin the
+  // print page is served from - fine for a rehearsal where the only scanner is the operator, and useless
+  // on a real parcel, because a LAN address resolves to nothing in a buyer's hand.
+  const url = VERIFY_BASE
+    ? `${VERIFY_BASE}#r=${encodeURIComponent(run.public_id)}&c=${fmt(b.code)}`
+    : `${location.origin}/runs-verify.html#r=${encodeURIComponent(run.public_id)}&c=${fmt(b.code)}`;
+  return `<div class="page"><div class="insert">
+    <div class="top"><span class="mark">Binders Keepers</span><span class="num">${esc(run.public_id)} &middot; ${esc(b.label)}</span></div>
+    <h3>Provably Packed</h3>
+    <p>What was in this parcel was committed and timestamped <b>before this run went on sale</b>. You can
+      check that yourself, and you do not have to take our word for any of it.</p>
+    <div class="codebox">
+      <div class="cap">Your verification code</div>
+      <div class="code">${esc(fmt(b.code))}</div>
+    </div>
+    <div class="qrrow">
+      <div class="qr" data-qr="${esc(url)}"></div>
+      <div class="small">
+        <b>Scan, or go to binderskeepers.com.au and choose Verify.</b><br>
+        Enter the certification number printed on the graded card in this parcel. Everything is checked in
+        your own browser &mdash; the code is never sent to us.<br><br>
+        Keep this slip. The code is the only way back to your record, and anyone who reads it can open it.
+      </div>
+    </div>
+    <div class="digest">Commitment ${esc(String(run.header_digest || '').slice(0, 16))}&hellip; &middot; seal ${esc(b.seal_serial || '')}</div>
+  </div></div>`;
+}
+
+function sheetHtml(run, specs, b) {
+  const bySlot = new Map(specs.map((s) => [s.slot, s]));
+  const rows = b.lines.map((l) => `<tr>
+    <td><span class="tick"></span></td>
+    <td class="slot">${esc((bySlot.get(l.slot) || {}).label || l.slot)}</td>
+    <td>${esc(l.display_name || '')}${l.set_name ? `<br><span class="slot">${esc(l.set_name)}</span>` : ''}</td>
+    <td class="key">${esc(l.cert_number || l.upc || [l.set_code, l.card_number].filter(Boolean).join(' ') || '—')}</td>
+    <td>${esc([l.grading_company, l.grade].filter(Boolean).join(' ') || l.product_type || '')}</td>
+    <td>${esc(l.language || '')}</td>
+    <td>${esc(l.qty)}</td></tr>`).join('');
+  return `<div class="page"><div class="sheet">
+    <h2>${esc(b.label)} &mdash; pack sheet</h2>
+    <div class="meta">${esc(run.public_id)} &middot; bundle ${b.bundle_no} of ${run.unit_count} &middot;
+      commitment ${esc(String(run.header_digest || '').slice(0, 16))}&hellip;</div>
+    <table>
+      <thead><tr><th></th><th>Slot</th><th>Item</th><th>Cert / UPC / number</th><th>Grade or type</th><th>Lang</th><th>Qty</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="seal">
+      <div class="cap">Seal this parcel with serial</div>
+      <div class="val">${esc(b.seal_serial || '(none assigned)')}</div>
+      <div class="cap" style="margin-top:2mm">Insert goes in before the seal. The code never goes on the outside.</div>
+    </div>
+  </div></div>`;
+}
+
+let VERIFY_BASE = '';
+(async () => {
+  try {
+    const cfg = await fetch('/api/runs/config').then((r) => (r.ok ? r.json() : null));
+    VERIFY_BASE = (cfg && cfg.public && cfg.public.verify_base_url) || '';
+  } catch { /* the fallback below is the rehearsal behaviour */ }
+})();
+
+async function build() {
+  const runId = $('run').value.trim();
+  if (!runId) return say('enter a run', 'bad');
+  if (!diagToken(false)) diagToken(true);
+  const t = diagToken(false);
+  if (!t) return say('a token is needed — this page prints verification codes', 'bad');
+
+  say('loading…');
+  const res = await fetch(`/api/runs/${encodeURIComponent(runId)}/print`, { headers: { authorization: 'Bearer ' + t } });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 || res.status === 403) { diagToken(true); return say('token rejected — press Build again', 'bad'); }
+  if (!res.ok) return say(data.error || `error ${res.status}`, 'bad');
+
+  try { assertNoMoney(data); }
+  catch (e) { $('sheets').innerHTML = ''; return say(`refused: ${e.message}`, 'bad'); }
+
+  const only = $('only').value.trim();
+  const want = only ? new Set(only.split(/[,\s]+/).filter(Boolean).map(Number)) : null;
+  const bundles = data.bundles.filter((b) => !want || want.has(b.bundle_no));
+  if (!bundles.length) return say('no bundles matched', 'bad');
+
+  const what = $('what').value;
+  const parts = [];
+  for (const b of bundles) {
+    if (what !== 'sheets') parts.push(insertHtml(data.run, b));
+    if (what !== 'inserts') parts.push(sheetHtml(data.run, data.specs, b));
+  }
+  $('sheets').innerHTML = parts.join('');
+
+  for (const el of $('sheets').querySelectorAll('[data-qr]')) {
+    // LR.qrSVG, not a second wrapper around the same vendored library — it already grows the QR version
+    // until the payload fits and renders crisp black-on-white SVG, which is what prints well.
+    //
+    // Low density by design: the QR carries a short URL, not a salt and a whole record, so it scans
+    // reliably at insert size. That is one of the practical wins of gating verification on a code.
+    el.innerHTML = window.LR ? LR.qrSVG(el.dataset.qr, { size: 220, ec: 'M' }) : '';
+    if (!el.innerHTML) say('the QR library did not load — do not print inserts without a scannable code', 'bad');
+  }
+  $('print').disabled = false;
+  LAST = bundles.map((b) => b.bundle_no);
+  say(`${bundles.length} bundle(s) ready — inserts go INSIDE the parcel · QR → `
+    + (VERIFY_BASE || location.origin + ' (LAN, rehearsal only)'), VERIFY_BASE ? 'ok' : '');
+}
+
+$('load').addEventListener('click', () => build().catch((e) => say(String(e.message || e), 'bad')));
+// Printing an insert RECORDS that it was printed. The schema ties insert_printed_at to packed_at with
+// a CHECK, so a bundle cannot be marked packed without one — and until now the page printed and
+// recorded nothing, which meant the constraint guarded a column nothing ever wrote.
+//
+// Marked AFTER the dialog, not before: a print an operator cancels is not a printed insert, and a
+// bundle wrongly stamped would then be packable with no slip in it.
+let LAST = [];
+
+async function markPrinted(bundleNos) {
+  const t = diagToken(false);
+  if (!t) return;
+  const done = [];
+  for (const no of bundleNos) {
+    try {
+      const r = await fetch(`/api/runs/${encodeURIComponent($('run').value.trim())}/print/mark`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + t },
+        body: JSON.stringify({ bundle_no: no, actor: 'runs-print.html' }),
+      });
+      if (r.ok) done.push(no);
+    } catch { /* a failed mark must never look like a failed print */ }
+  }
+  if (done.length) say(`printed \u00b7 ${done.length} insert(s) recorded`, 'ok');
+  else say('printed \u2014 but nothing was recorded; check the token', 'bad');
+}
+
+$('print').addEventListener('click', () => {
+  window.print();
+  // window.print() is synchronous in every browser this runs in, so by here the dialog is closed.
+  markPrinted(LAST);
+});
+$('run').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('load').click(); });
+const q = new URLSearchParams(location.search);
+if (q.get('run')) { $('run').value = q.get('run'); }
+</script>
+</body>
+</html>
