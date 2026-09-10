@@ -54,6 +54,17 @@ const EXEMPT = [
     why: 'labelTaken is store-blind because a shelf label is physical',
     match: /SELECT 1 FROM shopify_listings WHERE sku = \?/,
   },
+  {
+    // channelHoldFor asks "could a buyer take this card off me right now", which is a question about a
+    // physical object rather than about one storefront's opinion. The two failure directions are not
+    // symmetric: store-blind over-blocks (a dev rehearsal row makes a real lock refuse until it is
+    // withdrawn — one command), while store-scoped under-blocks (a listing on a store the caller did
+    // not name goes unseen, and a card that is genuinely for sale gets committed to a numbered bundle
+    // in a manifest that is already published and anchored, which cannot be revised afterwards).
+    // Same shape as labelTaken above. lib/runs-reserve.mjs says so at the function.
+    why: 'channelHoldFor is store-blind because under-blocking commits a sellable card to a sealed manifest',
+    match: /SELECT state FROM shopify_listings WHERE kind = \? AND item_id = \?/,
+  },
 ];
 
 // The rebuild's own INSERT ... SELECT carries the literal 'dev' rather than a bound predicate; it is

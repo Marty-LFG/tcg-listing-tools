@@ -72,10 +72,16 @@ describe('only the reserve module knows what the reservation states mean', () =>
   // Comments are stripped first. A file SAYING "go through runs-reserve.mjs rather than touching
   // run_reservations" is the outcome this test wants, and failing it for saying so would teach the
   // next person to delete the explanation rather than the query.
+  //
+  // SQL `--` counts as a comment too, and that is not hypothetical: lib/postsale.mjs annotates a column
+  // inside a template literal with "drawn down at PACK time by consumeReservation off run_reservations",
+  // which is this rule being obeyed out loud. Stripping only JS comments failed the file for its own
+  // documentation — the precise mistake the paragraph above exists to prevent, one comment syntax over.
+  // Anchored to start-of-line so a `--` inside a real expression is untouched.
   const code = (f) => src(f)
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split(/\r?\n/)
-    .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+    .filter((line) => !/^\s*(\/\/|\*|--)/.test(line))
     .join('\n');
 
   it('finds the modules to check', () => assert.ok(files.length > 20));

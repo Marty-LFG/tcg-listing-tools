@@ -40,6 +40,33 @@ describe('splitting a bulk row', () => {
     assert.equal(new Set(all).size, 25);
   });
 
+  it('LEAVES THE LEDGER BALANCED — a split conserves stock, so the movements net to zero', () => {
+    // The point of routing this through lib/stock-ledger.mjs rather than a bare UPDATE. A split invents
+    // no stock and destroys none, so the only honest record is a conversion on both sides that cancels.
+    // Without this the change is only tested by the single-writer invariant, which checks the SHAPE of
+    // the statement and could not tell a correct split from one that filed the wrong numbers.
+    const row = mk({ quantity: 4 });
+    const out = splitInventoryItem(db, row.id);
+    const ids = [row.id, ...out.created.map((c) => c.id)];
+
+    const net = (id) => db.prepare(
+      `SELECT COALESCE(SUM(delta), 0) d FROM stock_movements WHERE kind = 'inventory' AND item_id = ?`,
+    ).get(id).d;
+
+    // Each row's ledger agrees with the quantity it is left holding — the property reconcile() checks.
+    for (const id of ids) assert.equal(net(id), 1, `row ${id}'s movements must sum to the 1 it holds`);
+    assert.equal(ids.reduce((t, id) => t + net(id), 0), 4, 'four units in, four units out');
+
+    // And the parent's own history reads as the conversion it was, rather than units vanishing: the 4 it
+    // arrived holding, then 3 leaving. The catch-up is what files that opening 4 for a row the ledger
+    // had never seen, which is why the sum is 1 and not -3.
+    const parent = db.prepare(
+      `SELECT reason, delta FROM stock_movements WHERE kind = 'inventory' AND item_id = ? ORDER BY id`,
+    ).all(row.id);
+    assert.equal(parent.at(-1).delta, -3, 'the parent gave up three of its four');
+    assert.equal(parent.at(-1).reason, 'convert');
+  });
+
   it('KEEPS THE ORIGINAL ROW ID AND SKU, and makes the siblings the copies', () => {
     // Not cosmetic. ebay_listing_id, valuations, batch membership and any published listing all point at
     // that id — minting a fresh row for the original and deleting it would orphan every one of them.
