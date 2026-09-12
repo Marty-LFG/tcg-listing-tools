@@ -8,6 +8,7 @@ import { availableBakes } from '../../lib/refresh.mjs';
 import { LAYOUT_OVERRIDE_KEYS, TEXT_OVERRIDE_KEYS, BADGE_OVERRIDE_KEYS, VARIANTS, resolveLayout } from '../../lib/listing-image-config.mjs';
 import { validateBands } from '../../lib/shipping-bands.mjs';
 import { ANCHOR_MODES, validateRunsConfig } from '../../lib/runs-config.mjs';
+import { validateArbConfig, ARB_DEFAULTS } from '../../lib/arb-config.mjs';
 
 const cfg = (name) => JSON.parse(read(`data/${name}`));
 
@@ -102,6 +103,44 @@ describe('runs.config.example.json', () => {
   it('a stub anchor can never target the live store', () => {
     const armed = { ...c, publish: { enabled: true, store: 'live' }, anchor: { ...c.anchor, mode: 'stub' } };
     assert.match(String(validateRunsConfig(armed)), /stub anchor/);
+  });
+});
+
+describe('arbitrage.config.example.json', () => {
+  // arbitrage.config.json is gitignored (server-owned); validate the tracked template, which is also
+  // the default a fresh deploy boots on.
+  const c = cfg('arbitrage.config.example.json');
+  const stripped = JSON.parse(JSON.stringify(c, (k, v) => (k.startsWith('_comment') ? undefined : v)));
+
+  it('the buyer pays 80% of MARKET, and both hit floors are real', () => {
+    assert.equal(c.buyer_pct, 0.8);
+    assert.ok(c.min_profit_aud > 0);
+    assert.ok(c.min_margin_pct > 0);
+  });
+
+  it('HARD INVARIANT: ships with the watch job DISARMED and a call budget that leaves the rest of the app room', () => {
+    // The Browse app token is shared with comps, the repricer and the testbed (~5,000/day). A
+    // shipped default that took it all would silence every other eBay-reading tool on a fresh deploy.
+    assert.equal(c.watch.enabled, false);
+    assert.equal(c.sweep.enabled, false);
+    assert.ok(c.daily_call_budget <= 4000, 'leave at least ~1,000 calls for the rest of the app');
+    assert.ok(c.call_gap_ms >= 200);
+  });
+
+  it('the shipped default passes its own validator, and matches the code defaults', () => {
+    assert.equal(validateArbConfig(stripped), null);
+    assert.deepEqual(stripped, ARB_DEFAULTS, 'the example file and ARB_DEFAULTS must agree, or a missing key silently changes behaviour');
+  });
+
+  it('a file that predates the sweep block still validates (the loader fills it in)', () => {
+    const { sweep, ...older } = stripped;
+    assert.equal(validateArbConfig(older), null);
+    assert.match(String(validateArbConfig({ ...stripped, sweep: { enabled: 'yes' } })), /sweep\.enabled/);
+  });
+  it('the validator refuses the two mistakes that would spend the token', () => {
+    assert.match(String(validateArbConfig({ ...stripped, daily_call_budget: 9000 })), /1–5000/);
+    assert.match(String(validateArbConfig({ ...stripped, call_gap_ms: 10 })), /200/);
+    assert.match(String(validateArbConfig({ ...stripped, buyer_pct: 1.5 })), /buyer_pct/);
   });
 });
 

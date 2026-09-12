@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arbitrage Finder</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root{--ink:#0c1430;--panel:#111a3a;--panel2:#16224a;--line:#26336a;--muted:#9aa6cf;
+    --text:#eef1fb;--gold:#f0c020;--gold-dim:#8a7016;--field:#0a1230;--green:#36d399;--red:#f06262;--amber:#f0c04a;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--ink);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;font-size:14px;}
+  .wrap{max-width:1560px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 2px;font-weight:700;}
+  .tag{color:var(--gold);font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .card h3{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);font-weight:700;
+    display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;}
+  .card h3 .h-note{color:var(--muted);font-size:11px;letter-spacing:0;text-transform:none;font-weight:400;}
+  label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 5px;}
+  input,select,textarea{width:100%;padding:9px 11px;background:var(--field);border:1px solid var(--line);border-radius:9px;color:var(--text);font-size:14px;outline:none;font-family:inherit;}
+  textarea{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;min-height:120px;resize:vertical;line-height:1.5;}
+  input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(240,192,32,.12);}
+  .btn{padding:8px 14px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;font:inherit;font-size:13px;cursor:pointer;}
+  .btn:hover{border-color:var(--gold);}
+  .btn.primary{background:var(--gold);border-color:var(--gold);color:#0c1430;font-weight:800;}
+  .btn.sm{padding:3px 9px;font-size:12px;border-radius:7px;}
+  .btn:disabled{opacity:.42;cursor:not-allowed;}
+  .status{font-size:12.5px;min-height:18px;margin:6px 0;}
+  .status.ok{color:var(--green);}.status.warn{color:var(--gold);}.status.err{color:var(--red);}.status.load{color:var(--muted);}
+  .muted{color:var(--muted);font-size:11.5px;line-height:1.5;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .cols{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:16px;align-items:start;}
+  @media(max-width:1000px){.cols{grid-template-columns:1fr;}}
+
+  /* the strip */
+  .strip{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:150px;flex:1;}
+  .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);}
+  .stat .v{font-size:17px;font-weight:700;margin-top:3px;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;}
+  .stat .v small{font-size:11px;font-weight:400;color:var(--muted);font-family:inherit;}
+  .stat.hot{border-color:var(--gold-dim);}
+  .stat.hot .v{color:var(--gold);}
+
+  .gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;}
+  table.grid{width:100%;border-collapse:collapse;font-size:12.5px;min-width:820px;}
+  table.grid th{background:var(--panel2);color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:.6px;
+    padding:8px 9px;text-align:left;position:sticky;top:0;white-space:nowrap;}
+  table.grid td{padding:7px 9px;border-top:1px solid var(--line);vertical-align:middle;}
+  table.grid tr.win td{background:rgba(54,211,153,.07);}
+  table.grid tr.dimrow td{opacity:.55;}
+  .num{text-align:right;font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .pill{display:inline-block;font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;}
+  .pill.good{border-color:#1e5c40;color:#8fe0bd;}.pill.warn{border-color:var(--gold-dim);color:var(--gold);}.pill.bad{border-color:#6b2626;color:#f0a0a0;}
+  .pill.new{border-color:var(--gold);color:var(--gold);font-weight:700;}
+  .chip{font-size:10.5px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);background:var(--field);color:var(--muted);
+    font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;cursor:help;white-space:nowrap;}
+  .chip.warn{border-color:var(--gold-dim);color:var(--gold);}
+  .chip.bad{border-color:#6b2626;color:#f0a0a0;}
+  .dim{color:var(--muted);}
+  .profit{font-weight:800;color:var(--green);}
+  .loss{color:var(--red);}
+  a.ext{color:var(--gold);text-decoration:none;font-weight:700;}
+  a.ext:hover{text-decoration:underline;}
+  .thumb{width:38px;height:53px;object-fit:cover;border-radius:4px;background:var(--field);display:block;}
+  .ttl{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;}
+  .log{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6;
+    font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;max-height:280px;overflow:auto;}
+  .log .c{color:var(--text);}
+  .log .c b{color:var(--gold);}
+  .log .miss{color:var(--muted);}
+  .log .hit{color:var(--green);}
+  .log .err{color:var(--red);}
+  .grammar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--gold);color:#0c1430;padding:10px 20px;border-radius:999px;font-weight:700;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99;}
+  .toast.show{opacity:1;}
+  details.watch > summary{cursor:pointer;list-style:none;}
+  details.watch > summary::-webkit-details-marker{display:none;}
+  .banner{background:#2a1a10;border:1px solid var(--gold-dim);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--gold);margin-bottom:16px;}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vault.css">
+</head>
+<body>
+<div class="wrap">
+  <a href="/" style="display:inline-block;margin-bottom:10px;font-size:12px;text-decoration:none;color:var(--gold);">&larr; All tools</a>
+  <div class="tag">Buy side</div>
+  <h1>Arbitrage Finder</h1>
+  <p class="sub">eBay AU Buy-It-Now listings against 80% of the TCGplayer market — what the local buyer pays, less what the card costs to land here.</p>
+
+  <div class="banner" id="quietNote" hidden></div>
+
+  <div class="strip">
+    <div class="stat"><div class="k">eBay calls today</div><div class="v" id="sBudget">—</div></div>
+    <div class="stat"><div class="k">USD → AUD</div><div class="v" id="sFx">—</div></div>
+    <div class="stat"><div class="k">Buyer pays</div><div class="v" id="sBuyer">—</div></div>
+    <div class="stat"><div class="k">Watch job</div><div class="v" id="sWatch">—</div></div>
+    <div class="stat hot" id="sNewWrap"><div class="k">New since your last visit</div><div class="v" id="sNew">—</div></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <!-- ============ the catch box ============ -->
+      <div class="card">
+        <h3>1 &middot; Cards <span class="h-note">one per line, like the batch runner</span></h3>
+        <label for="setSel">Set</label>
+        <select id="setSel"><option value="">loading sets…</option></select>
+        <div style="height:10px"></div>
+        <label for="catch">Catch lines</label>
+        <textarea id="catch" spellcheck="false" placeholder="125&#10;130 r&#10;*charizard&#10;paf&#10;54 h"></textarea>
+        <div class="grammar">
+          <span class="chip" title="the card number">125</span>
+          <span class="chip" title="printing: n normal · r reverse holo · h holo">130 r</span>
+          <span class="chip" title="search by name instead of number">*charizard</span>
+          <span class="chip" title="a bare set code switches the set for the lines after it">paf</span>
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <button class="btn primary" id="resolveBtn">Resolve</button>
+          <span class="status load" id="resolveStatus"></span>
+        </div>
+      </div>
+
+      <!-- ============ the watch list ============ -->
+      <div class="card">
+        <details class="watch" id="watchDetails">
+          <summary><h3 style="margin:0">Watch list <span class="h-note" id="watchNote">—</span></h3></summary>
+          <p class="muted" style="margin:10px 0 8px;">Scanned on the timer from settings (<a class="ext" href="/settings.html#arbitrage">arbitrage</a>). New hits go to Telegram when it is configured.</p>
+          <div class="row" style="margin-bottom:8px;">
+            <button class="btn sm" id="scanWatchBtn">Scan the watch list now</button>
+          </div>
+          <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Card</th><th>Printing</th><th class="num">Market</th><th>Last scan</th><th class="num">Open</th><th></th></tr></thead><tbody id="watchBody"></tbody></table></div>
+        </details>
+      </div>
+
+      <!-- ============ the newly-listed sweep ============ -->
+      <div class="card">
+        <details class="watch" id="sweepDetails" open>
+          <summary><h3 style="margin:0">Newly-listed sweep <span class="h-note" id="sweepNote">—</span></h3></summary>
+          <p class="muted" style="margin:10px 0 8px;">Every new AU Buy-It-Now in a whole set, matched back to the catalogue by its printed number, one or two eBay calls a set a day. Runs inside the watch pass when armed in settings; <b>Sweep now</b> runs it by hand.</p>
+          <div class="row" style="margin-bottom:8px;">
+            <select id="sweepSetSel" style="width:auto;max-width:260px;padding:5px 8px;font-size:12px"></select>
+            <button class="btn sm" id="sweepAddBtn">Add set</button>
+            <button class="btn sm primary" id="sweepNowBtn">Sweep now</button>
+          </div>
+          <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Set</th><th>Last pass</th><th class="num">Calls</th><th class="num">New → matched → hits</th><th></th></tr></thead><tbody id="sweepBody"></tbody></table></div>
+        </details>
+      </div>
+    </div>
+
+    <div>
+      <!-- ============ resolved ============ -->
+      <div class="card">
+        <h3>2 &middot; Resolved <span class="h-note" id="resolvedNote">nothing yet</span></h3>
+        <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr>
+          <th>Line</th><th>Card</th><th>Printing</th><th class="num">TCG market</th><th class="num">Buyer pays</th><th>Age</th><th>Watch</th><th></th>
+        </tr></thead><tbody id="resolvedBody"></tbody></table></div>
+        <div class="row" style="margin-top:12px;">
+          <button class="btn primary" id="scanBtn" disabled>Scan eBay</button>
+          <button class="btn" id="stopBtn" hidden>Stop after this card</button>
+          <button class="btn" id="watchAllBtn" disabled>Watch all</button>
+          <span class="status load" id="scanStatus"></span>
+        </div>
+        <div class="log" id="log" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ hits ============ -->
+  <div class="card">
+    <h3>3 &middot; Hits
+      <span class="h-note row" style="gap:8px">
+        <label style="margin:0" for="hitFilter">show</label>
+        <select id="hitFilter" style="width:auto;padding:4px 8px;font-size:12px">
+          <option value="new,seen">open (new + seen)</option>
+          <option value="new">new only</option>
+          <option value="bought">bought</option>
+          <option value="dismissed">dismissed</option>
+          <option value="gone">gone</option>
+        </select>
+        <select id="hitSource" style="width:auto;padding:4px 8px;font-size:12px">
+          <option value="">any source</option>
+          <option value="sweep">sweep</option>
+          <option value="scan">named cards</option>
+        </select>
+        <button class="btn sm" id="markSeenBtn">Mark all new as seen</button>
+        <span id="hitCounts" class="dim"></span>
+      </span>
+    </h3>
+    <p class="muted" style="margin:0 0 10px;">Landed = price + postage + the buyer-protection fee assumed. Margin is return on outlay. A hit under a quarter of market is almost always the wrong printing — check before you buy.</p>
+    <div class="gridwrap"><table class="grid"><thead><tr>
+      <th></th><th>Listing</th><th>Card</th><th class="num">Landed</th><th class="num">Buyer pays</th><th class="num">Profit</th><th class="num">Margin</th><th class="num">× mkt</th><th>Seller</th><th>Listed</th><th>Notes</th><th></th>
+    </tr></thead><tbody id="hitsBody"></tbody></table></div>
+    <p class="status load" id="hitsStatus"></p>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="/extras.js"></script>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const aud = (c) => (c == null || !isFinite(c)) ? '—' : 'A$' + ((+c) / 100).toFixed(2);
+const usd = (v) => (v == null || !isFinite(v)) ? '—' : 'US$' + (+v).toFixed(2);
+const stat = (el, cls, msg) => { el.className = 'status ' + cls; el.innerHTML = msg; };
+function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+const api = async (p, opts) => { const r = await fetch('/api/arb' + p, opts); let j = null; try { j = await r.json(); } catch {} return { status: r.status, json: j }; };
+const post = (p, body) => api(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const patch = (p, body) => api(p, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const PRINTING_LABEL = { normal: 'Normal', reverseHolofoil: 'Reverse Holo', holofoil: 'Holo', '1stEditionNormal': '1st Ed', '1stEditionHolofoil': '1st Ed Holo', unlimited: 'Unlimited', unlimitedHolofoil: 'Unl. Holo' };
+const plabel = (k) => PRINTING_LABEL[k] || k || '—';
+const ago = (iso) => { if (!iso) return '—'; const d = (Date.now() - Date.parse(iso)) / 3600e3; if (!isFinite(d)) return '—'; if (d < 1) return Math.max(1, Math.round(d * 60)) + 'm'; if (d < 48) return Math.round(d) + 'h'; return Math.round(d / 24) + 'd'; };
+
+let CFG = null, SETS = [], RESOLVED = [], JOB_ID = null, LAST_VISIT = null;
+// card_id|printing_key of every ACTIVE watch row, kept client-side so the resolved table can say
+// "watching" for whichever printing the dropdown currently shows, not the one the server resolved.
+const WATCHED = new Set();
+try { LAST_VISIT = localStorage.getItem('arb.lastVisit'); } catch {}
+
+// ---------------------------------------------------------------------------
+// The strip
+// ---------------------------------------------------------------------------
+async function loadConfig() {
+  const { json } = await api('/config');
+  if (!json || json.error) { stat($('resolveStatus'), 'err', 'config unreadable'); return; }
+  CFG = json;
+  paintBudget(json.budget);
+  $('sBuyer').innerHTML = Math.round(json.config.buyer_pct * 100) + '% <small>of TCG market' + (json.config.buyer_fee_mode === 'none' ? ' · no fee' : ' · + fee') + '</small>';
+  paintWatchJob(json.watch_job);
+  const quiet = [];
+  if (!json.ebay_configured) quiet.push('eBay keys are not set in .env, so nothing can be scanned.');
+  if (!json.buyer_postcode_set) quiet.push('EBAY_BUYER_POSTCODE is not set: most listings will come back with no postage quote and be dropped.');
+  $('quietNote').hidden = !quiet.length; $('quietNote').textContent = quiet.join(' ');
+}
+function paintBudget(b) { if (!b) return; $('sBudget').innerHTML = b.used + ' <small>/ ' + b.cap + ' · ' + b.remaining + ' left</small>'; }
+let _fx = null;
+const fxRate = () => _fx || 1;
+function paintFx(fx) { if (!fx) return; _fx = +fx.rate; $('sFx').innerHTML = (+fx.rate).toFixed(4) + ' <small>' + esc(fx.date || '') + '</small>'; }
+function paintWatchJob(w) {
+  if (!w) return;
+  const on = w.enabled;
+  $('sWatch').innerHTML = (on ? 'every ' + w.interval_hours + 'h' : 'off') + ' <small>' + (w.last_run ? 'last ' + ago(w.last_run) + ' ago' : 'never run') + '</small>';
+}
+
+// ---------------------------------------------------------------------------
+// Sets + resolve
+// ---------------------------------------------------------------------------
+async function loadSets() {
+  try {
+    const r = await TCG.fetchJson('/api/pkm/sets?pageSize=500');
+    const j = await r.json();
+    SETS = ((j && j.data) || []).map((s) => ({ id: s.id, name: s.name, code: (s.ptcgoCode || '').toUpperCase(), releaseDate: s.releaseDate || '', printedTotal: s.printedTotal, total: s.total, series: s.series }))
+      .sort((a, b) => String(b.releaseDate).localeCompare(String(a.releaseDate)));
+    const sel = $('setSel');
+    sel.innerHTML = SETS.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}${s.code ? ' · ' + esc(s.code) : ''} <span class="dim">(${esc(s.id)})</span></option>`).join('');
+    let remembered = null; try { remembered = localStorage.getItem('arb.set'); } catch {}
+    if (remembered && SETS.some((s) => s.id === remembered)) sel.value = remembered;
+    $('sweepSetSel').innerHTML = SETS.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}${s.code ? ' · ' + esc(s.code) : ''}</option>`).join('');
+  } catch (e) { $('setSel').innerHTML = '<option value="">sets failed to load — retry</option>'; }
+}
+$('setSel').addEventListener('change', () => { try { localStorage.setItem('arb.set', $('setSel').value); } catch {} });
+
+async function resolve() {
+  const lines = $('catch').value.split('\n').map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) { stat($('resolveStatus'), 'warn', 'type a card first'); return; }
+  stat($('resolveStatus'), 'load', 'resolving…');
+  $('resolveBtn').disabled = true;
+  try {
+    const { json } = await post('/resolve', { setId: $('setSel').value, lines });
+    if (!json || json.error) throw new Error((json && (json.detail || json.error)) || 'resolve failed');
+    RESOLVED = json.cards.map((c, i) => ({ ...c, _i: i, _on: c.market_usd != null }));
+    paintFx(json.fx);
+    paintResolved(json.unknown || []);
+    const n = RESOLVED.filter((c) => c._on).length;
+    stat($('resolveStatus'), n ? 'ok' : 'warn', n + ' card' + (n === 1 ? '' : 's') + ' ready' + (json.unknown && json.unknown.length ? ' · ' + json.unknown.length + ' line' + (json.unknown.length === 1 ? '' : 's') + ' not understood' : ''));
+  } catch (e) { stat($('resolveStatus'), 'err', esc(e.message)); }
+  finally { $('resolveBtn').disabled = false; }
+}
+$('resolveBtn').addEventListener('click', resolve);
+$('catch').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); resolve(); } });
+
+function paintResolved(unknown) {
+  const setById = new Map(SETS.map((s) => [s.id, s]));
+  const rows = RESOLVED.map((c) => {
+    const set = setById.get(c.set_id) || { name: c.set_name, printedTotal: c.printed_total };
+    const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set, { rarity: c.rarity }) : c.number;
+    const noMarket = c.market_usd == null;
+    const printSel = c.printings.length > 1
+      ? `<select data-i="${c._i}" class="printSel" style="width:auto;padding:3px 6px;font-size:12px">${c.printings.map((p) => `<option value="${esc(p.key)}" ${p.key === c.chosen_key ? 'selected' : ''}>${esc(plabel(p.key))}${p.which === 'market' ? '' : ' (no market)'}</option>`).join('')}</select>`
+      : `<span class="pill">${esc(plabel(c.chosen_key))}</span>`;
+    const age = c.market_age_days == null ? '—' : c.market_age_days + 'd';
+    const ageCls = c.market_age_days != null && CFG && c.market_age_days > CFG.config.max_market_age_days ? 'pill warn' : 'pill';
+    return `<tr class="${noMarket ? 'dimrow' : ''}">
+      <td class="mono dim">${esc(c.line)}</td>
+      <td><b>${esc(c.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(c.set_name)} · ${esc(c.rarity || '')}</span></td>
+      <td>${printSel}</td>
+      <td class="num">${noMarket ? '<span class="pill bad" title="this printing has no TCGplayer market figure, so it cannot be scored">no market</span>' : usd(c.market_usd)}</td>
+      <td class="num"><b>${noMarket ? '—' : aud(Math.round(c.buyer_aud * 100))}</b></td>
+      <td><span class="${ageCls}" title="age of the TCGplayer market figure">${age}</span></td>
+      <td>${WATCHED.has(c.card_id + '|' + c.chosen_key) ? '<span class="pill good">watching</span>' : `<button class="btn sm watchBtn" data-i="${c._i}" ${noMarket ? 'disabled' : ''}>watch</button>`}</td>
+      <td><button class="btn sm dropBtn" data-i="${c._i}" title="remove from this scan">×</button></td>
+    </tr>`;
+  });
+  for (const u of unknown) rows.push(`<tr class="dimrow"><td class="mono dim">${esc(u.line)}</td><td colspan="7" class="dim">${esc(u.why)}</td></tr>`);
+  $('resolvedBody').innerHTML = rows.join('') || '<tr><td colspan="8" class="dim">nothing resolved yet</td></tr>';
+  const ready = RESOLVED.filter((c) => c._on);
+  $('resolvedNote').textContent = ready.length ? ready.length + ' to scan · ' + ready.length + ' eBay call' + (ready.length === 1 ? '' : 's') : 'nothing yet';
+  $('scanBtn').disabled = !ready.length || !!JOB_ID;
+  $('watchAllBtn').disabled = !ready.length;
+  document.querySelectorAll('.printSel').forEach((el) => el.addEventListener('change', () => {
+    const c = RESOLVED[+el.dataset.i]; const p = c.printings.find((x) => x.key === el.value);
+    c.chosen_key = el.value; c.market_usd = p && p.which === 'market' ? p.marketUsd : null; c._on = c.market_usd != null;
+    c.buyer_aud = c.market_usd != null && CFG ? Math.round(c.market_usd * fxRate() * CFG.config.buyer_pct * 100) / 100 : null;
+    paintResolved(unknown);
+  }));
+  document.querySelectorAll('.dropBtn').forEach((el) => el.addEventListener('click', () => { RESOLVED.splice(RESOLVED.findIndex((c) => c._i === +el.dataset.i), 1); paintResolved(unknown); }));
+  document.querySelectorAll('.watchBtn').forEach((el) => el.addEventListener('click', () => watchCards([RESOLVED[+el.dataset.i]])));
+}
+async function watchCards(cards) {
+  const want = cards.filter((c) => c && c.chosen_key && c.market_usd != null).map((c) => ({ card_id: c.card_id, printing_key: c.chosen_key }));
+  if (!want.length) return;
+  const { json } = await post('/watch', { cards: want });
+  if (!json || !json.ok) { toast('watch failed'); return; }
+  for (const a of json.added) WATCHED.add(a.card_id + '|' + a.printing_key);
+  toast('watching ' + json.added.length + (json.failed.length ? ' · ' + json.failed.length + ' failed' : ''));
+  paintResolved([]); loadWatch();
+}
+$('watchAllBtn').addEventListener('click', () => watchCards(RESOLVED.filter((c) => c._on && !WATCHED.has(c.card_id + '|' + c.chosen_key))));
+
+// ---------------------------------------------------------------------------
+// The scan
+// ---------------------------------------------------------------------------
+async function consumeNdjson(resp, onObj) {
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let obj; try { obj = JSON.parse(line); } catch { continue; }
+      onObj(obj);
+    }
+  }
+}
+function logLine(cls, html) { const el = $('log'); el.hidden = false; const d = document.createElement('div'); d.className = cls; d.innerHTML = html; el.appendChild(d); el.scrollTop = el.scrollHeight; }
+const DROP_LABEL = { auction: 'auction', not_au: 'overseas', currency: 'not AUD', own_listing: 'ours', ship_unknown: 'no postage quote', graded: 'graded', junk: 'lot/sealed/junk', variant: 'stamped/promo variant', number: 'wrong number', lang: 'not English', finish: 'wrong printing', seller_fb: 'seller below floor', no_market: 'printing unpriced', cond_lp: 'LP', cond_mp: 'MP', cond_hp: 'HP', cond_dmg: 'damaged', below_floor: 'under the floors', no_number: 'no number in title', other_set: 'another set', unknown_number: 'number not in set', name_mismatch: 'name mismatch' };
+function onScanEvent(o) {
+  if (o.job) { JOB_ID = o.job.id; return; }
+  if (o.start) { paintFx(o.start.fx); paintBudget(o.start.budget); const unit = o.start.mode === 'sweep' ? 'set' : 'card'; logLine('c', `${o.start.mode === 'sweep' ? 'sweeping' : 'scanning'} <b>${o.start.total}</b> ${unit}${o.start.total === 1 ? '' : 's'}${o.start.fx ? ' · USD→AUD ' + (+o.start.fx.rate).toFixed(4) : ''}`); return; }
+  if (o.card) {
+    const c = o.card;
+    if (c.error) { logLine('err', `<b>${esc(c.name || c.card_id)}</b> ${esc(plabel(c.printing_key))} — ${esc(c.error)}${c.detail ? ' · ' + esc(c.detail) : ''}`); return; }
+    const drops = Object.entries(c.dropped || {}).map(([k, n]) => n + ' ' + (DROP_LABEL[k] || k)).join(', ');
+    const best = c.best ? ` · closest: ${aud(c.best.delivered_cents)} landed vs ${aud(c.best.buyer_aud_cents)} buyer (${c.best.profit_cents >= 0 ? '+' : ''}${aud(c.best.profit_cents)})${c.best.ambiguous ? ' printing?' : ''}` : '';
+    logLine(c.hits ? 'hit' : 'miss', `<b>${esc(c.name)}</b> ${esc(plabel(c.printing_key))} · ${usd(c.market_usd)} · ${c.rows} rows → ${c.kept} kept → <b>${c.hits} hit${c.hits === 1 ? '' : 's'}</b>${c.hits_new ? ' (' + c.hits_new + ' new)' : ''}${c.gone ? ' · ' + c.gone + ' gone' : ''}${drops ? ' <span class="dim">(' + esc(drops) + ')</span>' : ''}<span class="dim">${esc(best)}</span>`);
+    return;
+  }
+  if (o.set) {
+    const x = o.set;
+    if (x.error) { logLine('err', `<b>${esc(x.set_name || x.set_id)}</b> — ${esc(x.error)}`); return; }
+    const drops = Object.entries(x.dropped || {}).map(([k, n]) => n + ' ' + (DROP_LABEL[k] || k)).join(', ');
+    const best = x.best ? ` · closest: ${esc(x.best.name)} ${esc(plabel(x.best.printing_key))} ${aud(x.best.delivered_cents)} landed vs ${aud(x.best.buyer_aud_cents)} buyer (${x.best.profit_cents >= 0 ? '+' : ''}${aud(x.best.profit_cents)})${x.best.ambiguous ? ' printing?' : ''}` : '';
+    logLine(x.hits ? 'hit' : 'miss', `<b>${esc(x.set_name)}</b> · ${x.calls} call${x.calls === 1 ? '' : 's'} · ${x.rows} rows → ${x.new_rows} new → ${x.matched} matched → ${x.kept} kept → <b>${x.hits} hit${x.hits === 1 ? '' : 's'}</b>${x.hits_new ? ' (' + x.hits_new + ' new)' : ''}${x.first_run ? ' · first pass' : x.reached_watermark ? ' · caught up' : ' · more than ' + x.calls + ' page' + (x.calls === 1 ? '' : 's') + ' of new listings'}${x.shared_number_query_with && x.shared_number_query_with.length ? ' · number query shared with ' + esc(x.shared_number_query_with.join(', ')) : ''}${drops ? ' <span class="dim">(' + esc(drops) + ')</span>' : ''}<span class="dim">${best}</span>`);
+    return;
+  }
+  if (o.hit) return;   // the table reloads at the end
+  if (o.warning) { logLine('err', esc(o.warning.message || JSON.stringify(o.warning))); return; }
+  if (o.summary) {
+    const s = o.summary;
+    paintBudget(s.budget);
+    const why = s.aborted ? ({ fx_unavailable: 'the USD→AUD rate could not be fetched, nothing was scanned', budget_exhausted: 'today’s eBay call budget is spent', rate_limited: 'eBay rate-limited the app token — the rest of today’s budget is marked spent', ebay_unconfigured: 'eBay keys are not set' }[s.aborted] || s.aborted) : null;
+    const unit = s.mode === 'sweep' ? `${s.sets} set${s.sets === 1 ? '' : 's'} · ${s.new_rows} new listing${s.new_rows === 1 ? '' : 's'} · ${s.matched} matched` : `${s.cards} card${s.cards === 1 ? '' : 's'}`;
+    logLine(why ? 'err' : 'c', why ? 'stopped: ' + esc(why) : `done · ${unit} · ${s.calls} call${s.calls === 1 ? '' : 's'} · <b>${s.hits_total} hit${s.hits_total === 1 ? '' : 's'}</b>${s.hits_new ? ' (' + s.hits_new + ' new)' : ''}${s.cancelled ? ' · stopped early' : ''}`);
+    stat($('scanStatus'), why ? 'err' : 'ok', why ? esc(why) : (s.hits_total ? s.hits_total + ' hit' + (s.hits_total === 1 ? '' : 's') : 'no hits'));
+    finishScan();
+  }
+}
+function startScanUi() { $('scanBtn').disabled = true; $('scanWatchBtn').disabled = true; $('sweepNowBtn').disabled = true; $('stopBtn').hidden = false; $('stopBtn').disabled = false; $('log').innerHTML = ''; stat($('scanStatus'), 'load', 'scanning…'); }
+function finishScan() { JOB_ID = null; $('stopBtn').hidden = true; $('scanWatchBtn').disabled = false; $('sweepNowBtn').disabled = false; $('scanBtn').disabled = !RESOLVED.some((c) => c._on); loadHits(); loadWatch(); loadSweep(); }
+
+async function runScan(body) {
+  startScanUi();
+  try {
+    const r = await fetch('/api/arb/scan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok || !(r.headers.get('content-type') || '').includes('ndjson')) {
+      let j = null; try { j = await r.json(); } catch {}
+      if (r.status === 409 && j && j.id) { toast('a scan is already running — attaching'); return attach(j.id); }
+      throw new Error((j && (j.error || j.code)) || 'scan refused (' + r.status + ')');
+    }
+    await consumeNdjson(r, onScanEvent);
+  } catch (e) { stat($('scanStatus'), 'err', esc(e.message)); finishScan(); }
+}
+$('scanBtn').addEventListener('click', () => runScan({ cards: RESOLVED.filter((c) => c._on).map((c) => ({ card_id: c.card_id, printing_key: c.chosen_key })) }));
+$('scanWatchBtn').addEventListener('click', () => runScan({ watch: true }));
+$('sweepNowBtn').addEventListener('click', () => runScan({ sweep: true }));
+$('stopBtn').addEventListener('click', async () => { if (!JOB_ID) return; $('stopBtn').disabled = true; const { json } = await post('/scan/' + JOB_ID + '/cancel', {}); toast(json && json.message ? json.message : 'stop requested'); });
+
+// A reopened tab re-attaches to a scan in progress rather than looking like nothing is happening.
+async function attach(id) {
+  startScanUi(); JOB_ID = id;
+  try { const r = await fetch('/api/arb/scan/' + id + '/stream?from=0'); await consumeNdjson(r, onScanEvent); }
+  catch (e) { stat($('scanStatus'), 'err', esc(e.message)); finishScan(); }
+}
+async function checkRunning() { const { json } = await api('/scan/state'); if (json && json.running && json.id) attach(json.id); else if (json && json.budget) paintBudget(json.budget); }
+
+// ---------------------------------------------------------------------------
+// Hits
+// ---------------------------------------------------------------------------
+const WARN_LABEL = { check_printing: 'check printing', coupon: 'coupon', stale_market: 'stale market', cond_unstated: 'cond unstated', cond_vague: 'says excellent', printing_ambiguous: 'printing?', multi: 'multi?', best_offer: 'offers' };
+async function loadHits() {
+  const status = $('hitFilter').value;
+  const source = $('hitSource').value;
+  const { json } = await api('/hits?status=' + encodeURIComponent(status) + '&limit=300' + (source ? '&source=' + source : ''));
+  if (!json || json.error) { stat($('hitsStatus'), 'err', 'hits unreadable'); return; }
+  paintBudget(json.budget);
+  const c = json.counts || {};
+  $('hitCounts').textContent = ['new', 'seen', 'bought', 'dismissed', 'gone'].filter((k) => c[k]).map((k) => c[k] + ' ' + k).join(' · ');
+  if (status.includes('new')) {
+    const fresh = LAST_VISIT ? json.hits.filter((h) => h.status === 'new' && h.first_seen > LAST_VISIT).length : json.hits.filter((h) => h.status === 'new').length;
+    $('sNew').innerHTML = fresh + ' <small>' + (LAST_VISIT ? 'since ' + ago(LAST_VISIT) + ' ago' : 'first visit') + '</small>';
+  }
+  const setById = new Map(SETS.map((s) => [s.id, s]));
+  $('hitsBody').innerHTML = json.hits.map((h) => {
+    const set = setById.get(h.set_id) || {};
+    const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(h.number, set) : h.number;
+    const warn = (h.warnings || []).map((w) => `<span class="chip ${w.k === 'check_printing' || w.k === 'stale_market' ? 'bad' : 'warn'}" title="${esc(w.why)}">${esc(WARN_LABEL[w.k] || w.k)}</span>`).join(' ');
+    const isNew = h.status === 'new' && (!LAST_VISIT || h.first_seen > LAST_VISIT);
+    const fb = h.seller_fb_pct != null ? h.seller_fb_pct + '% <span class="dim">(' + (h.seller_fb_score ?? '?') + ')</span>' : '';
+    const acts = [];
+    if (h.status === 'new' || h.status === 'seen') acts.push(`<button class="btn sm act" data-id="${h.id}" data-to="bought" title="mark as bought">Bought</button>`, `<button class="btn sm act" data-id="${h.id}" data-to="dismissed" title="hide this listing">Dismiss</button>`);
+    if (h.status === 'gone') acts.push(`<button class="btn sm act" data-id="${h.id}" data-to="dismissed">Dismiss</button>`);
+    if (h.status === 'new' || h.status === 'seen') acts.push(`<button class="btn sm qty" data-id="${h.id}" title="one eBay call: how many the seller has">${h.qty_available != null ? 'qty ' + h.qty_available : 'qty?'}</button>`);
+    return `<tr class="${h.status === 'new' || h.status === 'seen' ? 'win' : 'dimrow'}">
+      <td>${h.image ? `<img class="thumb" src="${esc(h.image)}" alt="" loading="lazy">` : ''}</td>
+      <td><a class="ext ttl" href="${esc(h.url || '#')}" target="_blank" rel="noopener" title="${esc(h.title)}">${esc(h.title)}</a>
+        <span class="dim" style="font-size:11px">${isNew ? '<span class="pill new">new</span> ' : ''}${esc(h.status)}${h.gone_reason ? ' · ' + esc(h.gone_reason.replace('_', ' ')) : ''} · ${h.source === 'sweep' ? 'sweep' : 'named card'} · ${esc(h.match_tier || '')} match${h.cond_class === 'nm' ? ' · says NM' : ''}</span></td>
+      <td><b>${esc(h.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(plabel(h.printing_key))}${h.scored_printing_key && h.scored_printing_key !== h.printing_key ? ' <span class="chip warn" title="scored at this printing\'s market, the cheapest it could be">as ' + esc(plabel(h.scored_printing_key)) + '</span>' : ''} · ${esc(h.set_id)}</span></td>
+      <td class="num">${aud(h.delivered_cents)}<br><span class="dim" style="font-size:10.5px">${aud(h.price_cents)} + ${aud(h.ship_cents)}${h.fee_cents ? ' + ' + aud(h.fee_cents) : ''}</span></td>
+      <td class="num">${aud(h.buyer_aud_cents)}<br><span class="dim" style="font-size:10.5px">${usd((h.market_usd_cents || 0) / 100)} @ ${(+h.fx_usd_aud).toFixed(3)}</span></td>
+      <td class="num ${h.profit_cents >= 0 ? 'profit' : 'loss'}">${aud(h.profit_cents)}</td>
+      <td class="num">${h.margin_pct != null ? Math.round(h.margin_pct) + '%' : '—'}</td>
+      <td class="num ${h.ratio != null && CFG && h.ratio < CFG.config.too_good_ratio ? 'loss' : ''}">${h.ratio != null ? h.ratio.toFixed(2) : '—'}</td>
+      <td><span class="dim">${esc(h.seller || '')}</span><br><span style="font-size:11px">${fb}</span></td>
+      <td class="dim" title="${esc(h.listed_at || '')}">${ago(h.listed_at)}${h.coupon ? '' : ''}</td>
+      <td>${warn}</td>
+      <td style="white-space:nowrap">${acts.join(' ')}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="12" class="dim">no ${esc(status.replace(',', ' or '))} hits</td></tr>`;
+  stat($('hitsStatus'), 'load', json.hits.length + ' shown');
+  document.querySelectorAll('.act').forEach((el) => el.addEventListener('click', async () => {
+    el.disabled = true;
+    const { status: st, json: j } = await patch('/hits/' + el.dataset.id, { status: el.dataset.to });
+    if (st !== 200) { toast((j && j.error) || 'refused'); el.disabled = false; return; }
+    toast(el.dataset.to); loadHits();
+  }));
+  document.querySelectorAll('.qty').forEach((el) => el.addEventListener('click', async () => {
+    el.disabled = true; el.textContent = '…';
+    const { json: j } = await post('/hits/' + el.dataset.id + '/check-qty', {});
+    if (!j || !j.ok) { toast((j && j.error) || 'could not check'); el.textContent = 'qty?'; el.disabled = false; return; }
+    el.textContent = 'qty ' + (j.qty_available == null ? '?' : j.qty_available); paintBudget(j.budget);
+  }));
+}
+$('hitFilter').addEventListener('change', loadHits);
+$('hitSource').addEventListener('change', loadHits);
+$('markSeenBtn').addEventListener('click', async () => {
+  const { json } = await api('/hits?status=new&limit=1000');
+  const ids = ((json && json.hits) || []).map((h) => h.id);
+  if (!ids.length) { toast('nothing new'); return; }
+  const r = await patch('/hits', { ids, status: 'seen' });
+  toast((r.json && r.json.changed) + ' marked seen'); loadHits();
+});
+
+// ---------------------------------------------------------------------------
+// Watch list
+// ---------------------------------------------------------------------------
+async function loadWatch() {
+  const { json } = await api('/watch');
+  if (!json || json.error) return;
+  paintWatchJob(json.job);
+  const rows = json.watch || [];
+  WATCHED.clear(); for (const w of rows) if (w.active) WATCHED.add(w.card_id + '|' + w.printing_key);
+  const active = rows.filter((w) => w.active).length;
+  $('watchNote').textContent = active ? active + ' card' + (active === 1 ? '' : 's') : 'empty';
+  $('watchBody').innerHTML = rows.map((w) => `<tr class="${w.active ? '' : 'dimrow'}">
+    <td><b>${esc(w.name)}</b> <span class="mono dim">${esc(w.number)}</span><br><span class="dim" style="font-size:11px">${esc(w.set_name || w.set_id)}</span></td>
+    <td><span class="pill">${esc(plabel(w.printing_key))}</span></td>
+    <td class="num">${w.last_market_usd_cents != null ? usd(w.last_market_usd_cents / 100) : '—'}</td>
+    <td class="dim">${w.last_scanned_at ? ago(w.last_scanned_at) + ' ago' + (w.last_rows != null ? ' · ' + w.last_rows + '→' + w.last_kept + '→' + w.last_hits : '') : 'never'}</td>
+    <td class="num">${w.open_hits || 0}</td>
+    <td style="white-space:nowrap"><button class="btn sm wtoggle" data-id="${w.id}" data-active="${w.active ? 0 : 1}">${w.active ? 'pause' : 'resume'}</button> <button class="btn sm wdel" data-id="${w.id}" title="remove">×</button></td>
+  </tr>`).join('') || '<tr><td colspan="6" class="dim">nothing watched — resolve cards and press watch</td></tr>';
+  document.querySelectorAll('.wtoggle').forEach((el) => el.addEventListener('click', async () => { await patch('/watch/' + el.dataset.id, { active: el.dataset.active === '1' }); await loadWatch(); if (RESOLVED.length) paintResolved([]); }));
+  document.querySelectorAll('.wdel').forEach((el) => el.addEventListener('click', async () => { await api('/watch/' + el.dataset.id, { method: 'DELETE' }); await loadWatch(); if (RESOLVED.length) paintResolved([]); }));
+}
+
+// ---------------------------------------------------------------------------
+// The sweep list
+// ---------------------------------------------------------------------------
+async function loadSweep() {
+  const { json } = await api('/sweep');
+  if (!json || json.error) return;
+  const rows = json.sets || [];
+  const on = rows.filter((r) => r.enabled).length;
+  $('sweepNote').textContent = (on ? on + ' set' + (on === 1 ? '' : 's') : 'no sets') + (json.config && json.config.enabled ? ' · armed' : ' · not armed');
+  $('sweepBody').innerHTML = rows.map((r) => `<tr class="${r.enabled ? '' : 'dimrow'}">
+    <td><b>${esc(r.set_name)}</b> <span class="mono dim">${esc(r.set_id)}${r.printed_total ? ' · /' + r.printed_total : ''}</span></td>
+    <td class="dim" title="${esc(r.watermark || '')}">${r.last_run_at ? ago(r.last_run_at) + ' ago' + (r.last_total ? ' · ' + r.last_total.toLocaleString() + ' listed' : '') : 'never'}${r.watermark ? '<br><span style="font-size:10.5px">read up to ' + ago(r.watermark) + ' ago</span>' : ''}</td>
+    <td class="num">${r.last_calls != null ? r.last_calls : '—'}</td>
+    <td class="num">${r.last_new_rows != null ? r.last_new_rows + ' → ' + r.last_matched + ' → ' + r.last_hits : '—'}</td>
+    <td style="white-space:nowrap"><button class="btn sm stoggle" data-id="${esc(r.set_id)}" data-enabled="${r.enabled ? 0 : 1}">${r.enabled ? 'pause' : 'resume'}</button> <button class="btn sm sreset" data-id="${esc(r.set_id)}" title="forget the watermark, so the next pass reads a full page again">reset</button> <button class="btn sm sdel" data-id="${esc(r.set_id)}" title="remove">×</button></td>
+  </tr>`).join('') || '<tr><td colspan="5" class="dim">no sets — pick one above and press Add set</td></tr>';
+  document.querySelectorAll('.stoggle').forEach((el) => el.addEventListener('click', async () => { await patch('/sweep/' + el.dataset.id, { enabled: el.dataset.enabled === '1' }); loadSweep(); }));
+  document.querySelectorAll('.sreset').forEach((el) => el.addEventListener('click', async () => { await patch('/sweep/' + el.dataset.id, { reset: true }); toast('watermark cleared'); loadSweep(); }));
+  document.querySelectorAll('.sdel').forEach((el) => el.addEventListener('click', async () => { await api('/sweep/' + el.dataset.id, { method: 'DELETE' }); loadSweep(); }));
+}
+$('sweepAddBtn').addEventListener('click', async () => {
+  const id = $('sweepSetSel').value; if (!id) return;
+  $('sweepAddBtn').disabled = true;
+  try {
+    const { json } = await post('/sweep', { sets: [id] });
+    if (!json || !json.ok) { toast('could not add'); return; }
+    toast(json.added.length ? 'sweeping ' + json.added[0].set_name : (json.failed[0] && json.failed[0].error) || 'failed');
+    loadSweep();
+  } finally { $('sweepAddBtn').disabled = false; }
+});
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+(async () => {
+  await Promise.all([loadConfig(), loadSets()]);
+  await loadHits();
+  await loadWatch();
+  loadSweep();
+  checkRunning();
+  // Remembered AFTER the first paint, so the "new since your last visit" count describes this visit
+  // rather than the moment it was stamped.
+  try { localStorage.setItem('arb.lastVisit', new Date().toISOString()); } catch {}
+})();
+</script>
+</body>
+</html>

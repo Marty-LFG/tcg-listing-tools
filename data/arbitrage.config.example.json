@@ -1,0 +1,35 @@
+{
+  "_comment": "eBay AU → local-buyer arbitrage finder (arbitrage.html, /api/arb). Server-owned: data/arbitrage.config.json is seeded from this file on boot and rewritten in place by a settings save. Money floors are AUD.",
+  "buyer_pct": 0.8,
+  "min_profit_aud": 5,
+  "min_margin_pct": 15,
+  "_comment_margin": "margin is RETURN ON OUTLAY: profit / (price + postage + fee). 15 means fifteen cents back on every dollar spent.",
+  "buyer_fee_mode": "feeAU",
+  "_comment_fee": "feeAU adds eBay AU's buyer-protection fee (lib/fees.mjs) to the landed cost; none leaves it out. Two live listing pages showed no fee line on 2026-09-12 — flip to none if a real checkout confirms there is none.",
+  "daily_call_budget": 3500,
+  "call_gap_ms": 400,
+  "browse_limit": 100,
+  "query_mode": "comps",
+  "seller_min_feedback_pct": 95,
+  "seller_min_feedback_score": 10,
+  "too_good_ratio": 0.25,
+  "max_market_age_days": 14,
+  "exclude_seller_username": null,
+  "_comment_exclude": "null = fall back to repricer.config.json exclude_seller_username, then EBAY_SELLER_USERNAME, so our own listings are never a hit.",
+  "dashboard_url": "",
+  "_comment_dashboard": "Where a Telegram card's 'All hits' button points, e.g. http://192.168.4.200:5273. Empty = use postsale.config.json dashboard_url, else no button.",
+  "watch": {
+    "enabled": false,
+    "interval_hours": 6,
+    "alerts": true,
+    "max_cards_per_pass": 300,
+    "max_alerts_per_pass": 10
+  },
+  "sweep": {
+    "enabled": false,
+    "queries": ["name", "number"],
+    "max_pages_per_set": 5,
+    "first_run_pages": 1
+  },
+  "_comment_sweep": "The newly-listed sweep runs inside the watch pass over every enabled set in arb_sweep_sets. queries: name = 'Pokemon <set name>', number = 'Pokemon <printed total>' (catches the ~6% of titles that never name the set). Each page is one eBay call; a pass reads newest-first until it reaches the last watermark."
+}
