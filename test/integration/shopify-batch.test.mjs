@@ -804,6 +804,27 @@ describe('a DRAFT publish is recorded as unpublished, not live', () => {
     assert.equal(again.rows[0].status, 'published', 'a draft is unfinished work, not a completed publish');
     assert.equal(mirror('AAC-097').state, 'live');
   });
+
+  // THE DRAFT'S HANDLE IS STILL TAKEN. The cross-batch collision guard read `state = 'live'` until
+  // 2026-09-12, which was every published row while everything published ACTIVE. The first
+  // draft-first run on the live store — 206 drafts, then the not-on-eBay pool as ACTIVE — sent four
+  // twins of drafted cards through the guard clean and into HANDLE_NOT_UNIQUE at Shopify, because
+  // their handles' owners were drafts the guard could not see. Shopify does not know what a draft
+  // is when it checks a handle, and neither may the guard.
+  it('refuses a twin whose handle is held by a DRAFT, not only by a live product', async () => {
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'DRAFT' } });
+    const first = addItem({ name: 'Radiant Gardevoir', number: '69/196' });
+    await postStream('/publish/batch', { itemIds: [first] });
+    assert.equal(mirror('AAC-097').state, 'unpublished', 'precondition: the owner is a draft');
+
+    writeConfig({ ...CFG, publish: { enabled: true, status: 'ACTIVE' } });
+    const twin = addItem({ name: 'Radiant Gardevoir', number: '69/196' });
+    const pf = await post('/publish/preflight', { itemIds: [twin] });
+    const row = pf.json.rows[0];
+    assert.equal(row.ok, false, 'a draft owns its handle exactly as a live product does');
+    assert.equal(row.collidesWithPublished.item_id, first);
+    assert.match(row.errors.join(' '), /already held by item/);
+  });
 });
 
 // ---------------------------------------------------------------------------
