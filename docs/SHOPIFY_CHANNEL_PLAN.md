@@ -630,3 +630,87 @@ publication, which is the thing S6 genuinely needs.
 3. **GST treatment** — Gate A8.
 4. **Shopify description wording** — Gate A7.
 5. **S0-1** — `bulkUpdatePriceQuantity` against a sacrificial eBay listing. Gates S8.
+
+## 15. The first catalogue publish to LIVE (2026-09-12)
+
+The M1 gate ran against dev on 2026-08-30. This is the same path pointed at `gkrnva-1k` for the first
+time — the whole eBay-listed estate as DRAFT, so it is on the live store without being purchasable.
+
+### Why DRAFT, and why the eBay-listed rows at all
+
+Marty's launch decisions (2026-09-10): no daily manual reconciliation between channels, and eBay may
+go dark for a few days. So an item is only ever purchasable on ONE channel. The eBay-listed rows are
+the real catalogue — priced, graded, photographed — and publishing them as DRAFT puts them on live
+without opening the dual-live window EBAY-RESET R1 governs. At the switch they flip to ACTIVE and the
+eBay estate ends in the same window. The cutover becomes a status change instead of a publish run.
+
+### What went, and what did not
+
+| Pool | Rows | Result |
+|---|---|---|
+| `listed` on eBay, priced, qty > 0 | 225 | **206 published as DRAFT** — 10 first and read back, then 196 in 42 minutes, 0 failed — 19 held |
+| `in_stock` (not on eBay), priced | 19 | 14 publishable, waiting on `publish.status: ACTIVE` |
+| `in_stock`, unpriced — the `AAK-082`→`AAL-011` intake batch | 100 | **mostly the slab estate — see below** |
+
+**Held, 27 rows, two kinds and both data:**
+
+- **18 with no `identity_key`** — set code and number unresolved, so no card identity and no PDP
+  condition tiles. Eleven are one batch, `AAI-001`→`AAI-011` (Mega Rayquaza ex ×2, Zinnia's Trust,
+  Electivire, Magmortar, Altaria, Azurill, Kyogre, Kecleon, Adventuring Lantern, Mega Golurk ex).
+  Plus `AAK-034` Sunkern, `AAD-048` Meganium, `AAH-001` Charcadet, `AAF-034` Fennekin, `AAD-024`
+  Alakazam, `AAD-023` Riolu, `AAC-094` Zarude.
+- **9 in four handle-collision groups** — several physical copies of one card at one grade, which
+  would upsert onto one handle: Radiant Gardevoir holo ×3 (107/108/109), Zacian ×2 (297/371), Froakie
+  ×2 (160/226), Belladonna Took ×2 (194/195). The first-catalogued copy of each was published; the
+  other five are held as backstock. **Open question for Marty:** whether identical copies should merge
+  into one product at quantity N, which is what D-012 "one product per condition" implies, or stay
+  one row each and publish in turn as the first sells.
+
+### Three things the run established
+
+1. **A draft product is on no sales channel, by Shopify's rule, and the tool already knew.**
+   `publishablePublish` silently no-ops on a draft (lib/shopify.mjs:675), so the mirror records these
+   as `unpublished` and `rebuildIdentity` leaves their identities' `listings` empty. Consequence for
+   the switch: **the flip to ACTIVE must go through the tool** — a raw `productUpdate` to ACTIVE would
+   leave 200 products active on no channel and absent from their own condition selectors. Re-running
+   the publish with `status: ACTIVE` and `--force` is the flip; it upserts, publishes to the channel,
+   and rebuilds identities.
+2. **The pins were pasted into the wrong block on the first attempt** — `stores.dev` received live's
+   GIDs. Failure direction was the safe one (a dev publish would have refused: "the pinned location
+   does not exist on this store"), and `/api/shopify/status?store=live` named all four problems.
+   Worth knowing that the settings card cannot fix it while `allowLive` is true, because of the guard
+   the same morning added: armed means every edit is the file.
+3. **`publish.allowLive` was settable over the unauthenticated LAN endpoint** until `f776dc6`. With the
+   pins blank that reached nothing; with the pins in, it was one PUT from a live `productSet`. It is
+   file-only now, the same rule as keepers, and the keepers comment that claimed it already was has
+   been corrected.
+
+### Verified from the live store, not from the tool's own report
+
+First ten read back through the Admin API before the rest ran: `DRAFT`, `productType: Single`
+(the frozen vocabulary the `singles` rule keys on), 30 g dispatch weight, one image, `bkc.card`
+identity set, `bkc.condition` Near Mint, `.98` pricing. Two Radiant Gardevoirs that both got through
+turned out to be `holo` and `base` printings with distinct handles — correctly separate, not a
+collision. Card identities and set identities are being created on live as the batch runs.
+
+### The slab estate is the launch stock, and it is not on eBay
+
+The 100 unpriced `in_stock` rows read at first as a raw intake batch. They are not: **84 of them are
+PSA slabs** — all Pokémon, all with grader, grade, cert number and image on the row — and the grade
+distribution is 66 × PSA 10, 4 × 9, 4 × 8, 7 × 1, and one each of 5/6/7. None is on eBay, so every one
+can go ACTIVE on live the moment it is ready, with no dual-live window. Alongside the 206 drafts that
+flip at the switch, this is the storefront.
+
+What they lack, from the tool's own counts: a **price** (83 of 84) and an **`identity_key`** (81 of 84).
+The publish path hard-refuses without either. Set code is derivable for 68 (`backfill-set-code.mjs`,
+which never guesses) and the number is present on 80, but `identity_key` is a stored catalogue
+identity, not something the mapper derives on the fly — it is what the builder writes when a card is
+picked from a set. Two ways to fill 84 of them: the builder, one at a time; or `lib/certlookup.mjs`
+driven from the cert numbers every row already carries. That choice, and the pricing, are the next
+piece of work and are Marty's to shape.
+
+### Still waiting on one file edit
+
+The 15 ready raw singles (14 publishable + one collision survivor) publish as ACTIVE once
+`publish.status` reads `"ACTIVE"` on the box. That is a file edit now, because the settings card
+refuses the document while `allowLive` is true.
