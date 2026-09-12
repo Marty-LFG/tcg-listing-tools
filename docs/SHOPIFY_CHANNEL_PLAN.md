@@ -714,3 +714,24 @@ piece of work and are Marty's to shape.
 The 15 ready raw singles (14 publishable + one collision survivor) publish as ACTIVE once
 `publish.status` reads `"ACTIVE"` on the box. That is a file edit now, because the settings card
 refuses the document while `allowLive` is true.
+
+### Correction, same day: a draft DOES join an automated collection
+
+The launch board carried a finding from 2026-09-10 that a DRAFT product does not join an automated
+collection, from a throwaway draft on dev that left `singles` at 75 after a three-second wait. Wrong:
+with 206 drafts on live, `singles` reads **217** by Admin `productsCount` — every draft counted — and
+`apply-navigation.ps1`'s D-031 guard passed and built the menu. The index simply takes longer than
+three seconds for a freshly created product. What is true is narrower: the **storefront** renders only
+ACTIVE products in a collection, so `/collections/singles` shows the 11 while the admin counts 217.
+Navigation is therefore no longer gated on the switch; it was applied to live on 2026-09-12 —
+Pokémon → English, and Singles.
+
+### The 15 not-on-eBay rows, published ACTIVE
+
+11 published, on the Online Store channel, each with a card identity whose `listings` now names it.
+4 failed on `HANDLE_NOT_UNIQUE`: each was a physical twin of a card already on live as a draft, and the
+cross-batch collision guard could not see a draft's handle (`556d021` fixes the guard and adds the
+test). Those four join the five held from the in-batch groups: nine twins, one open question. One of
+the four, `#526` Chespin, also carries a SKU of `\` — typed on 2026-09-11 where a provisional label
+belonged — which the tool took as a real shelf label because it is not `STG-`.
+
