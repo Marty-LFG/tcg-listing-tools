@@ -367,16 +367,16 @@ describe('dispatch weight — nothing publishes at 0 kg', () => {
     );
   });
 
-  it('a raw single carries its packed weight — card plus sleeve, toploader and rigid mailer', () => {
+  it('a raw single carries its own weight — card, sleeve, toploader, team bag; the mailer is the parcel, counted once', () => {
     const p = toShopifyProduct(row());
     assert.equal(p.productType, PRODUCT_TYPES.single);
-    assert.equal(p.weight_grams, 30);
+    assert.equal(p.weight_grams, 12);
   });
 
   it('a graded slab is far heavier than a raw single, because the slab itself is', () => {
     const p = toShopifyProduct(row({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '1' }));
     assert.equal(p.productType, PRODUCT_TYPES.slab);
-    assert.equal(p.weight_grams, 150);
+    assert.equal(p.weight_grams, 65);
     assert.ok(p.weight_grams > toShopifyProduct(row()).weight_grams);
   });
 
@@ -396,6 +396,18 @@ describe('dispatch weight — nothing publishes at 0 kg', () => {
     }
   });
 
+  it('ten PSA slabs, or fifty singles, still weigh in as one XS parcel (≤ 650 g) — the free-shipping band', () => {
+    // bk-shopify D-033 option B: Standard is free over $300 only for an XS parcel, and the storefront's
+    // XS band is ≤ 650 g. The whole point of dropping the per-item mailer from the table is that a
+    // slab lot or a stack of singles must not tip out of the box it physically fits in.
+    const XS = 650;
+    assert.ok(10 * dispatchWeightGrams({}, PRODUCT_TYPES.slab) <= XS, 'ten slabs must fit the XS band');
+    assert.ok(50 * dispatchWeightGrams({}, PRODUCT_TYPES.single) <= XS, 'fifty singles must fit the XS band');
+    // …and sealed product must NOT: a booster box alone has to land in Small or bigger, or it ships free.
+    assert.ok(dispatchWeightGrams({ product_type: 'booster_box' }, PRODUCT_TYPES.sealed) > XS, 'a booster box must be heavier than the XS band');
+    assert.ok(dispatchWeightGrams({}, PRODUCT_TYPES.sealed) > XS, 'the sealed fallback must be heavier than the XS band');
+  });
+
   it('a measured weight on the row beats the table outright', () => {
     // The table is a component sum, not a scale reading (GR4). The day a row carries a real number,
     // nothing here is consulted.
@@ -403,7 +415,7 @@ describe('dispatch weight — nothing publishes at 0 kg', () => {
     assert.equal(dispatchWeightGrams({ weight_grams: 2500 }, PRODUCT_TYPES.single), 2500);
     // …but a junk value must not shadow the table into zero.
     for (const bad of [0, -5, '', null, 'heavy', NaN, Infinity]) {
-      assert.equal(dispatchWeightGrams({ weight_grams: bad }, PRODUCT_TYPES.single), 30, String(bad));
+      assert.equal(dispatchWeightGrams({ weight_grams: bad }, PRODUCT_TYPES.single), 12, String(bad));
     }
   });
 

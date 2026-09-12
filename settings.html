@@ -1242,6 +1242,37 @@
           tip:'The storefront page the QR on a printed insert points at, for example <b>https://binderskeepers.com.au/pages/verify</b>. Leave it EMPTY and the print page falls back to its own origin, which is right for a rehearsal and useless on a real parcel — a buyer cannot reach a LAN address. Must be https, with no query string and no fragment: the verification code travels in the fragment.'},
       ]}]},
 
+    // The arbitrage finder. Money floors and the eBay call budget are live-read per scan; the watch
+    // timer re-arms on save.
+    arbitrage:{ title:'Arbitrage Finder', section:'system', groups:[
+      {name:'The buyer',anchor:'arbitrage',fields:[
+        {p:'buyer_pct',l:'Buyer pays (fraction of market)',t:'number',min:0.01,max:1,step:0.01,tip:'What the local buyer pays as a fraction of the TCGplayer <b>market</b> price for a Near Mint card of the matched printing. 0.8 is 80%.'},
+        {p:'min_profit_aud',l:'Min profit (A$)',t:'number',min:0,step:0.5,tip:'A listing is a hit only when the buyer price beats the landed cost by at least this much.'},
+        {p:'min_margin_pct',l:'Min margin (% of outlay)',t:'number',min:0,max:1000,tip:'…AND by at least this percentage of what the card costs to land (price + postage + fee). Both floors must clear.'},
+        {p:'buyer_fee_mode',l:'Buyer-protection fee',t:'select',opts:['feeAU','none'],tip:'<b>feeAU</b> adds eBay AU’s buyer-protection fee (the bands in lib/fees.mjs) to the landed cost. Two live listing pages showed no fee line on 2026-09-12 — switch to <b>none</b> if a real checkout confirms there is none.'},
+      ]},
+      {name:'What counts as this card',anchor:'arbitrage-filter',fields:[
+        {p:'query_mode',l:'eBay query wording',t:'select',opts:['comps','short','slash'],tip:'<b>comps</b> is the comps engine’s own wording (name + number + set name) and measured best. <b>short</b> drops the set name and recalls more rows, nearly all of them the wrong card. <b>slash</b> writes the number as 125/197.'},
+        {p:'browse_limit',l:'Rows per eBay call',t:'number',min:1,max:200,tip:'How many listings one Browse call returns (eBay caps a page at 200). One call per card per scan either way.'},
+        {p:'seller_min_feedback_pct',l:'Seller feedback floor (%)',t:'number',min:0,max:100,tip:'Listings from sellers below this positive-feedback percentage are dropped, not warned about.'},
+        {p:'seller_min_feedback_score',l:'Seller rating count floor',t:'number',min:0,tip:'…and from sellers with fewer ratings than this.'},
+        {p:'too_good_ratio',l:'“Too good” ratio',t:'number',min:0,max:0.99,step:0.05,tip:'A listing landed below this fraction of the TCGplayer market is flagged <b>check printing</b> and never alerted — it is nearly always the wrong printing or the wrong card.'},
+        {p:'max_market_age_days',l:'Max market age (days)',t:'number',min:1,max:365,tip:'A hit scored against a TCGplayer figure older than this is flagged <b>stale market</b> and never alerted.'},
+        {p:'exclude_seller_username',l:'Our own eBay username',t:'text',tip:'Never surface our own listing as a hit. Leave empty to use the repricer config’s exclude_seller_username, then EBAY_SELLER_USERNAME.'},
+      ]},
+      {name:'eBay call budget',anchor:'arbitrage-budget',fields:[
+        {p:'daily_call_budget',l:'Calls per UTC day',t:'number',min:1,max:5000,tip:'This tool’s share of the app token’s ~5,000 Browse calls a day. Comps, the repricer and the testbed draw on the same token, so leave headroom. A scan that would overrun today’s share is refused before it starts.'},
+        {p:'call_gap_ms',l:'Gap between calls (ms)',t:'number',min:200,max:60000,tip:'Pause between one card’s eBay call and the next.'},
+      ]},
+      {name:'Watch list',anchor:'arbitrage-watch',fields:[
+        {p:'watch.enabled',l:'Scan the watch list on a timer',t:'toggle',tip:'Arm the background pass over every active watch-list card. Off by default. A pass is skipped when a manual scan is running or when it would overrun the day’s call budget.'},
+        {p:'watch.interval_hours',l:'Every (hours)',t:'number',min:1,max:168,tip:'How often the watch pass runs. Each pass costs one eBay call per watched card.'},
+        {p:'watch.alerts',l:'Telegram a card per new hit',t:'toggle',tip:'After a pass, send one Telegram card per hit that has never been alerted. Needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env; silent otherwise. Hits flagged check-printing or stale-market are shown on the page but never alerted.'},
+        {p:'watch.max_cards_per_pass',l:'Cards per pass',t:'number',min:1,max:5000,tip:'Cap on watched cards scanned in one pass, oldest-scanned first.'},
+        {p:'watch.max_alerts_per_pass',l:'Alerts per pass',t:'number',min:0,max:100,tip:'Cap on Telegram cards sent after one pass; the rest go next time.'},
+      ]},
+    ]},
+
     backup:{ title:'Backups', section:'system', groups:[{name:'Snapshots',anchor:'backup',fields:[
       {p:'enabled',l:'Scheduled backups',t:'toggle',tip:'Take VACUUM-INTO snapshots of the money-bearing databases on a timer.'},
       {p:'interval_hours',l:'Interval (hrs)',t:'number',tip:'How often to snapshot the databases.'},

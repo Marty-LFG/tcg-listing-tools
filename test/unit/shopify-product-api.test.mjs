@@ -146,11 +146,11 @@ describe('buildProductSetInput — complete state, every time', () => {
     // The AAC-089 defect was measured HERE, on the published variant: measurement.weight read
     // `0 KILOGRAMS`. InventoryItemMeasurementInput { weight: WeightInput { unit, value } }, 2026-07.
     const single = buildProductSetInput(product()).variants[0].inventoryItem;
-    assert.deepEqual(single.measurement, { weight: { unit: 'GRAMS', value: 30 } });
+    assert.deepEqual(single.measurement, { weight: { unit: 'GRAMS', value: 12 } });
     assert.equal(single.tracked, true, 'the weight must not have displaced tracked');
 
     const slab = buildProductSetInput(product({ graded: 1, grading_company: 'PSA', grade: 9, cert_number: '1' }));
-    assert.deepEqual(slab.variants[0].inventoryItem.measurement, { weight: { unit: 'GRAMS', value: 150 } });
+    assert.deepEqual(slab.variants[0].inventoryItem.measurement, { weight: { unit: 'GRAMS', value: 65 } });
   });
 
   it('omits measurement entirely when there is no weight, rather than writing a zero', () => {
