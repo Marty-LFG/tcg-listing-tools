@@ -6,7 +6,7 @@
 // be possible to reintroduce by editing one line of vite.config.js.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pluginHealth, assessStaleness, withRegistry, registeredPlugins, notePlugin, MTIME_SLACK_MS, _reset } from '../../lib/plugin-registry.mjs';
+import { pluginHealth, assessStaleness, withRegistry, registeredPlugins, notePlugin, MTIME_SLACK_MS, _reset, countConfigPlugins, assessPluginCount } from '../../lib/plugin-registry.mjs';
 import { read } from '../helpers/extract-inline.mjs';
 
 const config = read('vite.config.js');
@@ -136,6 +136,40 @@ describe('assessStaleness', () => {
     const r = assessStaleness(BOOT, many);
     assert.equal(r.stale_files.length, 20);
     assert.equal(r.stale_count, 60, 'the full count must still be reported');
+  });
+});
+
+describe('the count comparison — the restart that raced the pull (2026-09-13)', () => {
+  it('counts the entries of a withRegistry([...]) literal, through calls, nesting and trailing commas', () => {
+    assert.equal(countConfigPlugins('plugins: withRegistry([a, b(env), c({ x: [1, 2] }), d()]),'), 4);
+    assert.equal(countConfigPlugins('withRegistry([\n  a,\n  b(env),\n])'), 2, 'a trailing comma is not an entry');
+    assert.equal(countConfigPlugins('withRegistry([])'), 0);
+    assert.equal(countConfigPlugins('plugins: [a, b]'), null, 'no wrapper → unknown, never a match');
+    assert.equal(countConfigPlugins('withRegistry([a, b'), null, 'unterminated → unknown');
+  });
+  it('agrees with the real vite.config.js', () => {
+    const n = countConfigPlugins(config);
+    assert.ok(n >= 30, 'found ' + n);
+    // Every `xPlugin(` / bare identifier the wiring test finds is one entry.
+    const m = config.match(/plugins:\s*withRegistry\(\[([\s\S]*?)\]\)/);
+    const idents = [...m[1].matchAll(/([A-Za-z_$][\w$]*)\s*(?:\(|,|\])/g)].length;
+    assert.equal(n, idents);
+  });
+  it('a process that loaded fewer plugins than the file lists is stale, whatever the clocks say', () => {
+    const r = assessPluginCount(37, 38);
+    assert.equal(r.count_mismatch, true);
+    assert.match(r.note, /raced the pull/);
+    assert.equal(assessPluginCount(38, 38).count_mismatch, false);
+    assert.equal(assessPluginCount(38, null).count_mismatch, null, 'unreadable config is unknown, not healthy');
+  });
+  it('withRegistry remembers how many entries it was handed, so pluginHealth can compare', () => {
+    _reset();
+    withRegistry([{ name: 'a', configureServer() {} }, { name: 'b' }, null]);
+    const h = pluginHealth();
+    assert.equal(h.plugins_running, 3);
+    assert.equal(typeof h.plugins_on_disk, 'number');
+    assert.equal(h.count_mismatch, h.plugins_running !== h.plugins_on_disk);
+    _reset();
   });
 });
 

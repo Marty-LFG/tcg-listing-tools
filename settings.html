@@ -1733,7 +1733,8 @@
       '<div class="kv"><span class="k">Version / commit</span><span class="v">'+esc(v.pkg||'—')+' · '+esc(v.commit||'—')+'</span></div>'+
       '<div class="kv"><span class="k">Node / uptime</span><span class="v">'+esc(v.node||'—')+' · '+esc(Math.round((v.uptime_s||0)/60))+'m</span></div>'+
       '<div class="kv"><span class="k">Route plugins'+inf('Which routes THIS PROCESS owns. <b>stale</b> means the sources on disk have moved past the running server — a pulled commit does nothing until it restarts, and every other signal (git commit, loaded config) reads current while the routes are still missing.')+'</span>'+
-        '<span class="v">'+esc(pl.count??(Array.isArray(pl.plugins)?pl.plugins.length:'—'))+' registered '+(stale?pill('warn','stale — restart'):pill('ok','current'))+'</span></div>'+
+        '<span class="v">'+esc(Array.isArray(pl.registered)?pl.registered.length:(pl.count??'—'))+' registered'+(pl.plugins_on_disk!=null&&pl.plugins_running!=null?' · '+esc(pl.plugins_running)+' loaded of '+esc(pl.plugins_on_disk)+' on disk':'')+' '+(stale?pill('warn','stale — restart'):pill('ok','current'))+'</span></div>'+
+      (stale&&pl.note?'<div class="kv"><span class="k">Why</span><span class="v bad">'+esc(pl.note)+'</span></div>':'')+
       (pl.missing&&pl.missing.length?'<div class="kv"><span class="k">Missing</span><span class="v bad">'+esc(pl.missing.join(', '))+'</span></div>':'')+
       '<div class="kv"><span class="k">Image compositor'+inf('Branded listing images fail SILENTLY at runtime — no sharp binary, missing rail art, a font family that does not match the TTF. This is where it says which one.')+'</span>'+
         '<span class="v">'+(liBad?pill('bad','check it'):pill('ok','ready'))+'</span></div>'+
