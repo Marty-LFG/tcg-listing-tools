@@ -91,6 +91,16 @@ Armed with `sweep.enabled` in settings (runs inside the watch pass after the car
 - **(a) Value-floor set sweep.** One call per card × printing with market ≥ a floor; an SV set is ~40–70 calls. Less useful now that (b) covers whole sets for two calls, but it re-prices EXISTING listings the sweep will never revisit.
 - **(c) Price-move trigger.** The tracker's `signals` table (kind `opportunity`) already knows when a watched card's market dropped; enqueue a scan for it.
 
+## The page, after its first real use (2026-09-13)
+
+The owner's first sight of it on ALCSERVER was the newest set (Pitch Black) with one card typed: every figure a dash, "no market" on the row, Scan greyed with no reason, a sweep line reading "284 matched → 0 kept (284 printing unpriced)", and "basis off · 0 candidates of 0 with a reference". Nothing on the page said the one thing that explained all of it: pokemontcg.io has no TCGplayer prices for that set yet. Fixed by making the page say why, in words, at the point it goes quiet:
+
+- `POST /resolve` returns `sets: [{set_id, set_name, priced, total}]` for every set it touched (`pricedCount` in lib/arbitrage.mjs — cards with a `market` on any printing). A set with `priced === 0` puts a note under the resolved table naming it and what to do (older set, or a typed figure under Fallen since); each unpriced row carries its reason under the card name; the resolve status reads "1 of 2 can be scanned · 1 has no TCGplayer price".
+- The sweep's set event and row carry `priced_cards` / `total_cards` (`arb_sweep_sets.last_priced_cards`, `last_total_cards`, set when the set is added and on every pass). The log line for an unpriced set says so in a sentence instead of the drop list; the row wears a "no TCGplayer prices yet" pill.
+- "Closest miss" is now the best **margin**, not the best profit — by profit a A$2 card A$2.20 short always beat a A$300 card A$20 short, and the line said nothing.
+- Layout: box 1 (cards) and box 2 (resolved) side by side, box 3 (hits) full width, then a "Runs on its own" row for the watch list, the sweep and fallen since — the three automatic modes had been stacked in the 380 px input column, where their tables wrapped to nothing. Sweep and fallen open on first paint only when they have content. A "How this works" intro (three steps, what a hit is, why most scans are quiet) stays open until closed once.
+- Words: "armed" → "by hand only / with the watch timer", "basis off · N candidates of M with a reference" → "off in settings · N fallen of M with an old figure", "printing unpriced" → "no TCGplayer price", "N series" → "N prices recorded since <day>". The strip shows the USD→AUD rate on load (`/config` now returns `fx`) and the watch job says "turn on in settings" instead of "never run".
+
 ## Out of scope
 
 Auctions and best-offer negotiation, automatic buying, non-English cards, other games (the schema carries `game` for later), seller-side fee modelling (irrelevant on the buy side), quantity on multi-quantity listings except through the explicit check-qty call.

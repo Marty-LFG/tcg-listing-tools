@@ -86,6 +86,8 @@ describe('POST /api/arb/resolve — the catch line, no eBay', () => {
     assert.equal(by('26')[0].market_which, 'low');
     assert.deepEqual(json.unknown.map((u) => u.line), ['999', 'zzz']);
     assert.equal(json.cards.every((c) => c.watching === false), true);
+    // The page names how much of the set TCGplayer prices at all: Raichu is low-only, so 3 of 4.
+    assert.deepEqual(json.sets, [{ set_id: 'zzarb', set_name: 'Arb Test Set', priced: 3, total: 4 }]);
   });
   it('a set that is not cached is reported, not fetched into a 500', async () => {
     const { status, json } = await post('/api/arb/resolve', { setId: 'zznope', lines: ['1'] });
@@ -180,6 +182,7 @@ describe('the sweep list', () => {
     assert.deepEqual(add.json.failed, [{ set_id: 'zznope', error: 'set_not_cached' }]);
     const row = add.json.added[0];
     assert.equal(row.set_name, 'Arb Test Set'); assert.equal(row.printed_total, 100); assert.equal(row.total, 110); assert.equal(row.ptcgo_code, 'ZZA'); assert.equal(row.enabled, 1); assert.equal(row.watermark, null);
+    assert.equal(row.last_priced_cards, 3, 'the priced count is known before the first pass'); assert.equal(row.last_total_cards, 4);
     const list = await get('/api/arb/sweep');
     assert.equal(list.json.sets.length, 1);
     assert.deepEqual(list.json.config.queries, ['name', 'number']);

@@ -80,6 +80,22 @@
   details.watch > summary{cursor:pointer;list-style:none;}
   details.watch > summary::-webkit-details-marker{display:none;}
   .banner{background:#2a1a10;border:1px solid var(--gold-dim);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--gold);margin-bottom:16px;}
+  details.howto{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px;line-height:1.55;}
+  details.howto > summary{cursor:pointer;color:var(--gold);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;list-style:none;}
+  details.howto > summary::-webkit-details-marker{display:none;}
+  details.howto > summary::before{content:'▸ ';}
+  details[open].howto > summary::before{content:'▾ ';}
+  details.howto ol{margin:10px 0 6px;padding-left:22px;}
+  details.howto li{margin:0 0 6px;}
+  details.howto p{margin:6px 0 2px;color:var(--muted);}
+  details.howto code{font-family:'IBM Plex Mono',ui-monospace,Consolas,monospace;background:var(--field);padding:0 5px;border-radius:5px;font-size:12px;}
+  .divider{font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:26px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line);}
+  .auto{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+  @media(max-width:1000px){.auto{grid-template-columns:1fr;}}
+  .auto .card{margin-bottom:0;}
+  .note{background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5;margin-top:10px;color:var(--text);}
+  .note b{color:var(--gold);}
+  .why{display:block;font-size:10.5px;color:#f0a0a0;margin-top:2px;white-space:normal;}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -94,6 +110,16 @@
 
   <div class="banner" id="quietNote" hidden></div>
 
+  <details class="howto" id="howto" open>
+    <summary>How this works</summary>
+    <ol>
+      <li><b>Pick a set, type card numbers, press Resolve.</b> One card per line, the batch runner’s grammar: <code>125</code>, <code>130 r</code> for the reverse holo, <code>*charizard</code> to search by name.</li>
+      <li><b>Press Scan eBay.</b> Every AU-located Buy-It-Now for those cards is priced as it would land here (price + postage + eBay’s buyer fee) and set against what the buyer pays: 80% of the TCGplayer market figure, converted at today’s rate.</li>
+      <li><b>Hits</b> are listings that land at least A$5 <i>and</i> 15% under what the buyer pays. Buy it, take it to the buyer, keep the difference. They are rare: a hit needs a listing under roughly 70% of market, so most scans end with none, and the log says how close the best listing came.</li>
+    </ol>
+    <p>The boxes under the cards run on their own: the <b>watch list</b> rescans chosen cards on a timer, the <b>sweep</b> reads every new listing in a whole set, and <b>fallen since</b> is for the buyer’s stale price list. A card with no TCGplayer price cannot be scored at all, and pokemontcg.io carries none for the newest set for weeks after release.</p>
+  </details>
+
   <div class="strip">
     <div class="stat"><div class="k">eBay calls today</div><div class="v" id="sBudget">—</div></div>
     <div class="stat"><div class="k">USD → AUD</div><div class="v" id="sFx">—</div></div>
@@ -106,7 +132,7 @@
     <div>
       <!-- ============ the catch box ============ -->
       <div class="card">
-        <h3>1 &middot; Cards <span class="h-note">one per line, like the batch runner</span></h3>
+        <h3>1 &middot; Cards <span class="h-note">card numbers, one per line, then Resolve</span></h3>
         <label for="setSel">Set</label>
         <select id="setSel"><option value="">loading sets…</option></select>
         <div style="height:10px"></div>
@@ -124,69 +150,20 @@
         </div>
       </div>
 
-      <!-- ============ the watch list ============ -->
-      <div class="card">
-        <details class="watch" id="watchDetails">
-          <summary><h3 style="margin:0">Watch list <span class="h-note" id="watchNote">—</span></h3></summary>
-          <p class="muted" style="margin:10px 0 8px;">Scanned on the timer from settings (<a class="ext" href="/settings.html#arbitrage">arbitrage</a>). New hits go to Telegram when it is configured.</p>
-          <div class="row" style="margin-bottom:8px;">
-            <button class="btn sm" id="scanWatchBtn">Scan the watch list now</button>
-          </div>
-          <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Card</th><th>Printing</th><th class="num">Market</th><th>Last scan</th><th class="num">Open</th><th></th></tr></thead><tbody id="watchBody"></tbody></table></div>
-        </details>
-      </div>
-
-      <!-- ============ the newly-listed sweep ============ -->
-      <div class="card">
-        <details class="watch" id="sweepDetails" open>
-          <summary><h3 style="margin:0">Newly-listed sweep <span class="h-note" id="sweepNote">—</span></h3></summary>
-          <p class="muted" style="margin:10px 0 8px;">Every new AU Buy-It-Now in a whole set, matched back to the catalogue by its printed number, one or two eBay calls a set a day. Runs inside the watch pass when armed in settings; <b>Sweep now</b> runs it by hand.</p>
-          <div class="row" style="margin-bottom:8px;">
-            <select id="sweepSetSel" style="width:auto;max-width:260px;padding:5px 8px;font-size:12px"></select>
-            <button class="btn sm" id="sweepAddBtn">Add set</button>
-            <button class="btn sm primary" id="sweepNowBtn">Sweep now</button>
-          </div>
-          <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Set</th><th>Last pass</th><th class="num">Calls</th><th class="num">New → matched → hits</th><th></th></tr></thead><tbody id="sweepBody"></tbody></table></div>
-        </details>
-      </div>
-
-      <!-- ============ the buyer's stale reference ============ -->
-      <div class="card">
-        <details class="watch" id="refDetails" open>
-          <summary><h3 style="margin:0">Fallen since <span id="refDateLabel">…</span> <span class="h-note" id="refNote">—</span></h3></summary>
-          <p class="muted" style="margin:10px 0 8px;" id="refBlurb">The buyer prices off a stale TCGplayer snapshot. When the reference basis is on in <a class="ext" href="/settings.html#arbitrage">settings</a>, hits are scored against what they pay off that snapshot. Cards below have fallen since it; scan them to see what eBay AU asks today.</p>
-          <div class="row" style="margin-bottom:8px;">
-            <button class="btn sm" id="fallenBtn">Refresh list</button>
-            <button class="btn sm" id="snapBtn" title="record today’s market for every set the finder touches, so the next stale snapshot is answerable">Snapshot today</button>
-            <span class="dim" id="histNote" style="font-size:11.5px"></span>
-          </div>
-          <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Card</th><th class="num">Then → now</th><th class="num">Store pays</th><th class="num">Market A$</th><th class="num">Gap</th><th></th></tr></thead><tbody id="fallenBody"></tbody></table></div>
-          <div style="margin-top:12px;">
-            <label>Type a reference figure off TCGplayer’s chart</label>
-            <div class="row">
-              <input id="refLine" placeholder="card number in the set above, e.g. 116" style="width:180px" spellcheck="false">
-              <select id="refPrinting" style="width:auto;padding:5px 8px;font-size:12px"><option value="holofoil">Holo</option><option value="reverseHolofoil">Reverse Holo</option><option value="normal">Normal</option></select>
-              <input id="refUsd" placeholder="US$ market then" style="width:130px" inputmode="decimal">
-              <input id="refDate" placeholder="YYYY-MM-DD" style="width:120px" spellcheck="false">
-              <button class="btn sm" id="refAddBtn">Add</button>
-              <span class="status load" id="refStatus"></span>
-            </div>
-          </div>
-        </details>
-      </div>
     </div>
 
     <div>
       <!-- ============ resolved ============ -->
       <div class="card">
-        <h3>2 &middot; Resolved <span class="h-note" id="resolvedNote">nothing yet</span></h3>
+        <h3>2 &middot; Resolved cards <span class="h-note" id="resolvedNote">nothing yet</span></h3>
         <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr>
-          <th>Line</th><th>Card</th><th>Printing</th><th class="num">TCG market</th><th class="num">Buyer pays</th><th>Age</th><th>Watch</th><th></th>
-        </tr></thead><tbody id="resolvedBody"></tbody></table></div>
+          <th>Line</th><th>Card</th><th>Printing</th><th class="num" title="TCGplayer market price for the printing, in US$">TCG market</th><th class="num" title="what the buyer pays for a NM copy, in A$">Buyer pays</th><th title="age of the TCGplayer figure">Age</th><th>Watch</th><th></th>
+        </tr></thead><tbody id="resolvedBody"><tr><td colspan="8" class="dim">nothing resolved yet — pick a set and type card numbers in box 1</td></tr></tbody></table></div>
+        <div class="note" id="setNote" hidden></div>
         <div class="row" style="margin-top:12px;">
           <button class="btn primary" id="scanBtn" disabled>Scan eBay</button>
           <button class="btn" id="stopBtn" hidden>Stop after this card</button>
-          <button class="btn" id="watchAllBtn" disabled>Watch all</button>
+          <button class="btn" id="watchAllBtn" disabled title="add every scannable card to the watch list">Watch all</button>
           <span class="status load" id="scanStatus"></span>
         </div>
         <div class="log" id="log" hidden></div>
@@ -215,11 +192,66 @@
         <span id="hitCounts" class="dim"></span>
       </span>
     </h3>
-    <p class="muted" style="margin:0 0 10px;">Landed = price + postage + the buyer-protection fee assumed. Margin is return on outlay. A hit under a quarter of market is almost always the wrong printing — check before you buy.</p>
+    <p class="muted" style="margin:0 0 10px;">A hit is a listing that lands at least A$5 and 15% under what the buyer pays. Landed = price + postage + eBay’s buyer-protection fee. Margin is return on outlay. A hit under a quarter of market is almost always the wrong printing — check before you buy.</p>
     <div class="gridwrap"><table class="grid"><thead><tr>
       <th></th><th>Listing</th><th>Card</th><th class="num">Landed</th><th class="num">Buyer pays</th><th class="num">Profit</th><th class="num">Margin</th><th class="num">× mkt</th><th>Seller</th><th>Listed</th><th>Notes</th><th></th>
     </tr></thead><tbody id="hitsBody"></tbody></table></div>
     <p class="status load" id="hitsStatus"></p>
+  </div>
+
+  <div class="divider">Runs on its own — nothing here needs you to press anything once it is set up</div>
+  <div class="auto">
+
+    <!-- ============ the watch list ============ -->
+    <div class="card">
+      <details class="watch" id="watchDetails">
+        <summary><h3 style="margin:0">Watch list <span class="h-note" id="watchNote">—</span></h3></summary>
+        <p class="muted" style="margin:10px 0 8px;">Cards you pressed <b>watch</b> on, rescanned on the timer from <a class="ext" href="/settings.html#arbitrage">settings</a>. New hits go to Telegram when it is configured.</p>
+        <div class="row" style="margin-bottom:8px;">
+          <button class="btn sm" id="scanWatchBtn">Scan the watch list now</button>
+        </div>
+        <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Card</th><th>Printing</th><th class="num">Market</th><th>Last scan</th><th class="num">Open</th><th></th></tr></thead><tbody id="watchBody"></tbody></table></div>
+      </details>
+    </div>
+
+    <!-- ============ the newly-listed sweep ============ -->
+    <div class="card">
+      <details class="watch" id="sweepDetails">
+        <summary><h3 style="margin:0">Newly-listed sweep <span class="h-note" id="sweepNote">—</span></h3></summary>
+        <p class="muted" style="margin:10px 0 8px;">Every new AU Buy-It-Now in a whole set, matched back to the catalogue by its printed number, one or two eBay calls a set. Add a set and press <b>Sweep now</b>; turn the sweep on in <a class="ext" href="/settings.html#arbitrage">settings</a> and it runs with the watch timer.</p>
+        <div class="row" style="margin-bottom:8px;">
+          <select id="sweepSetSel" style="width:auto;max-width:260px;padding:5px 8px;font-size:12px"></select>
+          <button class="btn sm" id="sweepAddBtn">Add set</button>
+          <button class="btn sm primary" id="sweepNowBtn">Sweep now</button>
+        </div>
+        <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Set</th><th>Last pass</th><th class="num" title="new listings read → matched to a card → hits">New → matched → hits</th><th></th></tr></thead><tbody id="sweepBody"></tbody></table></div>
+      </details>
+    </div>
+
+    <!-- ============ the buyer's stale reference ============ -->
+    <div class="card" style="grid-column:1/-1">
+      <details class="watch" id="refDetails">
+        <summary><h3 style="margin:0">Fallen since <span id="refDateLabel">…</span> <span class="h-note" id="refNote">—</span></h3></summary>
+        <p class="muted" style="margin:10px 0 8px;" id="refBlurb">The buyer prices off a TCGplayer figure from <span class="refDateTxt">that date</span> and has not moved it. Turn <b>reference basis</b> on in <a class="ext" href="/settings.html#arbitrage">settings</a> and hits are scored against what they pay off that old figure, which overpays for anything that has fallen since. The list below is every card with an old figure; <b>scan</b> asks eBay what it costs today.</p>
+        <div class="row" style="margin-bottom:8px;">
+          <button class="btn sm" id="fallenBtn">Refresh list</button>
+          <button class="btn sm" id="snapBtn" title="record today’s market for every set the finder touches, so the next stale snapshot is answerable">Snapshot today</button>
+          <span class="dim" id="histNote" style="font-size:11.5px" title="the finder records every set’s market once a day, so the next time the buyer’s list goes stale the old figures are already here"></span>
+        </div>
+        <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Card</th><th class="num">Then → now</th><th class="num">Store pays</th><th class="num">Market A$</th><th class="num">Gap</th><th></th></tr></thead><tbody id="fallenBody"></tbody></table></div>
+        <div style="margin-top:12px;">
+          <label>Type the old figure for a card (read it off TCGplayer’s price chart)</label>
+          <div class="row">
+            <input id="refLine" placeholder="card number in the set chosen in box 1" style="width:200px" spellcheck="false">
+            <select id="refPrinting" style="width:auto;padding:5px 8px;font-size:12px"><option value="holofoil">Holo</option><option value="reverseHolofoil">Reverse Holo</option><option value="normal">Normal</option></select>
+            <input id="refUsd" placeholder="US$ market then" style="width:130px" inputmode="decimal">
+            <input id="refDate" placeholder="YYYY-MM-DD" style="width:120px" spellcheck="false">
+            <button class="btn sm" id="refAddBtn">Add</button>
+            <span class="status load" id="refStatus"></span>
+          </div>
+        </div>
+      </details>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -239,11 +271,16 @@ const PRINTING_LABEL = { normal: 'Normal', reverseHolofoil: 'Reverse Holo', holo
 const plabel = (k) => PRINTING_LABEL[k] || k || '—';
 const ago = (iso) => { if (!iso) return '—'; const d = (Date.now() - Date.parse(iso)) / 3600e3; if (!isFinite(d)) return '—'; if (d < 1) return Math.max(1, Math.round(d * 60)) + 'm'; if (d < 48) return Math.round(d) + 'h'; return Math.round(d / 24) + 'd'; };
 
-let CFG = null, SETS = [], RESOLVED = [], JOB_ID = null, LAST_VISIT = null, REF = null;
+let CFG = null, SETS = [], RESOLVED = [], RESOLVED_SETS = [], JOB_ID = null, LAST_VISIT = null, REF = null;
 // card_id|printing_key of every ACTIVE watch row, kept client-side so the resolved table can say
 // "watching" for whichever printing the dropdown currently shows, not the one the server resolved.
 const WATCHED = new Set();
 try { LAST_VISIT = localStorage.getItem('arb.lastVisit'); } catch {}
+// The intro stays open until it has been closed once; a box that runs on its own opens on first
+// paint only when it has something in it.
+try { if (localStorage.getItem('arb.howto') === 'closed') $('howto').open = false; } catch {}
+$('howto').addEventListener('toggle', () => { try { localStorage.setItem('arb.howto', $('howto').open ? 'open' : 'closed'); } catch {} });
+const FIRST_PAINT = { sweep: true, ref: true };
 
 // ---------------------------------------------------------------------------
 // The strip
@@ -253,8 +290,10 @@ async function loadConfig() {
   if (!json || json.error) { stat($('resolveStatus'), 'err', 'config unreadable'); return; }
   CFG = json;
   paintBudget(json.budget);
+  if (json.fx) paintFx(json.fx); else $('sFx').innerHTML = '— <small>rate unavailable, nothing can be scanned</small>';
   const rf = json.config.reference || {};
-  $('sBuyer').innerHTML = Math.round(json.config.buyer_pct * 100) + '% <small>of ' + (rf.enabled ? 'market as of ' + esc(rf.date) + ' × ' + rf.store_factor : 'TCG market · live rate') + (json.config.buyer_fee_mode === 'none' ? ' · no fee' : ' · + fee') + '</small>';
+  $('sBuyer').innerHTML = Math.round(json.config.buyer_pct * 100) + '% <small>of ' + (rf.enabled ? 'their ' + esc(rf.date) + ' figure × ' + rf.store_factor : 'TCGplayer market, today’s rate') + '</small>';
+  $('sBuyer').title = 'a hit must land at least A$' + json.config.min_profit_aud + ' and ' + json.config.min_margin_pct + '% under this' + (json.config.buyer_fee_mode === 'none' ? '' : ' (eBay’s buyer-protection fee counted in the landed cost)');
   REF = rf.enabled ? rf : null;
   paintWatchJob(json.watch_job);
   const quiet = [];
@@ -269,7 +308,7 @@ function paintFx(fx) { if (!fx) return; _fx = +fx.rate; $('sFx').innerHTML = (+f
 function paintWatchJob(w) {
   if (!w) return;
   const on = w.enabled;
-  $('sWatch').innerHTML = (on ? 'every ' + w.interval_hours + 'h' : 'off') + ' <small>' + (w.last_run ? 'last ' + ago(w.last_run) + ' ago' : 'never run') + '</small>';
+  $('sWatch').innerHTML = (on ? 'every ' + w.interval_hours + 'h' : 'off') + ' <small>' + (w.last_run ? 'last ' + ago(w.last_run) + ' ago' : (on ? 'not yet run' : 'turn on in settings')) + '</small>';
 }
 
 // ---------------------------------------------------------------------------
@@ -299,10 +338,14 @@ async function resolve() {
     const { json } = await post('/resolve', { setId: $('setSel').value, lines });
     if (!json || json.error) throw new Error((json && (json.detail || json.error)) || 'resolve failed');
     RESOLVED = json.cards.map((c, i) => ({ ...c, _i: i, _on: c.market_usd != null || !!(c.reference && !c.reference.missing) }));
+    RESOLVED_SETS = json.sets || [];
     paintFx(json.fx);
     paintResolved(json.unknown || []);
-    const n = RESOLVED.filter((c) => c._on).length;
-    stat($('resolveStatus'), n ? 'ok' : 'warn', n + ' card' + (n === 1 ? '' : 's') + ' ready' + (json.unknown && json.unknown.length ? ' · ' + json.unknown.length + ' line' + (json.unknown.length === 1 ? '' : 's') + ' not understood' : ''));
+    const n = RESOLVED.filter((c) => c._on).length, un = (json.unknown || []).length;
+    const bits = [];
+    if (RESOLVED.length) bits.push(n === RESOLVED.length ? n + ' card' + (n === 1 ? '' : 's') + ' ready to scan' : n + ' of ' + RESOLVED.length + ' can be scanned · ' + (RESOLVED.length - n) + ' ' + (RESOLVED.length - n === 1 ? 'has' : 'have') + ' no TCGplayer price');
+    if (un) bits.push(un + ' line' + (un === 1 ? '' : 's') + ' not understood');
+    stat($('resolveStatus'), n ? 'ok' : 'warn', bits.join(' · ') || 'nothing found');
   } catch (e) { stat($('resolveStatus'), 'err', esc(e.message)); }
   finally { $('resolveBtn').disabled = false; }
 }
@@ -315,6 +358,8 @@ function paintResolved(unknown) {
     const set = setById.get(c.set_id) || { name: c.set_name, printedTotal: c.printed_total };
     const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set, { rarity: c.rarity }) : c.number;
     const noMarket = c.market_usd == null && !(c.reference && !c.reference.missing);
+    const setPricing = RESOLVED_SETS.find((x) => x.set_id === c.set_id);
+    const why = !noMarket ? '' : setPricing && setPricing.priced === 0 ? 'pokemontcg.io has no TCGplayer prices for this set yet' : 'no market figure for this printing today';
     const printSel = c.printings.length > 1
       ? `<select data-i="${c._i}" class="printSel" style="width:auto;padding:3px 6px;font-size:12px">${c.printings.map((p) => `<option value="${esc(p.key)}" ${p.key === c.chosen_key ? 'selected' : ''}>${esc(plabel(p.key))}${p.which === 'market' ? '' : ' (no market)'}</option>`).join('')}</select>`
       : `<span class="pill">${esc(plabel(c.chosen_key))}</span>`;
@@ -322,9 +367,9 @@ function paintResolved(unknown) {
     const ageCls = c.market_age_days != null && CFG && c.market_age_days > CFG.config.max_market_age_days ? 'pill warn' : 'pill';
     return `<tr class="${noMarket ? 'dimrow' : ''}">
       <td class="mono dim">${esc(c.line)}</td>
-      <td><b>${esc(c.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(c.set_name)} · ${esc(c.rarity || '')}</span></td>
+      <td><b>${esc(c.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(c.set_name)} · ${esc(c.rarity || '')}</span>${why ? '<span class="why">' + esc(why) + '</span>' : ''}</td>
       <td>${printSel}</td>
-      <td class="num">${noMarket ? '<span class="pill bad" title="this printing has no TCGplayer market figure today">no market</span>' : usd(c.market_usd)}${c.reference && !c.reference.missing ? `<br><span class="dim" style="font-size:10.5px" title="${esc(c.reference.source)} figure for ${esc(c.reference.day)}">${esc(c.reference.day.slice(5))}: ${usd(c.reference.market_usd)}${c.reference.drop_pct != null ? ' <span class="' + (c.reference.drop_pct > 0 ? 'profit' : 'loss') + '">' + (c.reference.drop_pct > 0 ? '−' : '+') + Math.abs(c.reference.drop_pct) + '%</span>' : ''}</span>` : ''}</td>
+      <td class="num">${noMarket ? '<span class="pill bad" title="' + esc(why) + '">no TCGplayer price</span>' : usd(c.market_usd)}${c.reference && !c.reference.missing ? `<br><span class="dim" style="font-size:10.5px" title="${esc(c.reference.source)} figure for ${esc(c.reference.day)}">${esc(c.reference.day.slice(5))}: ${usd(c.reference.market_usd)}${c.reference.drop_pct != null ? ' <span class="' + (c.reference.drop_pct > 0 ? 'profit' : 'loss') + '">' + (c.reference.drop_pct > 0 ? '−' : '+') + Math.abs(c.reference.drop_pct) + '%</span>' : ''}</span>` : ''}</td>
       <td class="num"><b>${c.reference && !c.reference.missing ? aud(Math.round(c.reference.buyer_aud * 100)) : (noMarket ? '—' : aud(Math.round(c.buyer_aud * 100)))}</b>${c.reference ? '<br><span class="dim" style="font-size:10.5px">' + (c.reference.missing ? '<span class="chip warn" title="no figure for the reference date — scored on today’s market">no ref</span>' : 'off ' + esc(c.reference.day.slice(5)) + ' × ' + REF.store_factor) + '</span>' : ''}</td>
       <td><span class="${ageCls}" title="age of the TCGplayer market figure">${age}</span></td>
       <td>${WATCHED.has(c.card_id + '|' + c.chosen_key) ? '<span class="pill good">watching</span>' : `<button class="btn sm watchBtn" data-i="${c._i}" ${noMarket ? 'disabled' : ''}>watch</button>`}</td>
@@ -332,11 +377,18 @@ function paintResolved(unknown) {
     </tr>`;
   });
   for (const u of unknown) rows.push(`<tr class="dimrow"><td class="mono dim">${esc(u.line)}</td><td colspan="7" class="dim">${esc(u.why)}</td></tr>`);
-  $('resolvedBody').innerHTML = rows.join('') || '<tr><td colspan="8" class="dim">nothing resolved yet</td></tr>';
+  $('resolvedBody').innerHTML = rows.join('') || '<tr><td colspan="8" class="dim">nothing resolved yet — pick a set and type card numbers in box 1</td></tr>';
   const ready = RESOLVED.filter((c) => c._on);
-  $('resolvedNote').textContent = ready.length ? ready.length + ' to scan · ' + ready.length + ' eBay call' + (ready.length === 1 ? '' : 's') : 'nothing yet';
+  $('resolvedNote').textContent = ready.length ? ready.length + ' to scan · ' + ready.length + ' eBay call' + (ready.length === 1 ? '' : 's') : RESOLVED.length ? 'nothing can be scanned' : 'nothing yet';
   $('scanBtn').disabled = !ready.length || !!JOB_ID;
   $('watchAllBtn').disabled = !ready.length;
+  // A set TCGplayer has not priced yet makes every row above go blank; say so once, with what to do.
+  const dead = RESOLVED_SETS.filter((x) => x.priced === 0 && RESOLVED.some((c) => c.set_id === x.set_id && c.market_usd == null));
+  const refDate = (CFG && CFG.config.reference && CFG.config.reference.date) || 'reference';
+  $('setNote').hidden = !dead.length;
+  const orRef = REF ? `type the buyer’s ${esc(refDate)} figure for the card under <i>Fallen since</i> below and it is scored off that instead` : `type the buyer’s ${esc(refDate)} figure for the card under <i>Fallen since</i> below and turn the reference basis on in <a class="ext" href="/settings.html#arbitrage">settings</a>`;
+  $('setNote').innerHTML = dead.map((x) => `<b>${esc(x.set_name)} has no TCGplayer prices yet</b> — pokemontcg.io prices ${x.priced} of its ${x.total} cards, and a card with no market figure cannot be scored against the buyer. Pick an older set, or ${orRef}.`).join('<br>');
+  if (!JOB_ID) stat($('scanStatus'), ready.length ? 'load' : 'warn', ready.length ? '' : RESOLVED.length ? 'nothing to scan — no card above has a price to score against' : '');
   document.querySelectorAll('.printSel').forEach((el) => el.addEventListener('change', () => {
     const c = RESOLVED[+el.dataset.i]; const p = c.printings.find((x) => x.key === el.value);
     c.chosen_key = el.value; c.market_usd = p && p.which === 'market' ? p.marketUsd : null; c._on = c.market_usd != null;
@@ -377,7 +429,7 @@ async function consumeNdjson(resp, onObj) {
   }
 }
 function logLine(cls, html) { const el = $('log'); el.hidden = false; const d = document.createElement('div'); d.className = cls; d.innerHTML = html; el.appendChild(d); el.scrollTop = el.scrollHeight; }
-const DROP_LABEL = { auction: 'auction', not_au: 'overseas', currency: 'not AUD', own_listing: 'ours', ship_unknown: 'no postage quote', graded: 'graded', junk: 'lot/sealed/junk', variant: 'stamped/promo variant', number: 'wrong number', lang: 'not English', finish: 'wrong printing', seller_fb: 'seller below floor', no_market: 'printing unpriced', cond_lp: 'LP', cond_mp: 'MP', cond_hp: 'HP', cond_dmg: 'damaged', below_floor: 'under the floors', no_number: 'no number in title', other_set: 'another set', unknown_number: 'number not in set', name_mismatch: 'name mismatch' };
+const DROP_LABEL = { auction: 'auction', not_au: 'overseas', currency: 'not AUD', own_listing: 'ours', ship_unknown: 'no postage quote', graded: 'graded', junk: 'lot/sealed/junk', variant: 'stamped/promo variant', number: 'wrong number', lang: 'not English', finish: 'wrong printing', seller_fb: 'seller below floor', no_market: 'no TCGplayer price', cond_lp: 'LP', cond_mp: 'MP', cond_hp: 'HP', cond_dmg: 'damaged', below_floor: 'under the floors', no_number: 'no number in title', other_set: 'another set', unknown_number: 'number not in set', name_mismatch: 'name mismatch' };
 function onScanEvent(o) {
   if (o.job) { JOB_ID = o.job.id; return; }
   if (o.start) { paintFx(o.start.fx); paintBudget(o.start.budget); const unit = o.start.mode === 'sweep' ? 'set' : 'card'; logLine('c', `${o.start.mode === 'sweep' ? 'sweeping' : 'scanning'} <b>${o.start.total}</b> ${unit}${o.start.total === 1 ? '' : 's'}${o.start.fx ? ' · USD→AUD ' + (+o.start.fx.rate).toFixed(4) : ''}`); return; }
@@ -385,7 +437,7 @@ function onScanEvent(o) {
     const c = o.card;
     if (c.error) { logLine('err', `<b>${esc(c.name || c.card_id)}</b> ${esc(plabel(c.printing_key))} — ${esc(c.error)}${c.detail ? ' · ' + esc(c.detail) : ''}`); return; }
     const drops = Object.entries(c.dropped || {}).map(([k, n]) => n + ' ' + (DROP_LABEL[k] || k)).join(', ');
-    const best = c.best ? ` · closest: ${aud(c.best.delivered_cents)} landed vs ${aud(c.best.buyer_aud_cents)} ${c.best.basis === 'reference' ? 'store' : 'buyer'} (${c.best.profit_cents >= 0 ? '+' : ''}${aud(c.best.profit_cents)})${c.best.ambiguous ? ' printing?' : ''}` : '';
+    const best = c.best ? ` · closest: ${aud(c.best.delivered_cents)} landed vs ${aud(c.best.buyer_aud_cents)} ${c.best.basis === 'reference' ? 'store' : 'buyer'} (${c.best.profit_cents >= 0 ? '+' : '−'}${aud(Math.abs(c.best.profit_cents))}${c.best.margin_pct != null ? ', ' + (c.best.margin_pct < 0 ? '−' : '+') + Math.abs(Math.round(c.best.margin_pct)) + '%' : ''})${c.best.ambiguous ? ' printing?' : ''}` : '';
     const refTxt = c.reference ? (c.reference.missing ? ' · <span class="chip warn">no ref</span>' : ' · ref ' + usd(c.reference.market_usd) + ' <span class="dim">' + esc(c.reference.day.slice(5)) + '</span>') : '';
     logLine(c.hits ? 'hit' : 'miss', `<b>${esc(c.name)}</b> ${esc(plabel(c.printing_key))} · ${c.market_usd != null ? usd(c.market_usd) : '<span class="dim">no live market</span>'}${refTxt} · ${c.rows} rows → ${c.kept} kept → <b>${c.hits} hit${c.hits === 1 ? '' : 's'}</b>${c.hits_new ? ' (' + c.hits_new + ' new)' : ''}${c.gone ? ' · ' + c.gone + ' gone' : ''}${drops ? ' <span class="dim">(' + esc(drops) + ')</span>' : ''}<span class="dim">${esc(best)}</span>`);
     return;
@@ -393,9 +445,12 @@ function onScanEvent(o) {
   if (o.set) {
     const x = o.set;
     if (x.error) { logLine('err', `<b>${esc(x.set_name || x.set_id)}</b> — ${esc(x.error)}`); return; }
-    const drops = Object.entries(x.dropped || {}).map(([k, n]) => n + ' ' + (DROP_LABEL[k] || k)).join(', ');
-    const best = x.best ? ` · closest: ${esc(x.best.name)} ${esc(plabel(x.best.printing_key))} ${aud(x.best.delivered_cents)} landed vs ${aud(x.best.buyer_aud_cents)} buyer (${x.best.profit_cents >= 0 ? '+' : ''}${aud(x.best.profit_cents)})${x.best.ambiguous ? ' printing?' : ''}` : '';
-    logLine(x.hits ? 'hit' : 'miss', `<b>${esc(x.set_name)}</b> · ${x.calls} call${x.calls === 1 ? '' : 's'} · ${x.rows} rows → ${x.new_rows} new → ${x.matched} matched → ${x.kept} kept → <b>${x.hits} hit${x.hits === 1 ? '' : 's'}</b>${x.hits_new ? ' (' + x.hits_new + ' new)' : ''}${x.first_run ? ' · first pass' : x.reached_watermark ? ' · caught up' : ' · more than ' + x.calls + ' page' + (x.calls === 1 ? '' : 's') + ' of new listings'}${x.shared_number_query_with && x.shared_number_query_with.length ? ' · number query shared with ' + esc(x.shared_number_query_with.join(', ')) : ''}${drops ? ' <span class="dim">(' + esc(drops) + ')</span>' : ''}<span class="dim">${best}</span>`);
+    const unpriced = x.priced_cards === 0 && x.matched > 0;
+    const drops = unpriced
+      ? (x.kept ? `${x.matched - x.kept} of the ${x.matched} matched listings dropped: this set has no TCGplayer prices yet, so only the ${x.kept} with a typed figure could be scored` : `every one of the ${x.matched} matched listings dropped: this set has no TCGplayer prices yet, so nothing in it can be scored`)
+      : Object.entries(x.dropped || {}).map(([k, n]) => n + ' ' + (DROP_LABEL[k] || k)).join(', ');
+    const best = x.best ? ` · closest: ${esc(x.best.name)} ${esc(plabel(x.best.printing_key))} ${aud(x.best.delivered_cents)} landed vs ${aud(x.best.buyer_aud_cents)} ${x.best.basis === 'reference' ? 'store' : 'buyer'} (${x.best.profit_cents >= 0 ? '+' : '−'}${aud(Math.abs(x.best.profit_cents))}${x.best.margin_pct != null ? ', ' + (x.best.margin_pct < 0 ? '−' : '+') + Math.abs(Math.round(x.best.margin_pct)) + '%' : ''})${x.best.ambiguous ? ' printing?' : ''}` : '';
+    logLine(x.hits ? 'hit' : 'miss', `<b>${esc(x.set_name)}</b> · ${x.calls} call${x.calls === 1 ? '' : 's'} · ${x.rows} rows → ${x.new_rows} new → ${x.matched} matched → ${x.kept} kept → <b>${x.hits} hit${x.hits === 1 ? '' : 's'}</b>${x.hits_new ? ' (' + x.hits_new + ' new)' : ''}${x.first_run ? ' · first pass' : x.reached_watermark ? ' · caught up' : ' · more than ' + x.calls + ' page' + (x.calls === 1 ? '' : 's') + ' of new listings'}${x.shared_number_query_with && x.shared_number_query_with.length ? ' · number query shared with ' + esc(x.shared_number_query_with.join(', ')) : ''}${drops ? (unpriced ? ' <span class="err">' + esc(drops) + '</span>' : ' <span class="dim">(' + esc(drops) + ')</span>') : ''}<span class="dim">${best}</span>`);
     return;
   }
   if (o.hit) return;   // the table reloads at the end
@@ -480,7 +535,7 @@ async function loadHits() {
       <td>${warn}</td>
       <td style="white-space:nowrap">${acts.join(' ')}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="12" class="dim">no ${esc(status.replace(',', ' or '))} hits</td></tr>`;
+  }).join('') || `<tr><td colspan="12" class="dim">${status === 'new,seen' ? 'no open hits — a scan writes a row here for every listing that lands at least A$' + (CFG ? CFG.config.min_profit_aud : 5) + ' and ' + (CFG ? CFG.config.min_margin_pct : 15) + '% under what the buyer pays' : 'no ' + esc(status.replace(',', ' or ')) + ' hits'}</td></tr>`;
   stat($('hitsStatus'), 'load', json.hits.length + ' shown');
   document.querySelectorAll('.act').forEach((el) => el.addEventListener('click', async () => {
     el.disabled = true;
@@ -515,7 +570,8 @@ async function loadWatch() {
   const rows = json.watch || [];
   WATCHED.clear(); for (const w of rows) if (w.active) WATCHED.add(w.card_id + '|' + w.printing_key);
   const active = rows.filter((w) => w.active).length;
-  $('watchNote').textContent = active ? active + ' card' + (active === 1 ? '' : 's') : 'empty';
+  const timer = json.job && json.job.enabled ? 'every ' + json.job.interval_hours + 'h' : 'timer off';
+  $('watchNote').textContent = (active ? active + ' card' + (active === 1 ? '' : 's') : 'empty') + ' · ' + timer;
   $('watchBody').innerHTML = rows.map((w) => `<tr class="${w.active ? '' : 'dimrow'}">
     <td><b>${esc(w.name)}</b> <span class="mono dim">${esc(w.number)}</span><br><span class="dim" style="font-size:11px">${esc(w.set_name || w.set_id)}</span></td>
     <td><span class="pill">${esc(plabel(w.printing_key))}</span></td>
@@ -523,7 +579,7 @@ async function loadWatch() {
     <td class="dim">${w.last_scanned_at ? ago(w.last_scanned_at) + ' ago' + (w.last_rows != null ? ' · ' + w.last_rows + '→' + w.last_kept + '→' + w.last_hits : '') : 'never'}</td>
     <td class="num">${w.open_hits || 0}</td>
     <td style="white-space:nowrap"><button class="btn sm wtoggle" data-id="${w.id}" data-active="${w.active ? 0 : 1}">${w.active ? 'pause' : 'resume'}</button> <button class="btn sm wdel" data-id="${w.id}" title="remove">×</button></td>
-  </tr>`).join('') || '<tr><td colspan="6" class="dim">nothing watched — resolve cards and press watch</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="6" class="dim">nothing watched — resolve cards in box 1 and press watch on a row</td></tr>';
   document.querySelectorAll('.wtoggle').forEach((el) => el.addEventListener('click', async () => { await patch('/watch/' + el.dataset.id, { active: el.dataset.active === '1' }); await loadWatch(); if (RESOLVED.length) paintResolved([]); }));
   document.querySelectorAll('.wdel').forEach((el) => el.addEventListener('click', async () => { await api('/watch/' + el.dataset.id, { method: 'DELETE' }); await loadWatch(); if (RESOLVED.length) paintResolved([]); }));
 }
@@ -536,14 +592,15 @@ async function loadSweep() {
   if (!json || json.error) return;
   const rows = json.sets || [];
   const on = rows.filter((r) => r.enabled).length;
-  $('sweepNote').textContent = (on ? on + ' set' + (on === 1 ? '' : 's') : 'no sets') + (json.config && json.config.enabled ? ' · armed' : ' · not armed');
+  const timer = json.config && json.config.enabled ? (CFG && CFG.watch_job && CFG.watch_job.enabled ? 'with the watch timer' : 'on, but the watch timer is off') : 'by hand only';
+  $('sweepNote').textContent = (on ? on + ' set' + (on === 1 ? '' : 's') : 'no sets') + ' · ' + timer;
+  if (FIRST_PAINT.sweep) { FIRST_PAINT.sweep = false; if (rows.length) $('sweepDetails').open = true; }
   $('sweepBody').innerHTML = rows.map((r) => `<tr class="${r.enabled ? '' : 'dimrow'}">
-    <td><b>${esc(r.set_name)}</b> <span class="mono dim">${esc(r.set_id)}${r.printed_total ? ' · /' + r.printed_total : ''}</span></td>
-    <td class="dim" title="${esc(r.watermark || '')}">${r.last_run_at ? ago(r.last_run_at) + ' ago' + (r.last_total ? ' · ' + r.last_total.toLocaleString() + ' listed' : '') : 'never'}${r.watermark ? '<br><span style="font-size:10.5px">read up to ' + ago(r.watermark) + ' ago</span>' : ''}</td>
-    <td class="num">${r.last_calls != null ? r.last_calls : '—'}</td>
+    <td style="white-space:nowrap"><b>${esc(r.set_name)}</b> <span class="mono dim">${esc(r.set_id)}</span>${r.last_priced_cards === 0 ? '<br><span class="pill bad" title="pokemontcg.io prices none of its ' + (r.last_total_cards || '') + ' cards, so a match cannot be scored">no TCGplayer prices yet</span>' : r.last_priced_cards != null && r.last_total_cards && r.last_priced_cards < r.last_total_cards * 0.9 ? '<br><span class="pill warn">' + r.last_priced_cards + ' of ' + r.last_total_cards + ' priced</span>' : ''}</td>
+    <td class="dim" style="white-space:nowrap" title="${esc(r.watermark || '')}">${r.last_run_at ? ago(r.last_run_at) + ' ago' + (r.last_calls != null ? ' · ' + r.last_calls + ' call' + (r.last_calls === 1 ? '' : 's') : '') : 'never'}${r.watermark ? '<br><span style="font-size:10.5px">read up to ' + ago(r.watermark) + ' ago</span>' : ''}</td>
     <td class="num">${r.last_new_rows != null ? r.last_new_rows + ' → ' + r.last_matched + ' → ' + r.last_hits : '—'}</td>
     <td style="white-space:nowrap"><button class="btn sm stoggle" data-id="${esc(r.set_id)}" data-enabled="${r.enabled ? 0 : 1}">${r.enabled ? 'pause' : 'resume'}</button> <button class="btn sm sreset" data-id="${esc(r.set_id)}" title="forget the watermark, so the next pass reads a full page again">reset</button> <button class="btn sm sdel" data-id="${esc(r.set_id)}" title="remove">×</button></td>
-  </tr>`).join('') || '<tr><td colspan="5" class="dim">no sets — pick one above and press Add set</td></tr>';
+  </tr>`).join('') || '<tr><td colspan="4" class="dim">no sets — pick one above and press Add set</td></tr>';
   document.querySelectorAll('.stoggle').forEach((el) => el.addEventListener('click', async () => { await patch('/sweep/' + el.dataset.id, { enabled: el.dataset.enabled === '1' }); loadSweep(); }));
   document.querySelectorAll('.sreset').forEach((el) => el.addEventListener('click', async () => { await patch('/sweep/' + el.dataset.id, { reset: true }); toast('watermark cleared'); loadSweep(); }));
   document.querySelectorAll('.sdel').forEach((el) => el.addEventListener('click', async () => { await api('/sweep/' + el.dataset.id, { method: 'DELETE' }); loadSweep(); }));
@@ -566,9 +623,12 @@ async function loadFallen() {
   const { json } = await api('/fallen');
   if (!json || json.error) { $('fallenBody').innerHTML = '<tr><td colspan="6" class="dim">could not read the list</td></tr>'; return; }
   $('refDateLabel').textContent = json.date;
+  document.querySelectorAll('.refDateTxt').forEach((el) => { el.textContent = json.date; });
   const on = !!REF;
-  $('refNote').textContent = (on ? 'basis ON · ' : 'basis off · ') + json.candidates.length + ' candidate' + (json.candidates.length === 1 ? '' : 's') + ' of ' + json.considered + ' with a reference';
+  const n = json.candidates.length;
+  $('refNote').textContent = (on ? 'on' : 'off in settings') + ' · ' + (json.considered ? n + ' fallen of ' + json.considered + ' with an old figure' : 'no old figures typed yet');
   $('refDate').placeholder = json.date;
+  if (FIRST_PAINT.ref) { FIRST_PAINT.ref = false; if (on || json.considered) $('refDetails').open = true; }
   const setById = new Map(SETS.map((s) => [s.id, s]));
   $('fallenBody').innerHTML = json.candidates.map((c) => {
     const set = setById.get(c.set_id) || {};
@@ -582,13 +642,13 @@ async function loadFallen() {
       <td class="num ${c.gap_aud != null ? (c.gap_aud >= 0 ? 'profit' : 'loss') : ''}">${c.gap_aud != null ? aud(Math.round(c.gap_aud * 100)) : '—'}</td>
       <td style="white-space:nowrap"><button class="btn sm fscan" data-card="${esc(c.card_id)}" data-printing="${esc(c.printing_key)}" data-name="${esc(c.name)}">scan</button></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="6" class="dim">nothing has a figure for the reference date yet — type one below, or wait for the daily snapshots to build history</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="dim">' + (json.considered ? 'nothing has fallen ' + esc(String(json.min_drop_pct != null ? json.min_drop_pct : '')) + '% or more since ' + esc(json.date) : 'no card has an old figure yet — type one below, read off TCGplayer’s price chart for ' + esc(json.date)) + '</td></tr>';
   document.querySelectorAll('.fscan').forEach((el) => el.addEventListener('click', () => {
     if (JOB_ID) { toast('a scan is already running'); return; }
     runScan({ cards: [{ card_id: el.dataset.card, printing_key: el.dataset.printing }] });
   }));
   const h = (json && CFG && CFG.watch_job && CFG.watch_job.reference && CFG.watch_job.reference.history) || null;
-  if (h) $('histNote').textContent = h.rows ? h.series + ' series · history from ' + h.first_day + ' · ' + h.manual + ' typed-in' : 'no history yet';
+  if (h) $('histNote').textContent = h.rows ? 'daily history: ' + h.series.toLocaleString() + ' prices recorded since ' + h.first_day + (h.manual ? ' · ' + h.manual + ' typed in' : '') : 'no daily history recorded yet';
 }
 $('fallenBtn').addEventListener('click', loadFallen);
 $('snapBtn').addEventListener('click', async () => {
