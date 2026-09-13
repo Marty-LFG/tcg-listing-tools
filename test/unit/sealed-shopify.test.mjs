@@ -78,9 +78,11 @@ describe('a sealed pool maps to one product at quantity N', () => {
 });
 
 describe('the sealed description is the Shopify frame, not the eBay one', () => {
-  it('is three plain paragraphs with no facts table', () => {
+  it('is two plain paragraphs with no facts table', () => {
+    // Identity, then the picture line. The parcel sentence and the tagline left on 2026-09-13: the
+    // theme's trust rows say both on the same page.
     const html = buildSealedShopifyDescription(pool());
-    assert.equal((html.match(/<p>/g) || []).length, 3);
+    assert.equal((html.match(/<p>/g) || []).length, 2);
     assert.ok(!/<table/i.test(html), 'the PDP renders its own facts panel; a table here duplicates and flattens badly');
   });
 

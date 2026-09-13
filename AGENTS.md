@@ -1161,6 +1161,28 @@ export rather than a change to `championTag`, which splits on `" - "` and is und
 The bake also now keeps the **artist** as `a` (100% coverage, 101 studios), which lights up the
 Illustrator aspect.
 
+**The champion, and the name a buyer reads (2026-09-13).** Riot names a Legend by its epithet alone
+("Keeper of the Hammer") with the champion only in the gallery's tags, so every Legend published to the
+storefront was titled and rail-bannered without the word "Poppy" anywhere. The bake now keeps the
+champion as `ch`: for a Legend it is the LAST tag (counted 127/127 against the champions the champion
+Units name; the multi-tag cases are `["Dog","Shurima","Nasus"]` and `["Yordle","Kennen"]`), for a
+champion Unit (super-type Champion) it is the name before the comma, and '' for everything else.
+`riftboundDisplayName(card)` (lib/riftbound-data.mjs) turns that into **"<Champion> (<Epithet>)"** for
+both — "Poppy (Keeper of the Hammer)", "Darius (Executioner)" — and leaves every other card's printed
+name alone. `buildRowIn` applies it to the name every title, alt text and description is built from,
+and `composeMetaFor` to the rail, in both cases ONLY while the row still carries the bake's own name
+(an owner's rename in a builder wins). The rule is the store owner's (bk-shopify D-035 session); the
+existing Riftbound products on live need a re-publish (`scripts/publish-shopify.mjs --game riftbound
+--include-listed`) to pick it up. `test/unit/riftbound-display-name.test.mjs` pins both halves.
+
+Same session, two Shopify-only changes worth knowing: `buildShopifyDescription` and
+`buildSealedShopifyDescription` are TWO sentences now (identity, then the picture line) — the parcel
+sentence and the "not a warehouse" tagline are the theme's trust rows on the same page and were being
+said twice; and `buildShopifyTitle` names the ALTERNATIVE printing in brackets after the set (Foil,
+Etched Foil, Surge Foil, Reverse Holo) because a foil and its non-foil had published under one title.
+`shopifyRarity` normalises the rarity the storefront prints (`MEGA_ATTACK_RARE` → "Mega Attack Rare",
+pokemontcg.io's "Rare Ultra" → "Ultra Rare", "None" → omitted); the eBay path keeps the raw value.
+
 ### Pokémon in five languages (`lib/pokemon-intl.mjs`)
 
 Both stock tools carry a **language** beside the game — `EN / JP / CN / TW / KO` — and it is a

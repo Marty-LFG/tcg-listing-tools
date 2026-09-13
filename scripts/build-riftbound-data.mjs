@@ -168,6 +168,23 @@ export function groupCards(rawCards, roster = [], prior = {}) {
     // card observed carries exactly one, and the FIRST is the credited artist.
     const artist = (c.illustrator && Array.isArray(c.illustrator.values) && c.illustrator.values[0]
       && c.illustrator.values[0].label) || ''
+    // THE CHAMPION. Riot names a Legend by its epithet alone ("Keeper of the Hammer") and keeps
+    // the champion in the gallery's tags ("Trifarian","Darius"; "Dog","Shurima","Nasus"): counted
+    // 2026-09-13, every one of the 127 Legends carries exactly one champion tag and it is the LAST
+    // one (cross-checked against the 96 champions the champion Units name). A champion Unit prints
+    // the champion in its own name ("Darius, Executioner") and is marked by the Champion super-type.
+    // Baked as `ch` so the storefront can name the card the way a player says it — "Poppy (Keeper
+    // of the Hammer)" (bk-shopify, Marty 2026-09-13; riftboundDisplayName in lib/riftbound-data.mjs).
+    // A card with no champion bakes '' rather than a guess (GR4).
+    const tags = (c.tags && Array.isArray(c.tags.tags)) ? c.tags.tags.map((t) => String(t || '').trim()).filter(Boolean) : []
+    const superTypes = (c.cardType && Array.isArray(c.cardType.superType))
+      ? c.cardType.superType.map((s) => (s && s.label) || '').filter(Boolean) : []
+    let champion = ''
+    if (type === 'Legend' && tags.length) champion = tags[tags.length - 1]
+    else if (type === 'Unit' && superTypes.includes('Champion')) {
+      const comma = String(c.name || '').indexOf(', ')
+      if (comma > 0) champion = String(c.name).slice(0, comma)
+    }
 
     const key = code.toLowerCase()
     const set = (sets[key] ||= { name: meta.get(code).name, code, total: meta.get(code).total, cards: [] })
@@ -180,6 +197,7 @@ export function groupCards(rawCards, roster = [], prior = {}) {
       m: m2 != null ? String(m2) : '',
       img,
       a: artist,                         // the illustrator, one short key beside `img`
+      ch: champion,                      // the champion a Legend or champion Unit belongs to, or ''
     })
     kept++
   }

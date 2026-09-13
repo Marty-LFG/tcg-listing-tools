@@ -8,7 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  toShopifyProduct, validateProduct, buildShopifyTitle, buildShopifyDescription,
+  toShopifyProduct, validateProduct, buildShopifyTitle, buildShopifyDescription, shopifyRarity,
   identityKeyFor, identityHandleFor, productHandleFor, buildTags, buildMetafields, slug,
   dispatchWeightGrams,
   PRODUCT_TYPES, TAXONOMY, DISPATCH_WEIGHT_GRAMS, SEALED_DISPATCH_WEIGHT_GRAMS, V1_GAMES,
@@ -74,6 +74,30 @@ describe('the identity is derived, not invented', () => {
   });
 });
 
+describe('rarity reads the way a shopper says it', () => {
+  it('spaces and cases a source enum, and puts the noun last', () => {
+    assert.equal(shopifyRarity('MEGA_ATTACK_RARE'), 'Mega Attack Rare');
+    assert.equal(shopifyRarity('Rare Ultra'), 'Ultra Rare');
+    assert.equal(shopifyRarity('Rare Secret'), 'Secret Rare');
+    assert.equal(shopifyRarity('Rare Holo'), 'Holo Rare');
+  });
+  it('leaves a value that already reads right alone, and drops a non-value', () => {
+    assert.equal(shopifyRarity('Ultra Rare'), 'Ultra Rare');
+    assert.equal(shopifyRarity('Special Illustration Rare'), 'Special Illustration Rare');
+    assert.equal(shopifyRarity('Rare Holo EX'), 'Rare Holo EX');
+    assert.equal(shopifyRarity('None'), '');
+    assert.equal(shopifyRarity(''), '');
+  });
+  it('reaches the metafield, the tags and the description', () => {
+    const p = toShopifyProduct(row({ rarity: 'MEGA_ATTACK_RARE' }));
+    assert.ok(p.tags.includes('Mega Attack Rare'), 'tag');
+    assert.ok(!p.tags.includes('MEGA_ATTACK_RARE'), 'raw tag leaked');
+    const mf = p.metafields.find((m) => m.namespace === 'bkc' && m.key === 'rarity');
+    assert.equal(mf && mf.value, 'Mega Attack Rare');
+    assert.match(p.descriptionHtml, /Mega Attack Rare/);
+  });
+});
+
 describe('titles carry the card data in the text', () => {
   it('raw single: name, number, set, language, condition', () => {
     assert.equal(toShopifyProduct(row()).title, 'Iono 186/159 White Flare [Japanese] — Near Mint');
@@ -88,6 +112,15 @@ describe('titles carry the card data in the text', () => {
   it('survives a row with almost nothing on it rather than emitting punctuation soup', () => {
     const t = buildShopifyTitle({ condition: 'Near Mint' }, { name: 'Iono', num: '', set: '', lang: '' });
     assert.equal(t, 'Iono — Near Mint');
+  });
+  it('names the alternative printing, so a foil and its non-foil never share a title', () => {
+    // Two live products shared "Inside Information 296 The Hobbit (HOB) [English] — Near Mint" on
+    // 2026-09-13; the foil is now said. A plain print and a holo rare stay clean.
+    const f = { name: 'Inside Information', num: '296', set: 'The Hobbit (HOB)', lang: 'English' };
+    assert.equal(buildShopifyTitle({ condition: 'Near Mint' }, { ...f, finish: 'Foil' }), 'Inside Information 296 The Hobbit (HOB) (Foil) [English] — Near Mint');
+    assert.equal(buildShopifyTitle({ condition: 'Near Mint' }, { ...f, finish: 'Nonfoil' }), 'Inside Information 296 The Hobbit (HOB) [English] — Near Mint');
+    assert.equal(buildShopifyTitle({ condition: 'Near Mint' }, { ...f, finish: 'Holo' }), 'Inside Information 296 The Hobbit (HOB) [English] — Near Mint');
+    assert.equal(buildShopifyTitle({ condition: 'Near Mint' }, { ...f, finish: 'Reverse Holofoil' }), 'Inside Information 296 The Hobbit (HOB) (Reverse Holo) [English] — Near Mint');
   });
 });
 
@@ -104,8 +137,11 @@ describe('no eBay postage copy reaches the storefront', () => {
     assert.doesNotMatch(html, /\$\s*\d/, 'a dollar figure in the product description');
     assert.doesNotMatch(html, /postage|shipping|tracked|satchel|letter/i, 'shipping copy belongs to the theme');
   });
-  it('carries the parcel sentence, from the shared constant', () => {
-    assert.match(html, /penny sleeve and toploader inside a rigid mailer/);
+  it('does not restate the parcel sentence or the tagline: the theme says both, on the same page', () => {
+    // The PDP's trust rows carry the sleeve/toploader/mailer line and the About page carries the
+    // tagline; a description that repeated them said each twice per product (2026-09-13).
+    assert.doesNotMatch(html, /penny sleeve and toploader inside a rigid mailer/);
+    assert.doesNotMatch(html, /not a warehouse/);
   });
   it('drops the eBay-marketplace idiom entirely (A7)', () => {
     // "Thanks for looking" belongs to a listing among many; "item specifics" names an eBay UI element
@@ -129,7 +165,7 @@ describe('no eBay postage copy reaches the storefront', () => {
     const h = buildShopifyDescription(slab, { name: 'Iono', num: '186/159', set: 'White Flare', lang: 'English' });
     assert.match(h, /^<p>PSA 9 /);
     assert.match(h, /cert 84512203/);
-    assert.match(h, /Ships securely inside a rigid mailer/);
+    assert.doesNotMatch(h, /Ships securely inside a rigid mailer/);
   });
   it('leads with the identity, and closes it inside the snippet budget', () => {
     // The audience is a Google snippet, a Shop card and a product feed — the PDP renders no
@@ -176,8 +212,8 @@ describe('no eBay postage copy reaches the storefront', () => {
       assert.match(h, /Pictured with stock artwork/, JSON.stringify(over));
       assert.doesNotMatch(h, /photograph the actual card/, JSON.stringify(over));
       assert.doesNotMatch(h, /What you see is what you get/, JSON.stringify(over));
-      // …and the provenance line stays unconditional, because it is true of everything we sell.
-      assert.match(h, /Run by collectors in Newcastle, not a warehouse\./);
+      // …and the tagline is the theme's now, not the description's.
+      assert.doesNotMatch(h, /Run by collectors in Newcastle, not a warehouse\./);
     }
   });
 
