@@ -74,6 +74,26 @@ describe('the identity is derived, not invented', () => {
   });
 });
 
+describe('the set is named once in the description', () => {
+  it('does not add the code to a set name that already carries it', () => {
+    // Riftbound's roster names its sets "Unleashed (UNL)"; every live Riftbound description said
+    // "Unleashed (UNL) (UNL)" until 2026-09-13.
+    const html = buildShopifyDescription(
+      { condition: 'Near Mint', game: 'riftbound' },
+      { name: 'Poppy (Keeper of the Hammer)', num: '203/219', set: 'Unleashed (UNL)', setSymbol: 'UNL', lang: 'English', rarity: 'Rare', finish: 'Non-foil' },
+    );
+    assert.match(html, /Unleashed \(UNL\)/);
+    assert.doesNotMatch(html, /\(UNL\) \(UNL\)/);
+  });
+  it('still adds the code to a set name that lacks it', () => {
+    const html = buildShopifyDescription(
+      { condition: 'Near Mint' },
+      { name: 'Iono', num: '186/159', set: 'White Flare', setSymbol: 'WHF', lang: 'Japanese', rarity: 'SAR', finish: 'Holo' },
+    );
+    assert.match(html, /White Flare \(WHF\)/);
+  });
+});
+
 describe('rarity reads the way a shopper says it', () => {
   it('spaces and cases a source enum, and puts the noun last', () => {
     assert.equal(shopifyRarity('MEGA_ATTACK_RARE'), 'Mega Attack Rare');
