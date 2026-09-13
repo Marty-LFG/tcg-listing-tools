@@ -32,3 +32,15 @@ describe('renderArbHit', () => {
     assert.doesNotMatch(renderArbHit({ ...HIT, fee_cents: 0 }).text, /fee/);
   });
 });
+
+describe('renderArbHit on the reference basis', () => {
+  it('says whose figure paid, from when, at what factor — and what the market is today', () => {
+    const { text } = renderArbHit({ ...HIT, buyer_basis: 'reference', ref_market_usd_cents: 28067, ref_date: '2026-07-24', ref_source: 'manual', store_factor: 1.5, buyer_aud_cents: 33680, market_usd_cents: 19956, fx_usd_aud: 1.3942 });
+    assert.match(text, /Buyer pays\s+<b>A\$336\.80<\/b>\s+<i>80% of US\$280\.67 \(their 2026-07-24 figure\) × 1\.5<\/i>/);
+    assert.match(text, /market today US\$199\.56 @ 1\.3942 = A\$278\.23/);
+  });
+  it('with no live market it does not invent one', () => {
+    const { text } = renderArbHit({ ...HIT, buyer_basis: 'reference', ref_market_usd_cents: 28067, ref_date: '2026-07-24', store_factor: 1.5, market_usd_cents: null });
+    assert.doesNotMatch(text, /market today/);
+  });
+});

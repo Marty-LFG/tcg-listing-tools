@@ -1272,6 +1272,13 @@
         {p:'watch.max_cards_per_pass',l:'Cards per pass',t:'number',min:1,max:5000,def:300,tip:'Cap on watched cards scanned in one pass, oldest-scanned first.'},
         {p:'watch.max_alerts_per_pass',l:'Alerts per pass',t:'number',min:0,max:100,def:10,tip:'Cap on Telegram cards sent after one pass; the rest go next time.'},
       ]},
+      {name:'The buyer’s stale reference',anchor:'arbitrage-reference',fields:[
+        {p:'reference.enabled',l:'Score against the reference date',t:'toggle',def:false,tip:'The buyer prices off a TCGplayer Market snapshot it took weeks ago and never refreshed (measured off its shelf 2026-09-13: late-July market × 1.5). On: a hit is what they pay off THAT figure — buyer % × market-as-of-date × the factor below — wherever a figure exists (typed in on the page, the finder’s daily snapshots, or the tracker). Cards with no figure fall back to today’s market and are chipped <b>no ref</b>.'},
+        {p:'reference.date',l:'Reference date',t:'text',def:'2026-07-24',tip:'The day the buyer’s snapshot was taken, YYYY-MM-DD. Late July 2026 was measured from three cards whose labels all sit on their own charts in the same fortnight.'},
+        {p:'reference.store_factor',l:'Their USD → AUD factor',t:'number',min:0.1,max:5,step:0.05,def:1.5,tip:'How the buyer converts a TCGplayer figure. 1.5 was measured off the shelf; the real rate never went above 1.45 all summer, so it is a rule of thumb or the rate plus a margin.'},
+        {p:'reference.max_gap_days',l:'Max gap (days)',t:'number',min:0,max:365,def:7,tip:'How far from the reference date a recorded figure may be and still stand for it.'},
+        {p:'reference.min_drop_pct',l:'Fallen-since list: min drop (%)',t:'number',min:0,max:100,def:15,tip:'A card appears on the page’s fallen-since list when today’s market is at least this far below the reference figure. Cards with no market today are always listed.'},
+      ]},
       {name:'Newly-listed sweep',anchor:'arbitrage-sweep',fields:[
         {p:'sweep.enabled',l:'Sweep the sets on the watch timer',t:'toggle',def:false,tip:'After the watch-list cards, page every enabled set in the sweep list (arbitrage.html) newest-first until the last watermark. Off by default. <b>Sweep now</b> on the page works either way.'},
         {p:'sweep.max_pages_per_set',l:'Pages per set per pass',t:'number',min:1,max:50,def:5,tip:'Cap on eBay pages (200 listings each, one call each) a pass reads for one set before giving up on reaching the watermark. A current set lists ~130 a day, so 1–2 pages is normal at 6-hourly.'},

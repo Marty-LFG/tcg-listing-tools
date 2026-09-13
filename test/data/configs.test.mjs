@@ -123,6 +123,8 @@ describe('arbitrage.config.example.json', () => {
     // shipped default that took it all would silence every other eBay-reading tool on a fresh deploy.
     assert.equal(c.watch.enabled, false);
     assert.equal(c.sweep.enabled, false);
+    assert.equal(c.reference.enabled, false, 'the stale-reference basis changes what a hit means; it is opt-in');
+    assert.equal(c.reference.store_factor, 1.5, 'measured off the shelf 2026-09-13');
     assert.ok(c.daily_call_budget <= 4000, 'leave at least ~1,000 calls for the rest of the app');
     assert.ok(c.call_gap_ms >= 200);
   });
@@ -141,6 +143,8 @@ describe('arbitrage.config.example.json', () => {
     assert.match(String(validateArbConfig({ ...stripped, daily_call_budget: 9000 })), /1–5000/);
     assert.match(String(validateArbConfig({ ...stripped, call_gap_ms: 10 })), /200/);
     assert.match(String(validateArbConfig({ ...stripped, buyer_pct: 1.5 })), /buyer_pct/);
+    assert.match(String(validateArbConfig({ ...stripped, reference: { ...stripped.reference, date: 'July' } })), /reference\.date/);
+    assert.match(String(validateArbConfig({ ...stripped, reference: { ...stripped.reference, store_factor: 0 } })), /store_factor/);
   });
 });
 

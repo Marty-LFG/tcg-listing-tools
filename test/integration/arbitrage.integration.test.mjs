@@ -207,6 +207,65 @@ describe('the sweep list', () => {
   });
 });
 
+describe('the buyer\'s stale reference — history, typed figures, the fallen list, the basis', () => {
+  it('a snapshot records every priced printing of the stub set once per day, change-only', async () => {
+    let r = await post('/api/arb/snapshot', { sets: ['zzarb'] });
+    assert.equal(r.status, 200); assert.equal(r.json.sets, 1);
+    assert.equal(r.json.written, 4, 'Oddish ×2 printings, Pikachu, Charizard ex — Raichu has no market');
+    r = await post('/api/arb/snapshot', { sets: ['zzarb'] });
+    assert.deepEqual(r.json.skipped, ['zzarb'], 'already recorded today');
+    r = await post('/api/arb/snapshot', { sets: ['zzarb'], force: true });
+    assert.equal(r.json.written, 0, 'forced, but nothing moved, so no rows');
+    assert.equal((await post('/api/arb/snapshot', { sets: ['zznope'] })).json.errors.length, 1);
+  });
+  it('a typed figure is stored, listed and deleted; bad input is refused', async () => {
+    assert.equal((await post('/api/arb/reference', { card_id: 'zzarb-25', printing_key: 'holofoil', market_usd: 'lots' })).status, 400);
+    assert.equal((await post('/api/arb/reference', { card_id: 'zzarb-25', printing_key: 'holofoil', market_usd: 20, date: 'July' })).status, 400);
+    const add = await post('/api/arb/reference', { card_id: 'zzarb-25', printing_key: 'holofoil', market_usd: 20, date: '2026-07-24', note: 'chart' });
+    assert.equal(add.status, 200); assert.equal(add.json.reference.market_usd_cents, 2000);
+    const again = await post('/api/arb/reference', { card_id: 'zzarb-25', printing_key: 'holofoil', market_usd: 21, date: '2026-07-24' });
+    assert.equal(again.json.reference.market_usd_cents, 2100, 'same card, printing and day upserts');
+    const list = await get('/api/arb/reference');
+    assert.equal(list.json.references.length, 1);
+    assert.equal(list.json.history.manual, 1);
+    assert.equal((await send('DELETE', '/api/arb/reference/' + add.json.reference.id, {})).status, 200);
+    assert.equal((await send('DELETE', '/api/arb/reference/' + add.json.reference.id, {})).status, 404);
+  });
+  it('with the basis ON, resolve and the fallen list price the card off the reference', async () => {
+    await post('/api/arb/reference', { card_id: 'zzarb-25', printing_key: 'holofoil', market_usd: 20, date: '2026-07-24' });   // now US$12: fell 40%
+    await post('/api/arb/reference', { card_id: 'zzarb-105', printing_key: 'holofoil', market_usd: 90, date: '2026-07-24' }); // now US$90: flat
+    await post('/api/arb/reference', { card_id: 'zzarb-26', printing_key: 'holofoil', market_usd: 30, date: '2026-07-24' });  // no live market at all
+    const cfg = (await get('/api/settings/arbitrage')).json.content;
+    cfg.reference = { ...(cfg.reference || {}), enabled: true, date: '2026-07-24', store_factor: 1.5, max_gap_days: 7, min_drop_pct: 15 };
+    const saved = await send('PUT', '/api/settings/arbitrage', cfg);
+    assert.equal(saved.status, 200, JSON.stringify(saved.json));
+
+    const res = await post('/api/arb/resolve', { setId: 'zzarb', lines: ['25', '105', '26', '4 r'] });
+    const by = (l) => res.json.cards.find((c) => c.line === l);
+    assert.equal(res.json.reference.store_factor, 1.5);
+    assert.equal(by('25').reference.market_usd, 20); assert.equal(by('25').reference.buyer_aud, 24, '80% of 20 × 1.5'); assert.equal(by('25').reference.drop_pct, 40);
+    assert.equal(by('105').reference.drop_pct, 0);
+    assert.equal(by('26').chosen_key, 'holofoil', 'a low-only printing resolves through the reference'); assert.equal(by('26').market_usd, null); assert.equal(by('26').reference.buyer_aud, 36);
+    assert.equal(by('4 r').reference.missing, true, 'no figure for the reverse holo');
+
+    const fallen = await get('/api/arb/fallen');
+    assert.equal(fallen.status, 200);
+    const ids = fallen.json.candidates.map((c) => c.card_id);
+    assert.ok(ids.includes('zzarb-25'), 'fell 40%');
+    assert.ok(ids.includes('zzarb-26'), 'no live market is always listed');
+    assert.ok(!ids.includes('zzarb-105'), 'flat is not fallen');
+    const pika = fallen.json.candidates.find((c) => c.card_id === 'zzarb-25');
+    assert.equal(pika.buyer_aud, 24); assert.equal(pika.ref_source, 'manual');
+    if (fallen.json.fx) { assert.ok(pika.market_aud > 0); assert.equal(Math.round((pika.buyer_aud - pika.market_aud) * 100), Math.round(pika.gap_aud * 100)); }
+    const loose = await get('/api/arb/fallen?min_drop=0');
+    assert.ok(loose.json.candidates.map((c) => c.card_id).includes('zzarb-105'), 'min_drop=0 lists the flat card too');
+
+    cfg.reference.enabled = false;
+    await send('PUT', '/api/settings/arbitrage', cfg);
+    assert.equal((await post('/api/arb/resolve', { setId: 'zzarb', lines: ['25'] })).json.cards[0].reference, null, 'basis off, no reference block');
+  });
+});
+
 describe('hits — status transitions are the owner\'s, and refusals are 409s', () => {
   it('a hand-inserted hit walks new → seen → bought and can go no further', async () => {
     // No eBay here, so the row is planted straight into the redirected tracker DB the server opened.
@@ -244,5 +303,6 @@ describe('unknown routes', () => {
     assert.equal(status, 404);
     assert.ok(json.endpoints.includes('/scan'));
     assert.ok(json.endpoints.includes('/sweep'));
+    assert.ok(json.endpoints.includes('/fallen'));
   });
 });

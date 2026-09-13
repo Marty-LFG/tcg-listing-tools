@@ -149,6 +149,31 @@
           <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Set</th><th>Last pass</th><th class="num">Calls</th><th class="num">New → matched → hits</th><th></th></tr></thead><tbody id="sweepBody"></tbody></table></div>
         </details>
       </div>
+
+      <!-- ============ the buyer's stale reference ============ -->
+      <div class="card">
+        <details class="watch" id="refDetails" open>
+          <summary><h3 style="margin:0">Fallen since <span id="refDateLabel">…</span> <span class="h-note" id="refNote">—</span></h3></summary>
+          <p class="muted" style="margin:10px 0 8px;" id="refBlurb">The buyer prices off a stale TCGplayer snapshot. When the reference basis is on in <a class="ext" href="/settings.html#arbitrage">settings</a>, hits are scored against what they pay off that snapshot. Cards below have fallen since it; scan them to see what eBay AU asks today.</p>
+          <div class="row" style="margin-bottom:8px;">
+            <button class="btn sm" id="fallenBtn">Refresh list</button>
+            <button class="btn sm" id="snapBtn" title="record today’s market for every set the finder touches, so the next stale snapshot is answerable">Snapshot today</button>
+            <span class="dim" id="histNote" style="font-size:11.5px"></span>
+          </div>
+          <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr><th>Card</th><th class="num">Then → now</th><th class="num">Store pays</th><th class="num">Market A$</th><th class="num">Gap</th><th></th></tr></thead><tbody id="fallenBody"></tbody></table></div>
+          <div style="margin-top:12px;">
+            <label>Type a reference figure off TCGplayer’s chart</label>
+            <div class="row">
+              <input id="refLine" placeholder="card number in the set above, e.g. 116" style="width:180px" spellcheck="false">
+              <select id="refPrinting" style="width:auto;padding:5px 8px;font-size:12px"><option value="holofoil">Holo</option><option value="reverseHolofoil">Reverse Holo</option><option value="normal">Normal</option></select>
+              <input id="refUsd" placeholder="US$ market then" style="width:130px" inputmode="decimal">
+              <input id="refDate" placeholder="YYYY-MM-DD" style="width:120px" spellcheck="false">
+              <button class="btn sm" id="refAddBtn">Add</button>
+              <span class="status load" id="refStatus"></span>
+            </div>
+          </div>
+        </details>
+      </div>
     </div>
 
     <div>
@@ -214,7 +239,7 @@ const PRINTING_LABEL = { normal: 'Normal', reverseHolofoil: 'Reverse Holo', holo
 const plabel = (k) => PRINTING_LABEL[k] || k || '—';
 const ago = (iso) => { if (!iso) return '—'; const d = (Date.now() - Date.parse(iso)) / 3600e3; if (!isFinite(d)) return '—'; if (d < 1) return Math.max(1, Math.round(d * 60)) + 'm'; if (d < 48) return Math.round(d) + 'h'; return Math.round(d / 24) + 'd'; };
 
-let CFG = null, SETS = [], RESOLVED = [], JOB_ID = null, LAST_VISIT = null;
+let CFG = null, SETS = [], RESOLVED = [], JOB_ID = null, LAST_VISIT = null, REF = null;
 // card_id|printing_key of every ACTIVE watch row, kept client-side so the resolved table can say
 // "watching" for whichever printing the dropdown currently shows, not the one the server resolved.
 const WATCHED = new Set();
@@ -228,7 +253,9 @@ async function loadConfig() {
   if (!json || json.error) { stat($('resolveStatus'), 'err', 'config unreadable'); return; }
   CFG = json;
   paintBudget(json.budget);
-  $('sBuyer').innerHTML = Math.round(json.config.buyer_pct * 100) + '% <small>of TCG market' + (json.config.buyer_fee_mode === 'none' ? ' · no fee' : ' · + fee') + '</small>';
+  const rf = json.config.reference || {};
+  $('sBuyer').innerHTML = Math.round(json.config.buyer_pct * 100) + '% <small>of ' + (rf.enabled ? 'market as of ' + esc(rf.date) + ' × ' + rf.store_factor : 'TCG market · live rate') + (json.config.buyer_fee_mode === 'none' ? ' · no fee' : ' · + fee') + '</small>';
+  REF = rf.enabled ? rf : null;
   paintWatchJob(json.watch_job);
   const quiet = [];
   if (!json.ebay_configured) quiet.push('eBay keys are not set in .env, so nothing can be scanned.');
@@ -271,7 +298,7 @@ async function resolve() {
   try {
     const { json } = await post('/resolve', { setId: $('setSel').value, lines });
     if (!json || json.error) throw new Error((json && (json.detail || json.error)) || 'resolve failed');
-    RESOLVED = json.cards.map((c, i) => ({ ...c, _i: i, _on: c.market_usd != null }));
+    RESOLVED = json.cards.map((c, i) => ({ ...c, _i: i, _on: c.market_usd != null || !!(c.reference && !c.reference.missing) }));
     paintFx(json.fx);
     paintResolved(json.unknown || []);
     const n = RESOLVED.filter((c) => c._on).length;
@@ -287,7 +314,7 @@ function paintResolved(unknown) {
   const rows = RESOLVED.map((c) => {
     const set = setById.get(c.set_id) || { name: c.set_name, printedTotal: c.printed_total };
     const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set, { rarity: c.rarity }) : c.number;
-    const noMarket = c.market_usd == null;
+    const noMarket = c.market_usd == null && !(c.reference && !c.reference.missing);
     const printSel = c.printings.length > 1
       ? `<select data-i="${c._i}" class="printSel" style="width:auto;padding:3px 6px;font-size:12px">${c.printings.map((p) => `<option value="${esc(p.key)}" ${p.key === c.chosen_key ? 'selected' : ''}>${esc(plabel(p.key))}${p.which === 'market' ? '' : ' (no market)'}</option>`).join('')}</select>`
       : `<span class="pill">${esc(plabel(c.chosen_key))}</span>`;
@@ -297,8 +324,8 @@ function paintResolved(unknown) {
       <td class="mono dim">${esc(c.line)}</td>
       <td><b>${esc(c.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(c.set_name)} · ${esc(c.rarity || '')}</span></td>
       <td>${printSel}</td>
-      <td class="num">${noMarket ? '<span class="pill bad" title="this printing has no TCGplayer market figure, so it cannot be scored">no market</span>' : usd(c.market_usd)}</td>
-      <td class="num"><b>${noMarket ? '—' : aud(Math.round(c.buyer_aud * 100))}</b></td>
+      <td class="num">${noMarket ? '<span class="pill bad" title="this printing has no TCGplayer market figure today">no market</span>' : usd(c.market_usd)}${c.reference && !c.reference.missing ? `<br><span class="dim" style="font-size:10.5px" title="${esc(c.reference.source)} figure for ${esc(c.reference.day)}">${esc(c.reference.day.slice(5))}: ${usd(c.reference.market_usd)}${c.reference.drop_pct != null ? ' <span class="' + (c.reference.drop_pct > 0 ? 'profit' : 'loss') + '">' + (c.reference.drop_pct > 0 ? '−' : '+') + Math.abs(c.reference.drop_pct) + '%</span>' : ''}</span>` : ''}</td>
+      <td class="num"><b>${c.reference && !c.reference.missing ? aud(Math.round(c.reference.buyer_aud * 100)) : (noMarket ? '—' : aud(Math.round(c.buyer_aud * 100)))}</b>${c.reference ? '<br><span class="dim" style="font-size:10.5px">' + (c.reference.missing ? '<span class="chip warn" title="no figure for the reference date — scored on today’s market">no ref</span>' : 'off ' + esc(c.reference.day.slice(5)) + ' × ' + REF.store_factor) + '</span>' : ''}</td>
       <td><span class="${ageCls}" title="age of the TCGplayer market figure">${age}</span></td>
       <td>${WATCHED.has(c.card_id + '|' + c.chosen_key) ? '<span class="pill good">watching</span>' : `<button class="btn sm watchBtn" data-i="${c._i}" ${noMarket ? 'disabled' : ''}>watch</button>`}</td>
       <td><button class="btn sm dropBtn" data-i="${c._i}" title="remove from this scan">×</button></td>
@@ -358,8 +385,9 @@ function onScanEvent(o) {
     const c = o.card;
     if (c.error) { logLine('err', `<b>${esc(c.name || c.card_id)}</b> ${esc(plabel(c.printing_key))} — ${esc(c.error)}${c.detail ? ' · ' + esc(c.detail) : ''}`); return; }
     const drops = Object.entries(c.dropped || {}).map(([k, n]) => n + ' ' + (DROP_LABEL[k] || k)).join(', ');
-    const best = c.best ? ` · closest: ${aud(c.best.delivered_cents)} landed vs ${aud(c.best.buyer_aud_cents)} buyer (${c.best.profit_cents >= 0 ? '+' : ''}${aud(c.best.profit_cents)})${c.best.ambiguous ? ' printing?' : ''}` : '';
-    logLine(c.hits ? 'hit' : 'miss', `<b>${esc(c.name)}</b> ${esc(plabel(c.printing_key))} · ${usd(c.market_usd)} · ${c.rows} rows → ${c.kept} kept → <b>${c.hits} hit${c.hits === 1 ? '' : 's'}</b>${c.hits_new ? ' (' + c.hits_new + ' new)' : ''}${c.gone ? ' · ' + c.gone + ' gone' : ''}${drops ? ' <span class="dim">(' + esc(drops) + ')</span>' : ''}<span class="dim">${esc(best)}</span>`);
+    const best = c.best ? ` · closest: ${aud(c.best.delivered_cents)} landed vs ${aud(c.best.buyer_aud_cents)} ${c.best.basis === 'reference' ? 'store' : 'buyer'} (${c.best.profit_cents >= 0 ? '+' : ''}${aud(c.best.profit_cents)})${c.best.ambiguous ? ' printing?' : ''}` : '';
+    const refTxt = c.reference ? (c.reference.missing ? ' · <span class="chip warn">no ref</span>' : ' · ref ' + usd(c.reference.market_usd) + ' <span class="dim">' + esc(c.reference.day.slice(5)) + '</span>') : '';
+    logLine(c.hits ? 'hit' : 'miss', `<b>${esc(c.name)}</b> ${esc(plabel(c.printing_key))} · ${c.market_usd != null ? usd(c.market_usd) : '<span class="dim">no live market</span>'}${refTxt} · ${c.rows} rows → ${c.kept} kept → <b>${c.hits} hit${c.hits === 1 ? '' : 's'}</b>${c.hits_new ? ' (' + c.hits_new + ' new)' : ''}${c.gone ? ' · ' + c.gone + ' gone' : ''}${drops ? ' <span class="dim">(' + esc(drops) + ')</span>' : ''}<span class="dim">${esc(best)}</span>`);
     return;
   }
   if (o.set) {
@@ -383,7 +411,7 @@ function onScanEvent(o) {
   }
 }
 function startScanUi() { $('scanBtn').disabled = true; $('scanWatchBtn').disabled = true; $('sweepNowBtn').disabled = true; $('stopBtn').hidden = false; $('stopBtn').disabled = false; $('log').innerHTML = ''; stat($('scanStatus'), 'load', 'scanning…'); }
-function finishScan() { JOB_ID = null; $('stopBtn').hidden = true; $('scanWatchBtn').disabled = false; $('sweepNowBtn').disabled = false; $('scanBtn').disabled = !RESOLVED.some((c) => c._on); loadHits(); loadWatch(); loadSweep(); }
+function finishScan() { JOB_ID = null; $('stopBtn').hidden = true; $('scanWatchBtn').disabled = false; $('sweepNowBtn').disabled = false; $('scanBtn').disabled = !RESOLVED.some((c) => c._on); loadHits(); loadWatch(); loadSweep(); loadFallen(); }
 
 async function runScan(body) {
   startScanUi();
@@ -413,7 +441,7 @@ async function checkRunning() { const { json } = await api('/scan/state'); if (j
 // ---------------------------------------------------------------------------
 // Hits
 // ---------------------------------------------------------------------------
-const WARN_LABEL = { check_printing: 'check printing', coupon: 'coupon', stale_market: 'stale market', cond_unstated: 'cond unstated', cond_vague: 'says excellent', printing_ambiguous: 'printing?', multi: 'multi?', best_offer: 'offers' };
+const WARN_LABEL = { check_printing: 'check printing', coupon: 'coupon', stale_market: 'stale market', cond_unstated: 'cond unstated', cond_vague: 'says excellent', printing_ambiguous: 'printing?', multi: 'multi?', best_offer: 'offers', no_reference: 'no ref', no_live_market: 'no live market', ref_gap: 'ref gap' };
 async function loadHits() {
   const status = $('hitFilter').value;
   const source = $('hitSource').value;
@@ -443,7 +471,7 @@ async function loadHits() {
         <span class="dim" style="font-size:11px">${isNew ? '<span class="pill new">new</span> ' : ''}${esc(h.status)}${h.gone_reason ? ' · ' + esc(h.gone_reason.replace('_', ' ')) : ''} · ${h.source === 'sweep' ? 'sweep' : 'named card'} · ${esc(h.match_tier || '')} match${h.cond_class === 'nm' ? ' · says NM' : ''}</span></td>
       <td><b>${esc(h.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(plabel(h.printing_key))}${h.scored_printing_key && h.scored_printing_key !== h.printing_key ? ' <span class="chip warn" title="scored at this printing\'s market, the cheapest it could be">as ' + esc(plabel(h.scored_printing_key)) + '</span>' : ''} · ${esc(h.set_id)}</span></td>
       <td class="num">${aud(h.delivered_cents)}<br><span class="dim" style="font-size:10.5px">${aud(h.price_cents)} + ${aud(h.ship_cents)}${h.fee_cents ? ' + ' + aud(h.fee_cents) : ''}</span></td>
-      <td class="num">${aud(h.buyer_aud_cents)}<br><span class="dim" style="font-size:10.5px">${usd((h.market_usd_cents || 0) / 100)} @ ${(+h.fx_usd_aud).toFixed(3)}</span></td>
+      <td class="num">${aud(h.buyer_aud_cents)}<br><span class="dim" style="font-size:10.5px">${h.buyer_basis === 'reference' ? usd((h.ref_market_usd_cents || 0) / 100) + ' <span class="chip warn" title="the buyer’s ' + esc(h.ref_source || '') + ' figure for ' + esc(h.ref_date || '') + ', converted at ' + esc(h.store_factor) + '">' + esc((h.ref_date || '').slice(5)) + ' ref</span>' : (h.market_usd_cents != null ? usd(h.market_usd_cents / 100) + ' @ ' + (+h.fx_usd_aud).toFixed(3) : '—')}</span></td>
       <td class="num ${h.profit_cents >= 0 ? 'profit' : 'loss'}">${aud(h.profit_cents)}</td>
       <td class="num">${h.margin_pct != null ? Math.round(h.margin_pct) + '%' : '—'}</td>
       <td class="num ${h.ratio != null && CFG && h.ratio < CFG.config.too_good_ratio ? 'loss' : ''}">${h.ratio != null ? h.ratio.toFixed(2) : '—'}</td>
@@ -532,6 +560,58 @@ $('sweepAddBtn').addEventListener('click', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// The buyer's stale reference
+// ---------------------------------------------------------------------------
+async function loadFallen() {
+  const { json } = await api('/fallen');
+  if (!json || json.error) { $('fallenBody').innerHTML = '<tr><td colspan="6" class="dim">could not read the list</td></tr>'; return; }
+  $('refDateLabel').textContent = json.date;
+  const on = !!REF;
+  $('refNote').textContent = (on ? 'basis ON · ' : 'basis off · ') + json.candidates.length + ' candidate' + (json.candidates.length === 1 ? '' : 's') + ' of ' + json.considered + ' with a reference';
+  $('refDate').placeholder = json.date;
+  const setById = new Map(SETS.map((s) => [s.id, s]));
+  $('fallenBody').innerHTML = json.candidates.map((c) => {
+    const set = setById.get(c.set_id) || {};
+    const num = c.number != null && window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set) : (c.number || '');
+    const drop = c.drop_pct == null ? '<span class="chip warn" title="no TCGplayer market today, so the fall cannot be measured">no live market</span>' : `<span class="${c.drop_pct > 0 ? 'profit' : 'loss'}">${c.drop_pct > 0 ? '−' : '+'}${Math.abs(c.drop_pct)}%</span>`;
+    return `<tr>
+      <td><b>${esc(c.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(c.set_name || c.set_id)} · ${esc(plabel(c.printing_key))} · <span title="${esc(c.ref_source)} figure, ${c.ref_gap_days} day${c.ref_gap_days === 1 ? '' : 's'} from the date">${esc(c.ref_source)}</span></span></td>
+      <td class="num">${usd(c.ref_market_usd)} → ${c.market_usd != null ? usd(c.market_usd) : '—'}<br>${drop}</td>
+      <td class="num"><b>${aud(Math.round(c.buyer_aud * 100))}</b></td>
+      <td class="num">${c.market_aud != null ? aud(Math.round(c.market_aud * 100)) : '—'}</td>
+      <td class="num ${c.gap_aud != null ? (c.gap_aud >= 0 ? 'profit' : 'loss') : ''}">${c.gap_aud != null ? aud(Math.round(c.gap_aud * 100)) : '—'}</td>
+      <td style="white-space:nowrap"><button class="btn sm fscan" data-card="${esc(c.card_id)}" data-printing="${esc(c.printing_key)}" data-name="${esc(c.name)}">scan</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="dim">nothing has a figure for the reference date yet — type one below, or wait for the daily snapshots to build history</td></tr>';
+  document.querySelectorAll('.fscan').forEach((el) => el.addEventListener('click', () => {
+    if (JOB_ID) { toast('a scan is already running'); return; }
+    runScan({ cards: [{ card_id: el.dataset.card, printing_key: el.dataset.printing }] });
+  }));
+  const h = (json && CFG && CFG.watch_job && CFG.watch_job.reference && CFG.watch_job.reference.history) || null;
+  if (h) $('histNote').textContent = h.rows ? h.series + ' series · history from ' + h.first_day + ' · ' + h.manual + ' typed-in' : 'no history yet';
+}
+$('fallenBtn').addEventListener('click', loadFallen);
+$('snapBtn').addEventListener('click', async () => {
+  $('snapBtn').disabled = true;
+  try { const { json } = await post('/snapshot', {}); toast(json && json.ok ? json.written + ' price' + (json.written === 1 ? '' : 's') + ' recorded across ' + json.sets + ' set' + (json.sets === 1 ? '' : 's') + (json.skipped && json.skipped.length ? ' · ' + json.skipped.length + ' already today' : '') : (json && json.error) || 'snapshot failed'); await loadConfig(); loadFallen(); }
+  finally { $('snapBtn').disabled = false; }
+});
+$('refAddBtn').addEventListener('click', async () => {
+  const line = $('refLine').value.trim(), usdv = parseFloat($('refUsd').value), date = $('refDate').value.trim() || $('refDate').placeholder;
+  if (!line) { stat($('refStatus'), 'warn', 'which card?'); return; }
+  if (!(usdv > 0)) { stat($('refStatus'), 'warn', 'US$ figure?'); return; }
+  stat($('refStatus'), 'load', 'resolving…');
+  const r = await post('/resolve', { setId: $('setSel').value, lines: [line] });
+  const card = r.json && r.json.cards && r.json.cards[0];
+  if (!card) { stat($('refStatus'), 'err', (r.json && r.json.unknown && r.json.unknown[0] && r.json.unknown[0].why) || 'card not found'); return; }
+  const { status: st, json } = await post('/reference', { card_id: card.card_id, printing_key: $('refPrinting').value, market_usd: usdv, date, note: 'typed from the TCGplayer chart' });
+  if (st !== 200) { stat($('refStatus'), 'err', (json && json.error) || 'refused'); return; }
+  stat($('refStatus'), 'ok', esc(card.name) + ' ' + esc(plabel($('refPrinting').value)) + ' = ' + usd(usdv) + ' on ' + esc(date));
+  $('refLine').value = ''; $('refUsd').value = '';
+  loadFallen();
+});
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 (async () => {
@@ -539,6 +619,7 @@ $('sweepAddBtn').addEventListener('click', async () => {
   await loadHits();
   await loadWatch();
   loadSweep();
+  loadFallen();
   checkRunning();
   // Remembered AFTER the first paint, so the "new since your last visit" count describes this visit
   // rather than the moment it was stamped.

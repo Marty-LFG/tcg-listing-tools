@@ -16,6 +16,7 @@ import {
   hitMaths, qualifies, marketAgeDays, warningsFor, alertable, rankHits, reconcileHits, canTransition,
   findCards, printingsWithSource, resolveCard, toCents,
   titleNumbers, nameToken, titleNamesCard, buildSetIndex, matchTitleToCard, sweepQuery, foldText,
+  nearestReference, dropPct,
 } from '../../lib/arb-core.mjs';
 
 const FIX = JSON.parse(fs.readFileSync(path.join(ROOT, 'test/fixtures/arbitrage/browse-sv3-125.json'), 'utf8'));
@@ -386,5 +387,53 @@ describe('the newly-listed sweep — a title matched back to the catalogue on it
     assert.equal(sweepQuery(SET, 'name'), 'Pokemon Obsidian Flames');
     assert.equal(sweepQuery(SET, 'number'), 'Pokemon 197');
     assert.equal(sweepQuery({ name: 'X' }, 'number'), null, 'no printed total, no number query');
+  });
+});
+
+describe('the buyer\'s stale reference (2026-09-13: shelf = late-July market × 1.5, never repriced)', () => {
+  // Mega Darkrai ex: A$275 + A$5 post on eBay; today US$199.56; the buyer's July figure US$280.67.
+  const live = hitMaths({ priceCents: 27500, shipCents: 500, marketUsdCents: 19956, fx: 1.3942, buyerPct: 0.8, feeMode: 'none' });
+  const ref = hitMaths({ priceCents: 27500, shipCents: 500, marketUsdCents: 19956, fx: 1.3942, buyerPct: 0.8, feeMode: 'none', refMarketUsdCents: 28067, storeFactor: 1.5 });
+  it('the same listing is a loss on the live basis and a gain on the reference basis', () => {
+    assert.equal(live.buyerBasis, 'live'); assert.equal(live.buyerAudCents, 22258); assert.equal(live.profitCents, -5742);
+    assert.equal(ref.buyerBasis, 'reference'); assert.equal(ref.buyerAudCents, 33680, '80% of 280.67 × 1.5'); assert.equal(ref.profitCents, 5680);
+  });
+  it('the too-good ratio stays against TODAY\'s market on either basis — it is a wrong-card detector', () => {
+    assert.equal(ref.ratio, live.ratio);
+    assert.equal(ref.marketAudCents, live.marketAudCents);
+  });
+  it('a reference with no live market still prices the buyer, and leaves the ratio unknowable', () => {
+    const h = hitMaths({ priceCents: 30000, shipCents: 0, marketUsdCents: null, fx: 1.3942, buyerPct: 0.8, feeMode: 'none', refMarketUsdCents: 28067, storeFactor: 1.5 });
+    assert.equal(h.buyerAudCents, 33680); assert.equal(h.ratio, null); assert.equal(h.buyerBasis, 'reference');
+  });
+  it('a zero or missing reference means the live basis, never a zero buyer price', () => {
+    assert.equal(hitMaths({ priceCents: 100, shipCents: 0, marketUsdCents: 1000, fx: 1.4, buyerPct: 0.8, feeMode: 'none', refMarketUsdCents: 0, storeFactor: 1.5 }).buyerBasis, 'live');
+    assert.equal(hitMaths({ priceCents: 100, shipCents: 0, marketUsdCents: 1000, fx: 1.4, buyerPct: 0.8, feeMode: 'none', refMarketUsdCents: 500, storeFactor: null }).buyerBasis, 'live');
+  });
+  it('nearestReference: latest on-or-before wins, then the smaller gap, then the better source', () => {
+    const rows = [{ day: '2026-07-20', market_usd_cents: 27500, source: 'snapshot' }, { day: '2026-07-24', market_usd_cents: 28000, source: 'snapshot' }, { day: '2026-07-24', market_usd_cents: 28067, source: 'manual' }, { day: '2026-07-30', market_usd_cents: 27000, source: 'tracker' }];
+    const exact = nearestReference(rows, '2026-07-24', 7);
+    assert.equal(exact.market_usd_cents, 28067); assert.equal(exact.source, 'manual'); assert.equal(exact.gap_days, 0);
+    const later = nearestReference(rows, '2026-07-27', 7);
+    assert.equal(later.day, '2026-07-24', 'a change-only history holds the price in force: the 24th still stands on the 27th');
+    assert.equal(later.gap_days, 3); assert.equal(later.before, true);
+    assert.equal(nearestReference(rows, '2026-07-10', 7), null, 'the 20th is 10 days after the 10th — outside a 7-day gap');
+  });
+  it('nearestReference: nothing before → the earliest after, within the gap; outside the gap → null', () => {
+    const after = nearestReference([{ day: '2026-07-28', market_usd_cents: 100, source: 'snapshot' }], '2026-07-24', 7);
+    assert.equal(after.day, '2026-07-28'); assert.equal(after.before, false); assert.equal(after.gap_days, 4);
+    assert.equal(nearestReference([{ day: '2026-08-10', market_usd_cents: 100, source: 'snapshot' }], '2026-07-24', 7), null);
+    assert.equal(nearestReference([{ day: '2026-07-24', market_usd_cents: 0, source: 'manual' }], '2026-07-24', 7), null, 'a zero figure is not a figure');
+    assert.equal(nearestReference([], '2026-07-24', 7), null);
+  });
+  it('dropPct is the fall from the reference, positive when the market fell', () => {
+    assert.equal(dropPct(28067, 19956), 28.9);
+    assert.equal(dropPct(46067, 49614), -7.7);
+    assert.equal(dropPct(28067, null), null);
+  });
+  it('warnings name a missing reference, a missing live market and a gap', () => {
+    assert.deepEqual(warningsFor({ ratio: 0.9 }, { noReference: true }).map((w) => w.k), ['no_reference']);
+    assert.deepEqual(warningsFor({ ratio: null }, { noLiveMarket: true, refGapDays: 3, refBefore: true }).map((w) => w.k).sort(), ['no_live_market', 'ref_gap']);
+    assert.match(warningsFor({ ratio: null }, { refGapDays: 1, refBefore: false })[0].why, /1 day after/);
   });
 });

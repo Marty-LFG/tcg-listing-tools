@@ -31,5 +31,13 @@
     "max_pages_per_set": 5,
     "first_run_pages": 1
   },
-  "_comment_sweep": "The newly-listed sweep runs inside the watch pass over every enabled set in arb_sweep_sets. queries: name = 'Pokemon <set name>', number = 'Pokemon <printed total>' (catches the ~6% of titles that never name the set). Each page is one eBay call; a pass reads newest-first until it reaches the last watermark."
+  "_comment_sweep": "The newly-listed sweep runs inside the watch pass over every enabled set in arb_sweep_sets. queries: name = 'Pokemon <set name>', number = 'Pokemon <printed total>' (catches the ~6% of titles that never name the set). Each page is one eBay call; a pass reads newest-first until it reaches the last watermark.",
+  "reference": {
+    "enabled": false,
+    "date": "2026-07-24",
+    "store_factor": 1.5,
+    "max_gap_days": 7,
+    "min_drop_pct": 15
+  },
+  "_comment_reference": "The buyer prices off a stale TCGplayer Market snapshot (measured 2026-09-13: shelf = late-July market × 1.5, never repriced). enabled = score hits against buyer_pct × market-as-of-date × store_factor wherever a reference figure exists (typed-in, this module's daily snapshots, or the tracker); cards without one fall back to the live basis and are chipped. max_gap_days = how far from the date a snapshot may be and still count. min_drop_pct = the fall since the date that puts a card on the 'fallen since' list."
 }
