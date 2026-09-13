@@ -234,6 +234,45 @@ describe('the happy path, all the way through', () => {
   });
 });
 
+describe('the set list', () => {
+  // The default seed carries no set_code, so it joins no set. This row does — and the point of the
+  // test is that the rebuild lands on the SAME metaobject the product references. Until 2026-09-13
+  // the singles lane rebuilt "pokemon-bs1-english" (fields.language, the display word) while the
+  // product referenced "pokemon-bs1-en" (item.language, the code): the upsert was a create with only
+  // the two list fields on it, the definition refused it, and every set on live had empty lists.
+  let setItemId;
+  beforeEach(() => {
+    const r = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, set_name, set_code, number, rarity, variant, language, condition, quantity, target_price_cents, image_url, status)
+      VALUES ('STG-000002','pokemon','base1-4','Charizard','Base Set','BS1','4/102','Rare Holo','Holo','EN','Near Mint',1,99900,'https://images.pokemontcg.io/base1/4.png','in_stock')`).run();
+    setItemId = r.lastInsertRowid;
+  });
+  const setUpserts = () => calls.filter((c) => (c.op === 'identity' || c.op === 'identityListings') && c.variables.handle.type === 'bk_set_identity').map((c) => c.variables);
+
+  it('creates the set identity with its name and code, then rebuilds the lists on that same handle', async () => {
+    const r = await post('/publish', { itemId: setItemId });
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.ok, true, r.json.error);
+    const [created, rebuilt] = setUpserts();
+    assert.ok(created && rebuilt, 'expected a create-time set upsert and a rebuild');
+    assert.equal(created.handle.handle, 'pokemon-bs1-en');
+    assert.equal(rebuilt.handle.handle, created.handle.handle, 'the rebuild must write the metaobject the product references, not a near-miss of it');
+    const keys = created.metaobject.fields.map((f) => f.key);
+    assert.ok(keys.includes('display_name') && keys.includes('set_code'), 'the create carries the required fields');
+    const step = r.json.steps.find((s) => s.step === 'set_rebuild');
+    assert.equal(step.ok, true, step.error);
+    assert.ok(!(r.json.warnings || []).some((w) => /related-items list was not rebuilt/.test(w)), r.json.warnings);
+  });
+
+  it('lists the card just published under singles, found by the row language code', async () => {
+    const r = await post('/publish', { itemId: setItemId });
+    assert.equal(r.json.ok, true, r.json.error);
+    const rebuilt = setUpserts().at(-1);
+    const singles = rebuilt.metaobject.fields.find((f) => f.key === 'singles');
+    assert.ok(singles, 'the rebuild writes the singles list');
+    assert.deepEqual(JSON.parse(singles.value), ['gid://shopify/Product/100']);
+  });
+});
+
 describe('the condition list', () => {
   it('orders siblings best-first and ignores anything not live', async () => {
     const rows = [
