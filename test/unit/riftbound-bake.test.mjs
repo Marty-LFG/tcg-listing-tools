@@ -9,7 +9,7 @@
 // ([{id, name, collectorNumberMax}] in release order), so a new set must need no code change.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupCards, TREATMENT_OVERRIDE } from '../../scripts/build-riftbound-data.mjs';
+import { groupCards, TREATMENT_OVERRIDE, printedName } from '../../scripts/build-riftbound-data.mjs';
 
 // Minimal shape of a Riot gallery card (the Sanity CMS field wrappers the bake reads through).
 const card = (publicCode, name, o = {}) => ({
@@ -187,5 +187,68 @@ describe('groupCards — newSets (the Telegram alert trigger)', () => {
   it('reports nothing when the roster is unchanged', () => {
     const prior = { ogn: { code: 'OGN' }, ven: { code: 'VEN' } };
     assert.deepEqual(groupCards(cards, ROSTER, prior).newSets, []);
+  });
+});
+
+// Around 2026-09-24 Riot split the name in two: `name` "Darius" plus a new `subtitle` "Trifarian",
+// where the payload used to ship "Darius, Trifarian". Nothing downstream changed shape, because the
+// bake rejoins them — but `subtitle` means three different things by card type, and only two belong
+// in the name. Each shape below is copied from the live 2026-09-24 payload.
+describe("groupCards — Riot's name + subtitle, rejoined", () => {
+  const riot = (publicCode, name, subtitle, o = {}) => {
+    const c = card(publicCode, name, { ...o, setName: 'Origins' });
+    if (subtitle != null) c.subtitle = subtitle;
+    if (o.superType) c.cardType.superType = [{ label: o.superType }];
+    if (o.tags) c.tags = { label: 'Tags', tags: o.tags };
+    return c;
+  };
+  const out = groupCards([
+    riot('OGN-027/298', 'Darius', 'Trifarian', { superType: 'Champion', tags: ['Trifarian', 'Darius', 'Noxus'] }),
+    riot('OGN-027a/298', 'Darius', 'Trifarian', { superType: 'Champion', tags: ['Trifarian', 'Darius', 'Noxus'] }),
+    riot('OGN-109/298', 'Dr. Mundo', 'Expert', { superType: 'Champion' }),
+    riot('OGN-017/298', 'Dark Child', 'Starter', { type: 'Legend', superType: 'Champion', tags: ['Annie'] }),
+    riot('OGN-268/298', 'Bullet Time', 'Miss Fortune', { type: 'Spell', superType: 'Signature', tags: ['Miss Fortune'] }),
+    riot('OGN-018/298', 'Tibbers', 'Annie', { superType: 'Signature', tags: ['Annie'] }),
+    riot('OGN-041/298', 'Allay, Eager Admirer', null),
+    riot('OGN-110/298', 'Darius, Executioner', 'Executioner', { superType: 'Champion' }),
+    riot('OGN-111/298', 'Darius, Executioner', null, { superType: 'Champion' }),
+  ], ROSTER);
+  const f = (k) => find(out, 'ogn', k);
+
+  it('a champion Unit is "<name>, <subtitle>" again, and its champion is the name', () => {
+    assert.equal(f('27').name, 'Darius, Trifarian');
+    assert.equal(f('27').ch, 'Darius');
+    assert.equal(f('109').name, 'Dr. Mundo, Expert');     // a full stop in the name is not a separator
+    assert.equal(f('109').ch, 'Dr. Mundo');
+  });
+  it('the epithet goes on BEFORE the treatment suffix', () => {
+    assert.equal(f('27a').name, 'Darius, Trifarian (Alternate Art)');
+  });
+  it('a Legend subtitle is joined the way Riot\'s own alt text writes it, and the champion still comes from the tag', () => {
+    assert.equal(f('17').name, 'Dark Child - Starter');
+    assert.equal(f('17').ch, 'Annie');
+  });
+  it('a Signature card\'s subtitle is its champion, not part of the name — and it bakes no champion', () => {
+    assert.equal(f('268').name, 'Bullet Time');
+    assert.equal(f('268').ch, '');
+    assert.equal(f('18').name, 'Tibbers');
+    assert.equal(f('18').ch, '');
+  });
+  it('a non-champion comma Unit is untouched and bakes no champion (the Character type gate still holds)', () => {
+    assert.equal(f('41').name, 'Allay, Eager Admirer');
+    assert.equal(f('41').ch, '');
+  });
+  it('reads Riot\'s OLD shape too, and never doubles an epithet it already has', () => {
+    assert.equal(f('110').name, 'Darius, Executioner');
+    assert.equal(f('111').name, 'Darius, Executioner');
+    assert.equal(f('111').ch, 'Darius');
+  });
+  it('printedName is the same rule, callable on its own', () => {
+    assert.equal(printedName({ name: 'Master Yi', subtitle: 'Honed' }, 'Unit', ['Champion']), 'Master Yi, Honed');
+    assert.equal(printedName({ name: 'Wuju Bladesman', subtitle: 'Starter' }, 'Legend', ['Champion']), 'Wuju Bladesman - Starter');
+    assert.equal(printedName({ name: 'Highlander', subtitle: 'Yi' }, 'Spell', ['Signature']), 'Highlander');
+    assert.equal(printedName({ name: 'Master Yi', subtitle: 'Honed' }, 'Unit', []), 'Master Yi');   // no Champion super-type: no join
+    assert.equal(printedName({ name: '  Ahri ', subtitle: '' }, 'Unit', ['Champion']), 'Ahri');
+    assert.equal(printedName(null, 'Unit', ['Champion']), '');
   });
 });

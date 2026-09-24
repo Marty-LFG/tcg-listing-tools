@@ -18,7 +18,9 @@ describe('riftboundDisplayName', () => {
     assert.equal(riftboundDisplayName({ name: 'Darius, Executioner', type: 'Unit', champion: 'Darius' }), 'Darius (Executioner)');
   });
   it('a Unit whose name does not start with its champion is left alone', () => {
-    // "Yi, Honed" is Master Yi's card; the bake carries the tag, the name does not start with it.
+    // "Yi, Honed" is how Riot's gallery named Master Yi's Proving Grounds card until 2026-09-24. The
+    // bake now rejoins it as "Master Yi, Honed", but the function must still refuse a name that does
+    // not start with its champion rather than splice a mismatched one.
     assert.equal(riftboundDisplayName({ name: 'Yi, Honed', type: 'Unit', champion: 'Master Yi' }), 'Yi, Honed');
   });
   it('anything without a champion is untouched, whatever its shape', () => {

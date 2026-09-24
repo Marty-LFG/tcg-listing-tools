@@ -287,7 +287,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `scripts/build-funko-data.mjs` | Rebuilds `data/funko_pop.json` from upstream (filter to Pop! vinyl, derive franchise/exclusive/chase). |
 | `data/riftbound.json` | Baked Riftbound catalog (~1164 cards, every released set), built by `scripts/build-riftbound-data.mjs` from the **official LoL card gallery** (keyless). Keyed by lowercase set code **in Riot's release order**; per-set `{name,code,total,cards}` where `total` is the printed set total; per-card `{k,num,name,rarity,type,domain,e,p,m,img}`. Fetched same-origin (gzipped by the `dataGzip` middleware, ETag-cached client-side via `TCG.cachedJSON`). Default Riftbound source. |
 | `lib/riftbound-cards.mjs` | Serves the baked catalog to the two stock tools at `/api/riftbound/sets`, `/set/:id/cards` (with the keyless price join) and `/cards/:set/:num`. No upstream, no cache — the bake IS the source. **Must be registered before `riftboundPricesPlugin()`** (§17). |
-| `scripts/build-riftbound-data.mjs` | Rebuilds `data/riftbound.json`: scrapes the gallery Next.js `buildId`, fetches `card-gallery.json`, slims + groups by set. **Self-updating** — set codes, names, printed totals and release order come from the gallery's own `sets.items` roster, so a NEW SET needs no code change here or in the builder (`lib/refresh.mjs` Telegram-alerts via the returned `newSets`). Derives the variant treatment from the printed number and freezes it into the card name (see §6). |
+| `scripts/build-riftbound-data.mjs` | Rebuilds `data/riftbound.json`: scrapes the gallery Next.js `buildId`, fetches `card-gallery.json`, slims + groups by set. **Self-updating** — set codes, names, printed totals and release order come from the gallery's own `sets.items` roster, so a NEW SET needs no code change here or in the builder (`lib/refresh.mjs` Telegram-alerts via the returned `newSets`). Derives the variant treatment from the printed number and freezes it into the card name (see §6). Rejoins Riot's `name` + `subtitle` into the printed name (`printedName`, §17). |
 | `extras.js` | Shared `TCG.*` module. **Images** (`renderExtras`): each image is `{label, display:[fast/small urls — raced, quickest shown], download:bestQualityUrl, fallback}`; the download button is ALWAYS best quality (back-compat `{url,fallback}` still works). **`TCG.activity(label)`** → `{update,done,fail}` renders a bottom-left toast stack with a live elapsed timer so every network op is visible. **`TCG.ebayComps({query,container,status,filter?})`** — shared eBay AU delivered-comps engine (sold-first via Marketplace Insights → asking fallback; delivered totals = item + shipping; AU vs Worldwide; undercut; auto-drives an activity toast). Plus prices/graph panel, FX, title-fitting, `condCode`/`langCode`, `legoCondToken`/`funkoCondToken`, `renderItemSpecifics`. Loaded via `<script src="/extras.js">`. |
 | `listing-image-lab.html` | Tuning harness for the branded listing image (§19). Drop a photo, drag rail-width / padding / canvas / text sliders, check it at thumbnail size, copy or save the config. Sliders are request-scoped — saving is a separate button through `/api/settings`. |
 | `lib/listing-image.mjs` | The compositor: `composeListingImage(input, meta, options)` → a 1600×1600 branded JPEG. Also `composeAvailable`, `describeCompositor`, `hashFor`, and the `cardDetector` seam (default `trimDetector`). Knows nothing about eBay. |
@@ -1192,6 +1192,21 @@ and `composeMetaFor` to the rail, in both cases ONLY while the row still carries
 (an owner's rename in a builder wins). The rule is the store owner's (bk-shopify D-035 session); the
 existing Riftbound products on live need a re-publish (`scripts/publish-shopify.mjs --game riftbound
 --include-listed`) to pick it up. `test/unit/riftbound-display-name.test.mjs` pins both halves.
+
+**Riot split the name field (2026-09-24).** The gallery now ships a champion Unit as `name` "Darius" plus
+a new `subtitle` "Trifarian", where it used to ship "Darius, Trifarian". Everything above reads the
+joined form, and one bake later the catalog held 3 comma names instead of 297 — the Character aspect
+and every "Darius (Trifarian)" display name went blank with no error anywhere; the data test is what
+caught it. `printedName()` in `scripts/build-riftbound-data.mjs` now rejoins the two BEFORE the
+treatment suffix, and `subtitle` is read by card type because it means three things: the epithet on a
+champion Unit (`"Darius, Trifarian"`), a qualifier on the four starter Legends (`"Dark Child - Starter"`,
+Riot's own alt-text form), and the CHAMPION on a Signature card (`"Bullet Time"` / `"Miss Fortune"`),
+which is not part of the printed name and stays out of it. The rejoined names match the pre-split bake
+card for card, except the two Proving Grounds Yi Units, which now read "Master Yi, Honed" rather than
+Riot's old "Yi, Honed". That is TCGplayer's product name, and unlike the old one it starts with the
+champion, so riftboundDisplayName turns it into "Master Yi (Honed)".
+`test/data/riftbound-character.test.mjs` now also cross-checks every champion Unit against TCGplayer's
+product names (294/294 on 2026-09-24); if it goes red, look at the payload's `subtitle` first.
 
 Same session, two Shopify-only changes worth knowing: `buildShopifyDescription` and
 `buildSealedShopifyDescription` are TWO sentences now (identity, then the picture line) — the parcel

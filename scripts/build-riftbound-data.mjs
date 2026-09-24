@@ -91,6 +91,42 @@ const idOf = (f) => (f && f.value && f.value.id != null ? f.value.id : null)
 const labelOf = (f) => (f && f.value && f.value.label != null ? f.value.label : null)
 
 /**
+ * The card's printed name, from Riot's two name fields. Pure; exported for the unit harness.
+ *
+ * Around 2026-09-24 Riot's gallery split the name in two: `name` now carries the champion alone
+ * ("Darius") and a new `subtitle` field the epithet ("Trifarian"), where the payload used to ship
+ * "Darius, Trifarian" as the name. Every consumer reads the joined form — riftboundCharacter (the
+ * eBay Character aspect), riftboundDisplayName ("Darius (Trifarian)"), the titles, the storefront —
+ * and the bake went from 297 comma names to 3 overnight, which emptied the Character aspect on every
+ * champion Unit without an error anywhere. So the name is rebuilt HERE, once, from Riot's own two
+ * fields; nothing is invented (GR4).
+ *
+ * `subtitle` means three different things by card type, and only two of them are part of the name.
+ * Counted on the 2026-09-24 payload, each against the card image's own alt text:
+ *   champion Unit   'Darius' + 'Trifarian'           -> 'Darius, Trifarian'      294 cards
+ *   Legend          'Dark Child' + 'Starter'         -> 'Dark Child - Starter'     4 cards
+ *   Signature card  'Bullet Time' + 'Miss Fortune'   -> 'Bullet Time'             16 cards
+ * On a Signature card the subtitle is the CHAMPION it belongs to, which the card does not print in
+ * its name; the old payload never carried it there either.
+ *
+ * The joined names match the bake from before the split card for card, with one difference, and it
+ * is an improvement: the two Proving Grounds Yi Units come out "Master Yi, Honed" where Riot used
+ * to write "Yi, Honed". "Master Yi, Honed" is TCGplayer's product name, and it gives riftboundDisplayName
+ * a name that starts with the champion's (the Legends tag him "Master Yi"), which "Yi, Honed" never did.
+ *
+ * A name that already carries its subtitle (Riot's old shape, should they revert) is left alone, so
+ * the bake reads either payload.
+ */
+export function printedName(c, type, superTypes) {
+  const name = String((c && c.name) || '').trim()
+  const sub = String((c && c.subtitle) || '').trim()
+  if (!name || !sub || name.endsWith(', ' + sub) || name.endsWith(' - ' + sub)) return name
+  if (type === 'Unit' && (superTypes || []).includes('Champion')) return name + ', ' + sub
+  if (type === 'Legend') return name + ' - ' + sub
+  return name
+}
+
+/**
  * Gallery cards + set roster -> the baked catalog shape. Pure; exported for the unit harness.
  *
  * VARIANT DERIVATION. Riot's own `rarity` field is NOT reliable for the premium printings — it
@@ -145,14 +181,19 @@ export function groupCards(rawCards, roster = [], prior = {}) {
     const over = !sp && !star && !alt && total > 0 && (parseInt(numPart, 10) || 0) > total
 
     const k = normNum(numPart)
-    let name = c.name || ''
+    const type = (c.cardType && Array.isArray(c.cardType.type) && c.cardType.type[0] && c.cardType.type[0].label) || ''
+    const superTypes = (c.cardType && Array.isArray(c.cardType.superType))
+      ? c.cardType.superType.map((s) => (s && s.label) || '').filter(Boolean) : []
+    // The printed name, rejoined from Riot's name + subtitle (printedName above), BEFORE any
+    // treatment suffix — "Darius, Trifarian (Alternate Art)", never "Darius (Alternate Art), Trifarian".
+    const base = printedName(c, type, superTypes)
+    let name = base
     const override = TREATMENT_OVERRIDE[code + '-' + k]      // wins: the number cannot imply it
     if (override) name += ' (' + override + ')'
     else if (star) name += ' (Signature)'
     else if (alt) name += ' (Alternate Art)'
     else if (over) name += ' (Overnumbered)'
 
-    const type = (c.cardType && Array.isArray(c.cardType.type) && c.cardType.type[0] && c.cardType.type[0].label) || ''
     // Riot labels all six VEN-SP cards "epic"; TCGplayer sells them as Showcase (US$14-71) and,
     // unlike the * / over-total cards, they carry no name suffix for the builder to detect.
     const rarity = sp ? 'Showcase' : titleCase(idOf(c.rarity) || '')
@@ -175,15 +216,14 @@ export function groupCards(rawCards, roster = [], prior = {}) {
     // the champion in its own name ("Darius, Executioner") and is marked by the Champion super-type.
     // Baked as `ch` so the storefront can name the card the way a player says it — "Poppy (Keeper
     // of the Hammer)" (bk-shopify, Marty 2026-09-13; riftboundDisplayName in lib/riftbound-data.mjs).
-    // A card with no champion bakes '' rather than a guess (GR4).
+    // A card with no champion bakes '' rather than a guess (GR4). Read off the REJOINED name, so it is
+    // the same answer whether Riot ships "Darius, Trifarian" or "Darius" + subtitle "Trifarian".
     const tags = (c.tags && Array.isArray(c.tags.tags)) ? c.tags.tags.map((t) => String(t || '').trim()).filter(Boolean) : []
-    const superTypes = (c.cardType && Array.isArray(c.cardType.superType))
-      ? c.cardType.superType.map((s) => (s && s.label) || '').filter(Boolean) : []
     let champion = ''
     if (type === 'Legend' && tags.length) champion = tags[tags.length - 1]
     else if (type === 'Unit' && superTypes.includes('Champion')) {
-      const comma = String(c.name || '').indexOf(', ')
-      if (comma > 0) champion = String(c.name).slice(0, comma)
+      const comma = base.indexOf(', ')
+      if (comma > 0) champion = base.slice(0, comma)
     }
 
     const key = code.toLowerCase()
