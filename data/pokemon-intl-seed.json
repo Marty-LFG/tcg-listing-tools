@@ -69,6 +69,18 @@
         "name": ""
       }
     },
+    "M6A": {
+      "name_en": "30th Celebration",
+      "name_native": "30th CELEBRATION",
+      "serie": "ポケモンカードゲーム MEGA",
+      "releaseDate": "2026-09-16",
+      "cardCount": 103,
+      "pcSlug": "pokemon-japanese-30th-celebration",
+      "enEquivalent": {
+        "id": "me55",
+        "name": "30th Celebration"
+      }
+    },
     "SV1S": {
       "name_en": "Scarlet ex"
     },
@@ -728,6 +740,17 @@
       "cardCount": 34,
       "pcSlug": "pokemon-korean-double-crisis",
       "pcOnly": true
+    },
+    "M6A": {
+      "name_en": "30th Celebration",
+      "name_native": "30th CELEBRATION",
+      "releaseDate": "2026-09-16",
+      "cardCount": 103,
+      "pcSlug": "pokemon-korean-30th-celebration",
+      "enEquivalent": {
+        "id": "me55",
+        "name": "30th Celebration"
+      }
     }
   }
 }

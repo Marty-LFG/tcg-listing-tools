@@ -239,6 +239,32 @@ describe('Phase 3 — POST /api/inventory/match/batch', () => {
   });
 });
 
+// The uploader's single-card check, for a card with NO identity key — a PriceCharting-only set such
+// as the Japanese 30th CELEBRATION, which has thirty different Pikachu. Name alone matched every one
+// of them as "already in stock"; the number the uploader now sends narrows it to the card.
+describe('GET /api/inventory/match — the name fallback respects the number', () => {
+  const jp = (number) => runnerRow({ identity_key: '', name: 'Pikachu Name Fallback', number, set_name: '30th Celebration',
+    language: 'JP', rarity: '', card_facts: '{}' });
+  const q = (number) => '/api/inventory/match?' + new URLSearchParams({ game: 'pokemon', identity_key: '', name: 'Pikachu Name Fallback',
+    variant: 'Holo', language: 'JP', condition: 'Ungraded, Near Mint', graded: '0', ...(number != null ? { number } : {}) });
+
+  it('a different Pikachu from the same set is not the same stock', async () => {
+    assert.equal((await post('/api/inventory/items', jp('017/103'))).status, 201);
+    const other = await get(q('018/103'));
+    assert.equal(other.status, 200, other.text);
+    assert.equal(other.json.exact.length, 0, '018/103 is another card');
+    assert.equal(other.json.held, 0);
+  });
+  it('the same number is, padding and all', async () => {
+    const same = await get(q('17/103'));
+    assert.equal(same.json.exact.length, 1);
+  });
+  it('a caller that sends no number keeps the old name-only answer', async () => {
+    const legacy = await get(q(null));
+    assert.ok(legacy.json.exact.length >= 1);
+  });
+});
+
 describe('why the Runner does NOT stage through POST /api/inventory/batches', () => {
   it('/batches drops card_facts and store_categories — the reason /items is used instead', async () => {
     const r = await post('/api/inventory/batches', {

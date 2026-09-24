@@ -356,7 +356,7 @@ function paintResolved(unknown) {
   const setById = new Map(SETS.map((s) => [s.id, s]));
   const rows = RESOLVED.map((c) => {
     const set = setById.get(c.set_id) || { name: c.set_name, printedTotal: c.printed_total };
-    const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set, { rarity: c.rarity }) : c.number;
+    const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set, { rarity: c.rarity, id: c.card_id }) : c.number;
     const noMarket = c.market_usd == null && !(c.reference && !c.reference.missing);
     const setPricing = RESOLVED_SETS.find((x) => x.set_id === c.set_id);
     const why = !noMarket ? '' : setPricing && setPricing.priced === 0 ? 'pokemontcg.io has no TCGplayer prices for this set yet' : 'no market figure for this printing today';
@@ -512,7 +512,7 @@ async function loadHits() {
   const setById = new Map(SETS.map((s) => [s.id, s]));
   $('hitsBody').innerHTML = json.hits.map((h) => {
     const set = setById.get(h.set_id) || {};
-    const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(h.number, set) : h.number;
+    const num = window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(h.number, set, { id: h.card_id }) : h.number;
     const warn = (h.warnings || []).map((w) => `<span class="chip ${w.k === 'check_printing' || w.k === 'stale_market' ? 'bad' : 'warn'}" title="${esc(w.why)}">${esc(WARN_LABEL[w.k] || w.k)}</span>`).join(' ');
     const isNew = h.status === 'new' && (!LAST_VISIT || h.first_seen > LAST_VISIT);
     const fb = h.seller_fb_pct != null ? h.seller_fb_pct + '% <span class="dim">(' + (h.seller_fb_score ?? '?') + ')</span>' : '';
@@ -632,7 +632,7 @@ async function loadFallen() {
   const setById = new Map(SETS.map((s) => [s.id, s]));
   $('fallenBody').innerHTML = json.candidates.map((c) => {
     const set = setById.get(c.set_id) || {};
-    const num = c.number != null && window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set) : (c.number || '');
+    const num = c.number != null && window.TCG && TCG.formatCardNumber ? TCG.formatCardNumber(c.number, set, { id: c.card_id }) : (c.number || '');
     const drop = c.drop_pct == null ? '<span class="chip warn" title="no TCGplayer market today, so the fall cannot be measured">no live market</span>' : `<span class="${c.drop_pct > 0 ? 'profit' : 'loss'}">${c.drop_pct > 0 ? '−' : '+'}${Math.abs(c.drop_pct)}%</span>`;
     return `<tr>
       <td><b>${esc(c.name)}</b> <span class="mono dim">${esc(num)}</span><br><span class="dim" style="font-size:11px">${esc(c.set_name || c.set_id)} · ${esc(plabel(c.printing_key))} · <span title="${esc(c.ref_source)} figure, ${c.ref_gap_days} day${c.ref_gap_days === 1 ? '' : 's'} from the date">${esc(c.ref_source)}</span></span></td>

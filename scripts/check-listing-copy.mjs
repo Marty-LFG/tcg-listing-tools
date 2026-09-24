@@ -60,7 +60,8 @@ console.log('\n[extras.js parity]');
   const src = read('extras.js');
   const ctx = { TCG: {} };
   vm.createContext(ctx);
-  for (const name of ['condCode', 'langCode', 'fitTitle', 'formatCardNumber', 'cardNumberKey']) {
+  for (const name of ['condCode', 'langCode', 'fitTitle', 'formatCardNumber', 'cardNumberKey',
+    'pkmSetFacts', 'pkmIdForPrinted', 'pkmSharedCount', 'pkmRarityFor']) {
     vm.runInContext(extractFn(src, 'TCG.' + name + '=function') + ';', ctx);
   }
   const condVec = ['Ungraded, Near Mint', 'Near Mint', 'PSA 10', 'bgs 9.5', 'Lightly Played', 'MP', 'heavily played', 'Damaged', 'Excellent', 'Mint', '', 'Something Odd'];
@@ -105,6 +106,57 @@ console.log('\n[extras.js parity]');
   }
   const keyVec = ['106/86', '106/086', '012/086', 'TG01/TG30', '001', '4/102', '', 'SV001/SV122'];
   for (const s of keyVec) check('cardNumberKey(' + JSON.stringify(s) + ')', LC.cardNumberKey(s), ctx.TCG.cardNumberKey(s));
+
+  // The per-set facts table — every key on both sides, compared whole. A table that gained a set on
+  // one side only fails the key list; a changed row fails that set's comparison.
+  const J = (v) => JSON.stringify(v);
+  check('pkmSetFacts(*)', J(LC.pkmSetFacts('*')), J(ctx.TCG.pkmSetFacts('*')));
+  for (const k of new Set([...LC.pkmSetFacts('*'), ...ctx.TCG.pkmSetFacts('*'), 'sv1', ''])) {
+    check('pkmSetFacts(' + J(k) + ')', J(LC.pkmSetFacts(k)), J(ctx.TCG.pkmSetFacts(k)));
+  }
+  // …and the numbers it produces, through formatCardNumber on both sides. Verified against
+  // TCGplayer's product numbers and a photo of the 30th Celebration Classic Collection Charizard.
+  const ME = { series: 'Mega Evolution', releaseDate: '2026/09/16' };
+  const me55 = { ...ME, id: 'me55', name: '30th Celebration', printedTotal: 128, total: 161 };
+  const me55c = { ...ME, id: 'me55c', name: '30th Celebration: Classic Collection', total: 30 };
+  const cel25c = { id: 'cel25c', series: 'Sword & Shield', releaseDate: '2021/10/08', name: 'Celebrations: Classic Collection', printedTotal: 25, total: 25 };
+  const factVec = [
+    ['1', me55, {}],                          // 001/128 — the era rule still runs for ordinary cards
+    ['158', me55, { id: 'me55-158' }],        // 158/128
+    ['R', me55, {}],                          // R/RGB
+    ['B', me55, { id: 'me55-B' }],            // B/RGB
+    ['4', me55c, { id: 'me55c-4' }],          // 4/102, not 004/030
+    ['4', me55c, {}],                         // 4/102 — unique number, no id needed
+    ['50', me55c, { id: 'me55c-50' }],        // 050/185 — a Sword & Shield original keeps its padding
+    ['106', me55c, { id: 'me55c-106p' }],     // 106/106 Palkia LV.X
+    ['106', me55c, { id: 'me55c-106m' }],     // 106/160 M Gardevoir-EX
+    ['106', me55c, {}],                       // 106 — three cards, so no denominator at all
+    ['999', me55c, {}],                       // 999 — unknown reprint: never the subset's /030
+    ['106', {}, { id: 'me55c-106' }],         // 106/105 — set derived from the id (a stored row)
+    ['15', cel25c, { id: 'cel25c-15_A2' }],   // 15/82 Here Comes Team Rocket!
+    ['4', cel25c, {}],                        // 4/102, not 004/025
+    ['4', { ...me55c, name: 'x' }, { source: 'tcgdex' }],   // intl lane: the table never applies
+  ];
+  for (const [n, s, o] of factVec) {
+    check('formatCardNumber(' + J(n) + ', ' + (s.id || '?') + ', ' + J(o) + ')', LC.formatCardNumber(n, s, o), ctx.TCG.formatCardNumber(n, s, o));
+  }
+  const want = { '4/102@me55c': '4/102', '106@me55c': '106', '106/106@me55c': '106/106', '050/185@me55c': '050/185', 'R@me55': 'R/RGB', '1@me55': '001/128' };
+  for (const [k, v] of Object.entries(want)) {
+    const [n, sid] = k.split('@');
+    const got = LC.formatCardNumber(n.split('/')[0], sid === 'me55' ? me55 : me55c, sid === 'me55c' && n.includes('/') ? { id: LC.pkmIdForPrinted('me55c', n) } : {});
+    check('formatCardNumber is card-exact: ' + k, got, v);
+  }
+  const typedVec = [['me55c', '106/106'], ['me55c', '106/105'], ['me55c', '106'], ['me55c', '50/185'], ['me55c', '4'],
+    ['cel25c', '4'], ['cel25c', '15'], ['cel25c', '15/132'], ['me55', 'R/RGB'], ['me55', 'R'], ['me55', '1'], ['sv1', '1'], ['me55c', '']];
+  for (const [sid, t] of typedVec) {
+    check('pkmIdForPrinted(' + sid + ', ' + J(t) + ')', LC.pkmIdForPrinted(sid, t), ctx.TCG.pkmIdForPrinted(sid, t));
+    check('pkmSharedCount(' + sid + ', ' + J(t) + ')', LC.pkmSharedCount(sid, t), ctx.TCG.pkmSharedCount(sid, t));
+  }
+  check('pkmIdForPrinted names Palkia', LC.pkmIdForPrinted('me55c', '106/106'), 'me55c-106p');
+  check('pkmIdForPrinted refuses a shared bare number', LC.pkmIdForPrinted('me55c', '106'), '');
+  const rarVec = [{ id: 'me55-R', set: { id: 'me55' }, rarity: 'Common' }, { id: 'me55-1', set: { id: 'me55' }, rarity: 'Common' }, { id: 'x', rarity: 'Rare' }, null];
+  for (const c of rarVec) check('pkmRarityFor(' + J(c && c.id) + ')', LC.pkmRarityFor(c), ctx.TCG.pkmRarityFor(c));
+  check('pkmRarityFor corrects the RGB Mew', LC.pkmRarityFor(rarVec[0]), 'Holo Rare');
 }
 
 // ---------------------------------------------------------------------------

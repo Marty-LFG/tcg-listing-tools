@@ -802,11 +802,27 @@ function resolveEntry(parsed) {
     const all = hits.length ? hits : ix.byName.filter((e) => e.q.includes(q));
     if (!all.length) return { error: 'no card called “' + parsed.nameQuery + '” in ' + ix.set.label };
     if (all.length > 1 && !parsed.num) return { error: all.length + ' cards match “' + parsed.nameQuery + '” — add a number', candidates: all.slice(0, 6).map((e) => e.c) };
+    // A name AND a number: the number narrows the name, rather than being ignored for the first hit.
+    if (all.length > 1 && parsed.num) {
+      const ks = new Set(numKeys(parsed.num));
+      const both = all.filter((e) => numKeys(GA.rawNumber(e.c)).some((k) => ks.has(k)));
+      if (both.length) return { ix, card: both[0].c };
+    }
     return { ix, card: all[0].c };
   }
   if (!parsed.num) return { error: null };
+  // The printed number, denominator and all, where the set reuses numbers: in the Classic Collection
+  // 106/106 is Palkia LV.X and 106/105 Shining Celebi, while the bare 106 is three cards.
+  const pid = GA.printedIdFor ? GA.printedIdFor(ix.set.value, parsed.num) : '';
+  if (pid) { const c = ix.cards.find((x) => x.id === pid); if (c) return { ix, card: c }; }
   for (const k of numKeys(parsed.num)) {
     const hit = ix.byNum.get(k);
+    // More than one card carries this number. Taking the first used to list whichever came back
+    // first from the API, silently; say which cards they are and how to name one instead.
+    if (hit && hit.length > 1) {
+      const list = hit.slice(0, 6).map((c) => numOf(c) + ' ' + (GA.displayName ? GA.displayName(c, DEX_EN) : c.name)).join(' · ');
+      return { error: hit.length + ' cards are #' + parsed.num + ' in ' + ix.set.label + ' — type the number as printed, or *name: ' + list, candidates: hit.slice(0, 6) };
+    }
     if (hit && hit.length) return { ix, card: hit[0] };
   }
   return { error: 'no card ' + parsed.num + ' in ' + ix.set.label };

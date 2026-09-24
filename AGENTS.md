@@ -100,6 +100,15 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    (which IS the `variant` column in `UNIQUE(game, identity_key, variant)`),
    `itemFinish` (bulk), `parseVariance` (collectr), `ebayFinish`, `MAPPERS.mtg`
    (normalize), and each builder's `genTitle`.
+   **A holo-only set is a fact, not a rarity guess.** `pkmSetFacts(key).holo`
+   (`lib/listing-copy.mjs`, mirrored as `TCG.pkmSetFacts`) marks the sets where every
+   card is holofoil, commons included: 30th Celebration and its Classic Collection,
+   Celebrations and its Classic Collection, and the JP/KO M6a. A new set carries no
+   TCGplayer prices on pokemontcg.io for a week or more, and until they land every tool
+   guessed off the rarity word — 71 of 30th Celebration's 161 cards came out non-holo.
+   The stock adapter's `printingsFor` now answers one Holofoil printing for these, and
+   real price keys win the moment they arrive. Add a set only once TCGplayer's product
+   list shows nothing but Holofoil for it.
 
 6. **Condition / protection / footer blocks are per-product-type; POSTAGE is per
    price band.** For the **six card builders** (pokemon, mtg, lorcana, riftbound,
@@ -166,6 +175,15 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
     250) — so there is no denominator to render and inventing one is GR4. Magic prints
     `249`, so `249` is what ships. Run through the Pokémon formatter, HOB #1 came out
     `001`, a number that is not on the card.
+    **Some numbers are not the era rule's to build.** `pkmSetFacts` carries per-card printed
+    numbers, checked against TCGplayer, for the cards that print something else: the Classic
+    Collection reprints keep their ORIGINAL number (Charizard `4/102` under a 30 stamp — `me55c`,
+    `cel25c`; the era rule printed `004/030` and `004/025`), and 30th Celebration's three Mews
+    print `R/RGB`/`G/RGB`/`B/RGB`. **Pass the pokemontcg.io card id as `opts.id`**: three Classic
+    Collection cards are all `106` (`106/105`, `106/106`, `106/160`) and only the id says which.
+    With no id, a shared number prints its numerator alone rather than another card's
+    denominator. `pkmIdForPrinted` is the reverse — the typed printed number to the card — and is
+    how the builder, uploader and Runner reach those cards (`106/106` is Palkia LV.X).
 
 11. **Cloudflare and cloudflared are changed in the DASHBOARD, never in a file.**
     The `tcg-tools` tunnel on ALCSERVER is **remotely managed** — the service runs as
@@ -1331,7 +1349,15 @@ and a bare set code to switch sets mid-pile. The printing letters are per game �
 "heavily played" silently becomes "holofoil". There is deliberately no token for etched or surge
 foil: across every cached set, Scryfall's only `finishes` combinations are `nonfoil+foil`, `nonfoil`,
 `foil` and `etched` — an etched or surge print is a SEPARATE COLLECTOR NUMBER, so it is typed as its
-own number and a token for it could only ever match nothing. Resolution happens BEFORE Enter (a ghost
+own number and a token for it could only ever match nothing.
+
+A number more than one card in the set carries (the Classic Collection's three #106s) is no longer
+answered with whichever came first: the ghost strip lists them, and the printed number names one
+(`106/106`). A lettered number is typed as printed — `R/RGB`, because a bare `r` is reverse holo.
+Pokémon subsets share their parent's `ptcgoCode` upstream (CEL/CEL, 30C/30C, every Trainer Gallery
+and Shiny Vault), so a typed code always landed on the parent; `uniqueSetCodes` (`lib/stock-games.mjs`)
+leaves the parent its code and gives each subset its own set id (`ME55C`, `SWSH9TG`). Rows keep the
+printed code — `normalizeCard` reads it off the card's own set. Resolution happens BEFORE Enter (a ghost
 strip), so a mistype is caught rather than corrected.
 
 **One label per LISTING, quantity N on it.** A repeat of the same card bumps quantity instead of

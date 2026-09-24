@@ -462,13 +462,17 @@ async function doLookup(opts){
     // overrides are both built from. Keeping a second copy on `card` is how the two drift.
     card={ nc, raw:c, language:nc.language,
       id:nc.identityKey, name:c.name, set_name:nc.setName, number:nc.number,
-      rawNumber:c.number||num, rarity:c.rarity||'', image:nc.image, artist:c.artist||'' };
-    // default finish from rarity/name
-    if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
-    else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
+      rawNumber:c.number||num, rarity:nc.rarity||'', image:nc.image, artist:c.artist||'' };
+    // default finish from rarity/name — afterLookup() below sets it (holo-only sets first)
     afterLookup();
     act&&act.done(res.source==='tcgdex'?'found (backup)':'found');
-    stat($('status'),'ok','Found. Verify the details, price and offers below.'+TCG.pkmSourceNote(res));
+    // A bare number several cards in this set carry (Classic Collection #106 is three) opened the
+    // one pokemontcg.io files under the plain id. Say so, and how to reach the others.
+    const shared=(!/\//.test(num)&&GA.sharedNumberCount)?GA.sharedNumberCount(setObj.value,num):0;
+    const others=shared>1?((TCG.pkmSetFacts(setObj.value)||{}).cards||[]).filter(e=>TCG.cardNumberKey(e[0])===TCG.cardNumberKey(num)).map(e=>e[1]):[];
+    stat($('status'),shared>1?'warn':'ok',shared>1
+      ?'Found '+esc(c.name)+' '+esc(nc.number)+' — but '+shared+' cards in this set are #'+esc(num)+' ('+esc(others.join(', '))+'). Type the full printed number for another.'
+      :'Found. Verify the details, price and offers below.'+TCG.pkmSourceNote(res));
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
 
@@ -593,7 +597,10 @@ function afterLookup(o){
   // default finish from rarity/name — POKÉMON ONLY, and a guess even there. The other games have a
   // real finish on the record and set it before calling in.
   if(GAME==='pokemon'&&!(o&&o.fromRarity===false)){
-    if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
+    // A holo-only set (30th Celebration, Celebrations — every card holofoil, commons included) is
+    // a fact about the set rather than a guess off the rarity word, so it goes first.
+    if(GA.holoOnly&&GA.holoOnly(card.raw)) $('finish').value='Holo';
+    else if(/reverse/i.test(card.rarity)) $('finish').value='Reverse Holo';
     else if(/holo|rare|ex|gx|v\b|vmax|full art|illustration/i.test(card.rarity||'')) $('finish').value='Holo';
   }
   renderCard();
@@ -802,7 +809,9 @@ async function checkStock(){
   // hardcoded 'EN' asked the shelf about the English printing of a Japanese card and came back with
   // a clean bill for stock that may well be sitting there — and this page has produced non-English
   // rows since Magic reached it (Scryfall serves Japanese and Dwarvish prints).
-  const qs=new URLSearchParams({game:GAME,identity_key:card.id,name:card.name,variant:r.variant||'',
+  // number: only read when there is no identity key, where it keeps "Pikachu" from matching all
+  // thirty different Pikachu in a set (the server's name fallback).
+  const qs=new URLSearchParams({game:GAME,identity_key:card.id,name:card.name,number:card.number||'',variant:r.variant||'',
     language:r.language||'EN',condition:r.condition||'',graded:graded()?'1':'0',
     grading_company:r.grading_company||'',grade:r.grade!=null?String(r.grade):''});
   try{

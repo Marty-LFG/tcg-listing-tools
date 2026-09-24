@@ -733,12 +733,15 @@ async function doLookup(opts){
     const c=res.card;
     set('f_name',c.name);
     set('f_set',(c.set&&c.set.name)||setId);
-    set('f_num',TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity}));
-    set('f_rarity',c.rarity||'');
+    // c.id rides along because some sets reuse numbers: three Classic Collection cards are all 106.
+    set('f_num',TCG.formatCardNumber(c.number||num,c.set||{},{source:'ptcg',rarity:c.rarity,id:c.id}));
+    set('f_rarity',TCG.pkmRarityFor(c));
     set('f_poke',c.name);
     set('f_stage',(c.subtypes||[]).join(' / '));
     set('f_type',(c.types||[]).join(' / '));
-    set('f_finish',/holo/i.test(c.rarity||'')?'Holo':'Non-holo');
+    // A holo-only set (30th Celebration, Celebrations — commons included) is Holo whatever the rarity says.
+    var _hf=TCG.pkmSetFacts((c.set&&c.set.id)||'');
+    set('f_finish',(_hf&&_hf.holo)||/holo/i.test(TCG.pkmRarityFor(c))?'Holo':'Non-holo');
     set('f_pitch',genPitch(readFields()));
     let price=null; const tp=c.tcgplayer&&c.tcgplayer.prices;
     if(tp){const k=Object.keys(tp)[0]; if(k&&tp[k]) price=tp[k].market||tp[k].mid;}
@@ -756,7 +759,11 @@ async function doLookup(opts){
       img:(c.images&&(c.images.large||c.images.small))||''};
     set('f_img',_intlMeta.img||'');   // expose the fetched image so it can be overridden
     act&&act.done(res.source==='tcgdex'?'tcgdex (backup)':'pokemontcg.io');
-    st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(c.rarity||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'')+TCG.pkmSourceNote(res);
+    st.className='status ok';st.textContent='\u2713 '+c.name+'  ('+(TCG.pkmRarityFor(c)||'?')+')'+(price?'  \u00b7  ~US$'+price+' market':'')+TCG.pkmSourceNote(res);
+    // A bare number several cards in this set carry opened the plain-id one. Say so, and how to reach the others.
+    var _sh=/\//.test(String(num))?0:TCG.pkmSharedCount(setId,num);
+    if(_sh>1){var _all=((TCG.pkmSetFacts(setId)||{}).cards||[]).filter(function(e){return TCG.cardNumberKey(e[0])===TCG.cardNumberKey(num);}).map(function(e){return e[1];});
+      st.className='status warn';st.textContent+='  \u2014  '+_sh+' cards in this set are #'+num+' ('+_all.join(', ')+'). Type the full printed number for another.';}
     render();
     if(window.TCG){var _tp=(c.tcgplayer&&c.tcgplayer.prices)||{};var _pr=[];var _finMap={normal:'',holofoil:'holofoil ',reverseHolofoil:'reverse holo ','1stEditionHolofoil':'1st ed holo ','1stEditionNormal':'1st ed '};Object.keys(_tp).forEach(function(k){var b=_tp[k];if(b&&(b.market!=null||b.mid!=null)){var sp=(b.low!=null||b.high!=null)?{low:b.low,high:b.high}:null;_pr.push({source:"TCGplayer",measure:(_finMap[k]!=null?_finMap[k]:k+' ')+"market",group:"market",amount:(b.market!=null?b.market:b.mid),currency:"USD",spread:sp});}});var _cm=c.cardmarket&&c.cardmarket.prices;if(_cm&&_cm.averageSellPrice)_pr.push({source:"Cardmarket",measure:"30d avg sold",group:"market",amount:_cm.averageSellPrice,currency:"EUR"});if(_cm&&_cm.lowPrice)_pr.push({source:"Cardmarket",measure:"from (low)",group:"asking",amount:_cm.lowPrice,currency:"EUR"});
       var _dg=c.id?'https://static.dotgg.gg/pokemon/card/'+c.id+'.webp':'';var _sm=c.images&&c.images.small;var _lg=c.images&&(c.images.large||c.images.small);   // display: dotgg webp 82KB / small (raced); download: large hi-res
@@ -909,7 +916,9 @@ async function tryPcLookup(setObj,num,dl,enSet){
     set('f_rarity',(tc&&tc.rarity)||'');
     set('f_stage',(tc&&tc.stage)||'');
     set('f_type',(tc&&(tc.types||[]).join(' / '))||'');
-    set('f_finish',/\bmega\b|\bex\b|\bv\b|vmax|vstar|\bgx\b|holo|rainbow|gold|special|shiny|\bsar\b|\bsr\b|\bur\b/i.test(card.name)?'Holo':'Non-holo');
+    // Holo-only sets first (JP/KO M6a 30th CELEBRATION: every card holo, commons included).
+    var _hfi=TCG.pkmSetFacts(dl+':'+String(setObj.code||'').toUpperCase());
+    set('f_finish',(_hfi&&_hfi.holo)||/\bmega\b|\bex\b|\bv\b|vmax|vstar|\bgx\b|holo|rainbow|gold|special|shiny|\bsar\b|\bsr\b|\bur\b/i.test(card.name)?'Holo':'Non-holo');
     _intlMeta={nativeName:isEn?'':((tc&&tc.name)||ni.kana||''),romaji:isEn?'':(ni.romaji||''),
       nativeSet:isEn?'':(setObj.name_native||''),enSet:isEn?'':((setObj.enEquivalent&&setObj.enEquivalent.name)||''),
       setSymbol:setObj.code||'',illustrator:(tc&&tc.illustrator)||'',hp:(tc&&tc.hp!=null?String(tc.hp):''),
@@ -989,7 +998,8 @@ async function doLookupIntl(setObj,num,dl){
     set('f_poke',enName);
     set('f_stage',c.stage||'');
     set('f_type',(c.types||[]).join(' / '));
-    set('f_finish',/holo|shiny|rare|ex|special/i.test(c.rarity||'')?'Holo':'Non-holo');
+    var _hft=TCG.pkmSetFacts(dl+':'+String(setObj.code||'').toUpperCase());
+    set('f_finish',(_hft&&_hft.holo)||/holo|shiny|rare|ex|special/i.test(c.rarity||'')?'Holo':'Non-holo');
     set('f_pitch',genPitch(readFields()));
     // The identity key is NAMESPACED with the TCGdex lane, which is what makes it safe to store —
     // it used to be left blank precisely because a bare JP set code collides with the pokemontcg.io

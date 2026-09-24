@@ -894,9 +894,9 @@
     return { cached: cached, fresh: p };
   };
 
-  // MIRROR: condCode/langCode/fitTitle/formatCardNumber are ported verbatim in
-  // lib/listing-copy.mjs (the bulk tool's shared copy — classic scripts can't import
-  // ESM). If you edit any of them, edit BOTH sides and run scripts/check-listing-copy.mjs.
+  // MIRROR: condCode/langCode/fitTitle/formatCardNumber/pkmSetFacts/pkmIdForPrinted/pkmSharedCount/
+  // pkmRarityFor are ported verbatim in lib/listing-copy.mjs (the bulk tool's shared copy — classic scripts
+  // can't import ESM). If you edit any of them, edit BOTH sides and run scripts/check-listing-copy.mjs.
   TCG.condCode=function(s){
     s=(s||'').trim();var l=s.toLowerCase();
     var g=l.match(/(psa|cgc|bgs|sgc)\s*([0-9]+(?:\.5)?)/);
@@ -950,6 +950,17 @@
     set=set||{};opts=opts||{};
     var raw=String(number==null?'':number).trim();
     if(!raw)return '';
+    // The printed numbers no era rule can rebuild (TCG.pkmSetFacts). opts.id is the pokemontcg.io card
+    // id, and it matters: three Classic Collection cards are all "106". Never on the intl lanes.
+    var cut=String(opts.id||'').lastIndexOf('-');
+    var facts=opts.source==='tcgdex'?null:TCG.pkmSetFacts(set.id||(cut>0?String(opts.id).slice(0,cut):''));
+    if(facts&&facts.cards){
+      var hit=[];
+      for(var i=0;i<facts.cards.length;i++){if(opts.id?facts.cards[i][2]===opts.id:facts.cards[i][0]===raw)hit.push(facts.cards[i][1]);}
+      if(hit.length===1)return hit[0];
+      // Shared number, no id: the numerator alone, never another card's denominator.
+      if(hit.length>1||facts.own)return raw;
+    }
     var denomRaw=(set.printedTotal!=null?set.printedTotal:set.total);
     var denom=(denomRaw==null||denomRaw==='')?'':String(denomRaw);
     var name=set.name||'';
@@ -982,6 +993,79 @@
       .split('/')
       .map(function(p){return p.replace(/^0+(?=[0-9a-z])/,'');})
       .join('/');
+  };
+  // Per-set printing facts no upstream carries — holo-only sets, reprint subsets that keep their
+  // ORIGINAL numbers (Charizard 4/102), per-card printed numbers and rarity corrections. The notes
+  // live beside the MIRROR in lib/listing-copy.mjs pkmSetFacts; the table here must match it
+  // exactly, and scripts/check-listing-copy.mjs compares every key.
+  TCG.pkmSetFacts=function(key){
+    var T={
+      me55:{
+        holo:true,
+        cards:[['R','R/RGB','me55-R'],['G','G/RGB','me55-G'],['B','B/RGB','me55-B']],
+        rarity:{'me55-R':'Holo Rare','me55-G':'Holo Rare','me55-B':'Holo Rare'}
+      },
+      me55c:{
+        holo:true,own:true,
+        cards:[
+          ['4','4/102','me55c-4'],['5','5/109','me55c-5'],['11','11/113','me55c-11'],
+          ['11','11/101','me55c-11g'],['18','18/132','me55c-18'],['19','19/109','me55c-19'],
+          ['25','25/111','me55c-25'],['33','33/181','me55c-33'],['41','41/122','me55c-41'],
+          ['43','43/146','me55c-43'],['47','47/127','me55c-47'],['50','050/185','me55c-50'],
+          ['57','57/111','me55c-57'],['58','58/102','me55c-58'],['69','69/132','me55c-69'],
+          ['85','85/124','me55c-85'],['89','89/149','me55c-89'],['94','94/102','me55c-94'],
+          ['99','99/102','me55c-99'],['100','100/102','me55c-100'],['101','101/101','me55c-101'],
+          ['106','106/105','me55c-106'],['106','106/160','me55c-106m'],
+          ['106','106/106','me55c-106p'],['108','108/115','me55c-108'],
+          ['114','114/264','me55c-114'],['123','123/172','me55c-123'],
+          ['138','138/202','me55c-138'],['149','149/147','me55c-149'],
+          ['203','203/193','me55c-203']
+        ]
+      },
+      cel25:{holo:true},
+      cel25c:{
+        holo:true,own:true,
+        cards:[
+          ['2','2/102','cel25c-2_A'],['4','4/102','cel25c-4_A'],['8','8/82','cel25c-8_A'],
+          ['9','9/95','cel25c-9_A'],['15','15/102','cel25c-15_A1'],['15','15/82','cel25c-15_A2'],
+          ['15','15/132','cel25c-15_A3'],['15','15/106','cel25c-15_A4'],
+          ['17','17/17','cel25c-17_A'],['20','20/111','cel25c-20_A'],['24','24/53','cel25c-24_A'],
+          ['54','54/99','cel25c-54_A'],['60','60/145','cel25c-60_A'],['66','66/64','cel25c-66_A'],
+          ['73','73/102','cel25c-73_A'],['76','76/108','cel25c-76_A'],
+          ['86','86/109','cel25c-86_A'],['88','88/92','cel25c-88_A'],['93','93/101','cel25c-93_A'],
+          ['97','97/146','cel25c-97_A'],['107','107/123','cel25c-107_A'],
+          ['109','109/111','cel25c-109_A'],['113','113/114','cel25c-113_A'],
+          ['114','114/114','cel25c-114_A'],['145','145/147','cel25c-145_A']
+        ]
+      },
+      'ja:M6A':{holo:true},
+      'ko:M6A':{holo:true}
+    };
+    if(key==='*')return Object.keys(T);
+    return Object.prototype.hasOwnProperty.call(T,key)?T[key]:null;
+  };
+  // The pokemontcg.io id a typed number names ('106/106' → me55c-106p, '4' in cel25c → cel25c-4_A);
+  // a bare number only when one card carries it. '' unless exactly one card matches.
+  TCG.pkmIdForPrinted=function(setId,typed){
+    var f=TCG.pkmSetFacts(setId),k=TCG.cardNumberKey(typed),hit=[];
+    if(!f||!f.cards||!k)return '';
+    for(var i=0;i<f.cards.length;i++){
+      var e=f.cards[i];
+      if(TCG.cardNumberKey(e[1])===k||(k.indexOf('/')<0&&TCG.cardNumberKey(e[0])===k))hit.push(e[2]);
+    }
+    return hit.length===1?hit[0]:'';
+  };
+  // How many cards in the set carry this bare number (3 for Classic Collection #106).
+  TCG.pkmSharedCount=function(setId,typed){
+    var f=TCG.pkmSetFacts(setId),k=TCG.cardNumberKey(String(typed==null?'':typed).split('/')[0]),n=0;
+    if(!f||!f.cards||!k)return 0;
+    for(var i=0;i<f.cards.length;i++)if(TCG.cardNumberKey(f.cards[i][0])===k)n++;
+    return n;
+  };
+  // A pokemontcg.io card's rarity, corrected where TCG.pkmSetFacts knows upstream is wrong.
+  TCG.pkmRarityFor=function(card){
+    var c=card||{},f=TCG.pkmSetFacts((c.set&&c.set.id)||'');
+    return (f&&f.rarity&&f.rarity[c.id])||c.rarity||'';
   };
 
   // ── Pokémon EN card lookup: typed number → pokemontcg.io id ────────────────────────────────
@@ -1091,6 +1175,10 @@
     // opts.refresh is the builders' ↻: the server re-fetches the whole set behind this URL (the set
     // is the unit the cache stores), and the roster copies are dropped alongside it.
     var bust=opts.refresh?'?refresh=1':'';
+    // Where the set reuses numbers, the DENOMINATOR is what names the card: 106/106 is Palkia LV.X,
+    // 106/105 Shining Celebi. `t` has already dropped it, so ask the printed-number table first.
+    var printedId=TCG.pkmIdForPrinted(setId,typed);
+    if(printedId&&printedId.indexOf(setId+'-')===0)t=printedId.slice(setId.length+1);
     async function get(numRaw){
       var r=await TCG.fetchJson('/api/pkm/cards/'+encodeURIComponent(setId+'-'+numRaw)+bust,{onRetry:opts.onRetry});
       if(r.ok){
