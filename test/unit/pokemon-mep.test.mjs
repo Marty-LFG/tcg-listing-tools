@@ -97,6 +97,22 @@ describe('fetchTcgplayerRows — pagination + field mapping (mocked, no network)
     assert.deepEqual(rows[0], { name: 'Card 0', number: '000', price: 0, stage: 'Basic', type: 'Fire', hp: '60', rarity: 'Promo', releaseDate: '' });
   });
 
+  it('pages in NAME order, and a product seen on an earlier page is not a second printing', async () => {
+    // The default sales ranking reshuffles tied products between requests, so a product can land on
+    // both sides of a page break (and another on neither). Name order is stable; the id guard catches
+    // any repeat that still gets through.
+    const bodies = [];
+    const p = (id, n) => ({ productId: id, productName: 'Card ' + n, marketPrice: 1, customAttributes: { number: n } });
+    const page1 = [...Array.from({ length: 49 }, (_, i) => p(1000 + i, String(i + 1).padStart(3, '0'))), p(2000, '050')];
+    const page2 = [p(2000, '050'), p(2001, '051')];   // 2000 served twice across the break
+    const fetchImpl = async (_url, init) => { bodies.push(JSON.parse(init.body)); return bodies.length === 1 ? mkResp(page1, 52) : mkResp(page2, 52); };
+    const rows = await fetchTcgplayerRows(fetchImpl);
+    assert.deepEqual(bodies.map((b) => b.sort), [
+      { field: 'product-sorting-name', order: 'asc' }, { field: 'product-sorting-name', order: 'asc' }]);
+    assert.equal(rows.length, 51, '52 served, one of them twice');
+    assert.equal(rows.filter((r) => r.number === '050').length, 1);
+  });
+
   it('throws on a non-ok response (GR7: refresh then keeps the existing file)', async () => {
     await assert.rejects(fetchTcgplayerRows(async () => ({ ok: false, status: 403 })), /HTTP 403/);
   });

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { logoMatchesSet } from '../../scripts/fandom-set-logos.mjs';
 import { printedTotalOf } from '../../scripts/build-lorcana-set-art.mjs';
 import { rosterFromCards } from '../../scripts/build-swu-set-art.mjs';
-import { variantTagOf } from '../../scripts/build-onepiece-tcgimages.mjs';
+import { variantTagOf, fetchSetProducts } from '../../scripts/build-onepiece-tcgimages.mjs';
 import { findGameSetArt } from '../../lib/set-art-data.mjs';
 import { cleanOnepieceArt, productImageUrl, canonPrintingTag } from '../../lib/onepiece-clean-art.mjs';
 
@@ -82,6 +82,25 @@ describe('variantTagOf — One Piece printing identity off the product name', ()
   it('unknown decoration stays a tag — strictness beats mistaking it for the base printing', () => {
     assert.equal(variantTagOf('Mr. 3 (Galdino)'), 'Galdino');
     assert.equal(variantTagOf('Monkey.D.Luffy (Parallel Manga Alternate Art)'), 'Parallel Manga Alternate Art');
+  });
+});
+
+describe('fetchSetProducts — One Piece paging (mocked, no network)', () => {
+  // Tied products come back in a different order on every request under the default sales ranking
+  // (Romance Dawn: a new order on 8 of 8 pulls), so a page break can serve one product twice and
+  // another not at all. Name order is stable; the id guard catches a repeat that still slips through.
+  it('pages in NAME order and keeps one entry per product', async () => {
+    const bodies = [];
+    const p = (id, n, name) => ({ productId: id, productName: name || 'Card ' + n, customAttributes: { number: n } });
+    const page1 = [...Array.from({ length: 49 }, (_, i) => p(100 + i, 'OP01-' + String(i + 1).padStart(3, '0'))), p(200, 'OP01-050')];
+    const page2 = [p(200, 'OP01-050'), p(201, 'OP01-050', 'Shanks (Parallel)')];   // 200 served twice
+    const resp = (results) => ({ ok: true, json: async () => ({ results: [{ totalResults: 52, results }] }) });
+    const fetchImpl = async (_url, init) => { bodies.push(JSON.parse(init.body)); return resp(bodies.length === 1 ? page1 : page2); };
+    const out = await fetchSetProducts('romance-dawn', fetchImpl);
+    assert.ok(bodies.every((b) => b.sort.field === 'product-sorting-name' && b.sort.order === 'asc'));
+    assert.equal(out.length, 51, '52 served, one of them twice');
+    assert.deepEqual(out.filter((x) => x.code === 'OP01-050').map((x) => [x.id, x.tag]), [[200, ''], [201, 'Parallel']],
+      'the base and the parallel of one code stay two printings; only the REPEATED product goes');
   });
 });
 

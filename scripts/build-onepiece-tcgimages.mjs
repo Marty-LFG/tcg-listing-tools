@@ -63,6 +63,9 @@ async function search(body, fetchImpl) {
 // The store's sets, joined to TCGplayer's own set list via the aggregation — value matched by
 // normalised NAME ('Romance Dawn' ↔ 'Romance Dawn'), never by constructing a slug.
 export async function resolveSetSlugs(fetchImpl = fetch) {
+  // The DEFAULT sort is fine here and deliberately left alone: this reads the setName aggregation off
+  // a single one-result page, and an aggregation does not depend on the order of the results. The
+  // paging below is where order matters.
   const res = await search({
     algorithm: 'sales_dismax', from: 0, size: 1,
     filters: { term: { productLineName: ['one piece card game'] }, range: {}, match: {} },
@@ -87,12 +90,19 @@ export async function resolveSetSlugs(fetchImpl = fetch) {
 
 export async function fetchSetProducts(slug, fetchImpl = fetch) {
   const out = [];
+  const seen = new Set();
   let from = 0, total = Infinity, pages = 0;
   while (from < total && pages < MAX_PAGES_PER_SET) {
+    // SORTED BY NAME, not the default sales ranking. Products that tie on the ranking come back in a
+    // different order on every request — Romance Dawn's 163 products arrived in a new order on 8 of 8
+    // pulls (2026-09-29) — so an offset can land a product on both sides of a page break or on
+    // neither. Against the whole Riftbound line that lost 3 and then 2 real products per pull; name
+    // order returned every one, every time. A printing lost here is a card that falls back to the
+    // watermarked Bandai scan, silently.
     const res = await search({
       algorithm: 'sales_dismax', from, size: PAGE,
       filters: { term: { productLineName: ['one piece card game'], setName: [slug] }, range: {}, match: {} },
-      context: { shippingCountry: 'US' }, sort: {},
+      context: { shippingCountry: 'US' }, sort: { field: 'product-sorting-name', order: 'asc' },
     }, fetchImpl);
     const items = res.results || [];
     // The FIRST page's totalResults is the authority; a later page missing the field must not
@@ -101,6 +111,8 @@ export async function fetchSetProducts(slug, fetchImpl = fetch) {
     for (const p of items) {
       const num = p.customAttributes && p.customAttributes.number;
       if (p.sealed || !num || !p.productId) continue;
+      if (seen.has(p.productId)) continue;            // seen on an earlier page: the guard behind the sort
+      seen.add(p.productId);
       out.push({ code: String(num).toUpperCase(), id: p.productId, tag: variantTagOf(p.productName) });
     }
     if (!items.length) break;

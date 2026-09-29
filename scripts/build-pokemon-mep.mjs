@@ -72,12 +72,20 @@ const readJson = (p, dflt) => { try { return JSON.parse(readFileSync(p, 'utf8'))
 // hard failure (GR7: the refresh then keeps the existing baked file). `fetchImpl` is injectable for tests.
 export async function fetchTcgplayerRows(fetchImpl = fetch) {
   const rows = []
+  const seen = new Set()
   let from = 0, total = Infinity
   while (from < total) {
+    // SORTED BY NAME, not the default sales ranking. Products that tie on the ranking come back in a
+    // different order on every request, so an offset can land a product on both sides of a page break
+    // or on neither. Measured 2026-09-24/29 against the whole Riftbound line: the default order returned
+    // 1,574 and then 1,586 distinct products of 1,577 and 1,588, with duplicates filling the gap; name
+    // order returned every one, every time. This set is three pages and has not lost a card yet — its
+    // roster matched TCGplayer's 131 priced printings exactly on 2026-09-29 — but a Mega Evolution
+    // promo missing from the roster is unlistable (GR7 cannot rescue what was never fetched).
     const body = JSON.stringify({
       algorithm: 'sales_dismax', from, size: PAGE,
       filters: { term: { productLineName: ['pokemon'], setName: [TCGP_SET] }, range: {}, match: {} },
-      context: { shippingCountry: 'US' }, sort: {},
+      context: { shippingCountry: 'US' }, sort: { field: 'product-sorting-name', order: 'asc' },
     })
     const r = await fetchImpl(TCGP_URL, { method: 'POST', headers: TCGP_HEADERS, body })
     if (!r.ok) throw new Error('TCGplayer search HTTP ' + r.status)
@@ -87,6 +95,8 @@ export async function fetchTcgplayerRows(fetchImpl = fetch) {
     total = (res && res.totalResults) || 0
     for (const p of items) {
       if (p.sealed) continue
+      // A product already seen on an earlier page is not a second printing (the guard behind the sort).
+      if (p.productId != null) { if (seen.has(p.productId)) continue; seen.add(p.productId) }
       const ca = p.customAttributes || {}
       if (!ca.number || !p.productName) continue
       rows.push({
