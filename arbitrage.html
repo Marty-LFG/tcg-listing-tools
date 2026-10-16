@@ -160,6 +160,25 @@
           <th>Line</th><th>Card</th><th>Printing</th><th class="num" title="TCGplayer market price for the printing, in US$">TCG market</th><th class="num" title="what the buyer pays for a NM copy, in A$">Buyer pays</th><th title="age of the TCGplayer figure">Age</th><th>Watch</th><th></th>
         </tr></thead><tbody id="resolvedBody"><tr><td colspan="8" class="dim">nothing resolved yet — pick a set and type card numbers in box 1</td></tr></tbody></table></div>
         <div class="note" id="setNote" hidden></div>
+
+        <!-- ============ TCGplayer, live — a REFERENCE, never the basis ============ -->
+        <!-- The scan scores against pokemontcg.io's embedded TCGplayer figure, which is blank for
+             weeks after a set releases and is what makes the table above go quiet. TCGplayer's own
+             price-guide API carries those cards on day one, so it is read here as a second opinion:
+             the live figure, what the scan is actually using, and the gap between them. Nothing in
+             this block feeds hitMaths or the buyer basis — read it, then decide. -->
+        <details class="watch" id="tcgpDetails" style="margin-top:12px;">
+          <summary><h3 style="margin:0">TCGplayer, live <span class="h-note" id="tcgpNote">—</span></h3></summary>
+          <p class="muted" style="margin:10px 0 8px;">Read straight off TCGplayer's own price guide, which prices a new set weeks before pokemontcg.io does. A <b>reference only</b>: the scan above is still scored on the figure in the <i>TCG market</i> column, so a card blank there stays unscannable until that lands.</p>
+          <div class="row" style="margin-bottom:8px;">
+            <button class="btn sm" id="tcgpBtn">Check every resolved card</button>
+            <span class="dim" id="tcgpFx" style="font-size:11.5px"></span>
+          </div>
+          <div class="gridwrap"><table class="grid" style="min-width:0"><thead><tr>
+            <th>Card</th><th class="num" title="TCGplayer's own live market figure">Live market</th><th class="num" title="the figure the scan is scored on">Scan uses</th><th class="num" title="live figure against the one the scan uses">Gap</th><th class="num" title="what the buyer pays, against the live figure">Buyer pays</th><th></th>
+          </tr></thead><tbody id="tcgpBody"><tr><td colspan="6" class="dim">resolve some cards first</td></tr></tbody></table></div>
+        </details>
+
         <div class="row" style="margin-top:12px;">
           <button class="btn primary" id="scanBtn" disabled>Scan eBay</button>
           <button class="btn" id="stopBtn" hidden>Stop after this card</button>
@@ -350,6 +369,7 @@ async function resolve() {
   finally { $('resolveBtn').disabled = false; }
 }
 $('resolveBtn').addEventListener('click', resolve);
+$('tcgpBtn').addEventListener('click', () => checkTcgp());
 $('catch').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); resolve(); } });
 
 function paintResolved(unknown) {
@@ -397,6 +417,90 @@ function paintResolved(unknown) {
   }));
   document.querySelectorAll('.dropBtn').forEach((el) => el.addEventListener('click', () => { RESOLVED.splice(RESOLVED.findIndex((c) => c._i === +el.dataset.i), 1); paintResolved(unknown); }));
   document.querySelectorAll('.watchBtn').forEach((el) => el.addEventListener('click', () => watchCards([RESOLVED[+el.dataset.i]])));
+  // Cards the scan cannot price are the ones worth a second opinion, so those are fetched without
+  // being asked for. The rest are a button: it is one call per card against an undocumented
+  // endpoint, and a 40-card paste should not fire 40 of them on its own.
+  paintTcgp();
+  const blind = RESOLVED.filter((c) => c.market_usd == null);
+  if (blind.length) checkTcgp(blind);
+}
+
+// ---- TCGplayer, live: a reference beside the figure the scan is scored on --------------------
+// WHY (owner decision 2026-10-16): EB Games Australia buys and sells against TCGplayer market, so
+// it is the competitive number to see. And the gap this page already documents — pokemontcg.io
+// carrying no prices for a set for weeks after release — is a gap TCGplayer's own price guide does
+// not have, so the figure the table above cannot show usually does exist.
+//
+// Strictly a reference. Nothing here touches hitMaths, the buyer basis, the scan's scoring or the
+// watch list; a card blank in the TCG market column stays unscannable no matter what this says.
+// It converts at the page's OWN rate (fxRate(), shown in the strip and used for every other A$ on
+// the screen) rather than at TCG.toAUD's: two different rates on one screen is the real defect.
+const TCGP = new Map();     // card_id|printing -> payload | 'loading'
+const tcgpKey = (c) => c.card_id + '|' + c.chosen_key;
+
+async function checkTcgp(cards) {
+  const list = (cards || RESOLVED).filter((c) => c && c.name).slice(0, 40);
+  if (!list.length) return;
+  $('tcgpBtn').disabled = true;
+  for (const c of list) {
+    const k = tcgpKey(c);
+    if (TCGP.get(k) && TCGP.get(k) !== 'loading') continue;      // already answered; the route caches too
+    TCGP.set(k, 'loading'); paintTcgp();
+    const p = new URLSearchParams({ game: 'pokemon', name: c.name, number: String(c.number || ''), set: c.set_name || '' });
+    try {
+      const r = await fetch('/api/tcgplayer/market?' + p.toString());
+      TCGP.set(k, await r.json());
+    } catch (e) {
+      // GR7: the reference going dark leaves a sentence, and the scan is untouched.
+      TCGP.set(k, { market: null, why: 'The TCGplayer lookup could not be reached, so there is no live figure for this card.' });
+    }
+    paintTcgp();
+  }
+  $('tcgpBtn').disabled = false;
+}
+
+function paintTcgp() {
+  const body = $('tcgpBody'); if (!body) return;
+  if (!RESOLVED.length) { body.innerHTML = '<tr><td colspan="6" class="dim">resolve some cards first</td></tr>'; $('tcgpNote').textContent = '—'; return; }
+  const rate = fxRate();
+  $('tcgpFx').textContent = 'converted at the rate in the strip above, 1 USD = A$' + rate.toFixed(4);
+  let priced = 0, gapped = 0;
+  const rows = RESOLVED.map((c) => {
+    const r = TCGP.get(tcgpKey(c));
+    const name = `<b>${esc(c.name)}</b> <span class="mono dim">${esc(c.number || '')}</span><br><span class="dim" style="font-size:11px">${esc(c.set_name)}</span>`;
+    if (!r) return `<tr><td>${name}</td><td colspan="5" class="dim">not checked yet</td></tr>`;
+    if (r === 'loading') return `<tr><td>${name}</td><td colspan="5" class="dim">asking TCGplayer…</td></tr>`;
+    if (r.market == null) {
+      // The blank says which blank it is, in words — never a bare dash (the rule this page set in
+      // commit 78be980). Candidates are shown because "several printings share this number" is
+      // itself the answer a buyer needs.
+      const cands = (r.candidates || []).map((x) => `${esc(x.productName)} ${esc(x.number || '')} ${usd(x.market)}`).join(' · ');
+      return `<tr class="dimrow"><td>${name}<span class="why">${esc(r.why || 'no live figure')}</span>${cands ? '<span class="why">' + cands + '</span>' : ''}</td><td colspan="5" class="dim">—</td></tr>`;
+    }
+    priced++;
+    const liveAud = Math.round(r.market * rate * 100);                       // GR3: one conversion
+    // The gap between the live figure and the one the scan is scored on. This is the number that
+    // says "the basis under this scan is stale" or "there is no basis at all yet".
+    const gap = c.market_usd != null && c.market_usd > 0
+      ? Math.round(((r.market - c.market_usd) / c.market_usd) * 1000) / 10 : null;
+    if (gap != null && Math.abs(gap) >= 10) gapped++;
+    const buyerPct = c.buyer_aud != null && liveAud > 0
+      ? Math.round((Math.round(c.buyer_aud * 100) / liveAud) * 1000) / 10 : null;
+    const setShown = r.setName && c.set_name && String(r.setName).toLowerCase().indexOf(String(c.set_name).toLowerCase()) < 0
+      ? `<span class="why">priced off TCGplayer's "${esc(r.setName)}" — check that is this printing</span>` : '';
+    return `<tr>
+      <td>${name}${setShown}</td>
+      <td class="num"><b>${aud(liveAud)}</b><br><span class="dim" style="font-size:10.5px">${usd(r.market)}${r.url ? ' · <a class="ext" href="' + esc(r.url) + '" target="_blank" rel="noopener">TCGplayer ↗</a>' : ''}</span></td>
+      <td class="num">${c.market_usd == null ? '<span class="pill bad" title="pokemontcg.io carries no figure, so this card cannot be scanned">nothing</span>' : usd(c.market_usd)}</td>
+      <td class="num">${gap == null ? '<span class="dim">n/a</span>' : '<span class="' + (gap > 0 ? 'profit' : gap < 0 ? 'loss' : '') + '">' + (gap > 0 ? '+' : '') + gap.toFixed(1) + '%</span>'}</td>
+      <td class="num">${c.buyer_aud == null ? '<span class="dim">—</span>' : aud(Math.round(c.buyer_aud * 100)) + (buyerPct != null ? '<br><span class="dim" style="font-size:10.5px">' + buyerPct.toFixed(1) + '% of live</span>' : '')}</td>
+      <td><span class="dim" style="font-size:10.5px">${esc((r.fetchedAt || '').slice(11, 16))}</span></td>
+    </tr>`;
+  });
+  body.innerHTML = rows.join('');
+  const checked = RESOLVED.filter((c) => { const r = TCGP.get(tcgpKey(c)); return r && r !== 'loading'; }).length;
+  $('tcgpNote').textContent = !checked ? 'not checked yet'
+    : priced + ' of ' + checked + ' priced' + (gapped ? ' · ' + gapped + ' more than 10% off the scan basis' : '');
 }
 async function watchCards(cards) {
   const want = cards.filter((c) => c && c.chosen_key && c.market_usd != null).map((c) => ({ card_id: c.card_id, printing_key: c.chosen_key }));

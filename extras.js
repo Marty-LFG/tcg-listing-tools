@@ -256,7 +256,14 @@
     }).filter(function (p) { return p.disp.length || p.dl; });
     const hasImg = imgs.length;
     const prices = (data.prices || []).filter(p => p && p.amount != null && p.amount !== '');
-    if (!hasImg && !prices.length && !data.priceNote) { container.innerHTML = ''; return; }
+    // data.tcgp alone is enough to populate the panel: a card its own API cannot price is exactly
+    // when the TCGplayer reference matters most, so the box must not be suppressed for emptiness.
+    // A page that registered TCG.tcgpContext() needs no per-call-site change — the Pokémon builder
+    // alone renders extras from five lanes (EN, intl, MEP, early-EN, graded) and they would have
+    // drifted apart by the second one.
+    const tcgpOpts = data.tcgp || (TCGP_CTX ? TCGP_CTX(data) : null);
+    const wantTcgp = !!(tcgpOpts && tcgpOpts.game);
+    if (!hasImg && !prices.length && !data.priceNote && !wantTcgp) { container.innerHTML = ''; return; }
 
     const box = 'border:1px solid var(--line,#333);border-radius:12px;padding:14px;background:var(--panel2,#1a1a1a);';
     const head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;margin-bottom:10px;';
@@ -278,7 +285,7 @@
       html += '</div></div>';
     }
 
-    if (prices.length || data.priceNote) {
+    if (prices.length || data.priceNote || wantTcgp) {
       html += `<div style="${box}"><div style="${head}">Pricing</div>`;
       if (prices.length) {
         html += `<div id="tcg-prices"></div>`;
@@ -298,9 +305,13 @@
         if (data.pcLink) {
           html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line,#333);font-size:11px;"><a href="${esc(data.pcLink)}" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">Verify match on PriceCharting &#8599;</a></div>`;
         }
-      } else {
+      } else if (data.priceNote) {
         html += `<div style="font-size:12px;color:var(--muted,#888);">${esc(data.priceNote)}</div>`;
       }
+      // The TCGplayer reference, mounted after paint. Last inside the box on purpose: it is a
+      // competitor's basis for comparison, not one of our own price sources, and it must never
+      // read as another row in the market consensus above.
+      if (wantTcgp) html += `<div id="tcg-tcgp" style="margin-top:${prices.length || data.priceNote ? '12px;padding-top:12px;border-top:1px solid var(--line,#333);' : '2px;'}"></div>`;
       // Optional native-market reference link (e.g. PriceCharting Japanese console) — shown in both states.
       if (data.priceLink && data.priceLink.href) {
         html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line,#333);font-size:11px;"><a href="${esc(data.priceLink.href)}" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">${esc(data.priceLink.label || 'Verify on PriceCharting')} &#8599;</a></div>`;
@@ -337,6 +348,204 @@
         if (rate) { const r = TCG.toAUD(1, 'USD'); rate.textContent = r != null ? ('1 USD = ' + money(r, 'AUD') + (RATE_DATE ? '  (' + RATE_DATE + ')' : '')) : 'FX rate unavailable (proxy offline?)'; }
       });
     }
+    // The TCGplayer reference panel rides inside the Pricing box when the caller asked for it.
+    if (tcgpOpts) {
+      var slot = container.querySelector('#tcg-tcgp');
+      if (slot) TCG.tcgpMarket(slot, tcgpOpts);
+    }
+  };
+
+  // ---------- TCGplayer market reference (DISPLAY ONLY) ----------
+  // WHY: EB Games Australia buys over the counter against TCGplayer's market price and sells
+  // against it (owner decision 2026-10-16), so the figure has to be visible wherever we decide
+  // what to pay and what to charge. It is a REFERENCE beside our own number and nothing else —
+  // it is not in lib/pricing.mjs precedence and not an anchor in the repricer, on purpose.
+  //
+  // tcgpCompare is a MIRROR of comparison() in lib/tcgplayer-market.mjs (GR9, the same reason
+  // ebListForDelivered below mirrors lib/shipping-bands.mjs): extras.js is a classic script and
+  // cannot import the ESM module. test/unit/tcgplayer-market.test.mjs drives BOTH with the same
+  // vectors so the two cannot drift apart. Golden Rule 3: the float crosses to integer cents
+  // exactly once, here, and the rate it crossed at is printed beside the figure.
+  function tcgpCompare(marketUsd, ourCents) {
+    var usd = typeof marketUsd === 'number' && isFinite(marketUsd) && marketUsd > 0 ? marketUsd : null;
+    var r = TCG.toAUD(1, 'USD');
+    if (!(r > 0)) r = null;
+    var out = {
+      marketUsdCents: usd == null ? null : Math.round(usd * 100),
+      marketAudCents: usd == null || r == null ? null : Math.round(usd * r * 100),
+      rate: r, ourCents: (ourCents === Math.round(ourCents)) ? ourCents : null,
+      pctOfMarket: null, deltaPct: null, stance: null, words: null,
+    };
+    if (usd != null && r == null) out.words = 'No exchange rate, so the figure is shown in US dollars only and is not compared with ours.';
+    if (out.marketAudCents == null || out.ourCents == null || out.marketAudCents <= 0) return out;
+    out.pctOfMarket = Math.round((out.ourCents / out.marketAudCents) * 1000) / 10;
+    out.deltaPct = Math.round((out.pctOfMarket - 100) * 10) / 10;
+    var near = Math.abs(out.deltaPct) < 0.5;
+    out.stance = near ? 'at' : out.deltaPct < 0 ? 'below' : 'above';
+    out.words = near ? 'level with TCGplayer market'
+      : Math.abs(out.deltaPct).toFixed(1) + '% ' + out.stance + ' TCGplayer market';
+    return out;
+  }
+  TCG.tcgpCompare = tcgpCompare;
+
+  // A page registers ONE context function instead of editing every renderExtras call site; it is
+  // called with the same `data` and returns the TCG.tcgpMarket options, or null for "not here".
+  var TCGP_CTX = null;
+  TCG.tcgpContext = function (fn) { TCGP_CTX = typeof fn === 'function' ? fn : null; };
+  // The sell-side "our price" on a listing builder: the comps block's recommended list price.
+  // Null until the comps have run, which is why the panel re-renders when they land.
+  TCG.compsRecommended = function () {
+    return _lastComps && _lastComps.analysis && _lastComps.analysis.recommended != null
+      ? _lastComps.analysis.recommended : null;
+  };
+  var _tcgpPanel = null;
+
+  // Sydney-local clock for the fetch stamp — a reference figure's age is the whole point of
+  // showing it, and the operator reads it in market time (the comps graph does the same).
+  function tcgpClock(iso) {
+    try { return new Date(iso).toLocaleTimeString('en-AU', { timeZone: 'Australia/Sydney', hour: '2-digit', minute: '2-digit', hour12: false }); }
+    catch (e) { return ''; }
+  }
+  // An FX rate at two decimal places is not an audit trail — 1.5234 would print as 1.52 and the
+  // A$ figure beside it would not reproduce. price_snapshots stores fx_usd_aud for this reason, so
+  // the rate is shown at the precision it was applied at.
+  function tcgpRate(r) { return 'A$' + (Math.round(r * 10000) / 10000).toFixed(4); }
+  // How the figure was tied to the card, in words. The weaker two say so plainly: the set and
+  // number printed above the line are then the operator's check that it is the right printing,
+  // which is the whole of GR5 on a screen where a wrong printing can be a 200x error.
+  var TCGP_MATCH_WORDS = {
+    'product-id': 'matched on TCGplayer product id',
+    'set+number': 'matched on set and card number',
+    'line+number': 'the set could not be matched, so this is the only card at that number in the whole game',
+    name: 'matched on name alone, so check the set and number above',
+    'sealed-name': 'matched on product name',
+  };
+
+  /**
+   * Mount the panel. Returns { refresh, rerender } so a page can re-run the comparison when our
+   * own figure changes without asking TCGplayer again.
+   *
+   *   game, name, number, setName, productId, kind   what to look up
+   *   our()      -> { amount, currency } | null      our figure, READ LIVE each render
+   *   ourLabel                                        what to call it ('Our cost', 'Our price')
+   *   watch: [el]                                     inputs whose edits re-run the comparison
+   *   side: 'buy' | 'sell'                            see the colour note below
+   */
+  TCG.tcgpMarket = function (container, opts) {
+    if (!container) return null;
+    opts = opts || {};
+    var seq = 0, last = null;
+
+    function ourCentsNow() {
+      if (typeof opts.our !== 'function') return null;
+      var v = null;
+      try { v = opts.our(); } catch (e) { return null; }     // a page mid-edit must not break the panel
+      if (!v || v.amount == null || v.amount === '' || !isFinite(+v.amount) || +v.amount <= 0) return null;
+      var aud = (v.currency && v.currency !== 'AUD') ? TCG.toAUD(+v.amount, v.currency) : +v.amount;
+      return aud == null ? null : Math.round(aud * 100);
+    }
+
+    function paint(r) {
+      if (!r) { container.innerHTML = ''; return; }
+      var box = 'border:1px solid var(--line,#333);border-radius:10px;padding:11px 13px;background:var(--field,#111);';
+      var h = 'font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
+      var html = '<div style="' + box + '"><div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">'
+        + '<span style="' + h + '">TCGplayer market</span>'
+        + '<span style="font-size:10px;color:var(--muted,#888);">what EB prices against</span></div>';
+
+      if (r.market == null) {
+        // THE BLANK, IN WORDS. A dash here is the defect — on a buy screen an unexplained blank
+        // reads as a failed fetch, and the operator cannot tell a card TCGplayer has not priced
+        // yet from a game it does not carry (the precedent is commit 78be980).
+        html += '<div style="font-size:12px;color:var(--muted,#888);margin-top:7px;line-height:1.5;">' + esc(r.why || 'No market figure.') + '</div>';
+        if (r.candidates && r.candidates.length) {
+          html += '<div style="' + h + 'margin-top:9px;">Printings TCGplayer does price</div>';
+          r.candidates.forEach(function (c) {
+            var aud = TCG.toAUD(c.market, 'USD');
+            html += '<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid var(--line,#333);font-size:12px;">'
+              + '<span style="min-width:0;">' + (c.url ? '<a href="' + esc(c.url) + '" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">' + esc(c.productName) + ' &#8599;</a>' : esc(c.productName))
+              + '<span style="color:var(--muted,#888);"> · ' + esc(c.number || '') + '</span></span>'
+              + '<span style="white-space:nowrap;font-weight:700;">' + (c.market == null ? '&mdash;' : (aud != null ? money(aud, 'AUD') + '<span style="color:var(--muted,#888);font-weight:400;font-size:11px;"> · ' + money(c.market, 'USD') + '</span>' : money(c.market, 'USD'))) + '</span></div>';
+          });
+        }
+        html += '<div style="font-size:10.5px;color:var(--muted,#888);margin-top:8px;">looked up ' + esc(tcgpClock(r.fetchedAt)) + '</div></div>';
+        container.innerHTML = html;
+        return;
+      }
+
+      var cmp = tcgpCompare(r.market, ourCentsNow());
+      // AUD-first, native secondary (GR3). With no rate it is USD alone, flagged — never a
+      // silently wrong A$ figure.
+      html += '<div style="margin-top:5px;font-weight:800;font-size:19px;color:var(--gold,#c8aa6e);line-height:1.15;">'
+        + (cmp.marketAudCents != null
+          ? money(cmp.marketAudCents / 100, 'AUD') + '<span style="color:var(--muted,#888);font-weight:400;font-size:12px;"> · ' + money(r.market, 'USD') + '</span>'
+          : money(r.market, 'USD') + '<span style="color:var(--muted,#888);font-weight:400;font-size:12px;"> · no A$ rate</span>')
+        + '</div>';
+      html += '<div style="font-size:11.5px;color:var(--muted,#888);margin-top:3px;">' + esc(r.productName || '')
+        + (r.setName ? ' · ' + esc(r.setName) : '') + (r.number ? ' · ' + esc(r.number) : '') + '</div>';
+
+      if (cmp.pctOfMarket != null) {
+        // Colour only where the direction has ONE meaning. Buying over market is money lost, so
+        // that is flagged; "under TCGplayer" on a sell screen is the store's stated position, not
+        // a warning, so the sell side stays neutral and states the fact.
+        var col = 'var(--text,#eee)';
+        if (opts.side === 'buy') col = cmp.stance === 'above' ? '#f0c020' : cmp.stance === 'below' ? '#36d399' : 'var(--text,#eee)';
+        html += '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:9px;padding-top:8px;border-top:1px solid var(--line,#333);font-size:12.5px;">'
+          + '<span style="color:var(--muted,#888);">' + esc(opts.ourLabel || 'Ours') + ' ' + money(cmp.ourCents / 100, 'AUD') + '</span>'
+          + '<span style="text-align:right;color:' + col + ';font-weight:700;">' + cmp.pctOfMarket.toFixed(1) + '% of market'
+          + '<div style="font-weight:400;font-size:11px;color:var(--muted,#888);">' + esc(cmp.words) + '</div></span></div>';
+      } else {
+        // Why there is no percentage, in words: no rate, a figure of ours that cannot meaningfully
+        // be set against one card (a bulk lot, a grading fee), or simply nothing typed yet.
+        html += '<div style="font-size:11.5px;color:var(--muted,#888);margin-top:8px;padding-top:8px;border-top:1px solid var(--line,#333);">'
+          + esc(cmp.words || opts.compareNote || 'No figure of ours to compare yet.') + '</div>';
+      }
+
+      // Provenance: the rate it was converted at, when it was fetched, and how it was matched —
+      // the same three facts price_snapshots keeps (market_aud, fx_usd_aud, ts) so a stale number
+      // is obvious instead of silently wrong.
+      var fx = TCG.fxInfo ? TCG.fxInfo() : {};
+      var bits = [];
+      if (cmp.rate != null) bits.push('1 USD = ' + tcgpRate(cmp.rate) + (fx.date ? ' (' + fx.date + ')' : '') + (fx.stale ? ', cached' : ''));
+      bits.push('looked up ' + tcgpClock(r.fetchedAt));
+      if (r.matchedBy && TCGP_MATCH_WORDS[r.matchedBy]) bits.push(TCGP_MATCH_WORDS[r.matchedBy]);
+      html += '<div style="font-size:10.5px;color:var(--muted,#888);margin-top:7px;line-height:1.5;">' + esc(bits.join(' · ')) + '</div>';
+      if (r.url) html += '<div style="margin-top:5px;font-size:11px;"><a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:var(--gold,#c8aa6e);text-decoration:none;">See it on TCGplayer &#8599;</a></div>';
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    function refresh() {
+      var mine = ++seq;
+      var p = new URLSearchParams();
+      if (opts.game) p.set('game', opts.game);
+      if (opts.name) p.set('name', opts.name);
+      if (opts.number) p.set('number', opts.number);
+      if (opts.setName) p.set('set', opts.setName);
+      if (opts.productId != null && opts.productId !== '') p.set('productId', String(opts.productId));
+      if (opts.kind) p.set('kind', opts.kind);
+      container.innerHTML = '<div style="font-size:11.5px;color:var(--muted,#888);padding:9px 0;">Asking TCGplayer&hellip;</div>';
+      // GR7: a lookup that fails is a sentence in the panel, never a thrown error into the page.
+      return TCG.loadFx()
+        .catch(function () {})
+        .then(function () { return fetch('/api/tcgplayer/market?' + p.toString()); })
+        .then(function (res) { return res.json(); })
+        .then(function (j) { if (mine !== seq) return; last = j; paint(j); })
+        .catch(function () {
+          if (mine !== seq) return;
+          last = { market: null, why: 'The TCGplayer lookup could not be reached from this page, so there is no market figure. Nothing else here is affected.', fetchedAt: new Date().toISOString() };
+          paint(last);
+        });
+    }
+    var handle = { refresh: refresh, rerender: function () { if (last) paint(last); } };
+    _tcgpPanel = handle;        // so the comps block can re-run the comparison when it lands
+    (opts.watch || []).forEach(function (el) {
+      if (!el || !el.addEventListener) return;
+      el.addEventListener('input', handle.rerender);
+      el.addEventListener('change', handle.rerender);
+    });
+    refresh();
+    return handle;
   };
 
   // ---------- eBay AU comps (delivered totals incl. shipping; SOLD where available, else ASKING) ----------
@@ -647,6 +856,10 @@
 
   function renderCompsPro(el, a, ctx){
     if (!el) return; ctx = ctx || {}; _lastComps = { analysis: a, ctx: ctx };
+    // The comps are the sell-side "our price", and they land after the TCGplayer panel has already
+    // painted — so re-run its comparison now rather than leaving it saying there is nothing to
+    // compare while a recommended list price sits on the same screen.
+    if (_tcgpPanel) { try { _tcgpPanel.rerender(); } catch (e) {} }
     var box = 'border:1px solid var(--line,#333);border-radius:12px;padding:14px;background:var(--panel2,#1a1a1a);';
     var head = 'font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#888);font-weight:700;';
     if (a.fair == null) { el.innerHTML = '<div style="' + box + '"><div style="' + head + '">eBay comps</div><div style="font-size:12px;color:var(--muted,#888);margin-top:6px;">' + a.nTotal + ' listings, but none comparable (raw · fixed-price · known postage) to price from.</div></div>'; return; }

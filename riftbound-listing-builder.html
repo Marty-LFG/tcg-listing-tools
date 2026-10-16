@@ -847,5 +847,34 @@ async function addTrack(){
   render();
 })();
 </script>
+<!-- ============ TCGplayer market reference (DISPLAY ONLY) ============ -->
+<!-- WHY (owner decision 2026-10-16): EB Games Australia buys over the counter against TCGplayer's
+     market price and sells against it, so when we are writing a listing for the same card, that is
+     the figure to see beside the price the comps recommend. It feeds NOTHING — it is not in
+     lib/pricing.mjs precedence and it is not an anchor in the repricer, on purpose.
+     Registered ONCE through TCG.tcgpContext rather than at each TCG.renderExtras call site: these
+     builders render extras from several lookup lanes and per-site copies would have drifted apart
+     by the second one. The panel reads the form, so it follows whichever lane filled it. -->
+<script>
+(function(){
+  if(!window.TCG||!TCG.tcgpContext) return;
+  var v=function(id){var e=document.getElementById(id);return e?String(e.value||'').trim():'';};
+  // 'Spark of Rebellion (SOR)' -> 'Spark of Rebellion'. The set field is a DISPLAY string and
+  // several builders append the printed code; TCGplayer's own set names never carry it.
+  var setName=function(){return v('f_set').replace(/\s*\([A-Za-z0-9-]{2,6}\)\s*$/,'').trim();};
+  TCG.tcgpContext(function(){
+    if(!v('f_name')) return null;
+    return {
+      game:'riftbound', name:v('f_name'), number:v('f_num'), setName:setName(),
+      side:'sell', ourLabel:'Comps say list at',
+      // The sell-side figure of ours is the comps block's recommended list price. It lands after
+      // this panel paints, which is why renderCompsPro re-runs the comparison when it does.
+      our:function(){var r=TCG.compsRecommended();return r!=null?{amount:r,currency:'AUD'}:null;},
+      compareNote:'Run the eBay comps and the recommended list price is set against this figure.'
+    };
+  });
+})();
+</script>
+
 </body>
 </html>

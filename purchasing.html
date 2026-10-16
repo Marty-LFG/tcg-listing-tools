@@ -343,6 +343,8 @@
         <div class="fld"><label>&nbsp;</label><button class="btn go" type="button" onclick="addLine()">＋ Add line</button></div>
       </div>
       <div id="pickedNote" style="margin-top:8px;font-size:11.5px;color:var(--gold);display:none;"></div>
+      <!-- What EB would pay against, beside what we are paying. Display only — it feeds nothing. -->
+      <div id="tcgpBox" style="margin-top:10px;max-width:460px;"></div>
     </div>
 
     <div class="row2">
@@ -414,6 +416,7 @@ const B = '/api/purchasing';
 let ORDERS = [], ROWS = [], COUNTS = {}, TAB = 'outstanding', CUR = null, LINEMODE = 'pick', PICKED = null;
 let STATUSES = [], TRANSITIONS = {}, CREATE_STATUSES = ['draft', 'preorder', 'ordered'], LOCATIONS = [], SUPPLIERS = [], PLAN = null;
 let GAMES = [], TYPES = {}, ALL_TYPES = [];
+let PICKED_ROW = null, TCGP = null, tcgpTimer = null;
 
 const $ = (id) => document.getElementById(id);
 const val = (id) => ($(id) ? String($(id).value || '').trim() : '');
@@ -766,7 +769,7 @@ function onKindPick() {
 }
 
 function setLineMode(m) {
-  LINEMODE = m; PICKED = null;
+  LINEMODE = m; PICKED = null; PICKED_ROW = null;
   $('segPick').classList.toggle('on', m === 'pick');
   $('segNew').classList.toggle('on', m === 'new');
   $('pickPane').style.display = m === 'pick' ? '' : 'none';
@@ -777,6 +780,7 @@ function setLineMode(m) {
   $('lineModeNote').textContent = m === 'pick'
     ? 'a restock joins the SKU you already hold — no second listing, no second shelf slot'
     : '';
+  mountTcgp();
 }
 
 let pkTimer = null;
@@ -805,10 +809,72 @@ function searchStock() {
           $('pickedNote').innerHTML = '↳ restocking <strong>' + esc(item.name) + '</strong> (' + esc(item.sku) + ') — ' +
             item.quantity + ' held' + (item.location ? ' in ' + esc(item.location) : '');
           if (!val('l_cost') && item.cost_cents) $('l_cost').value = dollars(item.cost_cents);
+          // A restock line knows exactly what it is restocking, so the reference can be looked up
+          // off the held row rather than off whatever is typed in the New-product fields.
+          PICKED_ROW = item;
+          mountTcgp();
         };
       }
     } catch (e) { toast(e.message, true); }
   }, 200);
+}
+
+// ---- TCGplayer market reference on the line being costed (DISPLAY ONLY) --------------------
+// EB Games Australia buys over the counter against TCGplayer's market price, so when we are
+// deciding what to pay for the same product, that figure belongs on this screen next to our unit
+// cost. It is a reference and nothing else: it is not in lib/pricing.mjs precedence, it is not an
+// anchor in the repricer, and nothing here writes it to a line. The panel re-reads the cost field
+// live, so typing a different number re-runs the percentage without asking TCGplayer again.
+//
+// A LOT or a GRADING line gets the figure but no percentage, and says why: a lump price covering
+// an unsorted box, or a fee for a service, is not a per-card price and setting one against one
+// card's market would be a made-up number (GR4).
+function tcgpContext() {
+  const kind = LINEMODE === 'new' ? val('n_kind') : 'unit';
+  if (kind === 'grading') return null;              // a grading fee has no market price to sit beside
+  if (LINEMODE === 'pick') {
+    const i = PICKED_ROW;
+    if (!i || !i.name) return null;
+    return {
+      game: i.game || '', name: i.name, setName: i.set_name || '',
+      // 'sv4-25' / 'OGN-27a' — the number half of a tracker identity key is the collector number.
+      number: numberFromIdentity(i.identity_key), kind: i.kind === 'sealed' ? 'sealed' : 'card',
+      lot: false,
+    };
+  }
+  if (!val('n_name')) return null;
+  return {
+    game: val('n_game'), name: val('n_name'), setName: val('n_set'), number: '',
+    kind: val('n_target') === 'sealed' ? 'sealed' : 'card', lot: kind === 'lot',
+  };
+}
+// The product half of an identity key, which is the collector number for every game that has one.
+// Blank for a key shaped otherwise (or absent, as every sealed row's is) — a wrong number here
+// would be matched against TCGplayer's and silently drop the figure.
+function numberFromIdentity(key) {
+  const k = String(key == null ? '' : key).trim();
+  const i = k.indexOf('-');
+  return i > 0 ? k.slice(i + 1) : '';
+}
+function mountTcgp() {
+  clearTimeout(tcgpTimer);
+  tcgpTimer = setTimeout(() => {
+    const box = $('tcgpBox');
+    if (!box || !window.TCG || !TCG.tcgpMarket) return;
+    const ctx = tcgpContext();
+    if (!ctx) { box.innerHTML = ''; TCGP = null; return; }
+    TCGP = TCG.tcgpMarket(box, {
+      game: ctx.game, name: ctx.name, number: ctx.number, setName: ctx.setName, kind: ctx.kind,
+      side: 'buy', ourLabel: 'Paying',
+      // The cost is typed in the ORDER's currency (GR3: it is stored in the currency it was
+      // sourced in), so the panel is told which, and converts once.
+      our: ctx.lot ? null : () => ({ amount: val('l_cost'), currency: val('o_cur') || 'AUD' }),
+      compareNote: ctx.lot
+        ? 'This is one lump price for an unsorted lot, so it is not compared with a single card’s market figure.'
+        : null,
+      watch: [$('l_cost'), $('o_cur')],
+    });
+  }, 300);   // the same debounce searchStock() uses — a name is typed a letter at a time
 }
 
 async function ensureOrder() {
@@ -868,8 +934,8 @@ async function addLine() {
     CUR = await api('/orders/' + id);
     renderLines(); renderLedger();
     $('l_cost').value = ''; $('l_note').value = ''; $('l_qty').value = '1';
-    $('n_name').value = ''; PICKED = null; $('pickedNote').style.display = 'none';
-    PICKED_SUBS = []; renderSubPicker();
+    $('n_name').value = ''; PICKED = null; PICKED_ROW = null; $('pickedNote').style.display = 'none';
+    PICKED_SUBS = []; renderSubPicker(); mountTcgp();
     toast('Line added.');
   } catch (e) { toast(e.body?.detail || e.message, true); }
 }
@@ -1331,8 +1397,13 @@ Object.assign(window, {
   openOrder, closeOrder, saveOrder, deleteOrder, addLine, addPayment, settleOrder, captureRate,
   setLineMode, searchStock, onKindPick, onTargetPick, onStatusPick, relabelCurrency, refresh,
   openReceive, closeReceive, doPreview, doCommit, applyDefaultSpot, newLocation, closeOrderOut,
+  mountTcgp,
 });
 $('n_game').addEventListener('change', onTargetPick);
+// Anything that changes WHICH product the line is for re-asks TCGplayer; the cost field and the
+// order currency only re-run the comparison, which the panel wires itself.
+for (const id of ['n_name', 'n_set']) $(id).addEventListener('input', mountTcgp);
+for (const id of ['n_game', 'n_target', 'n_kind']) $(id).addEventListener('change', mountTcgp);
 boot();
 </script>
 </body>

@@ -28,6 +28,10 @@ import { onepieceCardsPlugin } from './lib/onepiece-cards-cache.mjs'
 import { listingImageLabPlugin } from './lib/listing-image-lab.mjs'
 import { riftboundCardsPlugin } from './lib/riftbound-cards.mjs'
 import { riftboundPricesPlugin } from './lib/riftbound-prices.mjs'
+// DISPLAY-ONLY TCGplayer market reference (owner decision 2026-10-16). Deliberately NOT wired
+// into lib/pricing.mjs precedence or the repricer — lib/tcgplayer-market.mjs's header says why
+// that boundary IS the feature.
+import { tcgplayerMarketPlugin } from './lib/tcgplayer-market.mjs'
 import { scanPlugin } from './lib/scan.mjs'
 import { pregradePlugin } from './lib/pregrade.mjs'
 import { runsPlugin } from './lib/runs.mjs'
@@ -437,7 +441,7 @@ export default defineConfig(({ mode }) => {
     // report which routes this PROCESS actually owns — and flag when the sources on disk are newer
     // than the running server (a `git pull` with no restart). One wrapper, so a plugin added later
     // is covered without anyone remembering to.
-    plugins: withRegistry([dbCleanup, dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env), runsPlugin(env), arbitragePlugin(env)]),
+    plugins: withRegistry([dbCleanup, dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), tcgplayerMarketPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env), runsPlugin(env), arbitragePlugin(env)]),
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,

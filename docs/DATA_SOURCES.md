@@ -885,6 +885,74 @@ eBay/Shopify sync — reserved, not wired yet.
 
 ---
 
+## TCGplayer market reference — public search API  (proxy `/api/tcgplayer/market`)
+
+**DISPLAY ONLY.** EB Games Australia buys over the counter against TCGplayer's market price and
+sells against it (owner decision 2026-10-16), so the figure has to be visible wherever we decide
+what to pay and what to charge. It is **not** in `lib/pricing.mjs` precedence and **not** an anchor
+in `lib/repricer-*.mjs` — that boundary is the decision, not an omission, and
+`test/unit/tcgplayer-market.test.mjs` fails if either ever imports `lib/tcgplayer-market.mjs`.
+
+- Upstream: `POST https://mp-search-api.tcgplayer.com/v1/search/request?q={name}&isList=false`,
+  with browser `Origin`/`Referer` headers — the price-guide page's own backend. **CORS-blocked in
+  the browser**, so it is server-side only (GR1/GR2). The same endpoint drives
+  `scripts/build-riftbound-prices.mjs`, `build-pokemon-mep.mjs` and `build-onepiece-tcgimages.mjs`;
+  those keep their own paging loops (they pull whole product lines), and the unit suite asserts all
+  four still agree on the URL and headers, so the route cannot drift in one place only (GR9).
+- `GET /api/tcgplayer/market?game=&name=&number=&set=&productId=&kind=&refresh=1` →
+  `{ market, currency:'USD', fetchedAt, productId, productName, setName, number, rarity, low,
+  listings, url, matchedBy, code?, why?, candidates? }`. **Always 200 for an answer we can stand
+  behind, blank or not**; only a dead upstream is 502. `market: null` always carries a `code` and a
+  **`why` sentence the page prints verbatim** — a silent dash on a buy screen is the defect (the
+  precedent is commit 78be980). Answers are held 30 min in memory and concurrent identical
+  questions collapse to one lookup: it is an undocumented private endpoint.
+- **Coverage, measured against the live `productLineName` aggregation 2026-10-16** (product
+  counts): Pokémon EN `Pokemon` 32,868 · MTG `Magic: The Gathering` 119,268 · Lorcana
+  `Disney Lorcana` 3,954 · One Piece `One Piece Card Game` 7,739 · SWU `Star Wars: Unlimited`
+  9,114 · Riftbound `Riftbound: League of Legends Trading Card Game` 1,822 · Funko `Funko` 4,304.
+  **All six card games are covered** — Lorcana, SWU and One Piece had no TCGplayer route in this
+  repo before, which is not the same as TCGplayer not carrying them.
+- **Deliberately NOT covered:** the Pokémon JP/CN/KO lanes. TCGplayer's `Pokemon Japan` line
+  (30,694) prices the Japanese print as a US import, a different market from the one those cards
+  sell into, and `stock-uploader.html` already tells the operator eBay AU is the reference there.
+  `NO_COVERAGE_WORDS` carries that reason so the blank reads as a decision, not a failure.
+- **Three refusals, each because a confident wrong number on a buy screen is worse than a blank**
+  (GR4/GR5):
+  1. The product line and set slug are resolved from **the API's own aggregations**, matched by
+     normalised name, never constructed — and every returned row is checked to belong to the line
+     asked for. A `productLineName` that is not the FULL display value is **silently ignored** and
+     the API answers 200 with the whole ~500k-product catalogue, so a typo looks like success.
+  2. It never picks between printings. One Piece `OP01-003` is two products at one number: the base
+     Luffy at US$5.01 and the `(Parallel)` at US$1,023.34. Several matches ⇒ `candidates` and a
+     sentence, never the first row.
+  3. It never guesses a card from a bare name. A free-text search for "Monkey D. Luffy OP01-003"
+     returns a **sealed Starter Deck at US$26.86** as its top hit — and TCGplayer reports that deck
+     as `sealed: false`, so the guard that works is the one all three bakes use: a card row must
+     carry `customAttributes.number`.
+- **Match routes, best first.** `productId` is exact by construction and skips name matching, set
+  resolution and the number guard entirely — **Scryfall's `tcgplayer_id` IS TCGplayer's
+  `productId`** (verified 2026-10-16: Lightning Bolt 3ED is 1479 in both), so MTG gets a
+  one-request lookup from the card it already fetched. Otherwise `q={name}` + line + set filters,
+  then an exact collector-number match (`numbersMatch`, padding- and denominator-insensitive per
+  GR10, but both halves must agree when both are present — SWU's `001/002` promo must not answer
+  for `001/252`). `matchedBy` reports which route answered, and the panel says in words when the
+  set could not be matched so a line-wide hit is visible rather than assumed.
+- Every matched product carries its deep link, `https://www.tcgplayer.com/product/{productId}`
+  (serves 200 directly, no slug needed).
+- **Where it shows.** `TCG.tcgpMarket()` in `extras.js` is the one renderer: A$-first with USD
+  beside it, the **FX rate, its date and the fetch time**, and **our figure as a percentage of
+  market** with the direction in words — the same three provenance facts `price_snapshots` keeps
+  (`market_aud`, `fx_usd_aud`, `ts`), for the same reason. `TCG.tcgpCompare` is a **mirror of
+  `comparison()`** in the module (GR3/GR9 — extras.js is a classic script and cannot import ESM);
+  the unit suite drives both with the same vectors. A page registers `TCG.tcgpContext(fn)` once
+  instead of editing every `renderExtras` call site. Live on: `purchasing.html` (unit cost against
+  market, buy side), `arbitrage.html` (the live figure beside the pokemontcg.io figure the scan is
+  scored on, and the gap — which is how a set pokemontcg.io has not priced yet becomes readable),
+  and the six card builders (the comps' recommended list price against market). `stock-uploader.html`
+  already had its own TCGplayer market line and keeps it.
+
+---
+
 ## Pricing notes / gotchas
 
 - **eBay AU delivered-comps are shared** via `TCG.ebayComps()` in `extras.js` (see the
@@ -896,8 +964,9 @@ eBay/Shopify sync — reserved, not wired yet.
   - SWU: `Star Wars Unlimited {name} {setName}` (the prefix filters generic SW merch; `SWU` was too narrow)
   - Funko: `Funko Pop {character} {pop#} {franchise}` + `filter=conditions:{NEW}` (boxed market)
   This shows *local* eBay AU prices alongside each API's reference prices (which are US/EU).
-- **TCGplayer API** is closed to new developers (since late 2024) — not an option
-  for new price sources.
+- **TCGplayer's OFFICIAL API** is closed to new developers (since late 2024) — not an option
+  for new price sources. The **public search API** behind the price-guide pages is, and it is what
+  the three bakes and the display-only reference below both use (`/api/tcgplayer/market`).
 - The Pokémon `tcgplayer.prices` object has multiple buckets
   (normal/holofoil/reverseHolofoil); the extras panel takes the first available
   market price as a sanity check, not gospel — verify chase cards against live
