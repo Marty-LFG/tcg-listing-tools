@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { openDbAt } from '../../lib/db.mjs';
 import { runSealedShopifyPublish, sealedListingFor } from '../../lib/sealed-shopify.mjs';
+import { markVerified } from '../helpers/verified.mjs';
 
 let tmpDir, db;
 let calls = [];
@@ -93,6 +94,9 @@ function seedPool({ units = 3, price = 18900, productType = 'booster_box', withI
                          VALUES ('BK-SLD-PKM-000001','pokemon',?,'White Flare Booster Box',?, 'in_stock','BKS-PKM-SV8A-BOX')`)
     .run(productType, units);
   db.prepare(`INSERT INTO sealed_placements (item_id, location, quantity) VALUES (?,'Shelf A',?)`).run(it.lastInsertRowid, units);
+  // A publishable pool is a pool whose stock rows have been counted — see test/helpers/verified.mjs.
+  // The count is `units`, so the fixture passes rather than being downgraded to a mismatch.
+  if (units > 0) markVerified(db, 'sealed', it.lastInsertRowid);
   if (withImage) {
     db.prepare(`INSERT INTO sealed_pool_images (pool_sku, position, kind, source_url) VALUES ('BKS-PKM-SV8A-BOX',1,'catalog','https://cdn.example/box.png')`).run();
   }

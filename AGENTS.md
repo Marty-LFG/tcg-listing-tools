@@ -2502,3 +2502,103 @@ Stated so nobody "helpfully" adds them later — these are the owner's calls:
   const array, so adding one is an entry plus a receive branch; a bundle's cost basis is the `lot`
   split already built. `lib/channels/shopify-map.mjs` already maps `bundle: 'Mystery Bundle'`.
 
+
+---
+
+## 23. Hand verification (`lib/verification.mjs`) — and the gate that makes it mean something
+
+On **2026-10-16** the owner ruled that **all stock is verified by hand against the physical item before
+it goes live on the store.** That is bk-shopify invariant 7 applied in full rather than as a spot check:
+most of the catalogue is one-of-one, conditions are graded by eye against a single scale, and a listing
+has to state honestly whether it shows catalogue art or the item's own photograph (bk-shopify D-030).
+
+### What was missing
+
+Nothing existed to record it. `inventory_items` had no verified/checked/audited column of any kind —
+`location` and `notes` were the nearest things — and `sealed_items` had one, `in_hand`, added with
+`DEFAULT 1`, so all 147 rows read 1 **because nobody had ever said otherwise, not because anybody
+looked.** Four consequences, all of which bit: a pass could not be resumed when work stopped for the
+night, it could not be proven afterwards, the tool could not report how much was left, and the publish
+path could not refuse a row nobody had checked. A rule nothing enforces is a sentence — the lesson
+bk-shopify D-021 paid for once already.
+
+### The model (it is the stock ledger's)
+
+`stock_verifications` is the append-only truth; **`verified_at` on the stock row is a maintained CACHE**
+of "what did the last person who physically handled this say". Same relationship
+`inventory_items.quantity` has with `stock_movements`, same reconcile that keeps the cache honest rather
+than trusted, and the same contract: **this module does not manage transactions — the caller supplies
+the BEGIN.** `KINDS`/`TABLE_FOR` are imported from `lib/stock-ledger.mjs` so both stock tables go
+through one code path.
+
+**There is deliberately NO BACKFILL**, which is the opposite of `migrateStockLedgerBackfill`. An opening
+*balance* is honest; an opening *verification* would be `in_hand DEFAULT 1` in a new column. Every row
+starts unverified and the gate refuses every row on the first boot after this lands.
+
+### Six outcomes, because pass/fail is not enough
+
+`verified` · `corrected` (found, row was wrong, row has been fixed — a pass) · `discrepancy` (found,
+row still wrong — not a pass, remedy is an edit) · `missing` (not where the row says — remedy is a
+`loss` movement, and the only outcome that is evidence of shrinkage) · `unavailable` (cannot be brought
+to hand: away at grading, consigned out — without it an operator files a false `missing`, or worse a
+false `verified`) · `override`, which **only the gate writes**.
+
+### The two design calls
+
+**Re-verification: LATEST WINS, including when it is bad news.** A discrepancy, missing or unavailable
+recorded after a pass sets `verified_at` back to NULL and the gate refuses until somebody looks again. A
+high-water mark ("has it ever passed?") was rejected: a row verified in March and found wrong in October
+would still publish, and the ledger's most valuable record would change nothing. Safer and more
+annoying, and the annoyance is load-bearing — it is what makes a discrepancy worth filing. ⚠ Ordered by
+**`(at, id)`**, never `at` alone: `at` has one-second resolution and a bulk pass files many records
+inside one second.
+
+**Quantity: a verification COUNTS units, and a disagreement refuses rather than corrects.** A count is
+required above one unit and defaulted at or below one (asking "how many of this one-of-one PSA 8" 84
+times is how a pass starts getting clicked through). A count that disagrees is **downgraded to
+`discrepancy`** and **nothing is corrected**, because `lib/stock-ledger.mjs` is the only writer of
+`quantity` and `stocktake` is already a reason there. Two caches over one fact is deliberate in this
+repo; two *writers* of one fact is not. The caller is told which movement to file.
+
+**A later stock movement does NOT invalidate a verification.** A `receive` is itself a physical handling
+of the arriving units, and the symmetric rule would mean a sale un-verifies a pool so the remainder
+could never be published. A row whose counted units no longer match its quantity is reported as
+`recount_due`, visible and not a refusal.
+
+### The gate, and its one override
+
+`assertVerified(db, kind, itemId, …)` returns `null` or a `{ code: 'unverified', error }` body, shaped on
+`assertNotReserved` so there is one idiom for "a physical fact refuses this row". It is wired into the
+**same errors list** as "no price" and "no identity_key" in `validateProduct`
+(`lib/channels/shopify-map.mjs`, pure, so `withVerification` in `lib/shopify.mjs` feeds the flag in) plus
+an early refusal in `runShopifyPublish` **before the shelf label is peeked**, and `'unverified'` joins
+the batch's refusal codes. The sealed lane asks `assertPoolVerified`: a pool publishes the units of every
+`sealed_items` row behind it, so one unchecked row is one unchecked box in the parcel.
+
+**The override is `allowUnverified` in the request body, per call, and nowhere else** — never a config
+key or an env var, either of which can be left switched on and forgotten
+(`test/invariants/publish-requires-verification.test.mjs` asserts that). It PROCEEDS and RECORDS WHY: an
+`override` row naming who waived it, a `console.warn`, and a warning in the publish result. It is not in
+`PASSING`, so **the row still reads unverified afterwards** — one publish is authorised, the row is not
+laundered. A dry run writes nothing.
+
+### Seeing and running a pass
+
+`/api/verification` → `GET /counts` (by shape: graded · raw · sealed, in rows AND units, with
+`failing`, `recount_due` and the reconcile `drift` count), `GET /queue?shape=` (unchecked rows **in shelf
+order**, which is the resumable half), `GET /flags`, `GET /item`, `GET /reconcile`, `POST /record`.
+
+The UI is **not a new screen**: `verify-ui.js` (a root-level classic script, like `extras.js`) adds a
+progress band under the money tiles of `inventory.html` and `sealed.html`, a state pill on every row and
+a ✓ button that opens the check dialog. It owns the vocabulary and the colours so the two pages cannot
+drift on what "does not match" looks like, and it adds no new visual language beyond the progress bar.
+
+### Sharp edges
+
+- **A publishable fixture is a VERIFIED fixture now.** `test/helpers/verified.mjs` `markVerified()` is
+  why the Shopify suites still pass; its `units` defaults to what the row holds, or a sealed pool of six
+  either throws or seeds itself unpublishable. Do NOT reach for it in a test that is *about* the gate.
+- The gate asks the **ledger**, not the cache. A cache wrong in the permissive direction publishes a
+  card nobody has seen; `counts()` reads the cache because it scans every row on every page load.
+- Volume this has to serve: 84 PSA slabs, 147 sealed rows (538 units), 36 raw singles, plus the 253 raw
+  singles still on eBay that arrive at the estate reset (bk-shopify D-023).
