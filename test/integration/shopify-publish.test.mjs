@@ -22,6 +22,8 @@ import path from 'node:path';
 import http from 'node:http';
 import { openDbAt } from '../../lib/db.mjs';
 import { seedStockLabels } from '../../lib/inventory.mjs';
+// A publishable fixture is a VERIFIED fixture now — see test/helpers/verified.mjs.
+import { markVerified } from '../helpers/verified.mjs';
 import { makeShopifyRouter, shopifyPlugin, rebuildIdentity, scrubForAudit } from '../../lib/shopify.mjs';
 
 const ENV = {
@@ -171,6 +173,7 @@ beforeEach(() => {
   const r = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, set_name, number, rarity, variant, language, condition, quantity, target_price_cents, image_url, status)
     VALUES ('STG-000001','pokemon','base1-58','Pikachu','Base Set','58/102','Common','Regular','EN','Near Mint',1,1299,'https://images.pokemontcg.io/base1/58.png','in_stock')`).run();
   itemId = r.lastInsertRowid;
+  markVerified(db, 'inventory', itemId);
 });
 
 const API = '/api/shopify';
@@ -245,6 +248,7 @@ describe('the set list', () => {
     const r = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, set_name, set_code, number, rarity, variant, language, condition, quantity, target_price_cents, image_url, status)
       VALUES ('STG-000002','pokemon','base1-4','Charizard','Base Set','BS1','4/102','Rare Holo','Holo','EN','Near Mint',1,99900,'https://images.pokemontcg.io/base1/4.png','in_stock')`).run();
     setItemId = r.lastInsertRowid;
+    markVerified(db, 'inventory', setItemId);
   });
   const setUpserts = () => calls.filter((c) => (c.op === 'identity' || c.op === 'identityListings') && c.variables.handle.type === 'bk_set_identity').map((c) => c.variables);
 
@@ -523,6 +527,7 @@ describe('a label a Shopify product already carries is NOT free', () => {
     // custom.id upsert key, B's publish resolves to A's product and overwrites it in place.
     const b = db.prepare(`INSERT INTO inventory_items (sku, game, identity_key, name, condition, quantity, target_price_cents)
                           VALUES ('STG-000002','pokemon','base1-58','Pikachu','Near Mint',1,1299)`).run();
+    markVerified(db, 'inventory', b.lastInsertRowid);
     bend = {};
     const r = await post('/publish', { itemId: b.lastInsertRowid });
     assert.equal(r.json.sku !== 'AAC-097', true, 'card B was handed the label card A already put on a Shopify product');

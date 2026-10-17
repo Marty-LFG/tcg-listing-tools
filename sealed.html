@@ -249,6 +249,7 @@
 
   <div id="banner"></div>
   <div class="tiles" id="tiles"></div>
+  <div id="verifyPanel"></div>
 
   <div class="sec">
     <div class="sec-h">📷 Bulk scan <span class="count" id="scancount">0</span>
@@ -357,6 +358,7 @@
 
 <script src="/datetime.js"></script>
 <script src="/extras.js"></script>
+<script src="/verify-ui.js"></script>
 <script>
 const B='/api/sealed';
 const SEALED_GAMES=['pokemon','mtg','riftbound','swu','lorcana','onepiece','other'];
@@ -478,6 +480,18 @@ function placeLine(it){
   if(it.location)return '📍 '+esc(it.location);
   return '';
 }
+// The verification state of one row, and the button that records a new check. Both come from
+// /verify-ui.js, which owns the vocabulary and the colours so this page and inventory.html cannot
+// drift apart on what "does not match" looks like. Absent the script they render nothing (GR7).
+function verifyPill(it){ return (window.BKV&&BKV.pill)?BKV.pill(it):''; }
+function verifyBtn(it){ return (window.BKV&&BKV.button)?BKV.button(it.id):''; }
+// What the row CLAIMS, handed to the check dialog so the operator reads it against the boxes in hand.
+window.BKV_ROW_FACTS=function(kind,id){
+  const it=CURRENT.find(x=>x.id===id); if(!it) return {};
+  return { name:it.name, sku:it.sku, location:it.location,
+    condition:[typeLabel(it.product_type),it.condition].filter(Boolean).join(' · ') };
+};
+
 function itemRow(it){
   const locLine=placeLine(it);
   const v=valueAud(it), vnative=(it.value_cents!=null&&(it.value_currency||'USD')!=='AUD')?' <small style="color:var(--muted);font-weight:600;">· '+esc(it.value_currency)+' '+(it.value_cents/100).toFixed(2)+'</small>':'';
@@ -487,7 +501,7 @@ function itemRow(it){
   return '<div class="card"><div class="lrow">'
     +'<div class="c-thumb">'+thumb(it,false)+'</div>'
     +'<div class="c-main">'
-      +'<div class="nm"><span class="gbadge '+esc(it.game)+'">'+esc((it.game||'').slice(0,3).toUpperCase())+'</span>'+esc(it.name)+' <span class="typepill">'+typeLabel(it.product_type)+'</span> <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
+      +'<div class="nm"><span class="gbadge '+esc(it.game)+'">'+esc((it.game||'').slice(0,3).toUpperCase())+'</span>'+esc(it.name)+' <span class="typepill">'+typeLabel(it.product_type)+'</span> <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+verifyPill(it)+'</div>'
       +'<div class="key">'+key+(it.pack_count?' · '+esc(it.pack_count)+' packs':'')+(it.units_per_case?' · '+esc(it.units_per_case)+'/case':'')+'</div>'
       +'<div class="sku">'+esc(it.sku)+(locLine?' · '+locLine:'')+(it.upc?' · '+esc(it.upc):'')+(it.quantity>1?' · ×'+esc(it.quantity):'')+'</div>'
       +(it.notes?'<div class="note">'+esc(it.notes)+'</div>':'')
@@ -502,6 +516,7 @@ function itemRow(it){
       +valSrcHtml(it)+'</div>'
     +'<div class="c-num">'+plBadge(pl)+'<div class="c-sub">'+plLbl+'</div></div>'
     +'<div class="c-act">'
+      +verifyBtn(it)
       +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
       +'<button class="btn sm blue" title="eBay sold comps" onclick="comps('+it.id+')">eBay</button>'
       +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
@@ -519,7 +534,7 @@ function gridCard(it){
   return '<div class="gtile">'
     +'<div class="g-thumb">'+thumb(it,false)+'</div>'
     +'<div class="g-body">'
-      +'<div class="g-name" title="'+esc(it.name)+'"><span class="gbadge '+esc(it.game)+'">'+esc((it.game||'').slice(0,3).toUpperCase())+'</span>'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span></div>'
+      +'<div class="g-name" title="'+esc(it.name)+'"><span class="gbadge '+esc(it.game)+'">'+esc((it.game||'').slice(0,3).toUpperCase())+'</span>'+esc(it.name)+' <span class="pill '+it.status+'">'+esc(it.status.replace("_"," "))+'</span>'+verifyPill(it)+'</div>'
       +(setLine?'<div class="g-set">'+setLine+'</div>':'')
       +'<div class="g-set">'+esc(it.sku)+(it.quantity>1?' · ×'+esc(it.quantity):'')+'</div>'
       +(locLine?'<div class="g-set">'+locLine+'</div>':'')
@@ -527,6 +542,7 @@ function gridCard(it){
       +'<div class="g-pl">'+plBadge(pl)+' <span class="g-pllbl">'+plLbl+'</span></div>'
       +'<div class="status" id="cs'+it.id+'"></div>'
       +'<div class="g-acts">'
+        +verifyBtn(it)
         +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
         +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
         +'<button class="btn sm danger" onclick="removeItem('+it.id+')">✕</button>'
@@ -984,6 +1000,9 @@ async function saveSession(btn){
   renderSortBar();
   if(window.TCG&&TCG.loadFx)await TCG.loadFx();
   await load();
+  // repaint redraws from CURRENT (enough once the flags land); reload refetches, which is what a
+  // recorded check needs, because verified_at rides on the row this page fetched.
+  if(window.BKV)BKV.mount({el:'verifyPanel',kind:'sealed',repaint:renderStock,reload:load});
   // ?edit=<id> opens that item's editor straight away — how the Locations manifest links to a card
   // sitting in a crate, so "which box is this in" and "fix this row" are one click apart.
   const wanted=parseInt(new URLSearchParams(location.search).get('edit')||'',10);

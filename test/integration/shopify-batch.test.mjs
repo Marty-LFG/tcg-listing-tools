@@ -23,6 +23,8 @@ import path from 'node:path';
 import http from 'node:http';
 import { openDbAt } from '../../lib/db.mjs';
 import { seedStockLabels } from '../../lib/inventory.mjs';
+// A publishable fixture is a VERIFIED fixture now — see test/helpers/verified.mjs.
+import { markVerified } from '../helpers/verified.mjs';
 
 // SHOPIFY_SHOP is set here deliberately, and it is what makes the live-guard tests mean anything.
 // Without it guardCredentials refuses store=live as not_connected and the guard below is never
@@ -181,6 +183,7 @@ function addItem({ name, number = '58/102', price = 1299, condition = 'Near Mint
     (sku, game, identity_key, name, set_name, number, rarity, variant, language, condition, quantity, target_price_cents, image_url, status)
     VALUES (?,?,?,?,'Base Set',?,'Common','Regular','EN',?,1,?,'https://images.pokemontcg.io/base1/58.png',?)`)
     .run(sku, game, 'base1-' + number.replace('/', '-'), name, number, condition, price, status);
+  markVerified(db, 'inventory', r.lastInsertRowid);
   return Number(r.lastInsertRowid);
 }
 
