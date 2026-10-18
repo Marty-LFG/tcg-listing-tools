@@ -470,8 +470,9 @@ async function doLookup(opts){
     // one pokemontcg.io files under the plain id. Say so, and how to reach the others.
     const shared=(!/\//.test(num)&&GA.sharedNumberCount)?GA.sharedNumberCount(setObj.value,num):0;
     const others=shared>1?((TCG.pkmSetFacts(setObj.value)||{}).cards||[]).filter(e=>TCG.cardNumberKey(e[0])===TCG.cardNumberKey(num)).map(e=>e[1]):[];
+    // stat() writes textContent, so nothing here is escaped (an apostrophe in a name would print as &#39;).
     stat($('status'),shared>1?'warn':'ok',shared>1
-      ?'Found '+esc(c.name)+' '+esc(nc.number)+' — but '+shared+' cards in this set are #'+esc(num)+' ('+esc(others.join(', '))+'). Type the full printed number for another.'
+      ?'Found '+c.name+' '+nc.number+' — but '+shared+' cards in this set are #'+num+' ('+others.join(', ')+'). Type the full printed number for another.'
       :'Found. Verify the details, price and offers below.'+TCG.pkmSourceNote(res));
   }catch(e){ act&&act.fail('error'); stat($('status'),'err','Lookup failed: '+(e&&e.message||e)); }
 }
@@ -484,12 +485,31 @@ async function doLookup(opts){
 // surge), never from its rarity: Magic's rarity says nothing about foiling, and the Pokémon rarity
 // regex matches a bare "rare", so it would stamp Holo on every Magic rare and feed a wrong finish
 // into the comps search (GR5).
+// One button per card sharing the typed number. Picking one looks it up by its own key (`k`, the
+// TCGplayer product id for a promo), which names exactly one card. Built as DOM nodes, not HTML:
+// stat() writes textContent, and these names carry apostrophes and brackets.
+function showCandidates(j){
+  const el=$('status');
+  stat(el,'warn',(j.error||'Several cards share this number — pick one')+':');
+  const wrap=document.createElement('div'); wrap.style.cssText='display:flex;flex-direction:column;gap:6px;margin-top:8px;';
+  for(const c of j.candidates){
+    const b=document.createElement('button'); b.type='button'; b.className='ghost'; b.style.cssText='text-align:left;padding:7px 12px;';
+    b.textContent=c.name+(c.variant?' ('+c.variant+')':'')+' · '+(c.number||'')+(typeof c.marketUsd==='number'?' · US$'+c.marketUsd.toFixed(2)+' market':' · no market price');
+    b.addEventListener('click',()=>{ $('num').value=c.k; doLookup(); });
+    wrap.appendChild(b);
+  }
+  el.appendChild(wrap);
+}
 async function doLookupGeneric(setObj,num,opts){
   const act=TCG.activity?TCG.activity('Looking up '+setObj.value+' '+num):null;
   stat($('status'),'load','Looking up…');
   try{
     const r=await TCG.fetchJson(GA.cardUrl(setObj.value,num)+(opts&&opts.refresh?'?refresh=1':''),
       {onRetry:n=>stat($('status'),'load','Looking up… (retry '+n+')')});
+    // 409 = several cards share this number (a Riftbound promo set: 263/298 is the plain, the Metal
+    // Best Of and the Metal Prize Wall Teemo). The server names them rather than guessing; offer them.
+    if(r.status===409){ let j=null; try{ j=await r.json(); }catch(e){}
+      if(j&&Array.isArray(j.candidates)&&j.candidates.length){ act&&act.fail('pick one'); showCandidates(j); return; } }
     if(!r.ok){ act&&act.fail('no match'); stat($('status'),'warn','No card '+num+' in '+setObj.label+'. Check the number.'); return; }
     const c=await r.json();
     if(!c||c.object==='error'||!c.name){ act&&act.fail('no card'); stat($('status'),'warn','No card found in '+setObj.label+'. Check the number.'); return; }
@@ -707,9 +727,17 @@ async function loadPrice(){
     const out=await fetch('/api/listings/price',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({row:cardRow()})}).then(r=>r.json());
     priceInfo=out;
     const c=out.comps||{};
+    const mk=await marketFigure();
+    // Same thresholds as the Runner's disagreement detector (DISAGREE_HI / DISAGREE_LO in
+    // lib/runner-core.mjs). Only compared in AUD, and only when the exchange rate is actually known.
+    // BELOW the market is always worth stopping for: that is comps hooking a cheaper card on the same
+    // number, and it sells the card for a fraction. ABOVE only counts from A$5 up — every bulk common
+    // lists on eBay AU at a A$1-7 floor far over TCGplayer's US$0.37, and that is not a wrong printing.
+    const ratio=(mk&&mk.aud>0&&c.matched)?c.recommended/mk.aud:null;
+    const off=ratio!=null&&(ratio<0.4||(ratio>2.5&&mk.aud>=5));
     if(c.matched){
       $('recBig').textContent=money(c.recommended);
-      if(!$('price').value) setPrice(c.recommended);
+      if(!$('price').value&&!off) setPrice(c.recommended);
       const conf=(c.confidence||'low');
       $('compsLine').innerHTML=c.comparable+' comparable '+(c.mode==='sold'?'sold':'active')+' listings · cluster '+money(c.clusterRange[0])+'–'+money(c.clusterRange[1])
         +' · fair '+money(c.fair)+'<span class="pill '+conf+'">'+conf+'</span>'+(out.reliable?'':' <span class="pill low">thin</span>');
@@ -718,10 +746,29 @@ async function loadPrice(){
       $('compsLine').textContent='No confident comps ('+(c.reason||'no data')+'). Set a price manually.';
     }
     if(card.intl) $('compsLine').innerHTML+=intlPriceNote();
+    if(mk) $('compsLine').innerHTML+=marketNote(mk,c,off);
     refreshSummary();
   }catch(e){ $('compsLine').textContent='comps unavailable: '+(e&&e.message||e); }
   syncEbayLinks();
   if(card.intl) loadIntlSecondOpinion();
+}
+// TCGplayer's market figure, where the card carries one (Riftbound joins it from the keyless index).
+// It is here for the PROMO sets above all: a Judge Heimerdinger is US$434 and prints 111/298, the
+// Origins card's number, so eBay comps hook the common and recommend A$3.48. The Runner has always
+// caught that with its disagreement flag; this page used to show the A$3.48 and fill it in.
+async function marketFigure(){
+  const usd=card&&card.raw&&typeof card.raw.marketUsd==='number'?card.raw.marketUsd:null;
+  if(usd==null) return null;
+  try{ if(window.TCG&&TCG.loadFx) await TCG.loadFx(); }catch(e){}
+  const aud=(window.TCG&&TCG.toAUD)?TCG.toAUD(usd,'USD'):null;
+  return {usd,aud};
+}
+function marketNote(mk,c,off){
+  // A$-first with the native amount beside it; without a rate, the USD alone, flagged (GR3).
+  const fig=(mk.aud!=null?'A$'+mk.aud.toFixed(2)+' · ':'')+'USD '+mk.usd.toFixed(2)+(mk.aud==null?' (no exchange rate, so not compared)':'');
+  if(off) return '<div style="margin-top:6px;color:var(--red);">TCGplayer market '+fig+'. The eBay comps are far '
+    +(c.recommended>mk.aud?'above':'below')+' it, so they are probably a different printing that shares this number. The price was not filled in; set it by hand.</div>';
+  return '<div class="muted" style="margin-top:6px;">TCGplayer market '+fig+'</div>';
 }
 // Non-English prints have NO TCGplayer or Cardmarket figure behind them, so the eBay AU comps above
 // are not one signal among several — they are the whole answer. Say so, rather than leaving the

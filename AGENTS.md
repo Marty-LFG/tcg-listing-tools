@@ -294,7 +294,8 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `data/funko_pop.json` | Vendored, filtered Funko catalog (~11k Pop vinyls). Built by `scripts/build-funko-data.mjs` from the MIT `kennymkchan/funko-pop-data` dump. Frozen at 2021. Fetched same-origin (no proxy). |
 | `scripts/build-funko-data.mjs` | Rebuilds `data/funko_pop.json` from upstream (filter to Pop! vinyl, derive franchise/exclusive/chase). |
 | `data/riftbound.json` | Baked Riftbound catalog (~1164 cards, every released set), built by `scripts/build-riftbound-data.mjs` from the **official LoL card gallery** (keyless). Keyed by lowercase set code **in Riot's release order**; per-set `{name,code,total,cards}` where `total` is the printed set total; per-card `{k,num,name,rarity,type,domain,e,p,m,img}`. Fetched same-origin (gzipped by the `dataGzip` middleware, ETag-cached client-side via `TCG.cachedJSON`). Default Riftbound source. |
-| `lib/riftbound-cards.mjs` | Serves the baked catalog to the two stock tools at `/api/riftbound/sets`, `/set/:id/cards` (with the keyless price join) and `/cards/:set/:num`. No upstream, no cache — the bake IS the source. **Must be registered before `riftboundPricesPlugin()`** (§17). |
+| `lib/riftbound-cards.mjs` | Serves the baked catalog to the two stock tools at `/api/riftbound/sets`, `/set/:id/cards` (with the keyless price join) and `/cards/:set/:num`. No upstream, no cache — the bake IS the source. A PROMO number several cards share answers `409 {code:'ambiguous', candidates}` rather than a guess (§17). **Must be registered before `riftboundPricesPlugin()`** (§17). |
+| `data/riftbound-promos.json` | **The Riftbound PROMO sets** (OPP, PR, JDG, SGN — TCGplayer's codes), baked by the `riftbound-prices` bake from the same TCGplayer pull and merged into the catalog SERVER-SIDE by `loadRiftboundData`. Keyed by TCGplayer product id (`OPP-p689174`), because promo numbers collide. Gitignored, server-owned; the builder page never sees it (§17). |
 | `scripts/build-riftbound-data.mjs` | Rebuilds `data/riftbound.json`: scrapes the gallery Next.js `buildId`, fetches `card-gallery.json`, slims + groups by set. **Self-updating** — set codes, names, printed totals and release order come from the gallery's own `sets.items` roster, so a NEW SET needs no code change here or in the builder (`lib/refresh.mjs` Telegram-alerts via the returned `newSets`). Derives the variant treatment from the printed number and freezes it into the card name (see §6). Rejoins Riot's `name` + `subtitle` into the printed name (`printedName`, §17). |
 | `extras.js` | Shared `TCG.*` module. **Images** (`renderExtras`): each image is `{label, display:[fast/small urls — raced, quickest shown], download:bestQualityUrl, fallback}`; the download button is ALWAYS best quality (back-compat `{url,fallback}` still works). **`TCG.activity(label)`** → `{update,done,fail}` renders a bottom-left toast stack with a live elapsed timer so every network op is visible. **`TCG.ebayComps({query,container,status,filter?})`** — shared eBay AU delivered-comps engine (sold-first via Marketplace Insights → asking fallback; delivered totals = item + shipping; AU vs Worldwide; undercut; auto-drives an activity toast). Plus prices/graph panel, FX, title-fitting, `condCode`/`langCode`, `legoCondToken`/`funkoCondToken`, `renderItemSpecifics`. Loaded via `<script src="/extras.js">`. |
 | `listing-image-lab.html` | Tuning harness for the branded listing image (§19). Drop a photo, drag rail-width / padding / canvas / text sliders, check it at thumbnail size, copy or save the config. Sliders are request-scoped — saving is a separate button through `/api/settings`. |
@@ -1217,6 +1218,42 @@ Riot's old "Yi, Honed". That is TCGplayer's product name, and unlike the old one
 champion, so riftboundDisplayName turns it into "Master Yi (Honed)".
 `test/data/riftbound-character.test.mjs` now also cross-checks every champion Unit against TCGplayer's
 product names (294/294 on 2026-09-24); if it goes red, look at the payload's `subtitle` first.
+
+**The promo sets (2026-09-24).** Riot's gallery carries no promos, and the promos hold some of the most
+valuable singles in the game: Metal "Prize Wall" cards at US$1,450-4,400, the T1 Worlds Champion signature
+cards at ~US$1,300-1,500, judge promos at US$185-434. They were dropped outright, which left them
+unlistable at the right identity — and the trap is that a promo prints a MAIN-SET number. The US$4,400
+Metal Prize Wall Teemo is `263/298`, the Origins card's number, the plain Teemo promo's (US$58) and the
+Metal Best Of's; a judge Heimerdinger (US$434) is `111/298`, and eBay comps for "Heimerdinger, Inventor
+111/298" found 124 Origins commons and recommended A$3.48. Now:
+
+- `scripts/build-riftbound-prices.mjs` `promoCatalog()` writes TCGplayer's four promo sets (Organized
+  Play, Promotional, Judge, Secret Garden) to **`data/riftbound-promos.json`** from the same pull, each
+  flagged `promo: true` under TCGplayer's own code (OPP, PR, JDG, SGN). **A promo card's key is its
+  TCGplayer product id** (`promoKey` → `p689174`, identity `OPP-p689174`), because within one set up to
+  three products share a number and the OP set mixes numbers from different main sets (`109/166` and
+  `109/298`). The price index keys promos the same way.
+- `lib/riftbound-data.mjs` merges that file in **server-side only** (`loadRiftboundData`), so the stock
+  tools, the enumerator, eBay export and Collectr all see the sets, while `riftbound-listing-builder.html`
+  — which fetches `data/riftbound.json` directly — does not, and its GR9 mirror is untouched.
+  `promoToCanonical` keeps TCGplayer's NAME with its tags ("(Metal) (Prize Wall)" is the price, and the
+  name is the one title part `fitTitle` never drops), TCGplayer's rarity, the finish the listings agree on
+  (`f`, else Non-foil), and TCGplayer's own image or none — never the Riot art for the same number.
+  `buildRuneIndex` skips promo sets, or the promo runes would overwrite the Origins runes every `R##`
+  reprint resolves to.
+- A shared promo number is a CHOICE, never a guess: `riftboundCandidates()` → `/api/riftbound/cards`
+  answers `409 {code:'ambiguous', candidates}` and the uploader shows them as buttons; the Runner lists
+  them and points at ☑ Set list. A denominator must match in full.
+- `compsQueryFor` drops the promo set name (no seller writes "Organized Play Promotional Cards") and adds
+  "promo". eBay AU is thin and mixed for these regardless, so the uploader now shows the **TCGplayer
+  market** beside the recommendation and refuses to auto-fill a recommendation below 0.4× it (or above
+  2.5× it, from A$5 up) — the Runner's disagreement thresholds.
+
+The same bake's summary no longer calls a set with only presale boxes UNKNOWN: TCGplayer does not flag a
+presale booster display `sealed`, so Radiance's nine boxes used to reach the set check. It is reported as
+`upcoming: Radiance (RAD) 23 Oct 2026` instead, and UNKNOWN now means a set whose CARDS we cannot price.
+The bake also pages TCGplayer **sorted by name**: the default sales ranking shifts between requests, and
+it was returning 1,577 rows holding 1,574 products (Leona VEN-184 missing, Ivern twice).
 
 Same session, two Shopify-only changes worth knowing: `buildShopifyDescription` and
 `buildSealedShopifyDescription` are TWO sentences now (identity, then the picture line) — the parcel

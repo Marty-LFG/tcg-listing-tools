@@ -10,7 +10,10 @@
 // "Darius - Trifarian". Every fixture below is real upstream data (2026-07-30).
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { indexRows, codeBySetName, resolveSetCode, isPromoSet } from '../../scripts/build-riftbound-prices.mjs';
+import {
+  indexRows, codeBySetName, resolveSetCode, isPromoSet, promoKey, promoCatalog, promoName, promoFinish, promoType,
+  probePromoImages, promoImageUrl,
+} from '../../scripts/build-riftbound-prices.mjs';
 import { priceFor } from '../../lib/riftbound-prices.mjs';
 import { mapPrice, pricePath, lookupPath } from '../../lib/normalize.mjs';
 
@@ -81,9 +84,9 @@ describe('the setName -> code join (derived, not hardcoded)', () => {
   it('is case- and whitespace-insensitive on both sides', () => {
     assert.equal(resolveSetCode('  vENDETTA ', BY_NAME), 'VEN');
   });
-  it('names every promo set it denies, and denies nothing else', () => {
+  it('names every promo set, and calls nothing else one', () => {
     for (const n of ['Riftbound Organized Play Promotional Cards', 'Riftbound Promotional Cards',
-      'Riftbound Judge Promotional Cards', 'Some Future Promotional Cards']) {
+      'Riftbound Judge Promotional Cards', 'Secret Garden', 'Some Future Promotional Cards']) {
       assert.equal(isPromoSet(n), true, n);
     }
     for (const n of ['Origins', 'Vendetta', 'Origins: Proving Grounds', '']) {
@@ -93,10 +96,36 @@ describe('the setName -> code join (derived, not hardcoded)', () => {
   it('an unrecognised NON-promo set is surfaced, not silently indexed or mislabelled a promo', () => {
     // This is what "TCGplayer listed the set before Riot's gallery did" looks like. Silence here
     // would read as full coverage while a whole set was missing from the price index.
-    const { cards, dropped } = idx([row({ setName: 'Brand New Set', number: '001/200', market: 5 })]);
+    const { cards, dropped, promo } = idx([row({ setName: 'Brand New Set', number: '001/200', market: 5 })]);
     assert.deepEqual(cards, {});
     assert.equal(dropped.unknownSet['Brand New Set'], 1);
-    assert.deepEqual(dropped.promoSet, {});
+    assert.deepEqual(promo, {});
+  });
+  it('a set with only presale BOXES is upcoming, not unknown — and named with its date', () => {
+    // Radiance, 2026-09-24: nine sealed products on presale and not one card. TCGplayer does not set
+    // `sealed` on them, which is how they reached the set check and read as "UNKNOWN set".
+    const NOW = Date.parse('2026-09-24T00:00:00Z');
+    const r = indexRows([
+      row({ setName: 'Radiance', setCode: 'RAD', productName: 'Radiance - Booster Display', number: '', releaseDate: '2026-10-23', market: 246 }),
+      row({ setName: 'Radiance', setCode: 'RAD', productName: 'Radiance - Vault Bundle', number: '', releaseDate: '2026-10-23', market: 146 }),
+      row({ setName: 'Legacy', setCode: 'LGC', productName: 'Legacy - Booster Display', number: '', releaseDate: '2027-01-29', market: null }),
+      // Past-dated, sealed only: a bundle line, not a coming set. It is just sealed.
+      row({ setName: 'Riftbound Bundles', setCode: 'RBUN', productName: 'Gift of the Rift Bundle', number: '', releaseDate: '2026-08-01', market: 288 }),
+    ], BY_NAME, { now: NOW });
+    assert.deepEqual(r.dropped.unknownSet, {});
+    assert.equal(r.dropped.sealed, 4);
+    assert.deepEqual(r.upcoming, [
+      { name: 'Radiance', code: 'RAD', releaseDate: '2026-10-23' },
+      { name: 'Legacy', code: 'LGC', releaseDate: '2027-01-29' },
+    ]);
+  });
+  it('the first CARD in an unknown set makes it unknown again, however many boxes came first', () => {
+    const r = indexRows([
+      row({ setName: 'Radiance', number: '', releaseDate: '2026-10-23' }),
+      row({ setName: 'Radiance', number: '001/220', releaseDate: '2026-10-23', market: 1 }),
+    ], BY_NAME, { now: Date.parse('2026-09-24T00:00:00Z') });
+    assert.equal(r.dropped.unknownSet.Radiance, 1);
+    assert.deepEqual(r.upcoming, []);
   });
   it('falls back to the seed roster when the catalog is missing, rather than emptying the join', () => {
     // data/riftbound.json is gitignored and baked ~60s after boot. An empty join would index
@@ -109,13 +138,26 @@ describe('the setName -> code join (derived, not hardcoded)', () => {
 });
 
 describe('indexRows — what it refuses to index, and why', () => {
-  it('drops promo sets (no identity_key addresses them, and their numbers collide)', () => {
-    const { cards, dropped } = idx([
-      row({ setName: 'Riftbound Organized Play Promotional Cards', productName: 'Darius - Hand of Noxus', number: '253/298' }),
-      row({ setName: 'Riftbound Organized Play Promotional Cards', productName: 'Darius - Hand of Noxus (Metal) (Best Of)', number: '253/298' }),
+  it('prices promo singles under their PRODUCT id, because their printed numbers collide', () => {
+    // 263/298 is the plain Teemo promo (US$58), the Metal Best Of and the Metal Prize Wall (US$4,400)
+    // — and it is also the Origins card. Keyed by number, all four would share one price.
+    const { cards, dropped, promo } = idx([
+      row({ setName: 'Riftbound Organized Play Promotional Cards', setCode: 'OPP', productId: '662886', productName: 'Teemo, Swift Scout', number: '263/298', market: 57.91 }),
+      row({ setName: 'Riftbound Organized Play Promotional Cards', setCode: 'OPP', productId: '689174', productName: 'Teemo, Swift Scout (Metal) (Prize Wall)', number: '263/298', market: 4400 }),
+      row({ setName: 'Riftbound Organized Play Promotional Cards', setCode: 'OPP', productId: '669259', productName: 'Teemo, Swift Scout (Metal) (Best Of)', number: '263/298', market: null }),
+      row({ setName: 'Origins', productName: 'Teemo - Swift Scout', number: '263/298', market: 1.1 }),
     ]);
+    assert.equal(cards['OPP-p662886'].market, 57.91);
+    assert.equal(cards['OPP-p689174'].market, 4400);
+    assert.equal(cards['OGN-263'].market, 1.1, 'the Origins card keeps its own price');
+    assert.equal(cards['OPP-263'], undefined);
+    assert.equal(dropped.unpriced, 1, 'the unpriced Best Of is counted, not invented');
+    assert.equal(promo['Riftbound Organized Play Promotional Cards'], 2);
+  });
+  it('a promo product with no number is a box, and counts as sealed', () => {
+    const { cards, dropped } = idx([row({ setName: 'Secret Garden', setCode: 'SGN', productId: '710238', productName: 'Secret Garden Box', number: '', market: 321 })]);
     assert.deepEqual(cards, {});
-    assert.equal(dropped.promoSet['Riftbound Organized Play Promotional Cards'], 2);
+    assert.equal(dropped.sealed, 1);
   });
   it('drops sealed product, which has no collector number at all', () => {
     const { cards, dropped } = idx([row({ productName: 'Origins - Booster Display', number: '', market: 306.1 })]);
@@ -201,5 +243,92 @@ describe('pricePath — split from lookupPath on purpose', () => {
     for (const [game, key] of [['pokemon', 'sv4-25'], ['mtg', 'neo-1'], ['swu', 'sor/010'], ['lorcana', '1/1']]) {
       assert.equal(pricePath(game, key), lookupPath(game, key), game + ' must not change');
     }
+  });
+});
+
+// The promo catalog (data/riftbound-promos.json). Every fixture row is a real TCGplayer product,
+// copied from the 2026-09-24 pull.
+describe('promoCatalog — the promo sets as catalog sets', () => {
+  const opp = (o) => row({ setName: 'Riftbound Organized Play Promotional Cards', setCode: 'OPP', rarity: 'Promo', ...o });
+  const rows = [
+    opp({ productId: '689174', productName: 'Teemo, Swift Scout (Metal) (Prize Wall)', number: '263/298', cardType: ['Legend'], domain: 'Mind;Chaos', printings: ['Normal'] }),
+    opp({ productId: '662886', productName: 'Teemo, Swift Scout', number: '263/298', cardType: ['Legend'], domain: 'Mind;Chaos', printings: ['Foil'] }),
+    opp({ productId: '662886', productName: 'Teemo, Swift Scout', number: '263/298', cardType: ['Legend'] }),   // paging repeat
+    opp({ productId: '697499', productName: 'Fury Rune (R01c)', number: 'R01c', cardType: ['Rune'], domain: 'Fury', printings: ['Normal'] }),
+    opp({ productId: '713484', productName: 'Illaoi, Prophet of the Great Kraken (Champion)', number: '109/166', cardType: ['Champion Unit'], energy: '6', power: null, might: '4', printings: ['Foil', 'Normal'] }),
+    row({ setName: 'Riftbound Promotional Cards', setCode: 'PR', rarity: 'Showcase', productId: '716022', number: 'T1S 003/005', cardType: ['Unit'],
+      productName: 'Galio, Indefatigable (T1 Worlds Champion Signature Edition Bundle) (Serial Numbered)' }),
+    row({ setName: 'Secret Garden', setCode: 'SGN', productId: '710238', productName: 'Secret Garden Box', number: '' }),
+    row({ setName: 'Origins', productId: '1', productName: 'Teemo - Swift Scout', number: '263/298' }),
+  ];
+  const cat = promoCatalog(rows, { '689174': promoImageUrl('689174') });
+  const card = (set, k) => cat[set].cards.find((c) => c.k === k);
+
+  it('one set per TCGplayer promo set, keyed by its own code and flagged promo; never a Riot set', () => {
+    assert.deepEqual(Object.keys(cat), ['opp', 'pr']);
+    assert.equal(cat.opp.code, 'OPP');
+    assert.equal(cat.opp.name, 'Riftbound Organized Play Promotional Cards');
+    assert.equal(cat.opp.promo, true);
+    assert.equal(cat.opp.total, 0, 'a promo set prints no set total');
+  });
+  it('one card per PRODUCT — two products sharing 263/298 stay two, a repeated product stays one', () => {
+    assert.equal(cat.opp.cards.filter((c) => c.num === '263/298').length, 2);
+    assert.equal(card('opp', promoKey('689174')).name, 'Teemo, Swift Scout (Metal) (Prize Wall)');
+    assert.equal(promoKey('689174'), 'p689174');
+  });
+  it('a box with no number is not a card', () => {
+    assert.equal(cat.sgn, undefined);
+  });
+  it('keeps the tags in the name (they are the price), minus one that only repeats the number', () => {
+    assert.equal(card('opp', 'p697499').name, 'Fury Rune');
+    assert.equal(promoName('Fury Rune (R01c)', 'R01c'), 'Fury Rune');
+    assert.equal(card('opp', 'p713484').name, 'Illaoi, Prophet of the Great Kraken (Champion)');
+  });
+  it('shortens the two T1 bundle tags, so the title keeps the number', () => {
+    assert.equal(card('pr', 'p716022').name, 'Galio, Indefatigable (T1 Signature Edition) (Serial Numbered)');
+    assert.equal(promoName('X (T1 Worlds Champion Player Bundle)', 'T1A 003/005'), 'X (T1 Player Bundle)');
+  });
+  it('reads the type, domain and stats TCGplayer carries, and invents no artist or champion', () => {
+    const c = card('opp', 'p713484');
+    assert.equal(c.type, 'Unit');                       // "Champion Unit" -> the Riot type
+    assert.deepEqual([c.e, c.p, c.m], ['6', '', '4']);
+    assert.equal(card('opp', 'p689174').domain, 'Mind;Chaos');
+    assert.equal(c.a, '');
+    assert.equal(c.ch, '');
+    assert.equal(promoType(['Signature Spell']), 'Spell');
+    assert.equal(promoType([]), '');
+  });
+  it('the finish is what the listings agree on, or nothing', () => {
+    assert.equal(card('opp', 'p662886').f, 'Foil');
+    assert.equal(card('opp', 'p689174').f, 'Non-foil');     // a Metal card is listed Normal
+    assert.equal(card('opp', 'p713484').f, '', 'listed both ways: not a claim we can make');
+    assert.equal(promoFinish([]), '');
+  });
+  it('an image only where TCGplayer hosts one', () => {
+    assert.equal(card('opp', 'p689174').img, 'https://tcgplayer-cdn.tcgplayer.com/product/689174_in_1000x1000.jpg');
+    assert.equal(card('opp', 'p662886').img, '');
+  });
+});
+
+describe('probePromoImages — one small request per unknown product', () => {
+  const rows = [
+    row({ setName: 'Secret Garden', productId: '1', number: '001/003' }),
+    row({ setName: 'Secret Garden', productId: '2', number: '002/003' }),
+    row({ setName: 'Secret Garden', productId: '3', number: '003/003' }),
+    row({ setName: 'Secret Garden', productId: '4', number: '' }),         // the box: never asked
+    row({ setName: 'Origins', productId: '5', number: '001/298' }),         // not a promo: never asked
+  ];
+  it('keeps a known image without asking, records a 403 as none, and a failed request as none for now', async () => {
+    const asked = [];
+    const fetchImpl = async (url) => {
+      asked.push(url);
+      if (url.includes('/2_')) return { ok: false, status: 403 };
+      if (url.includes('/3_')) throw new Error('socket hang up');
+      return { ok: true, status: 200 };
+    };
+    const out = await probePromoImages(rows, { 1: promoImageUrl('1') }, fetchImpl);
+    assert.deepEqual(out, { 1: promoImageUrl('1'), 2: '', 3: '' });
+    assert.equal(asked.length, 2, 'product 1 was known, 4 is a box, 5 is not a promo');
+    assert.ok(asked.every((u) => u.endsWith('_200w.jpg')), 'asks for the smallest size');
   });
 });
