@@ -70,7 +70,7 @@
         "services": [
           {
             "code": "AU_Regular",
-            "label": "Tracked letter",
+            "label": "Tracked parcel",
             "costCents": 826,
             "sortOrder": 1
           },

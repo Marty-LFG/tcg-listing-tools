@@ -230,7 +230,7 @@ describe('parseShippingServiceDetails (GeteBayDetails)', () => {
     </ShippingServiceDetails>
     <ShippingServiceDetails>
       <Description>Express Delivery</Description>
-      <ShippingService>AU_Express</ShippingService>
+      <ShippingService>AU_ExpressCourierDelivery</ShippingService>
       <ShippingCategory>EXPEDITED</ShippingCategory>
       <ExpeditedService>true</ExpeditedService>
       <ValidForSellingFlow>true</ValidForSellingFlow>
@@ -254,8 +254,8 @@ describe('parseShippingServiceDetails (GeteBayDetails)', () => {
 
   it('feeds the catalog that classifyPostage reads', () => {
     const cat = setServiceCatalog(parseShippingServiceDetails(XML));
-    // AU_Express rather than AU_Regular: the latter is curated now, and curated outranks the catalog.
-    const p = classifyPostage({ ship_service: 'AU_Express' }, {}, cat);
+    // An uncurated code: AU_Regular and AU_Express are both curated now, and curated outranks the catalog.
+    const p = classifyPostage({ ship_service: 'AU_ExpressCourierDelivery' }, {}, cat);
     assert.equal(p.label, 'Express Delivery');
     assert.equal(p.labelSource, 'ebay');
     setServiceCatalog([]);   // leave the module-level catalog as we found it
@@ -298,7 +298,7 @@ describe('resolveServiceLabel — owner, then curated, then eBay, then prettify'
     const heal = (code) => resolveServiceLabel(code, prettifyServiceCode(code));
     assert.deepEqual(heal('AU_AusPostStandardLetter'), { label: 'Regular letter', labelSource: 'curated' });
     assert.deepEqual(heal('AU_AusPostPriorityLetterWithTracking'), { label: 'Priority letter, tracked', labelSource: 'curated' });
-    assert.deepEqual(heal('AU_Regular'), { label: 'Tracked letter', labelSource: 'curated' });
+    assert.deepEqual(heal('AU_Regular'), { label: 'Tracked parcel', labelSource: 'curated' });
     assert.deepEqual(heal('AUP_500G_SATCHEL_SIG'), { label: 'Tracked satchel, signature on delivery', labelSource: 'curated' });
   });
   it('never prints a weight tier for the satchel — Australia Post retired that name', () => {
@@ -314,8 +314,34 @@ describe('resolveServiceLabel — owner, then curated, then eBay, then prettify'
   });
   it('consults eBay catalog only BELOW the curated map, because eBay calls AU_Regular "Regular"', () => {
     const catalog = new Map([['AU_Regular', { label: 'Regular' }], ['AU_Odd', { label: 'A Real eBay Name' }]]);
-    assert.equal(resolveServiceLabel('AU_Regular', '', undefined, catalog).label, 'Tracked letter');
+    assert.equal(resolveServiceLabel('AU_Regular', '', undefined, catalog).label, 'Tracked parcel');
     assert.deepEqual(resolveServiceLabel('AU_Odd', '', undefined, catalog), { label: 'A Real eBay Name', labelSource: 'ebay' });
+  });
+  // 2026-10-18: the live config stored labels WITH a machine source ('curated' / 'ebay'), and the ladder
+  // kept any stored label that was not a prettify of its code, so the curated map could never reach them.
+  it('re-resolves a label a machine stored, so a curated change reaches the live config', () => {
+    const empty = new Map();
+    assert.deepEqual(resolveServiceLabel('AU_Regular', 'Tracked letter', 'curated', empty), { label: 'Tracked parcel', labelSource: 'curated' });
+    assert.deepEqual(resolveServiceLabel('AU_AusPostStandardLetterWithTracking', 'Australia Post Domestic Regular Letter With Tracking', 'ebay', empty),
+      { label: 'Tracked letter', labelSource: 'curated' });
+  });
+  it('keeps a stored eBay name when nothing better is loaded, rather than prettifying it', () => {
+    assert.deepEqual(resolveServiceLabel('AU_SomethingNew', 'A Real eBay Name', 'ebay', new Map()), { label: 'A Real eBay Name', labelSource: 'ebay' });
+  });
+  it('still never touches a label the owner chose', () => {
+    assert.deepEqual(resolveServiceLabel('AU_Regular', 'Parcel Post', 'owner', new Map()), { label: 'Parcel Post', labelSource: 'owner' });
+    assert.deepEqual(resolveServiceLabel('AU_Regular', 'Parcel Post', undefined, new Map()), { label: 'Parcel Post', labelSource: 'owner' });
+  });
+  it('gives the live letter band one short, distinct name per service', () => {
+    const live = [{ id: 'letter', services: [
+      { code: 'AU_AusPostStandardLetterWithTracking', label: 'Australia Post Domestic Regular Letter With Tracking', labelSource: 'ebay', costCents: 585 },
+      { code: 'AU_Regular', label: 'Tracked letter', labelSource: 'curated', costCents: 826 },
+      { code: 'AU_ExpressPostParcelSignature', label: 'Australia Post Express Post with Signature', labelSource: 'ebay', costCents: 1250 },
+      { code: 'AU_Express', label: 'Australia Post Express Post', labelSource: 'ebay', costCents: 945 },
+    ] }];
+    const labels = curateBandServices(live)[0].services.map((s) => s.label);
+    assert.deepEqual(labels, ['Tracked letter', 'Tracked parcel', 'Express Post, signature on delivery', 'Express Post']);
+    assert.equal(new Set(labels).size, labels.length, 'no two services share a name');
   });
 });
 
@@ -395,7 +421,7 @@ describe('KNOWN_SERVICES — the tier comes from what the service IS, not what t
     const cfg = { services: { AU_Regular: { tier: 'express' } } };
     const p = classifyPostage({ ship_service: 'AU_Regular', shipping_cents: 826 }, cfg, EMPTY);
     assert.equal(p.tier, 'express', 'the owner overrode the tier');
-    assert.equal(p.label, 'Tracked letter', 'and kept the curated label they did not override');
+    assert.equal(p.label, 'Tracked parcel', 'and kept the curated label they did not override');
   });
 
   it('eBay saying it chose the service still wins over everything (the hard guard)', () => {
