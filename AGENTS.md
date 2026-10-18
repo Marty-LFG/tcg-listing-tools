@@ -1111,6 +1111,25 @@ account already holds `sell.inventory` + `sell.account` (no re-consent) and is o
   descriptors → EPS images → publish/dry-run → write-back) and the `/preview` `/publish`
   `/revise-price` `/withdraw` `GET /:id` routes.
 
+**Re-rendering live descriptions** (`rerenderDescriptions`, `POST /api/listings/rerender-descriptions`,
+2026-10-18). A description is frozen at publish, postage table included, so a band's policy changing in
+Seller Hub leaves every live listing quoting the old services (GR6). This rebuilds a tool listing's
+description with today's builder and band table and sends back ONLY that: `getOfferFull` reads the live
+offer, `offerUpdateBody` returns every writable field exactly as eBay holds it with `listingDescription`
+swapped, and `updateOffer` revises in place (same ItemID). Never rebuild the offer from the stock row for
+this: updateOffer is a full replace, and re-deriving would move price, quantity or policies. The band
+comes from the LIVE price (both `target_price_cents` and `price_cents` are overridden, because the
+builder prefers target); a listing whose policy is not that band's is skipped as `policy_mismatch`, as
+are hidden/sold-out offers and hand-written descriptions. DIAG-gated, behind `liveBandGuard`, a DRY RUN
+unless `?apply=1`, paged by `?limit=`/`?after_id=` or named by `?item_ids=`, `?detail=1` for the full
+HTML; every revise writes a `listing_pushes` row with action `rerender`.
+
+**Service labels heal from the curated map** (`resolveServiceLabel`, `lib/postage.mjs`). A label stored
+with a machine source (`curated`/`ebay`/`derived`) is resolved again on every read; only an `owner`
+label, or a legacy hand-written one with no source, is kept. Before 2026-10-18 any stored label that was
+not a prettify of its code was kept, which froze `AU_Regular` at "Tracked letter" (it is Parcel Post,
+now "Tracked parcel") beside a real tracked letter at A$5.85.
+
 **New tables** (`lib/db.mjs`): `ebay_listings` (local mirror, one row per SKU+marketplace),
 `listing_pushes` (per-attempt audit/state), `listing_images` (EPS urls + expiry; `item_id NULL` =
 the shared generic image). `inventory_items.ebay_offer_id`/`ebay_listing_id`/`channel_status` are
