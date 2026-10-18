@@ -386,6 +386,12 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `orders.html` | **Fulfilment** dashboard: the to-pack queue with one-tap packing slip / combined slip / address label / pick sheet, plus Mark picked and Mark shipped. Tabs are `To pack` / `Upgrades` / `All`; the pack queue is ordered by eBay's **dispatch deadline** (`HandleByTime`), not by paid date. Each row carries its postage tier as a chip, a tinted left rail and a draining deadline bar, and an upgraded order swaps its primary action to **Buy label on eBay ↗** (Seller Hub deep link) while the thermal address label demotes — see §4 postage below. |
 | `purchasing.html` | **Purchase orders / incoming stock** — the INBOUND mirror of `orders.html`. Register (`Outstanding` / `Preorders` / `To reconcile` / `Received` / `Cancelled` / `All`) with a status-coloured rail and a payment pill; an order drawer with a receipt-style totals ledger, the payments block and the settled-AUD entry; a filtered picker over held stock for restock lines; and the **receiving bench** — count, reason codes, per-line splittable storage spots, then a preview of exactly which SKUs get `+N` before anything moves. House gold. See §22. |
 | `postsale.html` | Post-Sale Messenger: the buyer-message queue (draft / approve / send / reply handoff) with an edit modal. |
+| `sell.html` | **Sold in person** (§24). Phone-first: "At the table" (scan/type a label, two-tap Sold, see each channel's outcome) and "End of day" (paste `AAC-084 x2 @12.50` lines, preview, record all, streamed). Lists failing channel updates with Retry. Linked from `index.html` and a per-row Sold link on `inventory.html` / `sealed.html`. |
+| `lib/channel-presence.mjs` | §24's leaf module: where a stock row is live (`ebayPresence` / `shopifyPresence`, live store only), the two one-channel refusals (`assertNotLiveOnShopify` / `assertNotLiveOnEbay`), the `sync_jobs` enqueue, and the `stock_movements` scan. Owns `in_person_sales` + `channel_sync_meta` (`migrateChannelSync`). Imports nothing heavy, because every publish path imports it. |
+| `lib/channel-sync.mjs` | §24's worker: brings each other channel DOWN to the shelf count after a sale — eBay withdraw / `EndFixedPriceItem` / revise, Shopify lower-only compare-and-swap. Backoff, dead-letter + Telegram alert, drift report. Never raises. |
+| `lib/shopify-stock-orders.mjs` | §24: Shopify orders → the existing postsale `orders` / `order_line_items` (namespaced, `channel='shopify'`, `shipped_status='external'`) so `applyStockDecrements` runs unchanged. The `stock` webhook consumer + a 10-minute backup poll. Live store only. |
+| `lib/in-person-sales.mjs` · `lib/cross-channel.mjs` | §24: the in-person sale (through the same decrement an eBay order uses, `refKind 'in_person'`), and the plugin wiring `/api/channels/*`, the consumer and both timers. |
+| `events.html` · `lib/events.mjs` | §24 "Shows and markets": a show's take-list → take offline (eBay hidden at qty 0, never ended; Shopify sold out) → table sales → close-out (scan back; the rest is sold; takings split by asking price) → new stock in full detail → back online. API `/api/channels/events/*`. |
 | `lib/postsale.mjs` | Vite plugin: owns `data/postsale.db` and `/api/postsale/*`, runs the order poll, reply poll and pack digest, reconciles orders to stock, and drafts/routes buyer messages. `ingestOrder` adopts a new order; **`refreshOrder` keeps one current** — that is the path every eBay-side dispatch comes back through, whether a Seller Hub postage label was bought (eBay writes the tracking number onto the order and marks it shipped by itself) or the seller simply bulk-ticked "mark as dispatched". `attachPostage` decorates every read with the postage view the dashboard and both print docs consume. `dispatchOrder` is the single hand-dispatch path shared by the API route and the digest button. Registered in `vite.config.js` `plugins`. |
 | — the daily digest's bulk buttons | The morning digest's two messages carry **Mark all N picked** (local, one tap) and **Mark all N shipped** (a CompleteSale per order, so it asks first). Membership is **frozen in `pack_digests` + `pack_digest_orders` before either message is sent**, and the buttons carry that digest's id — nothing is re-derived at tap time, so a tap can only ever touch the orders its own message named. Two digests the same day (the DIAG trigger allows it) each keep their own list. Bulk dispatch holds an atomic claim on `pack_digests.dispatch_started_at` against a double tap and releases it in a `finally`; a failed eBay write leaves that order unshipped so it returns in the next digest. Callback prefixes `psp:` / `psdq:` / `psdy:` / `psdn:` + digest id; they must not collide with the approve/skip `psa:` / `pss:` + message id. |
 | — **the pack queue is ours, not eBay's** | **eBay flips an order to `shipped` the instant a postage label is BOUGHT, normally while the cards are still on the shelf** — taking that at face value deleted the order from the pack queue, the pick sheet and the digest before anyone had touched it. So `refreshOrder` stamps `orders.label_bought_at` and the order keeps its place. The rule is now simply **if eBay flipped it and we did not, a label was bought** (`!prev.dispatch_source && !prev.picked_at && !prev.label_bought_at`) — it used to also require a tracking number or a tracked tier, but **an eBay-bought Australia Post Regular Letter label is untracked**, so that test settled straight to `posted` exactly the orders it was meant to hold, and five vanished off the fulfilment page before it was noticed. A bulk **"mark as dispatched"** is now held too; that costs one tap of "Packed & posted", which is the recoverable side of the trade. `picked_at` is never stamped by the poll (a background job may not assert that a human packed something; `dispatchOrder`, driven by a button, may). Every queue read goes through the single `IN_QUEUE_SQL` / `NEEDS_PACKING_SQL` / `LABEL_BOUGHT_SQL` predicates in `lib/postsale.mjs` rather than `shipped_status`. `attachFulfilment` derives the state the UI labels: `to_pack` → `label_bought` → `to_post` → `posted`. `dispatchOrder` short-circuits the eBay call for anything eBay already has shipped (which is also the double-tap guard) and just records that the parcel has gone. `settleLabelBought` + `POST /api/postsale/diag/settle-label-bought[?apply=1] {ids:[…]}` clears NAMED orders out of the queue — it takes ids because nothing can pick them automatically any more. |
@@ -2705,3 +2711,194 @@ drift on what "does not match" looks like, and it adds no new visual language be
   card nobody has seen; `counts()` reads the cache because it scans every row on every page load.
 - Volume this has to serve: 84 PSA slabs, 147 sealed rows (538 units), 36 raw singles, plus the 253 raw
   singles still on eBay that arrive at the estate reset (bk-shopify D-023).
+
+---
+
+## 24. Cross-channel sales — a sale anywhere takes the card off everywhere
+
+**THE RULE (audit K1 + V10, 2026-10-18).** A sale on any channel — eBay, Shopify, a show table — takes
+the card off every other channel, and anything that cannot be reached is reported, never silent. Most
+stock is one-of-one, and with cheap singles moving to Shopify and in-person vending, a card sold in one
+place and still live in another is a second buyer for an object that is gone. Three halves:
+
+**1. One channel at a time.** `runPublish` (every eBay publish surface, incl. batch + preflight +
+`publishSealedPool`) refuses a card **ACTIVE on the live Shopify store** — `live_on_shopify`.
+`runShopifyPublish` / `runSealedShopifyPublish` (+ the batch preflight) refuse an **ACTIVE publish to
+the live store** of a card live on eBay (tool offer or a linked hand-made listing) — `live_on_ebay`.
+Both refuse before any call. A Shopify **DRAFT** is not a channel (it is how the eBay estate sits on
+live), nor is the **dev** store, nor a live product the mirror says is at 0. The override is the per-call
+body flag `allowDualList` (batch: `dualListIds` / `dual_list_ids`) and it is **ignored for a quantity of
+one**. Never a config key. ⚠ The planned switch of the 206 drafts to ACTIVE now refuses while their eBay
+listings are live — end eBay first; that ordering *is* the rule.
+
+**2. A re-publish never raises Shopify.** `setAvailableQty` takes `allowRaise` (default **false**): a
+level below the target is HELD (nothing written, `action:'held'`), because the usual reason Shopify is
+lower is a sale there that has not reached tracker.db yet. A first publish (mirror `available_qty IS
+NULL`) and the Runs paths pass `allowRaise:true`; an owner restock passes it per call. Lowering is always
+allowed. The mirror records what Shopify **holds**, not what was asked for.
+
+**3. Every sale reaches every other channel**, through the durable `sync_jobs` outbox (a Vite restart on
+any lib save would kill an in-memory retry mid-delist) and `lib/channel-sync.mjs`:
+
+| sale | how it enters the stock ledger | how the other channels hear |
+|---|---|---|
+| eBay | `applyStockDecrements` (unchanged) | ledger scan → Shopify lowered |
+| Shopify | `orders/paid` webhook (`stock` consumer) or the 10-min poll → postsale `orders` with `channel='shopify'`, `shipped_status='external'` → `applyStockDecrements` (unchanged) | ledger scan → eBay withdrawn / ended / reduced |
+| in person | `POST /api/channels/in-person` → the same decrement, `refKind 'in_person'`, jobs queued in the same transaction | drained inline; the phone sees each channel's outcome |
+| marked sold by hand (edit modal, batch mark, sealed PATCH) | the row write | explicit enqueue, BEFORE the write |
+
+- **Every job computes the target when it runs** (`onHandUnits`, or `poolUnits` for a pool) and only
+  ever lowers: tool listing → `withdrawOffer` at 0, `runPublish(channelGuard:false)` at eBay's own price
+  above 0; hand-made → `endTradingListing` (`EndFixedPriceItem`, preflight + verify) at 0,
+  `reviseTradingListing` above 0; pool → withdraw / `publishSealedPool`; Shopify → compare-and-swap down.
+- **The sale's own channel is skipped only when the stock sold out** (`saleChannelOf`: an order ref
+  `shopify:…` is Shopify, any other order ref is eBay). With units left it is not skipped: eBay can sell
+  one while a Shopify sale is still being ingested, and either side's absolute write can land over the
+  other's decrement. Healing that costs one read.
+- **One instruction per listing at a time.** A sale, a show's hide and a show's restore have separate
+  dedupe keys, so `claim()` refuses a job while a sibling for the same listing is running. A sale that
+  lands mid-run is read off the stored row BEFORE `finish()` resets it, and queues a follow-up.
+- **Nothing is retried quietly.** A failed write backs off (1–32 min); after 6 attempts the job is `dead`,
+  logged at error level and sent to Telegram. Not-connected is `blocked`, not a spent attempt.
+  `GET /api/channels/state` lists all of it, and `sell.html` shows it with Retry.
+- ⚠ **Presence must not trust `inventory_items.channel_status` alone.** The sale decrement writes
+  `'ended'` on sell-out assuming eBay ended its own listing — false after a Shopify or in-person sale.
+  `ebayPresence` also accepts an `ebay_listings` row still `ACTIVE`, and the in-person path enqueues
+  before it decrements.
+- ⚠ **History is never replayed.** The ledger cursor is pinned at the current end on first boot (at
+  `configureServer`, not the first tick). Pre-existing drift — the sold-but-drafted Shopify rows (K2),
+  listings for cards sold before this existed — is `GET /api/channels/drift` (report-only), fixed by
+  `POST /api/channels/drift/apply {items:[{kind,item_id}]}` for rows a person has looked at.
+- **Cancellations** restock locally (`reverseStockForOrder`, unchanged) and relist **nothing**; a
+  restock is a positive movement and the worker never raises. Refunds without a cancellation have no
+  stock path (same as eBay).
+- **Shopify specifics:** only PAID / PARTIALLY_REFUNDED / REFUNDED move stock (AUTHORIZED waits for
+  `orders/paid`); test orders and dev-store deliveries never do. A sealed **pool** line is split FIFO
+  across the pool's rows (stock matches on each row's own sku). A line for a card already sold here is a
+  **double-sale** alert, not a quiet stamp. The poll needs `read_orders` on the live app; its state says
+  so when it is refused. `dispatchOrder` refuses a non-eBay order, and the orders list hides them unless
+  `?channel=all`.
+  The poll's first run starts from NOW, never a month back — an order paid on live before this was
+  deployed (a refunded test purchase, say) must not end a live eBay listing on the first boot. Backfill
+  deliberately with `POST /api/channels/shopify/poll {since}` (DIAG-gated, at most 55 days).
+- ⚠ **IT SHIPS DISARMED. `CROSS_CHANNEL_SYNC=on` (or `true`/`1`/`yes`) in `.env` arms it; anything else,
+  unset included, is OFF** (`syncArmed` in `lib/channel-sync.mjs`). Arming is the first time this code
+  writes to the live accounts on its own, so it is a person's decision, never a side effect of a deploy.
+  Read from the env the plugin is handed (`.env`, via Vite's `loadEnv`, which does not copy into
+  `process.env`), with `process.env` as the fallback. **Off:**
+  - Nothing is sent to eBay or Shopify. Jobs answer `pending` with `sync_off`.
+  - The ledger is not scanned and the tick does not run.
+  - The Shopify poll does not start, and the `stock` webhook consumer stores nothing (the receiver acks
+    it), so a Shopify order moves no stock. This is exactly as before this existed.
+  - Take offline and Back online refuse with `sync_off`.
+  - In-person sales and hand marks still record local stock. Their jobs queue, and `sell.html`,
+    `events.html` and `GET /api/channels/state` (`armed:false`, `note`) say in words that they are queued,
+    NOT sent.
+  - The DIAG `shopify/poll` backfill refuses.
+- **The first ARMED boot is a moment.** At it (`configureServer`, before any tick or delivery):
+  - The ledger cursor is pinned to the current end (`pinMovementCursor`, meta `armed_at`), so nothing
+    the ledger gained while it was off is replayed.
+  - The Shopify **epoch** is set (`shopify_stock_orders_epoch`). `ingestOrderNode` never adopts an
+    unknown order processed before it, from the poll or the webhook path, because the poll reads by
+    updated_at: an order paid last month and fulfilled or REFUNDED today would otherwise come back as a
+    sale.
+  - Only an explicit `since` backfill reaches behind it, and an order already held is kept current
+    whatever its date.
+  - Jobs queued while it was off (in-person sales, hand marks) DO run once armed. They only ever lower a
+    channel to the shelf count, so check `GET /api/channels/state` before arming if that matters.
+- **The phone's idempotency key.** Every in-person sale carries a `client_key` (one per picked card, one
+  per line of an end-of-day paste, kept until the text changes). A repeat records nothing and answers
+  with the original sale (`already:true`), with a unique index under it, so a retried request or a paste
+  sent twice cannot decrement a multi-unit row twice.
+- **Shopify orders stay out of eBay's order paths.** `sweepOpenOrders` (the by-id GetOrders backstop) and
+  the `/api/status` fulfilment counts are `COALESCE(channel,'ebay')='ebay'`. `HOLD_SQL` ignores
+  channel, and a pending Shopify order sent to GetOrders as `shopify:<n>` failed its whole chunk.
+- **Retry re-queues the same instruction**: a dead job's mode, listing and show, never a plain sale job.
+- **A sale-driven revise keeps the listing's pictures.** `publishedComposed` reads the last successful
+  publish's `imageUrls` against `listing_images.compose_hash`, so a branded listing is revised with
+  rails rather than falling back to the config default.
+- **A sealed pool already live on eBay is revised even if the mirror says it is live on Shopify.** It
+  only warns. Pools pushed to the live store as drafts before drafts were recorded `unpublished` all read
+  as live, and a revise neither creates nor removes a double listing. Putting a pool ON eBay while it is
+  live on Shopify is still refused.
+- **Not gated on verification (§23):** lowering or ending a listing is not a publish. Gated on a Run
+  reservation (inventory: refused; sealed: the held units are subtracted).
+
+Validation: `test/integration/cross-channel-{in-person,shopify-sale,ebay-sale,refusals}.test.mjs`,
+`test/integration/shopify-republish-no-raise.test.mjs`, `test/unit/cross-channel-rules.test.mjs`; stubs in
+`test/helpers/channel-stubs.mjs` (eBay via `globalThis.fetch`, Shopify via `fetchImpl`, anything
+unstubbed fails rather than reaching a network).
+
+### Shows and markets (`events.html`, `lib/events.mjs`)
+
+A show is stock going to a table and coming back. Status runs `planning → offline → closing → closed`,
+and the owner's choices (2026-10-18) are built in:
+
+1. **Take-list:** scan labels (sealed rows and multi-unit rows take a quantity). Refused: sold, reserved
+   for a Run, already on another open show, more than is free.
+2. **Take offline:** eBay listings are **hidden at quantity 0, never ended**. That keeps the item
+   number, watchers and history, and relies on the account's **out-of-stock option**.
+   - **Out-of-stock option check.** Read first with Trading `GetUserPreferences`. If it is off, the whole
+     take-offline is refused with nothing written.
+   - **Writes.** A hand-made listing goes through `setTradingQuantity` (`ReviseInventoryStatus`, verified
+     with `GetItem`). A tool listing or a sealed pool goes through `setOfferQuantity`
+     (`bulkUpdatePriceQuantity`, verified with `getOffer`).
+   - **Canaries, one per eBay write path** (hand-made, tool listing, sealed pool), each hidden alone.
+     Only a write eBay accepted and read back counts as proof; a no-op or an already-ended listing hands
+     the check to the next job. A failed canary leaves every other eBay hide `paused`.
+   - **If eBay ENDS any listing it was asked to hide**, the worker itself pauses every other hide for that
+     show, wherever it was going to run. Going again after that needs `confirm`, because the next canary
+     is another real listing.
+   - **One step at a time per show.** Take offline, close-out and back online hold a per-show lock; a
+     second tab gets `busy`.
+   - **A card added to an offline show** goes through take-offline again, so it meets the same canary
+     rules: hidden at once on a proved path, held behind a fresh canary otherwise.
+   - **The pre-show quantity** is the read taken before the write, kept even when the write's read-back
+     fails (the retry would otherwise read the 0 it wrote, and restore to 0).
+   - **Shopify** goes to sold out (0).
+   - **Stock rows and the ledger are untouched.** Neither quantity write corrects stock from eBay's
+     read-back, unlike `reviseTradingListing`.
+3. **Units away.** Taken − returned − sold, summed over offline and closing shows. It is subtracted
+   from what any channel may offer:
+   - **Sync worker target:** held − away, so a sale-mode job hides rather than ends while stock is away.
+   - **Refusal `away_at_event`:** `runPublish`, `runShopifyPublish`, both sealed publishes, a
+     `reviseTradingListing` quantity write, and the eBay batch preflight all refuse.
+   - **Drift report:** a channel at 0 because the stock is away is not drift.
+   - **Table sales:** a sale of a card on an OFFLINE show's take-list is counted against that show
+     automatically, so the close-out can't record it twice. A sale tagged with a show must name an
+     offline one (`wrong_event` for a planning or closing show, or one the card is not on while another
+     show has it). A pool label prefers the box the show took.
+4. **Close-out:** scan back what came home, and everything else on the list is recorded as sold
+   through `recordInPersonSale` (phase `close`).
+   - **Takings** (cash / card / trade credit): per-card prices you know are kept, and the remainder is
+     split across unpriced sold units by asking price with `apportion`, summing to the cent.
+   - **Short takings:** if they don't cover the known prices, or leave nothing for cards still unpriced,
+     nothing is invented and those units stay unpriced. A price or takings figure that is not a number
+     refuses the close-out before anything is written.
+   - **Sold twice.** A unit that did not come back but the shelf no longer holds (sold online while the
+     hide had failed, a Run reserved it during the show) cannot be recorded as a sale. It is counted off
+     the take-list so the show can close, named in `conflicts`, sent to Telegram, kept in
+     `events.close_report`, and NOT put back online.
+   - **New stock** is entered in full detail through the `lib/stock-games.mjs` adapters and
+     `POST /api/inventory/items`, verified on intake (it's in hand), and tied to the show with its cost
+     and chosen channel (Shopify by default).
+5. **Back online.** `restore` jobs are the **only** path allowed to raise a channel, and only to
+   **min(`event_targets.pre_qty`, held now)**.
+   - `pre_qty` is captured once, by the hide job that read the listing; a second hide can't overwrite
+     it with 0.
+   - Refused while any unit is neither back nor recorded sold (`still_missing`).
+   - A listing whose stock sold while away is `sold` (nothing to put back); one that ended meanwhile
+     while stock is still held is `attention`, never recreated.
+   - New stock is published by the page through the normal publish routes, so every refusal applies.
+     Shopify goes to `?store=live` by name; if live publishing is off the row is marked failed with that
+     reason, never quietly sent to the dev store.
+
+⚠ **Before the first real show:** run one test show with one cheap tool-listed card and one hand-made
+card, and check Seller Hub shows both hidden and not ended. `bulkUpdatePriceQuantity` and quantity 0 on a
+hand-made listing have never run on this account (S0-1); the canary enforces the check every time anyway.
+
+Validation: `test/integration/events-flow.test.mjs` covers the whole flow against an eBay and Shopify
+that remember what they were told, the out-of-stock refusal, the canary stopping the rest, the take-list
+refusals and the takings split. `test/integration/cross-channel-review.test.mjs` holds one test per
+defect the 2026-10-18 review found (a lost mid-run sale, per-path canaries, retry after an ended canary,
+concurrent take-offline, sold-twice at close-out, the pre-show quantity on a failed read-back, and more).

@@ -507,6 +507,10 @@ function listedPill(it){
 // render nothing rather than throwing — GR7.
 function verifyPill(it){ return (window.BKV&&BKV.pill)?BKV.pill(it):''; }
 function verifyBtn(it){ return (window.BKV&&BKV.button)?BKV.button(it.id):''; }
+// Sold across a table: the sell page records it through the stock ledger and takes the card off eBay
+// and Shopify (lib/in-person-sales.mjs). A link, not a second sale path, so there is one place that
+// rule lives. Held stock only — a sold row has nothing left to sell.
+function soldBtn(it){ return (it.status==='sold'||!it.sku)?'':'<a class="btn sm" title="Sold in person" href="/sell.html?sku='+encodeURIComponent(it.sku)+'">Sold</a>'; }
 // What the row CLAIMS, handed to the check dialog so the operator reads it against the object in hand.
 window.BKV_ROW_FACTS=function(kind,id){
   const it=CURRENT.find(x=>x.id===id); if(!it) return {};
@@ -540,6 +544,7 @@ function itemRow(it){
     +'<div class="c-num">'+plBadge(pl)+'<div class="c-sub">'+plLbl+'</div></div>'
     +'<div class="c-act">'
       +verifyBtn(it)
+      +soldBtn(it)
       +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
       +'<button class="btn sm blue" title="eBay graded comps" onclick="comps('+it.id+')">eBay</button>'
       +imgBtn(it)
@@ -567,6 +572,7 @@ function gridCard(it){
       +'<div class="status" id="cs'+it.id+'"></div>'
       +'<div class="g-acts">'
         +verifyBtn(it)
+        +soldBtn(it)
         +'<button class="btn sm" onclick="editItem('+it.id+')">Edit</button>'
         +'<button class="btn sm ghost" title="Refresh live value" onclick="refreshOne('+it.id+',this)">↻</button>'
         +imgBtn(it)

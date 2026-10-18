@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sold in person</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* The show-table page. Phone first: one column, big targets, the Sold button within a thumb's reach.
+     Same tokens as inventory.html / listing-match.html — the stock-management family. */
+  :root{
+    --bg:#0a0b0f;--panel:#14171f;--panel2:#1b1f2a;--ink:#0b0d12;
+    --line:rgba(255,255,255,.075);--line2:rgba(255,255,255,.13);
+    --text:#e9edf6;--muted:#8b93a6;--faint:#5b6373;
+    --gold:#d4b072;--gold-dim:rgba(212,176,114,.35);--gold-soft:rgba(212,176,114,.12);
+    --green:#43d6a0;--red:#f0666e;--amber:#e8c35a;--blue:#6ab0ff;
+    --serif:'Fraunces',Georgia,serif;--sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;--mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);margin:0;padding:18px 16px 120px;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:720px;margin:0 auto;}
+  a{color:var(--gold)}
+  h1{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin:4px 0 2px;line-height:1.1;}
+  .sub{color:var(--muted);font-size:13.5px;margin-bottom:14px;line-height:1.5}
+  .back{font-family:var(--mono);font-size:12px;color:var(--muted);text-decoration:none}
+  .tabs{display:flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden;margin:10px 0 16px}
+  .tabs button{flex:1;font:inherit;font-weight:600;font-size:14px;background:transparent;color:var(--muted);border:0;padding:12px 8px;cursor:pointer}
+  .tabs button[aria-selected="true"]{background:var(--panel2);color:var(--text)}
+  .btn{background:transparent;color:var(--gold);border:1px solid var(--gold-dim);font-family:var(--mono);font-weight:600;border-radius:10px;padding:11px 14px;cursor:pointer;font-size:13px;}
+  .btn:disabled{opacity:.45;cursor:default}
+  .btn.go{background:var(--gold);color:var(--ink);border-color:var(--gold)}
+  .btn.big{width:100%;padding:16px;font-size:16px;border-radius:12px}
+  .btn.armed{background:var(--red);border-color:var(--red);color:#fff}
+  input,textarea{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:12px;width:100%;font-size:16px}
+  textarea{font-family:var(--mono);font-size:14px;min-height:170px;line-height:1.55}
+  label.f{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:12px 0 6px}
+  .row{display:flex;gap:10px;align-items:stretch}
+  .row > *{flex:1;min-width:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0;display:grid;grid-template-columns:56px 1fr;gap:12px;cursor:pointer;text-align:left;width:100%;color:inherit;font:inherit}
+  .card.sel{border-color:var(--gold);background:var(--gold-soft)}
+  .card img,.thumb{width:56px;height:78px;object-fit:contain;background:var(--panel2);border-radius:6px}
+  .nm{font-weight:600;font-size:15px;line-height:1.3}
+  .meta{color:var(--muted);font-size:12.5px;font-family:var(--mono);margin-top:3px;word-break:break-word}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+  .chip{font-family:var(--mono);font-size:11px;border:1px solid currentColor;border-radius:999px;padding:1px 8px;white-space:nowrap}
+  .chip.ebay{color:var(--blue)} .chip.shop{color:var(--green)} .chip.draft{color:var(--muted)} .chip.off{color:var(--faint)}
+  .chip.warn{color:var(--amber)} .chip.bad{color:var(--red)}
+  .panel{background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:14px;margin:14px 0}
+  .stepper{display:flex;align-items:center;gap:0;border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+  .stepper button{font:inherit;font-size:20px;width:52px;height:48px;background:var(--panel2);color:var(--text);border:0;cursor:pointer}
+  .stepper span{flex:1;text-align:center;font-family:var(--mono);font-size:18px}
+  .result{border-left:3px solid var(--green);padding:8px 12px;margin:10px 0;background:rgba(67,214,160,.07);border-radius:0 10px 10px 0}
+  .result.bad{border-color:var(--red);background:rgba(240,102,110,.08)}
+  .result.warn{border-color:var(--amber);background:rgba(232,195,90,.08)}
+  .line{display:flex;gap:8px;align-items:baseline;font-size:14px;margin:4px 0;line-height:1.45}
+  .ok{color:var(--green)} .no{color:var(--red)} .wait{color:var(--amber)}
+  .mono{font-family:var(--mono)}
+  .muted{color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  #recent td.mono{white-space:nowrap}
+  .sect{font-family:var(--serif);font-size:18px;font-weight:600;margin:26px 0 6px}
+  .empty{color:var(--muted);font-size:13.5px;padding:10px 0}
+  .hint{color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:6px}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← all tools</a>
+  <h1>Sold in person</h1>
+  <p class="sub">A card sold across the table comes off eBay and Shopify straight away. The sale is recorded first and never undone; anything a channel won't take is retried and listed below.</p>
+
+  <label class="f" for="showSel">Selling at</label>
+  <select id="showSel"><option value="">Not at a show</option></select>
+  <p class="hint" id="showHint"></p>
+
+  <div class="tabs" role="tablist">
+    <button id="tabTable" role="tab" aria-selected="true">At the table</button>
+    <button id="tabBatch" role="tab" aria-selected="false">End of day</button>
+  </div>
+
+  <!-- AT THE TABLE: one card at a time -->
+  <section id="paneTable">
+    <label class="f" for="q">Shelf label or card name</label>
+    <input id="q" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="AAC-084, or a name" enterkeyhint="search">
+    <div id="results"></div>
+
+    <div id="sellPanel" class="panel" hidden>
+      <div id="selCard"></div>
+      <div class="row">
+        <div>
+          <label class="f">Quantity</label>
+          <div class="stepper"><button id="qMinus" aria-label="one fewer">−</button><span id="qVal">1</span><button id="qPlus" aria-label="one more">+</button></div>
+        </div>
+        <div>
+          <label class="f" for="price">Price each (A$)</label>
+          <input id="price" inputmode="decimal" placeholder="optional">
+        </div>
+      </div>
+      <label class="f" for="event">Show or market</label>
+      <input id="event" placeholder="e.g. Bendigo card show" autocomplete="off">
+      <p class="hint" id="willDo"></p>
+      <button id="sellBtn" class="btn go big">Sold</button>
+    </div>
+    <div id="saleResult"></div>
+  </section>
+
+  <!-- END OF DAY: a batch -->
+  <section id="paneBatch" hidden>
+    <label class="f" for="lines">One card per line</label>
+    <textarea id="lines" spellcheck="false" placeholder="AAC-084&#10;AAC-091 x2 @12.50&#10;BK-SLD-000042 @165"></textarea>
+    <p class="hint">Label first. <span class="mono">x2</span> for a quantity, <span class="mono">@12.50</span> for the price each in A$. Preview checks every line before anything comes off a channel.</p>
+    <label class="f" for="eventB">Show or market</label>
+    <input id="eventB" placeholder="e.g. Bendigo card show" autocomplete="off">
+    <div class="row" style="margin-top:12px">
+      <button id="previewBtn" class="btn">Preview</button>
+      <button id="recordBtn" class="btn go" disabled>Record all</button>
+    </div>
+    <div id="batchOut"></div>
+  </section>
+
+  <div class="sect">Channel updates</div>
+  <div id="syncState" class="empty">Loading…</div>
+  <div class="row" style="margin:6px 0 0"><button id="syncNow" class="btn">Retry everything now</button></div>
+
+  <div class="sect">Sold in person, recently</div>
+  <div id="recent" class="empty">Loading…</div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var B = '/api/channels';
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var aud = function (c) { return c == null ? '' : 'A$' + (c / 100).toFixed(2); };
+  // GR3: dollars typed by a person become integer cents exactly once, here.
+  var toCents = function (s) { var t = String(s || '').replace(/[^0-9.]/g, ''); if (!t) return null; var n = Number(t); return Number.isFinite(n) ? Math.round(n * 100) : null; };
+  var store = { get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private window */ } } };
+
+  async function api(path, opts) {
+    var r = await fetch(B + path, Object.assign({ headers: { 'content-type': 'application/json' } }, opts || {}));
+    var t = await r.text();
+    var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) { j = { error: t }; }
+    return { status: r.status, ok: r.ok, body: j || {} };
+  }
+
+  // --- tabs ---
+  function tab(which) {
+    var table = which === 'table';
+    $('tabTable').setAttribute('aria-selected', table); $('tabBatch').setAttribute('aria-selected', !table);
+    $('paneTable').hidden = !table; $('paneBatch').hidden = table;
+    store.set('sell_tab', which);
+  }
+  $('tabTable').onclick = function () { tab('table'); };
+  $('tabBatch').onclick = function () { tab('batch'); };
+
+  // --- chips ---
+  function chips(p) {
+    if (!p) return '';
+    var out = [];
+    (p.ebay || []).forEach(function (e) { out.push('<span class="chip ebay">eBay live' + (e.api === 'trading' ? ' · hand-made' : '') + '</span>'); });
+    (p.shopify || []).forEach(function (s) { out.push(s.state === 'live' ? '<span class="chip shop">Shopify live</span>' : '<span class="chip draft">Shopify draft</span>'); });
+    if (!out.length) out.push('<span class="chip off">not listed online</span>');
+    return '<div class="chips">' + out.join('') + '</div>';
+  }
+  function itemMeta(it) {
+    var bits = [it.sku, it.set_name, it.number, it.grading_company ? (it.grading_company + ' ' + (it.grade == null ? '' : it.grade)) : it.condition,
+      it.kind === 'sealed' ? 'sealed' : null, (it.quantity == null ? '' : it.quantity + ' on shelf'), it.location].filter(Boolean);
+    return esc(bits.join(' · '));
+  }
+  function cardHtml(it, extra) {
+    var img = it.image_url ? '<img src="' + esc(it.image_url) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility=\'hidden\'">' : '<div class="thumb"></div>';
+    return img + '<div><div class="nm">' + esc(it.name || it.sku) + '</div><div class="meta">' + itemMeta(it) + '</div>' + chips(it.presence) + (extra || '') + '</div>';
+  }
+
+  // --- at the table ---
+  var sel = null, qty = 1, armed = false, armTimer = null, lookTimer = null;
+  // IDEMPOTENCY KEYS. One per sale, made when the card is picked; one per paste, kept until the text
+  // changes. A retried request, or the same paste recorded twice, carries the same key and the server
+  // writes it once. getRandomValues, not randomUUID: the phone reaches this box over plain http on the
+  // LAN, which is not a secure context, and randomUUID is not there.
+  function newKey() {
+    var a = new Uint8Array(12); (window.crypto || {}).getRandomValues ? window.crypto.getRandomValues(a) : a.forEach(function (_, i) { a[i] = Math.random() * 256; });
+    return Date.now().toString(36) + '-' + Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+  var saleKey = null, pasteKey = null;
+
+  function disarm() { armed = false; clearTimeout(armTimer); $('sellBtn').classList.remove('armed'); $('sellBtn').textContent = 'Sold'; }
+
+  async function lookup() {
+    var q = $('q').value.trim();
+    if (!q) { $('results').innerHTML = ''; return; }
+    var r = await api('/lookup?q=' + encodeURIComponent(q));
+    var rows = (r.body && r.body.results) || [];
+    if (!rows.length) { $('results').innerHTML = '<p class="empty">Nothing in stock matches “' + esc(q) + '”.</p>'; return; }
+    $('results').innerHTML = rows.map(function (it, i) {
+      var refusal = it.refusal ? '<div class="meta no">' + esc(it.refusal.error) + '</div>' : '';
+      return '<button class="card" data-i="' + i + '">' + cardHtml(it, refusal) + '</button>';
+    }).join('');
+    Array.prototype.forEach.call($('results').querySelectorAll('.card'), function (el) {
+      el.onclick = function () { pick(rows[+el.getAttribute('data-i')]); };
+    });
+    // A scanned or typed exact label goes straight to the sell panel: one fewer tap at a busy table.
+    if (rows.length && rows[0].sku && rows[0].sku.toUpperCase() === q.toUpperCase() && !rows[0].refusal) pick(rows[0]);
+  }
+  $('q').addEventListener('input', function () { clearTimeout(lookTimer); lookTimer = setTimeout(lookup, 250); });
+  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { clearTimeout(lookTimer); lookup(); } });
+
+  function pick(it) {
+    sel = it; qty = 1; disarm(); saleKey = newKey();
+    $('results').innerHTML = '';
+    $('selCard').innerHTML = '<div class="card sel" style="cursor:default">' + cardHtml(it) + '</div>';
+    $('qVal').textContent = '1';
+    $('price').value = it.price_cents != null ? (it.price_cents / 100).toFixed(2) : '';
+    $('event').value = store.get('sell_event') || '';
+    var p = it.presence || {}, n = (p.ebay || []).length, s = (p.shopify || []).length;
+    $('willDo').textContent = n || s
+      ? 'Recording this sale will ' + [n ? 'take it off eBay' : null, s ? 'bring Shopify down to what is left' : null].filter(Boolean).join(' and ') + '.'
+      : 'This card is not listed online, so only the stock record changes.';
+    $('sellPanel').hidden = false;
+    $('saleResult').innerHTML = '';
+  }
+  $('qMinus').onclick = function () { qty = Math.max(1, qty - 1); $('qVal').textContent = qty; disarm(); };
+  $('qPlus').onclick = function () { var max = sel && sel.quantity ? sel.quantity : 1; qty = Math.min(max, qty + 1); $('qVal').textContent = qty; disarm(); };
+
+  // TWO TAPS. A wrong tap ends a live eBay listing, and relisting mints a new ItemID — so the first tap
+  // says exactly what will happen and the second does it. It disarms by itself after a few seconds.
+  $('sellBtn').onclick = async function () {
+    if (!sel) return;
+    if (!armed) {
+      armed = true;
+      $('sellBtn').classList.add('armed');
+      $('sellBtn').textContent = 'Tap again: sold ' + qty + ' × ' + (sel.sku || sel.name);
+      armTimer = setTimeout(disarm, 6000);
+      return;
+    }
+    disarm();
+    $('sellBtn').disabled = true; $('sellBtn').textContent = 'Recording…';
+    store.set('sell_event', $('event').value.trim());
+    var body = { lines: [{ kind: sel.kind, id: sel.id, qty: qty, unit_price_cents: toCents($('price').value), client_key: saleKey }], event: $('event').value.trim() || null, event_id: $('showSel').value || null };
+    var r = await api('/in-person', { method: 'POST', body: JSON.stringify(body) });
+    $('sellBtn').disabled = false; $('sellBtn').textContent = 'Sold';
+    if (!r.ok) {
+      $('saleResult').innerHTML = '<div class="result bad"><div class="line no">Not recorded: ' + esc(r.body.error || ('HTTP ' + r.status)) + '</div></div>';
+      return;
+    }
+    $('sellPanel').hidden = true;
+    $('saleResult').innerHTML = saleHtml(r.body.sale, r.body.channels || []);
+    $('q').value = ''; $('q').focus();
+    sel = null;
+    refresh();
+  };
+
+  function channelLine(c) {
+    var what = c.label || (c.channel === 'ebay' ? 'eBay' : 'Shopify');
+    if (c.ok) {
+      var did = { withdrawn: 'listing ended', ended: 'listing ended', already_ended: 'already ended', reduced: 'brought down to ' + c.to, noop: 'already at or below the shelf count', gone: 'nothing to change' }[c.action] || c.action;
+      return '<div class="line"><span class="ok">✓</span><span>' + esc(what) + ': ' + esc(did) + '</span></div>'
+        + (c.warnings || []).map(function (w) { return '<div class="line"><span class="wait">!</span><span>' + esc(w) + '</span></div>'; }).join('');
+    }
+    // Off is not "still working": nothing is going to happen until someone switches it on, so it is
+    // said as NOT SENT, with what to do if the card has to come off now.
+    if (c.sync_off) return '<div class="line"><span class="no">!</span><span>' + esc(what) + ': NOT sent — cross-channel sync is off on this box. It is queued and goes out once sync is switched on; if it must come off now, take it down by hand.</span></div>';
+    if (c.pending || c.state === 'queued') return '<div class="line"><span class="wait">…</span><span>' + esc(what) + ': still working — it will finish in the background</span></div>';
+    if (c.state === 'blocked') return '<div class="line"><span class="wait">!</span><span>' + esc(what) + ': ' + esc(c.error) + '</span></div>';
+    if (c.state === 'dead') return '<div class="line"><span class="no">✗</span><span>' + esc(what) + ': gave up — ' + esc(c.error) + '. Take it down by hand.</span></div>';
+    return '<div class="line"><span class="no">✗</span><span>' + esc(what) + ': couldn’t reach it (' + esc(c.error) + ') — retrying' + (c.retryInMin ? ' in ' + c.retryInMin + ' min' : '') + '</span></div>';
+  }
+  function saleHtml(sale, channels) {
+    if (sale.already) return '<div class="result"><div class="line"><span class="wait">=</span><span>Already recorded: ' + esc(sale.qty) + ' × ' + esc(sale.item && (sale.item.sku || sale.item.name))
+      + ' — the same sale was sent again, so it was written once.</span></div></div>';
+    var bad = channels.some(function (c) { return !c.ok && !c.pending; });
+    var head = '<div class="line"><span class="ok">✓</span><span><b>Sold</b> ' + esc(sale.qty) + ' × ' + esc(sale.item && (sale.item.sku || sale.item.name)) + (sale.unit_price_cents != null ? ' at ' + aud(sale.unit_price_cents) + ' each' : '')
+      + (sale.sold_out ? ' — none left' : ' — ' + esc(sale.remaining) + ' left') + '</span></div>';
+    var rows = channels.length ? channels.map(channelLine).join('') : '<div class="line muted">Not listed online — nothing else to change.</div>';
+    return '<div class="result' + (bad ? ' warn' : '') + '">' + head + rows + '</div>';
+  }
+
+  // --- end of day ---
+  // "AAC-084 x2 @12.50" — label first, then optional quantity and price each, in any order.
+  function parseLines(text) {
+    return String(text || '').split(/\r?\n/).map(function (raw) { return raw.trim(); }).filter(Boolean).map(function (raw) {
+      var toks = raw.split(/[\s,]+/).filter(Boolean);
+      var line = { sku: toks.shift(), qty: 1, unit_price_cents: null, raw: raw };
+      toks.forEach(function (t) {
+        var m;
+        if ((m = t.match(/^[x×](\d+)$/i)) || (m = t.match(/^(\d+)[x×]$/i))) line.qty = +m[1];
+        else if ((m = t.match(/^@?A?\$?(\d+(?:\.\d{1,2})?)$/)) && t.charAt(0) === '@') line.unit_price_cents = toCents(m[1]);
+      });
+      return line;
+    });
+  }
+  var lastPreview = null;
+  $('lines').addEventListener('input', function () { lastPreview = null; pasteKey = null; $('recordBtn').disabled = true; });
+  $('previewBtn').onclick = async function () {
+    var lines = parseLines($('lines').value);
+    if (!lines.length) { $('batchOut').innerHTML = '<p class="empty">Nothing to preview.</p>'; return; }
+    var r = await api('/in-person/preview', { method: 'POST', body: JSON.stringify({ lines: lines }) });
+    var rows = (r.body && r.body.rows) || [];
+    lastPreview = { lines: lines, rows: rows };
+    $('batchOut').innerHTML = '<table><tbody>' + rows.map(function (x, i) {
+      var l = lines[i];
+      var it = x.item;
+      var where = it ? chips(it.presence) : '';
+      return '<tr><td class="mono">' + esc(l.raw) + '</td><td>' + (x.ok
+        ? '<span class="ok">✓</span> ' + esc(it.name) + ' · ' + esc(x.qty) + (l.unit_price_cents != null ? ' @ ' + aud(l.unit_price_cents) : '') + where
+        : '<span class="no">✗ ' + esc(x.error) + '</span>') + '</td></tr>';
+    }).join('') + '</tbody></table>'
+      + '<p class="hint">' + (r.body.ok || 0) + ' ready, ' + (r.body.refused || 0) + ' will be skipped. Record all writes the ready ones down and then takes each off its channels.</p>';
+    $('recordBtn').disabled = !(r.body.ok > 0);
+  };
+
+  $('recordBtn').onclick = async function () {
+    if (!lastPreview) return;
+    var ok = lastPreview.rows.filter(function (x) { return x.ok; }).length;
+    if (!confirm('Record ' + ok + ' in-person sale(s) and take those cards off eBay and Shopify?')) return;
+    $('recordBtn').disabled = true; $('previewBtn').disabled = true;
+    store.set('sell_event', $('eventB').value.trim());
+    if (!pasteKey) pasteKey = newKey();
+    var lines = lastPreview.lines.map(function (l, i) { return { sku: l.sku, qty: l.qty, unit_price_cents: l.unit_price_cents, client_key: pasteKey + ':' + i }; });
+    var out = $('batchOut');
+    out.innerHTML = '<p class="hint">Recording…</p>';
+    var res = await fetch(B + '/in-person', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lines: lines, stream: true, event: $('eventB').value.trim() || null, event_id: $('showSel').value || null }) });
+    var recorded = {}, html = { head: '', rows: [] };
+    var render = function () { out.innerHTML = html.head + html.rows.join(''); };
+    var syncOff = false;
+    await consumeNdjson(res, function (m) {
+      if (m.start && m.start.sync_armed === false) {
+        syncOff = true;
+        html.head = '<div class="result bad"><div class="line no">Cross-channel sync is OFF on this box: these sales change local stock only. eBay and Shopify are NOT updated — their changes are queued until sync is switched on.</div></div>';
+      }
+      if (m.recorded) {
+        var x = m.recorded;
+        recorded[x.index] = x;
+        html.rows[x.index] = x.ok
+          ? '<div class="result" id="b' + x.index + '"><div class="line"><span class="ok">✓</span><span>Sold ' + esc(x.qty) + ' × ' + esc(x.item && x.item.sku) + '</span></div><div class="line wait">… channels</div></div>'
+          : '<div class="result bad"><div class="line no">✗ ' + esc((lines[x.index] || {}).sku) + ': ' + esc(x.error) + '</div></div>';
+      } else if (m.channels) {
+        var c = m.channels, sale = recorded[c.index];
+        if (sale && sale.ok) html.rows[c.index] = saleHtml(sale, c.results || []);
+      } else if (m.summary) {
+        var s = m.summary;
+        html.head = (syncOff ? '<div class="result bad"><div class="line no">Cross-channel sync is OFF: ' + s.pending + ' channel update(s) queued, NOT sent. eBay and Shopify still show these cards.</div></div>' : '')
+          + '<p class="hint">' + s.recorded + ' recorded, ' + s.refused + ' skipped · channels: ' + s.channels_ok + ' done, ' + s.channels_failed + ' failed, ' + s.pending + (syncOff ? ' queued (sync off).' : ' still working.') + '</p>';
+      }
+      render();
+    });
+    $('previewBtn').disabled = false;
+    lastPreview = null;
+    refresh();
+  };
+
+  // The same reader stock-runner.html uses: split on newlines, keep the tail, skip a malformed line.
+  async function consumeNdjson(res, onMsg) {
+    if (!res.body || !res.body.getReader) { var t = await res.text(); t.split('\n').forEach(function (l) { if (l.trim()) { try { onMsg(JSON.parse(l)); } catch (e) { /* skip */ } } }); return; }
+    var reader = res.body.getReader(), dec = new TextDecoder(), buf = '';
+    for (;;) {
+      var step = await reader.read();
+      if (step.done) break;
+      buf += dec.decode(step.value, { stream: true });
+      var parts = buf.split('\n'); buf = parts.pop();
+      parts.forEach(function (l) { if (l.trim()) { try { onMsg(JSON.parse(l)); } catch (e) { /* skip */ } } });
+    }
+    if (buf.trim()) { try { onMsg(JSON.parse(buf)); } catch (e) { /* skip */ } }
+  }
+
+  // --- what the worker is doing ---
+  async function refresh() {
+    var s = await api('/state');
+    var sync = (s.body && s.body.sync) || {}, shop = (s.body && s.body.shopify) || {};
+    var counts = sync.counts || {};
+    var bits = [];
+    if (sync.enabled === false) bits.push('<div class="result bad"><div class="line no">Cross-channel sync is OFF on this box (CROSS_CHANNEL_SYNC is not on). Sales recorded here change local stock only: eBay and Shopify are NOT updated, and Shopify orders are not read. '
+      + (counts.queued ? counts.queued + ' channel update(s) are queued, not done — they go out once it is switched on. ' : '') + 'Take anything that must come off now down by hand.</div></div>');
+    var problems = (sync.dead || []).concat((sync.open || []).filter(function (j) { return j.state === 'failed' || /^blocked/.test(j.last_error || ''); }));
+    if (problems.length) {
+      bits.push('<table><tbody>' + problems.map(function (j) {
+        return '<tr><td><span class="' + (j.state === 'dead' ? 'no' : 'wait') + '">' + (j.state === 'dead' ? '✗ gave up' : '… retrying') + '</span><div class="meta">' + esc(j.label) + '</div><div class="meta">' + esc(j.last_error || '') + '</div></td>'
+          + '<td style="text-align:right"><button class="btn" data-retry="' + j.id + '">Retry</button></td></tr>';
+      }).join('') + '</tbody></table>');
+    } else {
+      bits.push('<p class="empty">' + (counts.queued ? counts.queued + (sync.enabled === false ? ' queued, not sent (sync off). ' : ' waiting to run. ') : '') + 'Nothing failing.</p>');
+    }
+    if (sync.enabled === false) { /* said above: nothing is read while off */ }
+    else if (shop.configured === false) bits.push('<p class="hint">Shopify orders: the live store is not configured on this box, so Shopify sales are not being read.</p>');
+    else if (shop.last_poll && !shop.last_poll.ok) bits.push('<p class="hint no">Shopify orders could not be read: ' + esc(shop.last_poll.error) + (shop.last_poll.hint ? ' (' + esc(shop.last_poll.hint) + ')' : '') + '</p>');
+    else if (shop.last_poll) bits.push('<p class="hint">Shopify orders last read ' + esc(shop.last_poll.at) + ' · ' + esc(shop.shopify_orders || 0) + ' recorded.</p>');
+    $('syncState').className = '';
+    $('syncState').innerHTML = bits.join('');
+    Array.prototype.forEach.call($('syncState').querySelectorAll('[data-retry]'), function (b) {
+      b.onclick = async function () { b.disabled = true; await api('/jobs/' + b.getAttribute('data-retry') + '/retry', { method: 'POST', body: '{}' }); refresh(); };
+    });
+
+    var r = await api('/in-person?limit=20');
+    var sales = (r.body && r.body.sales) || [];
+    $('recent').className = sales.length ? '' : 'empty';
+    $('recent').innerHTML = sales.length ? '<table><tbody>' + sales.map(function (x) {
+      return '<tr><td class="mono">' + esc(x.sku || ('#' + x.item_id)) + '</td><td>' + esc(x.name || '') + '<div class="meta">' + esc(x.qty) + (x.unit_price_cents != null ? ' × ' + aud(x.unit_price_cents) : '') + (x.event ? ' · ' + esc(x.event) : '') + '</div></td><td class="meta" style="text-align:right">' + esc(String(x.created_at || '').slice(5, 16)) + '</td></tr>';
+    }).join('') + '</tbody></table>' : 'None yet.';
+  }
+  $('syncNow').onclick = async function () { $('syncNow').disabled = true; await api('/sync', { method: 'POST', body: '{}' }); $('syncNow').disabled = false; refresh(); };
+
+  // --- the show this sale belongs to (events.html) ---
+  // A show's stock is already hidden online, so a sale here is counted against its take-list and the
+  // close-out will not record the same card twice. Defaults to ?event= or the show currently offline.
+  async function loadShows() {
+    var r = await api('/events');
+    // Only a show whose stock is OUT can take a sale: one still being planned has nothing at the table,
+    // and one whose close-out is recorded has already counted everything that did not come back (the
+    // server refuses both — this keeps them out of the picker so nobody is invited to try).
+    var open = ((r.body && r.body.open) || []).filter(function (e) { return e.status === 'offline'; });
+    var want = new URLSearchParams(location.search).get('event');
+    $('showSel').innerHTML = '<option value="">Not at a show</option>' + open.map(function (e) {
+      return '<option value="' + e.id + '">' + esc(e.name) + '</option>';
+    }).join('');
+    var pick = want && open.some(function (e) { return String(e.id) === String(want); }) ? want
+      : ((open.find(function (e) { return e.status === 'offline'; }) || {}).id || '');
+    $('showSel').value = pick ? String(pick) : '';
+    showChanged();
+  }
+  function showChanged() {
+    var on = !!$('showSel').value;
+    $('event').hidden = on;
+    $('eventB').hidden = on;
+    document.querySelectorAll('label[for="event"],label[for="eventB"]').forEach(function (l) { l.hidden = on; });
+    $('showHint').innerHTML = on ? 'Sales are counted against this show. <a href="/events.html?id=' + $('showSel').value + '">Open the show</a>' : '';
+  }
+  $('showSel').addEventListener('change', showChanged);
+  loadShows();
+
+  // --- boot ---
+  tab(store.get('sell_tab') === 'batch' ? 'batch' : 'table');
+  $('eventB').value = store.get('sell_event') || '';
+  var pre = new URLSearchParams(location.search).get('sku');
+  if (pre) { tab('table'); $('q').value = pre; lookup(); }
+  refresh();
+  setInterval(refresh, 30000);
+})();
+</script>
+</body>
+</html>

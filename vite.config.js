@@ -37,6 +37,7 @@ import { scanPlugin } from './lib/scan.mjs'
 import { pregradePlugin } from './lib/pregrade.mjs'
 import { runsPlugin } from './lib/runs.mjs'
 import { arbitragePlugin } from './lib/arbitrage.mjs'
+import { crossChannelPlugin } from './lib/cross-channel.mjs'
 import { lookup as pcLookup, enumerateConsole as pcEnumerate, listPokemonConsoles as pcConsoles } from './lib/pricecharting.mjs'
 import { certLookup, certProviders } from './lib/certlookup.mjs'
 import { analyzeCard } from './lib/grader.mjs'
@@ -444,7 +445,7 @@ export default defineConfig(({ mode }) => {
     //
     // requestGuard is FIRST and must stay first (pinned by test/invariants/request-guard.test.mjs):
     // every plugin after it serves routes that Vite's own host check and CORS never see.
-    plugins: withRegistry([requestGuard(env), dbCleanup, dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), verificationPlugin(), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), tcgplayerMarketPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env), runsPlugin(env), arbitragePlugin(env)]),
+    plugins: withRegistry([requestGuard(env), dbCleanup, dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), verificationPlugin(), crossChannelPlugin(env), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), tcgplayerMarketPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env), runsPlugin(env), arbitragePlugin(env)]),
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,
