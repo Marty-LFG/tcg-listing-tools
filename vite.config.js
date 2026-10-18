@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, isFileLoadingAllowed, normalizePath } from 'vite'
 import { trackerPlugin } from './lib/tracker.mjs'
 import { inventoryPlugin } from './lib/inventory.mjs'
 import { sealedPlugin } from './lib/sealed.mjs'
@@ -46,6 +46,8 @@ import { ebayToken, ebayInsightsToken } from './lib/ebay-token.mjs'
 import { readJsonBody } from './lib/req-body.mjs'
 import { fetchCached } from './lib/img-cache.mjs'
 import { withRegistry } from './lib/plugin-registry.mjs'
+// Host allowlist + no cross-site writes ahead of every route (audit S2), and the static deny list (S1).
+import { requestGuard, FS_DENY, configuredHosts } from './lib/request-guard.mjs'
 // The database closers, imported STATICALLY so they share the instance these plugins actually use.
 import { closeDb } from './lib/db.mjs'
 import { closePostsaleDb } from './lib/postsale-db.mjs'
@@ -109,6 +111,10 @@ const dataGzip = {
         const rel = decodeURIComponent(String(req.url || '').split('?')[0])
         if (!/\.json$/i.test(rel) || rel.includes('..')) return next()
         const file = path.join(DATA_DIR, rel)
+        // This runs BEFORE Vite's static handler, so server.fs.deny has not been consulted yet:
+        // without this line data/ebay-oauth.json and data/backups/**/*.json went out gzipped to
+        // anyone who asked. Asking Vite's own matcher keeps ONE deny list; next() lets Vite 403 it.
+        if (!isFileLoadingAllowed(server.config, normalizePath(file))) return next()
         const st = fs.statSync(file)
         let hit = cache.get(file)
         if (!hit || hit.mtimeMs !== st.mtimeMs || hit.size !== st.size) {
@@ -139,7 +145,6 @@ const imgProxy = {
       try {
         const u = new URL(req.url, 'http://localhost').searchParams.get('u')
         if (!u) { res.statusCode = 400; return res.end('missing u') }
-        res.setHeader('access-control-allow-origin', '*')
         res.setHeader('cache-control', 'public, max-age=86400')   // browser re-checks daily; served from our disk
         const got = await fetchCached(u)
         if (got.buffer) {
@@ -164,7 +169,6 @@ function bricklinkProxy(env) {
     configureServer(server) {
       server.middlewares.use('/api/lego/bricklink', async (req, res) => {
         res.setHeader('content-type', 'application/json')
-        res.setHeader('access-control-allow-origin', '*')
         try {
           const cred = {
             consumerKey: env.BRICKLINK_CONSUMER_KEY, consumerSecret: env.BRICKLINK_CONSUMER_SECRET,
@@ -200,7 +204,6 @@ function ebayProxy(env) {
     configureServer(server) {
       server.middlewares.use('/api/ebay', async (req, res) => {
         res.setHeader('content-type', 'application/json')
-        res.setHeader('access-control-allow-origin', '*')
         try {
           if (!(env.EBAY_APP_ID || '').trim() || !(env.EBAY_CERT_ID || '').trim()) {
             res.statusCode = 503
@@ -262,7 +265,6 @@ function pcProxy(env) {
     configureServer(server) {
       server.middlewares.use('/api/pc', async (req, res) => {
         res.setHeader('content-type', 'application/json')
-        res.setHeader('access-control-allow-origin', '*')
         try {
           if (String(env.PRICECHARTING_ENABLED || 'true').toLowerCase() === 'false') {
             return res.end(JSON.stringify({ matched: false, disabled: true }))
@@ -316,7 +318,6 @@ function certProxy(env) {
     configureServer(server) {
       server.middlewares.use('/api/cert', async (req, res) => {
         res.setHeader('content-type', 'application/json')
-        res.setHeader('access-control-allow-origin', '*')
         try {
           const u = new URL(req.url, 'http://localhost')
           if (u.pathname.replace(/\/+$/, '').endsWith('/providers')) return res.end(JSON.stringify(certProviders()))
@@ -345,7 +346,6 @@ function graderProxy(env) {
     configureServer(server) {
       server.middlewares.use('/api/grade', async (req, res) => {
         res.setHeader('content-type', 'application/json')
-        res.setHeader('access-control-allow-origin', '*')
         if ((req.method || 'GET').toUpperCase() !== 'POST') {
           res.statusCode = 405
           return res.end(JSON.stringify({ ok: false, error: 'method', message: 'POST only' }))
@@ -383,7 +383,6 @@ function printProxy(env) {
     configureServer(server) {
       server.middlewares.use('/api/print', async (req, res) => {
         res.setHeader('content-type', 'application/json')
-        res.setHeader('access-control-allow-origin', '*')
         const cfg = printConfig(env)
         const method = (req.method || 'GET').toUpperCase()
         if (method === 'GET') {
@@ -442,12 +441,24 @@ export default defineConfig(({ mode }) => {
     // report which routes this PROCESS actually owns — and flag when the sources on disk are newer
     // than the running server (a `git pull` with no restart). One wrapper, so a plugin added later
     // is covered without anyone remembering to.
-    plugins: withRegistry([dbCleanup, dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), verificationPlugin(), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), tcgplayerMarketPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env), runsPlugin(env), arbitragePlugin(env)]),
+    //
+    // requestGuard is FIRST and must stay first (pinned by test/invariants/request-guard.test.mjs):
+    // every plugin after it serves routes that Vite's own host check and CORS never see.
+    plugins: withRegistry([requestGuard(env), dbCleanup, dataGzip, imgProxy, bricklinkProxy(env), ebayProxy(env), pcProxy(env), certProxy(env), graderProxy(env), printProxy(env), trackerPlugin(env), inventoryPlugin(env), sealedPlugin(env), purchasingPlugin(env), bulkPlugin(env), repricerPlugin(env), postsalePlugin(env), ebayNotifyPlugin(env), keepersPlugin(env), listingsPlugin(env), shopifyPlugin(env), verificationPlugin(), statusPlugin(env), catalogPlugin(env), pkmSetsPlugin(env), pkmCardsPlugin(env), lorcanaSetsPlugin(), lorcanaCardsPlugin(), swuCardsPlugin(), mtgSetsPlugin(), mtgCardsPlugin(), onepieceCardsPlugin(), listingImageLabPlugin(env), riftboundCardsPlugin(), riftboundPricesPlugin(), tcgplayerMarketPlugin(), scanPlugin(env), pregradePlugin(env), ebayTestbedPlugin(env), runsPlugin(env), arbitragePlugin(env)]),
     server: {
       host: true,        // listen on 0.0.0.0 so the LAN can reach it
       port: 5273,
       strictPort: true,
       open: false,
+      // The same names requestGuard allows, so Vite's own check (pages, HMR socket) agrees with it.
+      // Vite already accepts any IP literal and localhost; these are the NAMES (hostname + .env).
+      allowedHosts: configuredHosts(env),
+      fs: {
+        // Setting deny REPLACES Vite's defaults; FS_DENY re-lists them (.env, .env.*, *.{crt,pem},
+        // .git) and adds every SQLite file, backups, the eBay token and the photo stores (audit S1:
+        // /data/postsale.db downloaded from any LAN device). The baked catalogs under data/ stay served.
+        deny: [...FS_DENY],
+      },
       proxy: {
         // Live FX rates (ECB via Frankfurter) for AUD conversion
         '/api/fx': {

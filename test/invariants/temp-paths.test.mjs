@@ -129,7 +129,9 @@ describe('the pieces that make a run leave nothing behind', () => {
       assert.ok(cfg.includes(`import { ${fn} } from`),
         `${fn} must be imported STATICALLY — a dynamic import() gets a different module instance`);
     }
-    assert.match(cfg, /plugins: withRegistry\(\[dbCleanup,/, 'the plugin has to be in the array to run');
+    // Anywhere in the array: closeBundle runs whatever the position. (requestGuard is first now, and
+    // has to be — test/invariants/request-guard.test.mjs.)
+    assert.match(cfg, /plugins: withRegistry\(\[[^\]]*\bdbCleanup\b/, 'the plugin has to be in the array to run');
   });
 
   it('the helper retries past Windows handle-release lag', () => {

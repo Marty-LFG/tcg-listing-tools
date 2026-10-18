@@ -56,6 +56,14 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    be injected. **Do not move to a production static build without first writing
    a backend that re-implements the proxies.** Run with `pnpm dev`.
 
+   **The dev server is also the production server, so it is guarded like one** (audit S1/S2,
+   2026-10-16). `requestGuard` (`lib/request-guard.mjs`) is the **first** plugin in the array and
+   refuses any request whose Host does not name this machine, and any non-GET/HEAD carrying a
+   foreign `Origin` or `Sec-Fetch-Site: cross-site`. `server.fs.deny` is `FS_DENY` from the same file:
+   Vite's defaults plus every `*.db`/`-wal`/`-shm`, `data/backups/`, `data/ebay-oauth.json` and both
+   photo stores. **No route sends `access-control-allow-origin: *`** (the two Runs public-record GETs
+   excepted, RUNS_PLAN §5.3.2). See §20b.
+
 2. **Secrets stay server-side.** Real API keys live only in `.env` (gitignored).
    `.env.example` holds placeholders. Keys are injected as request headers inside
    `vite.config.js` and **never** reach the browser. Never hardcode a key into
@@ -308,6 +316,7 @@ pnpm dev                    # serves http://localhost:5273 (host:true → also o
 | `lib/listing-image-lab.mjs` | `listingImageLabPlugin` → `/api/listing-image/{config,preview,resolve,reload-assets}`. Registered in the `vite.config.js` plugins array (GR1). |
 | `lib/img-cache.mjs` | The content-addressed image cache (`data/img-cache/`), extracted from the `/api/img` middleware so the compositor shares it — it must download bytes before it can compute its cache key. |
 | `lib/plugin-registry.mjs` | `withRegistry()` + `pluginHealth()` — which plugins this PROCESS registered, and whether the sources on disk are newer than it. Powers the `plugins.stale` block in `/api/status` (§20). |
+| `lib/request-guard.mjs` | `requestGuard(env)` — the first plugin: Host allowlist + no cross-site writes, ahead of every route. Also `FS_DENY` (→ `server.fs.deny`) and `configuredHosts` (→ `server.allowedHosts`). §20b. |
 | `rails/<variant>/{left,right}.png` | Vertical rail art per variant (`default`, `japanese`, `sealed`), for the eBay square and the OG card. Any authoring scale works; see `scripts/build-placeholder-rails.mjs` for the full contract. **NOT placeholders** — the generator composites the real store mark and the plum is keyed off it (`bc8410d`); all twelve files are byte-identical to its output, verified 2026-08-23. The script's name is the only thing still saying "placeholder". |
 | `rails/<variant>/{top,bottom}.png` | Horizontal band art, for the Shopify 63:88 and square tiles. Gradient + accent hairline only — the mark is composited at render time, because one file serves both a 1512-wide and a 1600-wide tile and a baked mark would stretch differently in each. Hashed by `bandsDigest`, **separate from `railsDigest`**, so changing a band re-keys no eBay image. |
 | `fonts/Genty-Sans-Regular.ttf` | The bundled rail font. Its family name is **`Genty Sans`** and that string must match exactly (§19). |
@@ -2220,6 +2229,39 @@ that `vite.config.js` imports is a watched config dependency, so Vite restarts t
 and any in-flight test dies on a closed socket. Write a throwaway file nothing imports — invisible to
 Vite's watcher, still visible to the registry's walk. `test/integration/listing-image-lab.test.mjs`
 does exactly that.
+
+## 20b. Who the dev server will talk to (`lib/request-guard.mjs`)
+
+Vite installs its own host check and CORS middleware **after** every plugin's `configureServer`
+middleware, and every `/api/*` route here is one of those and ends the response itself. So before
+this (found by the 2026-10-16 audit) none of Vite's protections applied to the API: a forged `Host` got a 200 from
+`/api/status`, routes answered preflights with `access-control-allow-origin: *`, and the body readers
+ignore Content-Type, so a page on any other site, open on any LAN or tailnet device, could publish or
+withdraw listings, message buyers or rewrite settings. Separately, `/data/postsale.db` (and every
+other store) downloaded as a static file.
+
+`requestGuard(env)` is the first entry in `withRegistry([...])` and `enforce: 'pre'`:
+
+- **Host** must be loopback, one of this machine's interface addresses (LAN and Tailscale IPs both
+  appear there, re-read when an unknown IP shows up), `os.hostname()`, or a name in
+  **`TCG_ALLOWED_HOSTS`** (`.env`, comma-separated, leading dot = whole domain). The same name list
+  feeds `server.allowedHosts`, so pages, the HMR socket and the API agree. A refusal is a 403 that
+  names the env var. **If the owner reaches the box by a new name, that line is the fix.**
+- **Writes** (anything but GET/HEAD) with a foreign `Origin`, `Origin: null` or
+  `Sec-Fetch-Site: cross-site` are a 403 `cross_site_write`. No `Origin` means a non-browser caller
+  (curl, the collector's self-fetch, the headless analyst, `scripts/*.mjs`) and passes, as before.
+- **Not authentication.** Anything that can open a socket and write its own headers still gets in. A
+  write token is a separate owner decision.
+
+`dataGzip` serves `/data/*.json` ahead of Vite's static handler, so it asks Vite's own matcher
+(`isFileLoadingAllowed`) before reading a file; without that, `data/ebay-oauth.json` went out gzipped.
+Vite matches a deny pattern containing `/` against the **absolute** path, which is why every entry in
+`FS_DENY` starts `**/`. The loopback receivers (`lib/ebay-notify.mjs`, `lib/shopify-hooks.mjs`) are
+their own servers on their own ports and never pass through the guard.
+
+Pinned by `test/invariants/request-guard.test.mjs` (real boot: probe files for every deny rule,
+forged Hosts, every cross-site write shape, a same-origin POST that still works, the guard is first,
+and no wildcard CORS outside the two Runs GETs) and `test/unit/request-guard.test.mjs`.
 
 ---
 
