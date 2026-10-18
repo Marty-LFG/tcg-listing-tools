@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openDbAt } from '../../lib/db.mjs';
-import { rerenderDescriptions, postageSectionText } from '../../lib/listings.mjs';
+import { rerenderDescriptions, postageSectionText, postageBlockRange, splicePostageBlock } from '../../lib/listings.mjs';
 import { offerUpdateBody } from '../../lib/channels/ebay-inventory-api.mjs';
 import { testEbayConfig, TEST_BAND_POLICY } from '../helpers/ebay-config.mjs';
 
@@ -30,7 +30,10 @@ function liveCfg() {
 }
 
 const ENV = { EBAY_REFRESH_TOKEN: 'fake' };
-const OLD_POSTAGE = '<div>Postage &amp; protection</div><p>Ships in a penny sleeve and toploader inside a rigid mailer. '
+// The card-details marker stands for everything a publish carried that the stock row may no longer hold
+// (the first live dry run lost an Illustrator line to a whole fresh render). It must come back untouched.
+const KEEP = '<tr><td>Illustrator</td><td>Gemi</td></tr>';
+const OLD_POSTAGE = '<table>' + KEEP + '</table><div>Postage &amp; protection</div><p>Ships in a penny sleeve and toploader inside a rigid mailer. '
   + 'Postage is $1.70 anywhere in Australia, sent by regular Australia Post letter. There\'s no tracking.</p>'
   + '<p>From a smoke-free home. Fast dispatch. Thanks for looking.</p>';
 let db, tmpDir, itemId;
@@ -140,6 +143,35 @@ describe('rerenderDescriptions', () => {
     db.prepare(`UPDATE inventory_items SET desc_override = '<p>my own words</p>' WHERE id = ?`).run(itemId);
     assert.equal((await rerenderDescriptions(ENV, db, liveCfg(), { apply: true })).rows[0].skipped, 'custom_description');
     assert.equal(puts.length, 0);
+  });
+});
+
+describe('the splice: only the postage block moves', () => {
+  it('keeps every byte outside the block, including facts a fresh render would lose', async () => {
+    const r = await rerenderDescriptions(ENV, db, liveCfg(), { apply: true });
+    const sent = puts[0].body.listingDescription;
+    assert.ok(sent.startsWith('<table>' + KEEP + '</table>'), 'the card details come back as they were');
+    assert.ok(sent.endsWith('<p>From a smoke-free home. Fast dispatch. Thanks for looking.</p>'), 'so does the footer');
+    assert.match(postageSectionText(sent), /Postage is \$5\.85/);
+    assert.equal(r.applied, 1);
+  });
+  it('replaces an old options table and its note together', () => {
+    const old = '<div>Postage &amp; protection</div>\n<p style="margin:0;">Postage is $1.70.</p>\n'
+      + '<table><tbody><tr><td>Regular letter</td><td>$1.70</td></tr></tbody></table><p style="x">You pick the one you want at checkout.</p>\n'
+      + '</div><p>footer</p>';
+    const fresh = '<div>Postage &amp; protection</div><p>Postage is $5.85.</p><table><tbody><tr><td>Tracked letter</td><td>$5.85</td></tr></tbody></table><p>You pick the one you want at checkout.</p></div>';
+    const out = splicePostageBlock(old, fresh);
+    assert.ok(!out.includes('Regular letter') && !out.includes('$1.70'), out);
+    assert.match(out, /Tracked letter/);
+    assert.ok(out.endsWith('\n</div><p>footer</p>'));
+    assert.equal((out.match(/You pick/g) || []).length, 1, 'one note, not two');
+  });
+  it('skips a description it cannot find the block in, rather than guessing', async () => {
+    offers['OFF-1'] = liveOffer({ listingDescription: '<p>Free postage within Australia.</p>' });
+    const r = await rerenderDescriptions(ENV, db, liveCfg(), { apply: true });
+    assert.equal(r.rows[0].skipped, 'no_postage_block');
+    assert.equal(puts.length, 0);
+    assert.equal(postageBlockRange('<div>Postage &amp; protection</div><p>Thanks!</p>'), null, 'a paragraph that does not mention postage is not the block');
   });
 });
 

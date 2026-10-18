@@ -1113,10 +1113,13 @@ account already holds `sell.inventory` + `sell.account` (no re-consent) and is o
 
 **Re-rendering live descriptions** (`rerenderDescriptions`, `POST /api/listings/rerender-descriptions`,
 2026-10-18). A description is frozen at publish, postage table included, so a band's policy changing in
-Seller Hub leaves every live listing quoting the old services (GR6). This rebuilds a tool listing's
-description with today's builder and band table and sends back ONLY that: `getOfferFull` reads the live
-offer, `offerUpdateBody` returns every writable field exactly as eBay holds it with `listingDescription`
-swapped, and `updateOffer` revises in place (same ItemID). Never rebuild the offer from the stock row for
+Seller Hub leaves every live listing quoting the old services (GR6). This replaces ONLY the postage
+block (`splicePostageBlock`: the paragraph after "Postage &amp; protection" plus its options table and
+note) with the one today's builder and band table produce, and leaves every other byte of the live
+description alone. A whole fresh render is NOT faithful: the first live dry run dropped an Illustrator
+line the publish had carried. `getOfferFull` reads the live offer, `offerUpdateBody` returns every
+writable field exactly as eBay holds it with `listingDescription` swapped, and `updateOffer` revises in
+place (same ItemID). A description with no recognisable block is skipped as `no_postage_block`. Never rebuild the offer from the stock row for
 this: updateOffer is a full replace, and re-deriving would move price, quantity or policies. The band
 comes from the LIVE price (both `target_price_cents` and `price_cents` are overridden, because the
 builder prefers target); a listing whose policy is not that band's is skipped as `policy_mismatch`, as
