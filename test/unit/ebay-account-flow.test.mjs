@@ -84,6 +84,64 @@ describe('bootstrapAccount — happy path (opts in, verifies every pinned policy
   });
 });
 
+describe('bootstrapAccount — re-running setup refreshes a band from its live policy (audit E1)', () => {
+  // ALCSERVER 2026-10-16: the owner changed the sub-A$50 policy to A$5.85 tracked in Seller Hub and set
+  // the band's amount + wording by hand. Its saved service table and code were still the OLD policy's,
+  // so the description offered an A$1.70 letter the checkout no longer had. Setup is the documented
+  // fix, so it has to actually come back clean — with the very drift it is healing NOT reported as an
+  // error against the copy it is replacing.
+  const LIVE_LETTER = [
+    { code: 'AU_TrackedLetter', costCents: 585 }, { code: 'AU_Regular', costCents: 826 },
+    { code: 'AU_Express', costCents: 945 }, { code: 'AU_ExpressSignature', costCents: 1250 },
+  ];
+  function stale() {
+    const bands = testBands();
+    bands[0] = { ...bands[0], costCents: 585, copy: 'tracked' };   // serviceCode + services are the old policy's
+    return { ...CFG, shipping: { minBandForSlab: 1, bands } };
+  }
+  function liveRows() {
+    const rows = fulfillmentPolicyRows();
+    rows[0] = fulfillmentPolicyRow(rows[0].fulfillmentPolicyId, rows[0].name, 585, 'AU_TrackedLetter', { services: LIVE_LETTER });
+    return rows;
+  }
+  const routes = () => ({
+    'GET /program/get_opted_in_programs': () => ({ status: 200, json: { programs: [{ programType: 'SELLING_POLICY_MANAGEMENT' }] } }),
+    'GET /payment_policy': () => ({ status: 200, json: { paymentPolicies: [paymentPolicyRow()] } }),
+    'GET /return_policy': () => ({ status: 200, json: { returnPolicies: [returnPolicyRow()] } }),
+    'GET /fulfillment_policy': () => ({ status: 200, json: { fulfillmentPolicies: liveRows() } }),
+  });
+
+  it('the stale table fails the live check (so publishing refuses until setup is re-run)', async () => {
+    stubFetch({ ...routes(), 'GET /subscription': () => ({ status: 200, json: { subscriptions: [{ subscriptionLevel: 'Basic' }] } }) });
+    const st = await accountStatus(ENV, stale());
+    assert.equal(st.bandCheck.ok, false);
+    assert.equal(st.ready, false, 'a description that contradicts checkout is not ready to list');
+    assert.match(st.bandCheck.errors.join(' · '), /no longer offers/);
+  });
+  it('setup captures the live services and service code, says so, and verifies clean', async () => {
+    const calls = stubFetch(routes());
+    const report = await bootstrapAccount(ENV, stale());
+    const letter = report.bands[0];
+    assert.deepEqual(letter.services.map((s) => [s.code, s.costCents]), LIVE_LETTER.map((s) => [s.code, s.costCents]));
+    assert.equal(letter.serviceCode, 'AU_TrackedLetter');
+    assert.match(report.warnings.join(' · '), /first service is now AU_TrackedLetter \(was AU_AusPostStandardLetter\)/,
+      'the wording was chosen for the old service, so the owner is told to re-read it');
+    assert.equal(report.bandCheck.ok, true, (report.bandCheck.errors || []).join(' · '));
+    assert.deepEqual(report.errors, []);
+    assert.equal(report.ready, true);
+    assert.deepEqual(calls.filter((c) => c.method !== 'GET' && /_policy/.test(c.url)), [], 'setup never writes a policy');
+  });
+  it('does NOT adopt a service code off a policy that charges another band\'s amount', async () => {
+    // A policy pasted onto the wrong band must stay an error, not get papered over with that band's code.
+    const cfg = stale();
+    cfg.shipping.bands[0] = { ...cfg.shipping.bands[0], costCents: 600 };
+    stubFetch(routes());
+    const report = await bootstrapAccount(ENV, cfg);
+    assert.equal(report.bands[0].serviceCode, undefined);
+    assert.equal(report.bandCheck.ok, false);
+  });
+});
+
 describe('bootstrapAccount — a policy the owner never picked', () => {
   const noPins = { ...CFG, policies: {} };
   it('refuses by name for payment and return, exactly as it does for a band', async () => {

@@ -561,8 +561,12 @@
   // between two bands forever. One descending scan instead, at most one candidate per band.
   // Reads the builder page's POSTAGE_BANDS, which loadPostageBands() refreshes from the live config.
   // Without it the advice is dropped rather than guessed — the store charges real money for postage now.
+  // ONLY once POSTAGE_LIVE says the live table arrived: before that POSTAGE_BANDS holds the builder's
+  // mirror defaults, and "list at $X, plus $1.70 postage" off them is advice about bands the store may
+  // no longer have (the same fallback the descriptions dropped, GR6).
   function ebListForDelivered(deliveredCents){
-    var bands = (typeof window !== 'undefined' && window.POSTAGE_BANDS) || null;
+    var live = typeof window !== 'undefined' && window.POSTAGE_LIVE === true;
+    var bands = (live && window.POSTAGE_BANDS) || null;
     if (!bands || !bands.length || !(deliveredCents > 0)) return null;
     for (var i = bands.length - 1; i >= 0; i--) {
       var hi = bands[i].maxCents == null ? Infinity : bands[i].maxCents;

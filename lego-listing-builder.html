@@ -149,14 +149,17 @@ function themeAbbr(t){return THEME_ABBR[(t||'').trim()]||undefined;}
    This is a classic <script> and cannot import the ESM module, so the band table and the buyer-facing
    sentence are duplicated here. Change one side, change the other: test/invariants/builder-wording.test.mjs
    compares the RENDERED strings against postagePhrase() from the module.
-   loadPostageBands() refreshes the table from the live config on load; a failed fetch keeps these
-   defaults, which is GR7 and is also what keeps the copy harnesses byte-exact (they run this file in a
-   vm with no fetch at all). */
+   loadPostageBands() refreshes the table from the live config on load. Until it has, and if it never
+   does, the description quotes NO amount: these literals are the mirror defaults, not the store's own
+   policies, and a failed fetch used to fall back to them and print "$1.70 ... no tracking" on a store
+   whose cheapest band had become $5.85 tracked (GR6). GR7 still holds, the page works and the sentence
+   is postagePhrase(null). The copy harnesses inject POSTAGE_LIVE=true to run these literals. */
 var POSTAGE_BANDS=[
   {id:'letter',label:'Regular letter',maxCents:4998,costCents:170,copy:'letter_untracked'},
   {id:'tracked',label:'Tracked',maxCents:14998,costCents:826,copy:'tracked'},
   {id:'signature',label:'Tracked + signature',maxCents:null,costCents:1520,copy:'tracked_signature'}];
 var POSTAGE_MIN_BAND_FOR_SLAB=1;   // a graded card never travels untracked, whatever it is worth
+var POSTAGE_LIVE=false;           // true once /api/listings/config has answered with the server's band table
 function bandMoney(c){return '$'+((Math.round(Number(c))||0)/100).toFixed(2);}
 function postagePhrase(b){
   if(!b) return 'Postage within Australia is shown at checkout.';
@@ -188,22 +191,26 @@ function optionsTable(rows,zebra,pal){
   return '<table style="width:100%;border-collapse:collapse;font-size:14px;margin:10px 0 0;'+font+'"><tbody>'+tr+'</tbody></table>'
     +'<p style="margin:8px 0 0;font-size:13px;color:'+label+';">'+esc(POSTAGE_OPTIONS_NOTE)+'</p>';}
 function readPostageBand(slab){
+  if(!POSTAGE_LIVE) return null;   // no live band table: quote nothing rather than the mirror defaults
   var sel=document.getElementById('f_postage'),b=(sel&&bandById(sel.value))||POSTAGE_BANDS[0],i=POSTAGE_BANDS.indexOf(b);
   return (slab&&i<POSTAGE_MIN_BAND_FOR_SLAB)?POSTAGE_BANDS[POSTAGE_MIN_BAND_FOR_SLAB]:b;
 }
 function loadPostageBands(){
   var sel=document.getElementById('f_postage'); if(!sel) return;
+  var wait='Loading postage bands...';
   var paint=function(){var v=sel.value;sel.innerHTML='';
+    if(!POSTAGE_LIVE){var w=document.createElement('option');w.value='';w.textContent=wait;sel.appendChild(w);return;}
     for(var i=0;i<POSTAGE_BANDS.length;i++){var o=document.createElement('option');o.value=POSTAGE_BANDS[i].id;o.textContent=bandRangeLabel(i);sel.appendChild(o);}
     sel.value=bandById(v)?v:POSTAGE_BANDS[0].id;};
+  var fail=function(){wait='Postage bands unavailable: the description says postage is shown at checkout';paint();};
   paint();
-  fetch('/api/listings/config').then(function(r){return r.json();}).then(function(j){
+  fetch('/api/listings/config').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(j){
     var s=j&&j.config&&j.config.shipping;
-    if(!s||!s.bands||!s.bands.length) return;
-    POSTAGE_BANDS=s.bands;
+    if(!s||!s.bands||!s.bands.length) return fail();
+    POSTAGE_BANDS=s.bands; POSTAGE_LIVE=true;
     if(s.minBandForSlab!=null) POSTAGE_MIN_BAND_FOR_SLAB=s.minBandForSlab;
     paint(); if(typeof render==='function') render();
-  }).catch(function(){});
+  }).catch(fail);
 }
 function readFields(){
   return {name:val('f_name'),setnum:val('f_setnum'),theme:val('f_theme'),subtheme:val('f_subtheme'),

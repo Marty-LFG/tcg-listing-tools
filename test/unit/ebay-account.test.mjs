@@ -158,11 +158,10 @@ describe('fulfillmentTerms / verifyBandPolicies — which policy is which band',
     // more: the description renders the whole list as a table, so a multi-service policy is described
     // accurately. It stays worth saying because the SENTENCE still quotes the first service, and
     // which one eBay puts first is eBay's call rather than ours.
-    const rows = fulfillmentPolicyRows();
+    // One service per stub row, then a second on the first: this test is about the POLICY's service
+    // count. services: [] on the bands because the config's service table has its own tests below.
+    const rows = bands.map((b) => fulfillmentPolicyRow(b.policyId, b.policyName, b.costCents, b.serviceCode));
     rows[0].shippingOptions[0].shippingServices.push({ sortOrder: 2, shippingServiceCode: 'AU_Express', shippingCost: { value: '12.00', currency: 'AUD' } });
-    // services: [] because this test is about the POLICY's service count, not the config's service
-    // table. The stub rows declare one service each, so DEFAULT_BANDS' real three-service tables would
-    // (correctly) trip the config-drift check that has its own test below.
     const v = verifyBandPolicies(bands.map((b) => ({ ...b, services: [] })), rows, 'fulfillmentPolicyId');
     assert.equal(v.ok, true);
     assert.deepEqual(v.warnings, [], 'a choice of services is not a problem');
@@ -184,13 +183,57 @@ describe('fulfillmentTerms / verifyBandPolicies — which policy is which band',
     assert.match(v.errors.join(' · '), /quotes A\$8\.26 for "Tracked letter" but its policy charges A\$9\.95/);
     assert.match(v.errors.join(' · '), /the description would quote a price the checkout does not/);
   });
-  it('warns when the description offers a service the policy has dropped', () => {
+  it('REFUSES a description offering a service the policy has dropped (it used to only warn)', () => {
+    // A warning left bandCheck.ok true, so publishing carried on offering buyers a service the
+    // checkout does not have — the 2026-10-16 audit's E1. It is a false statement, so it is an error.
     const withGone = bands.map((b, i) => (i === 0
       ? { ...b, services: [{ code: 'AU_Gone', label: 'Retired satchel', costCents: 170, sortOrder: 2 }] }
       : { ...b, services: [] }));
     const v = verifyBandPolicies(withGone, fulfillmentPolicyRows(), 'fulfillmentPolicyId');
-    assert.match(v.warnings.join(' · '), /"Retired satchel" option its policy no longer offers/);
-    assert.equal(v.ok, true, 'a stale row is worth saying, but it is not a wrong price');
+    assert.equal(v.ok, false);
+    assert.match(v.errors.join(' · '), /"Retired satchel" option its policy no longer offers/);
+    assert.equal(v.bands[0].ok, false);
+    assert.match(v.bands[0].error, /Retired satchel/, 'the Settings row names the problem, not just "does not match"');
+    assert.ok(v.bands.slice(1).every((b) => b.ok), 'only the drifted band fails');
+  });
+  it('REFUSES a band whose policy now quotes a different first service (it used to only warn)', () => {
+    // The sentence's wording was chosen for one service; when the policy's first service changes, the
+    // sentence may now promise the opposite ("no tracking" on a tracked letter, or the reverse).
+    const rows = fulfillmentPolicyRows();
+    rows[0].shippingOptions[0].shippingServices[0].shippingServiceCode = 'AU_SomethingElse';
+    const v = verifyBandPolicies(bands.map((b) => ({ ...b, services: [] })), rows, 'fulfillmentPolicyId');
+    assert.equal(v.ok, false);
+    assert.match(v.errors.join(' · '), /configured as AU_AusPostStandardLetter but its policy really uses AU_SomethingElse/);
+    assert.match(v.bands[0].error, /re-run Settings → eBay listing setup/);
+  });
+  it('the live 2026-10-16 case: the letter policy changed by hand, the saved table did not', () => {
+    // ALCSERVER: the owner moved the sub-A$50 policy to A$5.85 tracked and updated the band's amount
+    // and wording, but the band's service table was still the OLD policy's. Every amount the sentence
+    // quotes matched, which is why nothing caught it: what drifted was the options table under it.
+    const letter = { ...bands[0], costCents: 585, copy: 'tracked' };   // serviceCode + services untouched
+    const live = fulfillmentPolicyRow(letter.policyId, letter.policyName, 585, 'AU_TrackedLetter', { services: [
+      { code: 'AU_TrackedLetter', costCents: 585 }, { code: 'AU_Regular', costCents: 826 },
+      { code: 'AU_Express', costCents: 945 }, { code: 'AU_ExpressSignature', costCents: 1250 },
+    ] });
+    const rows = [live, ...fulfillmentPolicyRows().slice(1)];
+    const v = verifyBandPolicies([letter, ...bands.slice(1)], rows, 'fulfillmentPolicyId');
+    assert.equal(v.ok, false, 'the old checks all passed here; this is the case they missed');
+    const msg = v.errors.join(' · ');
+    assert.match(msg, /configured as AU_AusPostStandardLetter but its policy really uses AU_TrackedLetter/);
+    assert.match(msg, /"Regular letter" option its policy no longer offers/, 'the A$1.70 option buyers cannot pick');
+    assert.match(msg, /"Tracked satchel, signature on delivery" option its policy no longer offers/);
+    assert.ok(v.bands.slice(1).every((b) => b.ok));
+  });
+  it('WARNS (not refuses) when the options table leaves out a service the policy offers', () => {
+    // Incomplete rather than false — the buyer sees the extra option at checkout anyway — and only
+    // when a table is rendered at all (two or more services).
+    const rows = fulfillmentPolicyRows();
+    rows[0].shippingOptions[0].shippingServices.push({ sortOrder: 4, shippingServiceCode: 'AU_Express', shippingCost: { value: '12.00', currency: 'AUD' } });
+    const v = verifyBandPolicies(bands, rows, 'fulfillmentPolicyId');
+    assert.equal(v.ok, true, v.errors.join(' · '));
+    assert.match(v.warnings.join(' · '), /also offers AU_Express, which the description's options table leaves out/);
+    const one = verifyBandPolicies(bands.map((b, i) => (i === 0 ? { ...b, services: [b.services[0]] } : b)), rows, 'fulfillmentPolicyId');
+    assert.ok(!one.warnings.some((w) => /leaves out/.test(w) && /Regular letter/.test(w)), 'a one-service band renders no table to be incomplete');
   });
   it('stays silent when config and policy agree', () => {
     const rows = fulfillmentPolicyRows();

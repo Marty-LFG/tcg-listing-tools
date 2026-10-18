@@ -180,6 +180,10 @@ function builderContext(file, markers, fixture, extraCtx) {
   // module does.
   ctx.POSTAGE_BANDS = SB.DEFAULT_BANDS;
   ctx.POSTAGE_MIN_BAND_FOR_SLAB = SB.DEFAULT_MIN_BAND_FOR_SLAB;
+  // The page holds readPostageBand() at null until /api/listings/config has answered, so a builder
+  // whose fetch failed quotes no amount at all. This harness runs as if that answer arrived carrying
+  // DEFAULT_BANDS, which is what lets the injected table above reach readFields() at all.
+  ctx.POSTAGE_LIVE = true;
   // A `var`, not a function, so extractFn cannot reach it. Injecting from the module also makes the
   // note itself a mirrored value: a builder that reworded it renders a different table footer and
   // the byte comparison below catches it.

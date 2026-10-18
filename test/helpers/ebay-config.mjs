@@ -38,14 +38,17 @@ export function testEbayConfig(overrides = {}) {
 // Used to fake GET /fulfillment_policy so verifyBandPolicies has something real to check against.
 // `combined` attaches a combined-postage rule, the way Seller Hub → Business policies → Combined
 // postage discounts does. Off by default because that is the real account's state: no rule anywhere.
-export function fulfillmentPolicyRow(id, name, costCents, serviceCode = 'AU_AusPostStandardLetter', { combined = false } = {}) {
+// `services` ([{code,costCents}], first = the quoted one) offers a choice the way a real multi-service
+// policy does; without it the policy carries the one service named by serviceCode/costCents.
+export function fulfillmentPolicyRow(id, name, costCents, serviceCode = 'AU_AusPostStandardLetter', { combined = false, services = null } = {}) {
+  const list = Array.isArray(services) && services.length ? services : [{ code: serviceCode, costCents }];
   const opt = {
     optionType: 'DOMESTIC',
     costType: 'FLAT_RATE',
-    shippingServices: [{
-      sortOrder: 1, shippingServiceCode: serviceCode, freeShipping: false,
-      shippingCost: { value: (costCents / 100).toFixed(2), currency: 'AUD' },
-    }],
+    shippingServices: list.map((s, i) => ({
+      sortOrder: i + 1, shippingServiceCode: s.code, freeShipping: false,
+      shippingCost: { value: (s.costCents / 100).toFixed(2), currency: 'AUD' },
+    })),
   };
   if (combined) { opt.shippingDiscountProfileId = '5000123'; opt.shippingPromotionOffered = true; }
   return {
@@ -57,9 +60,13 @@ export function fulfillmentPolicyRow(id, name, costCents, serviceCode = 'AU_AusP
   };
 }
 
-// The three rows that match testBands() exactly — the "everything is wired correctly" case.
+// The three rows that match testBands() exactly — the "everything is wired correctly" case. EXACTLY
+// includes each band's whole service list: the description's options table is checked against the
+// policy too, and a stub offering one service where the band lists three is a (correctly) failing
+// account, not a correct one.
 export function fulfillmentPolicyRows() {
-  return testBands().map((b) => fulfillmentPolicyRow(b.policyId, b.policyName, b.costCents, b.serviceCode || 'AU_AusPostStandardLetter'));
+  return testBands().map((b) => fulfillmentPolicyRow(b.policyId, b.policyName, b.costCents, b.serviceCode || 'AU_AusPostStandardLetter',
+    { services: (b.services || []).map((s) => ({ code: s.code, costCents: s.costCents })) }));
 }
 
 // Payment and return rows shaped the way a CORRECTLY configured policy really is — immediate payment

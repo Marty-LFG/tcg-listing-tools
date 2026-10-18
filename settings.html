@@ -1140,7 +1140,7 @@
          opts:[{v:'letter_untracked',l:'Regular letter, no tracking'},{v:'tracked',l:'Tracked'},{v:'tracked_signature',l:'Tracked + signature on delivery'}],
          tip:'Which sentence the description uses. It has to describe what the policy actually does — promising tracking on an untracked service is a “not as described” claim waiting to happen.'},
         {p:`shipping.bands.${i}.serviceCode`,l:'eBay service code',t:'text',
-         tip:'Only used if this tool ever has to <b>create</b> this policy. A policy picked below always wins, so leaving it blank is fine.'},
+         tip:'The service the description sentence describes: the <b>first</b> service on the policy picked below. “Run eBay listing setup” reads it off that policy for you, along with every option the description lists. If the policy later uses a different first service, publishing is refused until setup is re-run, because the wording above was chosen for the old one. Blank skips that one check.'},
         {p:`shipping.bands.${i}.policyId`,l:'eBay postage policy',t:'select',src:'/api/listings/account/policies',kind:'fulfillment',wide:true,
          matchCentsFrom:`shipping.bands.${i}.costCents`,blank:'— not assigned —',
          tip:'Pick the policy that charges this band’s amount. Each option shows the amount and service it really uses, read live from eBay, and a ✓ marks the one whose price matches this band. Setup refuses to publish if they disagree.'},

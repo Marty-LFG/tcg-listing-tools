@@ -134,8 +134,22 @@ These are invariants the owner relies on. Breaking them silently breaks the tool
    **THE RULE THAT REPLACES "do not reword": the amount and service a description
    quotes MUST equal the `shippingCost` and service on the eBay policy pinned to
    that band.** A description contradicting the policy is an INAD claim on every
-   listing in the band, so `verifyBandPolicies` checks it against eBay live and
-   `publishListing` refuses rather than publishing a guess.
+   listing in the band, so `verifyBandPolicies` checks everything the description
+   would print — the band's amount, its first service code, and every row of the
+   options table — against the live policy, and **any** disagreement is an error
+   (until 2026-10-16 a dropped service and a changed service code were only
+   warnings, which let the letter band quote "$5.85 … sent tracked" above an
+   A$1.70 untracked option the checkout no longer had). `/publish`, `/batch` and
+   `/:id/revise-price` run that check against eBay **before anything is sent**
+   (`liveBandGuard` in `lib/listings.mjs`; a pass is cached 15 minutes, keyed on
+   the band table, so any config change re-checks at once) and refuse with `409
+   band_mismatch`, or `503 bands_unverified` when the policies cannot be read —
+   "could not check" is never a pass. `publishListing` separately refuses a band it
+   cannot resolve rather than publishing a guess. The fix for drift is Settings →
+   **Run eBay listing setup**, which re-reads each pinned policy's services and
+   service code (it never creates or edits a policy). A builder that cannot load
+   the live band table quotes **no** amount (`POSTAGE_LIVE` → `postagePhrase(null)`):
+   its inline table is the mirror default, never the store's bands.
    The **LEGO and Funko builders keep their own condition/PROTECTION wording**
    (`condText()` / `postageText()` in each file) because the card wording is
    physically wrong for boxed goods — a LEGO set or Funko box does not ship in a
@@ -1105,8 +1119,16 @@ singles-comps mirror (GR9, JUNK_RE byte-identical to extras.js); the pure builde
 **Sale sync (the read direction, DONE):** `applyStockDecrements(pdb, tdb)` runs on every postsale
 order poll — each matched paid line (SKU or `ebay_item_id` → `ebay_listing_id`) decrements local
 stock idempotently (`order_line_items.stock_applied_at`): a qty-1 slab flips to sold+ended, a bulk lot
-loses N, sealed goes through placements. `reconcileListings` (manual `POST /reconcile`) checks our
-mirrored offers vs eBay and marks ended/out-of-stock drift.
+loses N, sealed goes through placements. `reconcileListings` (every 30 min, and manual
+`POST /reconcile`) checks our mirrored offers vs eBay and marks ended/out-of-stock drift. It reads at
+most 200 rows a pass **oldest-checked first** (`ebay_listings.reconcile_checked_at`, stamped on every
+attempt, failures included), so the whole table rotates through the cap — until 2026-10-16 it had no
+ORDER BY and re-read the same 200 rows forever, ~146 newer listings never checked. An OUT_OF_STOCK
+listing whose card is `sold` is skipped. `updated` counts rows whose state actually moved. ENDED with
+**no sale** puts the card back `in_stock` (as `/withdraw` does); ENDED sold-out is left for the order
+poll, which owns `sold`. A 404 / errorId 25713 ("offer not available") is counted per row in
+`offer_missing_runs` and flagged in `offer_missing_at` after three consecutive passes — reported in
+`offers_missing`, never acted on. `/:id/recheck` shares the same `applyOfferState`.
 
 **Test safety:** `openDb()`/`openPostsaleDb()` are process singletons that ignore their path arg after
 the first call — tests MUST use `openDbAt(path)` / `openPostsaleDbAt(path)` (fresh, non-cached) so they
@@ -1517,7 +1539,8 @@ monotonic and never reused (`lib/sku-labels.mjs`).
 in the per-row try/catch shape `runSealedRefresh` / `linkMirrorListings` / `importSellerListings`
 already use. Streams `{start}` → `{row}`… → `{summary}`. **No inter-row sleep** — `lib/ebay-rest.mjs:22`
 already serialises every Sell-API call app-wide at 120 ms + jitter and honours `Retry-After`, so a
-second gate would only double the wall-clock. `guardConnected` / `accountReadyGuard` run **once**
+second gate would only double the wall-clock. `guardConnected` / `accountReadyGuard` / `liveBandGuard`
+(GR6's live postage-policy check) run **once**
 before the loop, not per row: they fail identically for all N, so a disconnected account costs one
 sentence rather than a hundred copies of it. `ndjsonStart` moved out of `lib/bulk.mjs` (where it was
 module-private) into **`lib/ndjson.mjs`**, so listings does not depend backwards on bulk.

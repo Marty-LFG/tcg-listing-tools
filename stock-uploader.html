@@ -278,6 +278,9 @@ async function checkAccount(){
     // anyway, so the page stayed green and every publish behind it failed. Now an account we
     // cannot READ says exactly that, and points at eBay rather than at the settings page.
     if(acctDegraded) banner('eBay isn’t answering for your account right now'+(st.policyReadError?' ('+esc(st.policyReadError)+')':'')+', so nothing here has been verified. Publishing is paused — reload in a few minutes.');
+    // A postage band that no longer matches its live eBay policy also makes ready false (GR6), and
+    // "not set up yet" would send the owner looking for a problem that isn't there.
+    else if(!acctReady && st.bandCheck && st.bandCheck.ok===false) banner('Publishing is paused: the postage a description would quote no longer matches your eBay policy ('+esc((st.bandCheck.errors||[]).join(' · '))+'). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it to refresh the postage bands.');
     else if(!acctReady) banner('eBay listing isn’t set up yet (business policies + location). Open <a href="/settings.html#settings">Settings → eBay listing setup</a> and run it once.');
   }catch(e){ banner('Could not reach the listing API — is the dev server running?'); }
 }
