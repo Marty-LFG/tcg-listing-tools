@@ -278,7 +278,7 @@ describe('the wiring a request cannot see', () => {
   it('server.fs.deny is FS_DENY, which keeps Vite\'s own defaults', () => {
     assert.match(vite, /deny:\s*\[\.\.\.FS_DENY\]/);
     for (const d of VITE_FS_DENY_DEFAULTS) assert.ok(FS_DENY.includes(d), `setting deny replaces Vite's defaults — ${d} must be re-listed`);
-    for (const d of ['**/*.db', '**/*.db-wal', '**/*.db-shm', '**/data/backups/**', '**/data/ebay-oauth.json', '**/data/photo-originals/**', '**/data/pregrade-images/**']) {
+    for (const d of ['**/*.db', '**/*.db-wal', '**/*.db-shm', '**/data/backups/**', '**/data/ebay-oauth.json', '**/data/photo-originals/**', '**/data/pregrade-images/**', '**/logs/**']) {
       assert.ok(FS_DENY.includes(d), `${d} must be denied`);
     }
   });
