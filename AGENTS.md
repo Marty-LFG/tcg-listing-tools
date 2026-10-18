@@ -1127,6 +1127,14 @@ are hidden/sold-out offers and hand-written descriptions. DIAG-gated, behind `li
 unless `?apply=1`, paged by `?limit=`/`?after_id=` or named by `?item_ids=`, `?detail=1` for the full
 HTML; every revise writes a `listing_pushes` row with action `rerender`.
 
+**What a tool listing really offers at checkout** (`auditListingShipping`, `GET /api/listings/shipping-audit`,
+READ-ONLY, DIAG-gated). The re-render found most tool listings with NO `fulfillmentPolicyId` on their
+offer: postage set per listing in Seller Hub detaches the business policy, so the band table says
+nothing about them. Per listing this reads the offer's policy and GetItem's domestic services, costs and
+attached profile (`parseItemShipping`, `lib/ebay-trading.mjs`) and classifies against the band:
+`policy_linked` · `matches_band` · `amount_matches` · `differs` · `unreadable`, with a summary grouped by
+what is actually offered. Writes nothing anywhere.
+
 **Service labels heal from the curated map** (`resolveServiceLabel`, `lib/postage.mjs`). A label stored
 with a machine source (`curated`/`ebay`/`derived`) is resolved again on every read; only an `owner`
 label, or a legacy hand-written one with no source, is kept. Before 2026-10-18 any stored label that was
