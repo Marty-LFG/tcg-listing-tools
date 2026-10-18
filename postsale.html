@@ -386,9 +386,14 @@ async function openMessage(id) {
     $('m_subject').value = m.subject || '';
     $('m_body').value = m.body || '';
     LOADED = { subject: $('m_subject').value, body: $('m_body').value };
-    $('m_err').textContent = m.error && m.status==='failed' ? ('⚠ ' + m.error) : '';
+    // A message the server retired says why (the order shipped, the buyer wrote in, it got too old),
+    // so nobody is left wondering why the Send button has gone.
+    $('m_err').textContent = !m.error ? '' : m.status==='failed' ? ('⚠ ' + m.error)
+      : (m.status==='expired' || m.status==='skipped') ? ('Not sent: ' + m.error) : '';
     setCC();
-    const done = ['sent','skipped','replied','closed'].includes(m.status);
+    // 'sending' is in flight elsewhere (a Telegram tap, another tab); the server refuses both buttons
+    // until it lands, so they are hidden rather than left to fail.
+    const done = ['sent','sending','skipped','expired','replied','closed'].includes(m.status);
     $('m_send').style.display = done ? 'none' : ''; $('m_skip').style.display = done ? 'none' : '';
     $('m_send').textContent = d.dry_run ? 'Approve (dry-run)' : 'Send to buyer';
     $('overlay').classList.add('open');

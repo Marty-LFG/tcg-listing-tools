@@ -23,6 +23,11 @@
     "start": "21:00",
     "end": "08:00"
   },
+  "message_expiry": {
+    "purchase_hours": 24,
+    "dispatch_hours": 72,
+    "delivered_hours": 120
+  },
   "holidays": [],
   "dashboard_url": "",
   "telegram_allowed_user_ids": [],

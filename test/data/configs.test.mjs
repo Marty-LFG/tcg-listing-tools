@@ -265,6 +265,20 @@ describe('grading.config.json (pre-grader tolerances)', () => {
   });
 });
 
+describe('postsale.config.example.json — message expiry', () => {
+  const me = cfg('postsale.config.example.json').message_expiry;
+
+  it('ships with every kind bounded, so a stale card cannot sit sendable forever', () => {
+    // 0 means "no age limit"; the example must not ship that for any kind. These are the owner's
+    // numbers from the 2026-10 audit: a thank-you is a day, a dispatch note 3 days, delivered 5.
+    assert.deepEqual(me, { purchase_hours: 24, dispatch_hours: 72, delivered_hours: 120 });
+  });
+
+  it('gives a thank-you the shortest life, because it is the one that promises a dispatch day', () => {
+    assert.ok(me.purchase_hours <= me.dispatch_hours && me.dispatch_hours <= me.delivered_hours);
+  });
+});
+
 describe('postsale.config.example.json — inbox alerts', () => {
   const c = cfg('postsale.config.example.json');
   const ia = c.inbox_alerts;
